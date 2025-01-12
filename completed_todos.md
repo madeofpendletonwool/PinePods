@@ -12,6 +12,27 @@ Next Minor Version:
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [] Add additional safety parsing to ensure podcasts will display on pod feed page
 
+Version 0.7.3
+
+- [ ] Youtube Subscriptions
+  - [x] Fix refreshing so it handlees youtube subscriptions
+  - [x] Thumbnails for youtube episodes currently are just sections of the video
+  - [ ] Validate some more channel adds
+  - [x] Speed up channel add process by only checking recent videos up to 30 days.
+  - [x] When searching channels show more recent vids than just one
+  - [x] Dynamic updating youtube channels
+  - [x] Delete youtube subs
+  - [ ] Allow user to adjust amount of time to save/download youtube videos
+  - [ ] Ensure youtube videos update completion/listen time status correctly
+  - [ ] check refreshing on episode/other youtube related pages
+  - [ ] Make /episode page work with youtube
+- [ ] Container can be ran as host machine user
+- [ ] Nextcloud Sync Fixed
+- [ ] Episode Completion Status is now pushed to Nextcloud/Gpodder
+- [ ] Adjusted Downloaded Episode titles to be more descriptive
+- [ ] Fixed issue with news feed adding
+- [ ] Additional Podcast parsing when things are missing
+
 Version 0.7.2
 
 - [x] Mobile Progress line (little line that appears above the line player to indicate your progress in the episode)

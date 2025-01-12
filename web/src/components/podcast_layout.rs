@@ -32,6 +32,7 @@ pub struct ClickedFeedURL {
     pub categories: Option<HashMap<String, String>>,
     pub websiteurl: String,  // Changed from podcast_link
     pub podcastindexid: i64, // Changed from podcast_index_id
+    pub is_youtube: Option<bool>,
 }
 
 #[function_component(PodLayout)]
@@ -116,7 +117,7 @@ pub fn pod_layout() -> Html {
             </div>
             {
                 if let Some(audio_props) = &audio_state.currently_playing {
-                    html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
+                    html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
                 } else {
                     html! {}
                 }
@@ -152,6 +153,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
 
     // Use a Set to track added podcast URLs for efficiency
     let added_podcasts = use_state(|| HashSet::new());
+    let set_loading = use_state(|| false);
 
     // On mount, check if the podcast is in the database
     let effect_user_id = user_id.unwrap().clone();
@@ -198,6 +200,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
 
     let toggle_podcast = {
         let podcast_add = podcast_add.clone();
+        let set_loading = set_loading.clone();
 
         let podcast_id_og = podcast_add.id.clone();
         let pod_title_og = podcast_add.title.clone();
@@ -220,7 +223,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         let pod_title_og_clone = pod_title_og.clone();
 
         Callback::from(move |_: MouseEvent| {
-            dispatch.reduce_mut(|state| state.is_loading = Some(true));
+            let set_loading = set_loading.clone();
             // Create a new set from the current state for modifications.
             let user_id = user_id_clone.clone();
             let api_key = api_key_clone.clone();
@@ -231,6 +234,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             let dispatch = dispatch.clone();
             let added_podcasts = added_podcasts.clone();
             let podcast_url = podcast_url.clone();
+            set_loading.set(true);
 
             if current_set.contains(&podcast_url) {
                 // If the podcast was added, remove it from the set and call remove_podcast.
@@ -264,14 +268,14 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                                 state.info_message =
                                     Some("Podcast successfully removed".to_string());
                             });
-                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            set_loading.set(false);
                         }
                         Err(e) => {
                             dispatch.reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("Error removing podcast: {:?}", e));
                             });
-                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            set_loading.set(false);
                         }
                     }
                 });
@@ -329,14 +333,14 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             dispatch.reduce_mut(|state| {
                                 state.info_message = Some("Podcast successfully added".to_string());
                             });
-                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            set_loading.set(false);
                         }
                         Err(e) => {
                             dispatch.reduce_mut(|state| {
                                 state.error_message =
                                     Some(format!("Error adding podcast: {:?}", e));
                             });
-                            dispatch.reduce_mut(|state| state.is_loading = Some(false));
+                            set_loading.set(false);
                         }
                     }
                 });
@@ -395,6 +399,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 categories: podcast_categories,
                 websiteurl: podcast_link,
                 podcastindexid: podcast_index_id,
+                is_youtube: Some(false),
             };
             let dispatch = dispatch.clone();
             let history = history.clone(); // Clone again for use inside async block
@@ -489,11 +494,18 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             <p class="header-text">{ format!("Episode Count: {}", &podcast.episodeCount) }</p>
                         </div>
                         <button
-                            class={format!("item-container-button selector-button font-bold rounded-full self-center mr-8 flex items-center justify-center")}
+                            class="item-container-button selector-button font-bold rounded-full self-center mr-8 flex items-center justify-center"
                             style="width: 180px; height: 180px;"
                             onclick={toggle_podcast}
+                            disabled={*set_loading}
                         >
-                            <i class={format!("ph ph-{} text-4xl", button_text)}></i>
+                            {
+                                if *set_loading {
+                                    html! { <i class="ph ph-spinner-ball animate-spin text-4xl"></i> }
+                                } else {
+                                    html! { <i class={format!("ph ph-{} text-4xl", button_text)}></i> }
+                                }
+                            }
                         </button>
                     </div>
                 }

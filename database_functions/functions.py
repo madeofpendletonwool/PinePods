@@ -25,6 +25,9 @@ from requests.auth import HTTPBasicAuth
 from urllib.parse import urlparse, urlunparse
 from typing import List, Optional
 import pytz
+from yt_dlp import YoutubeDL
+from database_functions import youtube
+import logging
 
 # # Get the application root directory from the environment variable
 # app_root = os.environ.get('APP_ROOT')
@@ -806,6 +809,85 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
         return new_episodes
     return first_episode_id
 
+def check_existing_channel_subscription(cnx, channel_id: str, user_id: int) -> Optional[int]:
+    """Check if user is already subscribed to this channel"""
+    cursor = cnx.cursor()
+    try:
+        cursor.execute("""
+            SELECT PodcastID FROM "Podcasts"
+            WHERE WebsiteURL = %s AND UserID = %s
+        """, (f"https://www.youtube.com/channel/{channel_id}", user_id))
+        result = cursor.fetchone()
+
+        if result:
+            return result[0] if isinstance(result, tuple) else result['podcastid']
+        return None
+    except Exception as e:
+        raise e
+
+def add_youtube_channel(cnx, channel_info: dict, user_id: int) -> int:
+    """Add YouTube channel to Podcasts table"""
+    cursor = cnx.cursor()
+    try:
+        print(f"Attempting to insert channel: {channel_info['name']}")  # Debug print
+        cursor.execute("""
+            INSERT INTO "Podcasts" (
+                PodcastName, FeedURL, ArtworkURL, Author, Description,
+                WebsiteURL, UserID, IsYouTubeChannel, Categories
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, %s)
+            RETURNING PodcastID
+        """, (
+            channel_info['name'],
+            f"https://www.youtube.com/channel/{channel_info['channel_id']}",
+            channel_info['thumbnail_url'],
+            channel_info['name'],
+            channel_info['description'],
+            f"https://www.youtube.com/channel/{channel_info['channel_id']}",
+            user_id,
+            ""
+        ))
+        result = cursor.fetchone()
+        print(f"Insert result: {result}")  # Debug print
+
+        # Handle both tuple and dict return types
+        if isinstance(result, dict):
+            podcast_id = result['podcastid']
+        else:  # Tuple
+            podcast_id = result[0]
+
+        print(f"Extracted podcast_id: {podcast_id}")  # Debug print
+        cnx.commit()
+        return podcast_id
+    except Exception as e:
+        print(f"Error in add_youtube_channel: {str(e)}")  # Debug print
+        cnx.rollback()
+        raise e
+
+def add_youtube_videos(cnx, podcast_id: int, videos: list):
+    """Add YouTube videos to YouTubeVideos table"""
+    cursor = cnx.cursor()
+    try:
+        for video in videos:
+            cursor.execute("""
+                INSERT INTO "YouTubeVideos" (
+                    PodcastID, VideoTitle, VideoDescription,
+                    VideoURL, ThumbnailURL, PublishedAt,
+                    Duration, YouTubeVideoID
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                podcast_id,
+                video['title'],
+                video['description'],
+                video['url'],
+                video['thumbnail'],
+                video['publish_date'],
+                video['duration'],
+                video['id']
+            ))
+        cnx.commit()
+    except Exception as e:
+        cnx.rollback()
+        raise e
 
 def add_people_episodes(cnx, database_type, person_id: int, podcast_id: int, feed_url: str):
     import feedparser
@@ -989,6 +1071,81 @@ def add_people_episodes(cnx, database_type, person_id: int, podcast_id: int, fee
     finally:
         cursor.close()
 
+def remove_youtube_channel_by_url(cnx, database_type, channel_name, channel_url, user_id):
+    cursor = cnx.cursor()
+    print('got to remove youtube channel')
+    try:
+        # Get the PodcastID first
+        if database_type == "postgresql":
+            select_podcast_id = '''
+                SELECT PodcastID
+                FROM "Podcasts"
+                WHERE PodcastName = %s
+                AND FeedURL = %s
+                AND UserID = %s
+                AND IsYouTubeChannel = TRUE
+            '''
+        else:  # MySQL or MariaDB
+            select_podcast_id = '''
+                SELECT PodcastID
+                FROM Podcasts
+                WHERE PodcastName = %s
+                AND FeedURL = %s
+                AND UserID = %s
+                AND IsYouTubeChannel = TRUE
+            '''
+
+        cursor.execute(select_podcast_id, (channel_name, channel_url, user_id))
+        result = cursor.fetchone()
+
+        if result:
+            podcast_id = result[0] if not isinstance(result, dict) else result.get('podcastid')
+        else:
+            raise ValueError(f"No YouTube channel found with name {channel_name}")
+
+        # Delete related data
+        if database_type == "postgresql":
+            delete_queries = [
+                ('DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
+                ('DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
+                ('DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
+                ('DELETE FROM "EpisodeQueue" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
+                ('DELETE FROM "YouTubeVideos" WHERE PodcastID = %s', (podcast_id,)),
+                ('DELETE FROM "Podcasts" WHERE PodcastID = %s AND IsYouTubeChannel = TRUE', (podcast_id,))
+            ]
+        else:  # MySQL or MariaDB
+            delete_queries = [
+                ("DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
+                ("DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
+                ("DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
+                ("DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
+                ("DELETE FROM YouTubeVideos WHERE PodcastID = %s", (podcast_id,)),
+                ("DELETE FROM Podcasts WHERE PodcastID = %s AND IsYouTubeChannel = TRUE", (podcast_id,))
+            ]
+
+        for query, params in delete_queries:
+            cursor.execute(query, params)
+
+        # Update UserStats table
+        if database_type == "postgresql":
+            query = 'UPDATE "UserStats" SET PodcastsAdded = GREATEST(PodcastsAdded - 1, 0) WHERE UserID = %s'
+        else:  # MySQL or MariaDB
+            query = "UPDATE UserStats SET PodcastsAdded = GREATEST(PodcastsAdded - 1, 0) WHERE UserID = %s"
+
+        cursor.execute(query, (user_id,))
+        cnx.commit()
+
+    except (psycopg.Error, mysql.connector.Error) as err:
+        print(f"Database Error: {err}")
+        cnx.rollback()
+        raise
+    except Exception as e:
+        print(f"General Error in remove_youtube_channel_by_url: {e}")
+        cnx.rollback()
+        raise
+    finally:
+        cursor.close()
+
 def remove_podcast(cnx, database_type, podcast_name, podcast_url, user_id):
     cursor = cnx.cursor()
     print('got to remove')
@@ -1127,51 +1284,185 @@ def remove_podcast_id(cnx, database_type, podcast_id, user_id):
     finally:
         cursor.close()
 
+def remove_youtube_channel(cnx, database_type, podcast_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        # Delete from the related tables
+        if database_type == "postgresql":
+            delete_history = 'DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
+            delete_downloaded = 'DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
+            delete_saved = 'DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
+            delete_queue = 'DELETE FROM "EpisodeQueue" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
+            delete_videos = 'DELETE FROM "YouTubeVideos" WHERE PodcastID = %s'
+            delete_podcast = 'DELETE FROM "Podcasts" WHERE PodcastID = %s AND IsYouTubeChannel = TRUE'
+            update_user_stats = 'UPDATE "UserStats" SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = %s'
+        else:  # MySQL or MariaDB
+            delete_history = "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
+            delete_downloaded = "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
+            delete_saved = "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
+            delete_queue = "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
+            delete_videos = "DELETE FROM YouTubeVideos WHERE PodcastID = %s"
+            delete_podcast = "DELETE FROM Podcasts WHERE PodcastID = %s AND IsYouTubeChannel = TRUE"
+            update_user_stats = "UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = %s"
+
+        cursor.execute(delete_history, (podcast_id,))
+        cursor.execute(delete_downloaded, (podcast_id,))
+        cursor.execute(delete_saved, (podcast_id,))
+        cursor.execute(delete_queue, (podcast_id,))
+        cursor.execute(delete_videos, (podcast_id,))
+        cursor.execute(delete_podcast, (podcast_id,))
+        cursor.execute(update_user_stats, (user_id,))
+        cnx.commit()
+    except (psycopg.Error, mysql.connector.Error) as err:
+        print("Error: {}".format(err))
+        cnx.rollback()
+    finally:
+        cursor.close()
+
 def return_episodes(database_type, cnx, user_id):
     if database_type == "postgresql":
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
-    else:  # Assuming MariaDB/MySQL if not PostgreSQL
-        cursor = cnx.cursor(dictionary=True)
+        query = """
+            SELECT * FROM (
+                SELECT
+                    "Podcasts".PodcastName as podcastname,
+                    "Episodes".EpisodeTitle as episodetitle,
+                    "Episodes".EpisodePubDate as episodepubdate,
+                    "Episodes".EpisodeDescription as episodedescription,
+                    "Episodes".EpisodeArtwork as episodeartwork,
+                    "Episodes".EpisodeURL as episodeurl,
+                    "Episodes".EpisodeDuration as episodeduration,
+                    "UserEpisodeHistory".ListenDuration as listenduration,
+                    "Episodes".EpisodeID as episodeid,
+                    "Episodes".Completed as completed,
+                    CASE WHEN "SavedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                    CASE WHEN "EpisodeQueue".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                    CASE WHEN "DownloadedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                    FALSE as is_youtube
+                FROM "Episodes"
+                INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+                LEFT JOIN "UserEpisodeHistory" ON
+                    "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID
+                    AND "UserEpisodeHistory".UserID = %s
+                LEFT JOIN "SavedEpisodes" ON
+                    "Episodes".EpisodeID = "SavedEpisodes".EpisodeID
+                    AND "SavedEpisodes".UserID = %s
+                LEFT JOIN "EpisodeQueue" ON
+                    "Episodes".EpisodeID = "EpisodeQueue".EpisodeID
+                    AND "EpisodeQueue".UserID = %s
+                LEFT JOIN "DownloadedEpisodes" ON
+                    "Episodes".EpisodeID = "DownloadedEpisodes".EpisodeID
+                    AND "DownloadedEpisodes".UserID = %s
+                WHERE "Episodes".EpisodePubDate >= NOW() - INTERVAL '30 days'
+                AND "Podcasts".UserID = %s
 
-    if database_type == "postgresql":
-        query = (
-            'SELECT "Podcasts".PodcastName, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
-            '"Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, '
-            '"UserEpisodeHistory".ListenDuration, "Episodes".EpisodeID, "Episodes".Completed, '
-            'CASE WHEN "SavedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS Saved, '
-            'CASE WHEN "EpisodeQueue".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS Queued, '
-            'CASE WHEN "DownloadedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS Downloaded '
-            'FROM "Episodes" '
-            'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-            'LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID AND "UserEpisodeHistory".UserID = %s '
-            'LEFT JOIN "SavedEpisodes" ON "Episodes".EpisodeID = "SavedEpisodes".EpisodeID AND "SavedEpisodes".UserID = %s '
-            'LEFT JOIN "EpisodeQueue" ON "Episodes".EpisodeID = "EpisodeQueue".EpisodeID AND "EpisodeQueue".UserID = %s '
-            'LEFT JOIN "DownloadedEpisodes" ON "Episodes".EpisodeID = "DownloadedEpisodes".EpisodeID AND "DownloadedEpisodes".UserID = %s '
-            'WHERE "Episodes".EpisodePubDate >= NOW() - INTERVAL \'30 days\' '
-            'AND "Podcasts".UserID = %s '
-            'ORDER BY "Episodes".EpisodePubDate DESC'
-        )
+                UNION ALL
+
+                SELECT
+                    "Podcasts".PodcastName as podcastname,
+                    "YouTubeVideos".VideoTitle as episodetitle,
+                    "YouTubeVideos".PublishedAt as episodepubdate,
+                    "YouTubeVideos".VideoDescription as episodedescription,
+                    "YouTubeVideos".ThumbnailURL as episodeartwork,
+                    "YouTubeVideos".VideoURL as episodeurl,
+                    "YouTubeVideos".Duration as episodeduration,
+                    "YouTubeVideos".ListenPosition as listenduration,
+                    "YouTubeVideos".VideoID as episodeid,
+                    "YouTubeVideos".Completed as completed,
+                    CASE WHEN "SavedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                    CASE WHEN "EpisodeQueue".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                    CASE WHEN "DownloadedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                    TRUE as is_youtube
+                FROM "YouTubeVideos"
+                INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
+                LEFT JOIN "SavedEpisodes" ON
+                    "YouTubeVideos".VideoID = "SavedEpisodes".EpisodeID
+                    AND "SavedEpisodes".UserID = %s
+                LEFT JOIN "EpisodeQueue" ON
+                    "YouTubeVideos".VideoID = "EpisodeQueue".EpisodeID
+                    AND "EpisodeQueue".UserID = %s
+                LEFT JOIN "DownloadedEpisodes" ON
+                    "YouTubeVideos".VideoID = "DownloadedEpisodes".EpisodeID
+                    AND "DownloadedEpisodes".UserID = %s
+                WHERE "YouTubeVideos".PublishedAt >= NOW() - INTERVAL '30 days'
+                AND "Podcasts".UserID = %s
+            ) combined
+            ORDER BY episodepubdate DESC
+        """
     else:  # MySQL or MariaDB
-        query = (
-            "SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-            "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
-            "UserEpisodeHistory.ListenDuration, Episodes.EpisodeID, Episodes.Completed, "
-            "CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS Saved, "
-            "CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS Queued, "
-            "CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS Downloaded "
-            "FROM Episodes "
-            "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-            "LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
-            "LEFT JOIN SavedEpisodes ON Episodes.EpisodeID = SavedEpisodes.EpisodeID AND SavedEpisodes.UserID = %s "
-            "LEFT JOIN EpisodeQueue ON Episodes.EpisodeID = EpisodeQueue.EpisodeID AND EpisodeQueue.UserID = %s "
-            "LEFT JOIN DownloadedEpisodes ON Episodes.EpisodeID = DownloadedEpisodes.EpisodeID AND DownloadedEpisodes.UserID = %s "
-            "WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY) "
-            "AND Podcasts.UserID = %s "
-            "ORDER BY Episodes.EpisodePubDate DESC"
-        )
+        cursor = cnx.cursor(dictionary=True)
+        query = """
+            SELECT * FROM (
+                SELECT
+                    Podcasts.PodcastName as podcastname,
+                    Episodes.EpisodeTitle as episodetitle,
+                    Episodes.EpisodePubDate as episodepubdate,
+                    Episodes.EpisodeDescription as episodedescription,
+                    Episodes.EpisodeArtwork as episodeartwork,
+                    Episodes.EpisodeURL as episodeurl,
+                    Episodes.EpisodeDuration as episodeduration,
+                    UserEpisodeHistory.ListenDuration as listenduration,
+                    Episodes.EpisodeID as episodeid,
+                    Episodes.Completed as completed,
+                    CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                    CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                    CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                    FALSE as is_youtube
+                FROM Episodes
+                INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                LEFT JOIN UserEpisodeHistory ON
+                    Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+                    AND UserEpisodeHistory.UserID = %s
+                LEFT JOIN SavedEpisodes ON
+                    Episodes.EpisodeID = SavedEpisodes.EpisodeID
+                    AND SavedEpisodes.UserID = %s
+                LEFT JOIN EpisodeQueue ON
+                    Episodes.EpisodeID = EpisodeQueue.EpisodeID
+                    AND EpisodeQueue.UserID = %s
+                LEFT JOIN DownloadedEpisodes ON
+                    Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
+                    AND DownloadedEpisodes.UserID = %s
+                WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                AND Podcasts.UserID = %s
 
-    cursor.execute(query, (user_id, user_id, user_id, user_id, user_id))
+                UNION ALL
+
+                SELECT
+                    Podcasts.PodcastName as podcastname,
+                    YouTubeVideos.VideoTitle as episodetitle,
+                    YouTubeVideos.PublishedAt as episodepubdate,
+                    YouTubeVideos.VideoDescription as episodedescription,
+                    YouTubeVideos.ThumbnailURL as episodeartwork,
+                    YouTubeVideos.VideoURL as episodeurl,
+                    YouTubeVideos.Duration as episodeduration,
+                    YouTubeVideos.ListenPosition as listenduration,
+                    YouTubeVideos.VideoID as episodeid,
+                    YouTubeVideos.Completed as completed,
+                    CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                    CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                    CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                    TRUE as is_youtube
+                FROM YouTubeVideos
+                INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                LEFT JOIN SavedEpisodes ON
+                    YouTubeVideos.VideoID = SavedEpisodes.EpisodeID
+                    AND SavedEpisodes.UserID = %s
+                LEFT JOIN EpisodeQueue ON
+                    YouTubeVideos.VideoID = EpisodeQueue.EpisodeID
+                    AND EpisodeQueue.UserID = %s
+                LEFT JOIN DownloadedEpisodes ON
+                    YouTubeVideos.VideoID = DownloadedEpisodes.EpisodeID
+                    AND DownloadedEpisodes.UserID = %s
+                WHERE YouTubeVideos.PublishedAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                AND Podcasts.UserID = %s
+            ) combined
+            ORDER BY episodepubdate DESC
+        """
+
+    # Execute with all params for both unions
+    params = (user_id,) * 9  # user_id repeated 9 times for all the places needed
+    cursor.execute(query, params)
     rows = cursor.fetchall()
     cursor.close()
 
@@ -1180,7 +1471,9 @@ def return_episodes(database_type, cnx, user_id):
 
     if database_type != "postgresql":
         # Convert column names to lowercase for MySQL and ensure boolean fields are actual booleans
-        rows = [{k.lower(): (bool(v) if k.lower() in ['completed', 'saved', 'queued', 'downloaded'] else v) for k, v in row.items()} for row in rows]
+        bool_fields = ['completed', 'saved', 'queued', 'downloaded', 'is_youtube']
+        rows = [{k.lower(): (bool(v) if k.lower() in bool_fields else v)
+                for k, v in row.items()} for row in rows]
 
     return rows
 
@@ -1239,7 +1532,8 @@ def return_person_episodes(database_type, cnx, user_id: int, person_id: int):
                     ) IS NOT NULL THEN
                     COALESCE(h.ListenDuration, 0)
                     ELSE 0
-                END AS ListenDuration
+                END AS ListenDuration,
+                FALSE as is_youtube
             FROM "PeopleEpisodes" pe
             INNER JOIN "People" pp ON pe.PersonID = pp.PersonID
             INNER JOIN "Podcasts" p ON pe.PodcastID = p.PodcastID
@@ -1294,7 +1588,8 @@ def return_person_episodes(database_type, cnx, user_id: int, person_id: int):
                     ),
                     COALESCE(h.ListenDuration, 0),
                     0
-                ) AS ListenDuration
+                ) AS ListenDuration,
+                FALSE as is_youtube
             FROM PeopleEpisodes pe
             INNER JOIN People pp ON pe.PersonID = pp.PersonID
             INNER JOIN Podcasts p ON pe.PodcastID = p.PodcastID
@@ -1370,6 +1665,50 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
     # Normalize keys
     rows = capitalize_keys(rows)
 
+    return rows or None
+
+def return_youtube_episodes(database_type, cnx, user_id, podcast_id):
+    if database_type == "postgresql":
+        cnx.row_factory = dict_row
+        cursor = cnx.cursor()
+    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+        cursor = cnx.cursor(dictionary=True)
+
+    if database_type == "postgresql":
+        query = (
+            'SELECT "Podcasts".PodcastID, "Podcasts".PodcastName, "YouTubeVideos".VideoID AS EpisodeID, '
+            '"YouTubeVideos".VideoTitle AS EpisodeTitle, "YouTubeVideos".PublishedAt AS EpisodePubDate, '
+            '"YouTubeVideos".VideoDescription AS EpisodeDescription, '
+            '"YouTubeVideos".ThumbnailURL AS EpisodeArtwork, "YouTubeVideos".VideoURL AS EpisodeURL, '
+            '"YouTubeVideos".Duration AS EpisodeDuration, '
+            '"YouTubeVideos".ListenPosition AS ListenDuration, '
+            '"YouTubeVideos".YouTubeVideoID AS guid '
+            'FROM "YouTubeVideos" '
+            'INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID '
+            'WHERE "Podcasts".PodcastID = %s AND "Podcasts".UserID = %s '
+            'ORDER BY "YouTubeVideos".PublishedAt DESC'
+        )
+    else:  # MySQL or MariaDB
+        query = (
+            "SELECT Podcasts.PodcastID, Podcasts.PodcastName, YouTubeVideos.VideoID AS EpisodeID, "
+            "YouTubeVideos.VideoTitle AS EpisodeTitle, YouTubeVideos.PublishedAt AS EpisodePubDate, "
+            "YouTubeVideos.VideoDescription AS EpisodeDescription, "
+            "YouTubeVideos.ThumbnailURL AS EpisodeArtwork, YouTubeVideos.VideoURL AS EpisodeURL, "
+            "YouTubeVideos.Duration AS EpisodeDuration, "
+            "YouTubeVideos.ListenPosition AS ListenDuration, "
+            "YouTubeVideos.YouTubeVideoID AS guid "
+            "FROM YouTubeVideos "
+            "INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID "
+            "WHERE Podcasts.PodcastID = %s AND Podcasts.UserID = %s "
+            "ORDER BY YouTubeVideos.PublishedAt DESC"
+        )
+
+    cursor.execute(query, (podcast_id, user_id))
+    rows = cursor.fetchall()
+    cursor.close()
+
+    # Normalize keys
+    rows = capitalize_keys(rows)
     return rows or None
 
 def get_podcast_details(database_type, cnx, user_id, podcast_id):
@@ -1608,9 +1947,9 @@ def return_pods(database_type, cnx, user_id):
                 p.WebsiteURL,
                 p.FeedURL,
                 p.Author,
-                p.Categories,
-                p.Explicit,
-                p.PodcastIndexID,
+                COALESCE(p.Categories, '') as Categories,
+                COALESCE(p.Explicit, FALSE) as Explicit,
+                COALESCE(p.PodcastIndexID, 0) as PodcastIndexID,
                 COUNT(DISTINCT h.UserEpisodeHistoryID) as play_count,
                 MIN(e.EpisodePubDate) as oldest_episode_date,
                 COALESCE(
@@ -1638,9 +1977,9 @@ def return_pods(database_type, cnx, user_id):
                 p.WebsiteURL,
                 p.FeedURL,
                 p.Author,
-                p.Categories,
-                p.Explicit,
-                p.PodcastIndexID,
+                COALESCE(p.Categories, '') as Categories,
+                COALESCE(p.Explicit, FALSE) as Explicit,
+                COALESCE(p.PodcastIndexID, 0) as PodcastIndexID,
                 COUNT(DISTINCT h.UserEpisodeHistoryID) as play_count,
                 MIN(e.EpisodePubDate) as oldest_episode_date,
                 COALESCE(
@@ -1696,27 +2035,28 @@ def check_self_service(cnx, database_type):
     else:
         return None
 
-
-def refresh_pods_for_user(cnx, database_type, user_id):
-    print(f'Refresh begin for user {user_id}')
+def refresh_pods_for_user(cnx, database_type, podcast_id):
+    print(f'Refresh begin for podcast {podcast_id}')
     cursor = cnx.cursor()
     if database_type == "postgresql":
-        select_podcasts = '''
-            SELECT "podcastid", "feedurl", "artworkurl", "autodownload", "username", "password"
+        select_podcast = '''
+            SELECT "podcastid", "feedurl", "artworkurl", "autodownload", "username", "password",
+                   "isyoutubechannel", COALESCE("feedurl", '') as channel_id
             FROM "Podcasts"
-            WHERE "userid" = %s
+            WHERE "podcastid" = %s
         '''
     else:  # MySQL or MariaDB
-        select_podcasts = '''
-            SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password
+        select_podcast = '''
+            SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
+                   IsYouTubeChannel, COALESCE(FeedURL, '') as channel_id
             FROM Podcasts
-            WHERE UserID = %s
+            WHERE PodcastID = %s
         '''
-    cursor.execute(select_podcasts, (user_id,))
-    result_set = cursor.fetchall()
+    cursor.execute(select_podcast, (podcast_id,))
+    result = cursor.fetchone()
     new_episodes = []
 
-    for result in result_set:
+    if result:
         if isinstance(result, dict):
             if database_type == "postgresql":
                 # PostgreSQL - lowercase keys
@@ -1726,6 +2066,8 @@ def refresh_pods_for_user(cnx, database_type, user_id):
                 auto_download = result['autodownload']
                 username = result['username']
                 password = result['password']
+                is_youtube = result['isyoutubechannel']
+                channel_id = result['channel_id']
             else:
                 # MariaDB - uppercase keys
                 podcast_id = result['PodcastID']
@@ -1734,34 +2076,50 @@ def refresh_pods_for_user(cnx, database_type, user_id):
                 auto_download = result['AutoDownload']
                 username = result['Username']
                 password = result['Password']
+                is_youtube = result['IsYouTubeChannel']
+                channel_id = result['channel_id']
         else:
-            podcast_id, feed_url, artwork_url, auto_download, username, password = result
+            podcast_id, feed_url, artwork_url, auto_download, username, password, is_youtube, channel_id = result
 
-        print(f'Running for podcast: {podcast_id}')
-        episodes = add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, username, password, websocket=True)
-        # Collect new episodes with full details
-        new_episodes.extend(episodes)
+        print(f'Processing podcast: {podcast_id}')
+        if is_youtube:
+            channel_id = feed_url.split('channel/')[-1] if 'channel/' in feed_url else feed_url
+            channel_id = channel_id.split('/')[0].split('?')[0]
+            youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx)
+        else:
+            episodes = add_episodes(cnx, database_type, podcast_id, feed_url,
+                                  artwork_url, auto_download, username, password,
+                                  websocket=True)
+            new_episodes.extend(episodes)
 
     cursor.close()
     return new_episodes
-
 
 
 def refresh_pods(cnx, database_type):
     print('refresh begin')
     cursor = cnx.cursor()
     if database_type == "postgresql":
-        select_podcasts = 'SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password FROM "Podcasts"'
-    else:  # MySQL or MariaDB
-        select_podcasts = "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password FROM Podcasts"
+        select_podcasts = '''
+            SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
+                   IsYouTubeChannel, COALESCE(FeedURL, '') as channel_id
+            FROM "Podcasts"
+        '''
+    else:
+        select_podcasts = '''
+            SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
+                   IsYouTubeChannel, COALESCE(FeedURL, '') as channel_id
+            FROM Podcasts
+        '''
 
     cursor.execute(select_podcasts)
-    result_set = cursor.fetchall()  # fetch the result set
+    result_set = cursor.fetchall()
 
     for result in result_set:
+        podcast_id = None
         try:
             if isinstance(result, tuple):
-                podcast_id, feed_url, artwork_url, auto_download, username, password = result
+                podcast_id, feed_url, artwork_url, auto_download, username, password, is_youtube, channel_id = result
             elif isinstance(result, dict):
                 if database_type == "postgresql":
                     podcast_id = result["podcastid"]
@@ -1770,6 +2128,8 @@ def refresh_pods(cnx, database_type):
                     auto_download = result["autodownload"]
                     username = result["username"]
                     password = result["password"]
+                    is_youtube = result["isyoutubechannel"],
+                    channel_id = result["channel_id"]
                 else:
                     podcast_id = result["PodcastID"]
                     feed_url = result["FeedURL"]
@@ -1777,11 +2137,23 @@ def refresh_pods(cnx, database_type):
                     auto_download = result["AutoDownload"]
                     username = result["Username"]
                     password = result["Password"]
+                    is_youtube = result["IsYouTubeChannel"],
+                    channel_id = result["channel_id"]
             else:
                 raise ValueError(f"Unexpected result type: {type(result)}")
 
             print(f'Running for: {podcast_id}')
-            add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, username, password)
+
+            if is_youtube:
+                # Extract channel ID from feed URL
+                channel_id = feed_url.split('channel/')[-1] if 'channel/' in feed_url else feed_url
+                # Clean up any trailing slashes or query parameters
+                channel_id = channel_id.split('/')[0].split('?')[0]
+                youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx)  # feed_url contains channel_id for YouTube
+            else:
+                add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url,
+                           auto_download, username, password)
+
         except Exception as e:
             print(f"Error refreshing podcast {podcast_id}: {str(e)}")
             # Optionally, you could update a status field in your database to mark this podcast as having issues
@@ -1791,6 +2163,7 @@ def refresh_pods(cnx, database_type):
     cursor.close()
     # Don't close the connection here if it's managed outside this function
     # cnx.close()
+
 
 
 def remove_unavailable_episodes(cnx, database_type):
@@ -2011,6 +2384,36 @@ def get_user_id(cnx, database_type, username):
     else:
         return 1
 
+def get_existing_youtube_videos(cnx, database_type, podcast_id):
+    """Get list of existing YouTube video URLs for a podcast"""
+    cursor = cnx.cursor()
+    if database_type == "postgresql":
+        query = '''
+            SELECT VideoURL FROM "YouTubeVideos"
+            WHERE PodcastID = %s
+        '''
+    else:
+        query = '''
+            SELECT VideoURL FROM YouTubeVideos
+            WHERE PodcastID = %s
+        '''
+
+    cursor.execute(query, (podcast_id,))
+    results = cursor.fetchall()
+    cursor.close()
+
+    existing_urls = set()
+    if results:
+        for result in results:
+            if isinstance(result, dict):
+                url = result.get("videourl")
+            elif isinstance(result, tuple):
+                url = result[0]
+            if url:
+                existing_urls.add(url)
+
+    return existing_urls
+
 def get_user_id_from_pod_id(cnx, database_type, podcast_id):
     cursor = cnx.cursor()
     if database_type == "postgresql":
@@ -2098,32 +2501,100 @@ def user_history(cnx, database_type, user_id):
     cursor = cnx.cursor()
     try:
         if database_type == "postgresql":
-            query = ('SELECT "Episodes".EpisodeID, "UserEpisodeHistory".ListenDate, "UserEpisodeHistory".ListenDuration, '
-                    '"Episodes".EpisodeTitle, "Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, '
-                    '"Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Podcasts".PodcastName, "Episodes".EpisodePubDate, "Episodes".Completed '
-                    'FROM "UserEpisodeHistory" '
-                    'JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID '
-                    'JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-                    'WHERE "UserEpisodeHistory".UserID = %s '
-                    'ORDER BY "UserEpisodeHistory".ListenDate DESC')
-        else:
-            cursor = cnx.cursor(dictionary=True)
-            query = ("SELECT Episodes.EpisodeID, UserEpisodeHistory.ListenDate, UserEpisodeHistory.ListenDuration, "
-                    "Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeArtwork, "
-                    "Episodes.EpisodeURL, Episodes.EpisodeDuration, Podcasts.PodcastName, Episodes.EpisodePubDate, Episodes.Completed "
-                    "FROM UserEpisodeHistory "
-                    "JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID "
-                    "JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-                    "WHERE UserEpisodeHistory.UserID = %s "
-                    "ORDER BY UserEpisodeHistory.ListenDate DESC")
+            query = """
+                SELECT * FROM (
+                    SELECT
+                        "Episodes".EpisodeID as episodeid,
+                        "UserEpisodeHistory".ListenDate as listendate,
+                        "UserEpisodeHistory".ListenDuration as listenduration,
+                        "Episodes".EpisodeTitle as episodetitle,
+                        "Episodes".EpisodeDescription as episodedescription,
+                        "Episodes".EpisodeArtwork as episodeartwork,
+                        "Episodes".EpisodeURL as episodeurl,
+                        "Episodes".EpisodeDuration as episodeduration,
+                        "Podcasts".PodcastName as podcastname,
+                        "Episodes".EpisodePubDate as episodepubdate,
+                        "Episodes".Completed as completed,
+                        FALSE as is_youtube
+                    FROM "UserEpisodeHistory"
+                    JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID
+                    JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+                    WHERE "UserEpisodeHistory".UserID = %s
 
-        cursor.execute(query, (user_id,))
+                    UNION ALL
+
+                    SELECT
+                        "YouTubeVideos".VideoID as episodeid,
+                        NULL as listendate,  -- YouTube doesn't track listen date currently
+                        "YouTubeVideos".ListenPosition as listenduration,
+                        "YouTubeVideos".VideoTitle as episodetitle,
+                        "YouTubeVideos".VideoDescription as episodedescription,
+                        "YouTubeVideos".ThumbnailURL as episodeartwork,
+                        "YouTubeVideos".VideoURL as episodeurl,
+                        "YouTubeVideos".Duration as episodeduration,
+                        "Podcasts".PodcastName as podcastname,
+                        "YouTubeVideos".PublishedAt as episodepubdate,
+                        "YouTubeVideos".Completed as completed,
+                        TRUE as is_youtube
+                    FROM "YouTubeVideos"
+                    JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
+                    WHERE "YouTubeVideos".ListenPosition > 0
+                    AND "Podcasts".UserID = %s
+                ) combined
+                ORDER BY listendate DESC NULLS LAST
+            """
+        else:  # MySQL/MariaDB
+            cursor = cnx.cursor(dictionary=True)
+            query = """
+                SELECT * FROM (
+                    SELECT
+                        Episodes.EpisodeID as episodeid,
+                        UserEpisodeHistory.ListenDate as listendate,
+                        UserEpisodeHistory.ListenDuration as listenduration,
+                        Episodes.EpisodeTitle as episodetitle,
+                        Episodes.EpisodeDescription as episodedescription,
+                        Episodes.EpisodeArtwork as episodeartwork,
+                        Episodes.EpisodeURL as episodeurl,
+                        Episodes.EpisodeDuration as episodeduration,
+                        Podcasts.PodcastName as podcastname,
+                        Episodes.EpisodePubDate as episodepubdate,
+                        Episodes.Completed as completed,
+                        FALSE as is_youtube
+                    FROM UserEpisodeHistory
+                    JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID
+                    JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                    WHERE UserEpisodeHistory.UserID = %s
+
+                    UNION ALL
+
+                    SELECT
+                        YouTubeVideos.VideoID as episodeid,
+                        NULL as listendate,
+                        YouTubeVideos.ListenPosition as listenduration,
+                        YouTubeVideos.VideoTitle as episodetitle,
+                        YouTubeVideos.VideoDescription as episodedescription,
+                        YouTubeVideos.ThumbnailURL as episodeartwork,
+                        YouTubeVideos.VideoURL as episodeurl,
+                        YouTubeVideos.Duration as episodeduration,
+                        Podcasts.PodcastName as podcastname,
+                        YouTubeVideos.PublishedAt as episodepubdate,
+                        YouTubeVideos.Completed as completed,
+                        TRUE as is_youtube
+                    FROM YouTubeVideos
+                    JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                    WHERE YouTubeVideos.ListenPosition > 0
+                    AND Podcasts.UserID = %s
+                ) combined
+                ORDER BY listendate DESC
+            """
+
+        cursor.execute(query, (user_id, user_id))
         results = cursor.fetchall()
         if not results:
             logging.info("No results found for user history.")
             return []
 
-        # Get column descriptions before closing cursor
+        # Get column descriptions
         columns = [col[0].lower() for col in cursor.description]
 
         # Convert results to list of dictionaries
@@ -2133,14 +2604,14 @@ def user_history(cnx, database_type, user_id):
             if isinstance(row, tuple):
                 for idx, column_name in enumerate(columns):
                     value = row[idx]
-                    if column_name == 'completed':
+                    if column_name in ['completed', 'is_youtube']:
                         value = bool(value)
                     episode[column_name] = value
             elif isinstance(row, dict):
                 for k, v in row.items():
                     column_name = k.lower()
                     value = v
-                    if column_name == 'completed':
+                    if column_name in ['completed', 'is_youtube']:
                         value = bool(value)
                     episode[column_name] = value
             else:
@@ -2155,9 +2626,7 @@ def user_history(cnx, database_type, user_id):
     finally:
         cursor.close()
 
-
-
-def download_podcast(cnx, database_type, episode_id, user_id):
+def download_podcast(cnx, database_type, return_person_episodes, user_id):
     cursor = cnx.cursor()
 
     # Check if the episode is already downloaded
@@ -2279,24 +2748,41 @@ def get_podcast_index_id(cnx, database_type, podcast_id):
 
 
 
-def get_podcast_id_from_episode(cnx, database_type, episode_id, user_id):
+def get_podcast_id_from_episode(cnx, database_type, episode_id, user_id, is_youtube=False):
     cursor = cnx.cursor()
-
     try:
         if database_type == "postgresql":
-            query = (
-                'SELECT "Episodes".PodcastID '
-                'FROM "Episodes" '
-                'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-                'WHERE "Episodes".EpisodeID = %s AND "Podcasts".UserID = %s'
-            )
+            if is_youtube:
+                query = """
+                    SELECT "YouTubeVideos".PodcastID
+                    FROM "YouTubeVideos"
+                    INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
+                    WHERE "YouTubeVideos".VideoID = %s AND "Podcasts".UserID = %s
+                """
+            else:
+                query = """
+                    SELECT "Episodes".PodcastID
+                    FROM "Episodes"
+                    INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+                    WHERE "Episodes".EpisodeID = %s AND "Podcasts".UserID = %s
+                """
         else:  # MySQL or MariaDB
-            query = (
-                "SELECT Episodes.PodcastID "
-                "FROM Episodes "
-                "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-                "WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s"
-            )
+            if is_youtube:
+                query = """
+                    SELECT YouTubeVideos.PodcastID
+                    FROM YouTubeVideos
+                    INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                    WHERE YouTubeVideos.VideoID = %s AND Podcasts.UserID = %s
+                """
+            else:
+                query = """
+                    SELECT Episodes.PodcastID
+                    FROM Episodes
+                    INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                    WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s
+                """
+
+        # First try with provided user_id
         cursor.execute(query, (episode_id, user_id))
         result = cursor.fetchone()
 
@@ -2308,36 +2794,68 @@ def get_podcast_id_from_episode(cnx, database_type, episode_id, user_id):
         if result:
             return result[0] if isinstance(result, tuple) else result.get("podcastid")
         return None
-
+    except Exception as e:
+        logging.error(f"Error in get_podcast_id_from_episode: {str(e)}")
+        return None
     finally:
         cursor.close()
 
-
 def get_podcast_id_from_episode_name(cnx, database_type, episode_name, episode_url, user_id):
     cursor = cnx.cursor()
-
     try:
         if database_type == "postgresql":
-            query = (
-                'SELECT "Episodes".PodcastID '
-                'FROM "Episodes" '
-                'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-                'WHERE "Episodes".EpisodeTitle = %s AND "Episodes".EpisodeURL = %s AND "Podcasts".UserID = %s'
-            )
+            query = """
+                SELECT podcast_id FROM (
+                    SELECT "Episodes".PodcastID as podcast_id
+                    FROM "Episodes"
+                    INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+                    WHERE "Episodes".EpisodeTitle = %s
+                    AND "Episodes".EpisodeURL = %s
+                    AND "Podcasts".UserID = %s
+
+                    UNION
+
+                    SELECT "YouTubeVideos".PodcastID as podcast_id
+                    FROM "YouTubeVideos"
+                    INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
+                    WHERE "YouTubeVideos".VideoTitle = %s
+                    AND "YouTubeVideos".VideoURL = %s
+                    AND "Podcasts".UserID = %s
+                ) combined_results
+                LIMIT 1
+            """
+            # Pass the parameters twice because we're using them in both parts of the UNION
+            cursor.execute(query, (episode_name, episode_url, user_id, episode_name, episode_url, user_id))
         else:  # MySQL or MariaDB
-            query = (
-                "SELECT Episodes.PodcastID "
-                "FROM Episodes "
-                "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-                "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s AND Podcasts.UserID = %s"
-            )
-        cursor.execute(query, (episode_name, episode_url, user_id))
+            query = """
+                SELECT podcast_id FROM (
+                    SELECT Episodes.PodcastID as podcast_id
+                    FROM Episodes
+                    INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                    WHERE Episodes.EpisodeTitle = %s
+                    AND Episodes.EpisodeURL = %s
+                    AND Podcasts.UserID = %s
+
+                    UNION
+
+                    SELECT YouTubeVideos.PodcastID as podcast_id
+                    FROM YouTubeVideos
+                    INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                    WHERE YouTubeVideos.VideoTitle = %s
+                    AND YouTubeVideos.VideoURL = %s
+                    AND Podcasts.UserID = %s
+                ) combined_results
+                LIMIT 1
+            """
+            cursor.execute(query, (episode_name, episode_url, user_id, episode_name, episode_url, user_id))
+
         result = cursor.fetchone()
-
         if result:
-            return result[0] if isinstance(result, tuple) else result.get("podcastid")
+            return result[0] if isinstance(result, tuple) else result.get("podcast_id")
         return None
-
+    except Exception as e:
+        logging.error(f"Error in get_podcast_id_from_episode_name: {str(e)}")
+        return None
     finally:
         cursor.close()
 
@@ -2494,6 +3012,65 @@ def get_download_value(result, key, default=None):
         return result[index] if index is not None else default
     return default
 
+def get_youtube_video_location(cnx, database_type, episode_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        logging.info(f"Looking up YouTube video location for episode_id: {episode_id}, user_id: {user_id}")
+
+        if database_type == "postgresql":
+            query = '''
+                SELECT "YouTubeVideos"."youtubevideoid"
+                FROM "YouTubeVideos"
+                INNER JOIN "Podcasts" ON "YouTubeVideos"."podcastid" = "Podcasts"."podcastid"
+                WHERE "YouTubeVideos"."videoid" = %s AND "Podcasts"."userid" = %s
+            '''
+        else:
+            query = '''
+                SELECT YouTubeVideos.YouTubeVideoID
+                FROM YouTubeVideos
+                INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                WHERE YouTubeVideos.VideoID = %s AND Podcasts.UserID = %s
+            '''
+
+        logging.info(f"Executing query: {query}")
+        logging.info(f"With parameters: episode_id={episode_id}, user_id={user_id}")
+
+        cursor.execute(query, (episode_id, user_id))
+        result = cursor.fetchone()
+
+        logging.info(f"Query result: {result}")
+
+        if result:
+            # Handle both dict and tuple results
+            youtube_id = result['youtubevideoid'] if isinstance(result, dict) else result[0]
+            logging.info(f"Found YouTube ID: {youtube_id}")
+
+            file_path = os.path.join('/opt/pinepods/downloads/youtube', f'{youtube_id}.mp3')
+            file_path_double = os.path.join('/opt/pinepods/downloads/youtube', f'{youtube_id}.mp3.mp3')
+
+            logging.info(f"Checking paths: {file_path} and {file_path_double}")
+
+            if os.path.exists(file_path):
+                logging.info(f"Found file at {file_path}")
+                return file_path
+            elif os.path.exists(file_path_double):
+                logging.info(f"Found file at {file_path_double}")
+                return file_path_double
+            else:
+                logging.info("No file found at either path")
+
+        else:
+            logging.info("No YouTube video found in database")
+
+        return None
+    except Exception as e:
+        logging.error(f"Error retrieving YouTube video location: {e}")
+        import traceback
+        logging.error(f"Traceback: {traceback.format_exc()}")
+        return None
+    finally:
+        cursor.close()
+
 def get_download_location(cnx, database_type, episode_id, user_id):
     cursor = cnx.cursor()
     try:
@@ -2529,72 +3106,127 @@ def download_episode_list(database_type, cnx, user_id):
     if database_type == "postgresql":
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
-    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+    else:
         cursor = cnx.cursor(dictionary=True)
 
     if database_type == "postgresql":
-        query = (
-            'SELECT '
-            '"Podcasts".PodcastID, '
-            '"Podcasts".PodcastName, '
-            '"Podcasts".ArtworkURL, '
-            '"Episodes".EpisodeID, '
-            '"Episodes".EpisodeTitle, '
-            '"Episodes".EpisodePubDate, '
-            '"Episodes".EpisodeDescription, '
-            '"Episodes".EpisodeArtwork, '
-            '"Episodes".EpisodeURL, '
-            '"Episodes".EpisodeDuration, '
-            '"Podcasts".PodcastIndexID, '
-            '"Podcasts".WebsiteURL, '
-            '"DownloadedEpisodes".DownloadedLocation, '
-            '"UserEpisodeHistory".ListenDuration, '
-            '"Episodes".Completed '
-            'FROM "DownloadedEpisodes" '
-            'INNER JOIN "Episodes" ON "DownloadedEpisodes".EpisodeID = "Episodes".EpisodeID '
-            'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-            'LEFT JOIN "UserEpisodeHistory" ON "DownloadedEpisodes".EpisodeID = "UserEpisodeHistory".EpisodeID AND "DownloadedEpisodes".UserID = "UserEpisodeHistory".UserID '
-            'WHERE "DownloadedEpisodes".UserID = %s '
-            'ORDER BY "DownloadedEpisodes".DownloadedDate DESC'
-        )
+        query = """
+            SELECT * FROM (
+                SELECT
+                    "Podcasts".PodcastID,
+                    "Podcasts".PodcastName,
+                    "Podcasts".ArtworkURL,
+                    "Episodes".EpisodeID,
+                    "Episodes".EpisodeTitle as episodetitle,
+                    "Episodes".EpisodePubDate as episodepubdate,
+                    "Episodes".EpisodeDescription as episodedescription,
+                    "Episodes".EpisodeArtwork as episodeartwork,
+                    "Episodes".EpisodeURL as episodeurl,
+                    "Episodes".EpisodeDuration as episodeduration,
+                    "Podcasts".PodcastIndexID,
+                    "Podcasts".WebsiteURL,
+                    "DownloadedEpisodes".DownloadedLocation,
+                    "UserEpisodeHistory".ListenDuration as listenduration,
+                    "Episodes".Completed,
+                    FALSE as is_youtube
+                FROM "DownloadedEpisodes"
+                INNER JOIN "Episodes" ON "DownloadedEpisodes".EpisodeID = "Episodes".EpisodeID
+                INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+                LEFT JOIN "UserEpisodeHistory" ON
+                    "DownloadedEpisodes".EpisodeID = "UserEpisodeHistory".EpisodeID
+                    AND "DownloadedEpisodes".UserID = "UserEpisodeHistory".UserID
+                WHERE "DownloadedEpisodes".UserID = %s
+
+                UNION ALL
+
+                SELECT
+                    "Podcasts".PodcastID,
+                    "Podcasts".PodcastName,
+                    "Podcasts".ArtworkURL,
+                    "YouTubeVideos".VideoID as EpisodeID,
+                    "YouTubeVideos".VideoTitle as episodetitle,
+                    "YouTubeVideos".PublishedAt as episodepubdate,
+                    "YouTubeVideos".VideoDescription as episodedescription,
+                    "YouTubeVideos".ThumbnailURL as episodeartwork,
+                    "YouTubeVideos".VideoURL as episodeurl,
+                    "YouTubeVideos".Duration as episodeduration,
+                    "Podcasts".PodcastIndexID,
+                    "Podcasts".WebsiteURL,
+                    "DownloadedEpisodes".DownloadedLocation,
+                    "YouTubeVideos".ListenPosition as listenduration,
+                    "YouTubeVideos".Completed,
+                    TRUE as is_youtube
+                FROM "DownloadedEpisodes"
+                INNER JOIN "YouTubeVideos" ON "DownloadedEpisodes".EpisodeID = "YouTubeVideos".VideoID
+                INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
+                WHERE "DownloadedEpisodes".UserID = %s
+            ) combined
+            ORDER BY episodepubdate DESC
+        """
     else:  # MySQL or MariaDB
-        query = (
-            "SELECT "
-            "Podcasts.PodcastID, "
-            "Podcasts.PodcastName, "
-            "Podcasts.ArtworkURL, "
-            "Episodes.EpisodeID, "
-            "Episodes.EpisodeTitle, "
-            "Episodes.EpisodePubDate, "
-            "Episodes.EpisodeDescription, "
-            "Episodes.EpisodeArtwork, "
-            "Episodes.EpisodeURL, "
-            "Episodes.EpisodeDuration, "
-            "Podcasts.PodcastIndexID, "
-            "Podcasts.WebsiteURL, "
-            "DownloadedEpisodes.DownloadedLocation, "
-            "UserEpisodeHistory.ListenDuration, "
-            "Episodes.Completed "
-            "FROM DownloadedEpisodes "
-            "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
-            "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-            "LEFT JOIN UserEpisodeHistory ON DownloadedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID AND DownloadedEpisodes.UserID = UserEpisodeHistory.UserID "
-            "WHERE DownloadedEpisodes.UserID = %s "
-            "ORDER BY DownloadedEpisodes.DownloadedDate DESC"
-        )
+        query = """
+            SELECT * FROM (
+                SELECT
+                    Podcasts.PodcastID,
+                    Podcasts.PodcastName,
+                    Podcasts.ArtworkURL,
+                    Episodes.EpisodeID,
+                    Episodes.EpisodeTitle as episodetitle,
+                    Episodes.EpisodePubDate as episodepubdate,
+                    Episodes.EpisodeDescription as episodedescription,
+                    Episodes.EpisodeArtwork as episodeartwork,
+                    Episodes.EpisodeURL as episodeurl,
+                    Episodes.EpisodeDuration as episodeduration,
+                    Podcasts.PodcastIndexID,
+                    Podcasts.WebsiteURL,
+                    DownloadedEpisodes.DownloadedLocation,
+                    UserEpisodeHistory.ListenDuration as listenduration,
+                    Episodes.Completed,
+                    FALSE as is_youtube
+                FROM DownloadedEpisodes
+                INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID
+                INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                LEFT JOIN UserEpisodeHistory ON
+                    DownloadedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID
+                    AND DownloadedEpisodes.UserID = UserEpisodeHistory.UserID
+                WHERE DownloadedEpisodes.UserID = %s
 
-    cursor.execute(query, (user_id,))
+                UNION ALL
+
+                SELECT
+                    Podcasts.PodcastID,
+                    Podcasts.PodcastName,
+                    Podcasts.ArtworkURL,
+                    YouTubeVideos.VideoID as EpisodeID,
+                    YouTubeVideos.VideoTitle as episodetitle,
+                    YouTubeVideos.PublishedAt as episodepubdate,
+                    YouTubeVideos.VideoDescription as episodedescription,
+                    YouTubeVideos.ThumbnailURL as episodeartwork,
+                    YouTubeVideos.VideoURL as episodeurl,
+                    YouTubeVideos.Duration as episodeduration,
+                    Podcasts.PodcastIndexID,
+                    Podcasts.WebsiteURL,
+                    DownloadedEpisodes.DownloadedLocation,
+                    YouTubeVideos.ListenPosition as listenduration,
+                    YouTubeVideos.Completed,
+                    TRUE as is_youtube
+                FROM DownloadedEpisodes
+                INNER JOIN YouTubeVideos ON DownloadedEpisodes.EpisodeID = YouTubeVideos.VideoID
+                INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                WHERE DownloadedEpisodes.UserID = %s
+            ) combined
+            ORDER BY episodepubdate DESC
+        """
+
+    cursor.execute(query, (user_id, user_id))  # Pass user_id twice for both parts of UNION
     rows = cursor.fetchall()
-
     cursor.close()
 
     if not rows:
         return None
 
     downloaded_episodes = lowercase_keys(rows)
-
     return downloaded_episodes
-
 
 def save_email_settings(cnx, database_type, email_settings):
     cursor = cnx.cursor()
@@ -2872,7 +3504,6 @@ def check_usernames(cnx, database_type, username):
     # cnx.close()
     return count > 0
 
-
 def record_listen_duration(cnx, database_type, episode_id, user_id, listen_duration):
     if listen_duration < 0:
         logging.info(f"Skipped updating listen duration for user {user_id} and episode {episode_id} due to invalid duration: {listen_duration}")
@@ -2921,6 +3552,68 @@ def record_listen_duration(cnx, database_type, episode_id, user_id, listen_durat
     finally:
         cursor.close()
     # cnx.close()
+
+
+def record_youtube_listen_duration(cnx, database_type, video_id, user_id, listen_duration):
+    if listen_duration < 0:
+        logging.info(f"Skipped updating listen duration for user {user_id} and video {video_id} due to invalid duration: {listen_duration}")
+        return
+
+    listen_date = datetime.datetime.now()
+    cursor = cnx.cursor()
+    try:
+        # Check if UserVideoHistory exists (we'll need to create this table)
+        if database_type == "postgresql":
+            cursor.execute('SELECT ListenDuration FROM "UserVideoHistory" WHERE UserID=%s AND VideoID=%s', (user_id, video_id))
+        else:
+            cursor.execute("SELECT ListenDuration FROM UserVideoHistory WHERE UserID=%s AND VideoID=%s", (user_id, video_id))
+
+        result = cursor.fetchone()
+
+        if result is not None:
+            existing_duration = result[0] if isinstance(result, tuple) else result.get("ListenDuration")
+            existing_duration = existing_duration if existing_duration is not None else 0
+
+            if listen_duration > existing_duration:
+                if database_type == "postgresql":
+                    update_listen_duration = 'UPDATE "UserVideoHistory" SET ListenDuration=%s, ListenDate=%s WHERE UserID=%s AND VideoID=%s'
+                else:
+                    update_listen_duration = "UPDATE UserVideoHistory SET ListenDuration=%s, ListenDate=%s WHERE UserID=%s AND VideoID=%s"
+                cursor.execute(update_listen_duration, (listen_duration, listen_date, user_id, video_id))
+
+                # Also update the ListenPosition in YouTubeVideos table
+                if database_type == "postgresql":
+                    cursor.execute('UPDATE "YouTubeVideos" SET ListenPosition=%s WHERE VideoID=%s',
+                                 (listen_duration, video_id))
+                else:
+                    cursor.execute("UPDATE YouTubeVideos SET ListenPosition=%s WHERE VideoID=%s",
+                                 (listen_duration, video_id))
+
+                print(f"Updated listen duration for user {user_id} and video {video_id} to {listen_duration}")
+        else:
+            # Insert new row
+            if database_type == "postgresql":
+                add_listen_duration = 'INSERT INTO "UserVideoHistory" (UserID, VideoID, ListenDate, ListenDuration) VALUES (%s, %s, %s, %s)'
+            else:
+                add_listen_duration = "INSERT INTO UserVideoHistory (UserID, VideoID, ListenDate, ListenDuration) VALUES (%s, %s, %s, %s)"
+            cursor.execute(add_listen_duration, (user_id, video_id, listen_date, listen_duration))
+
+            # Update ListenPosition in YouTubeVideos
+            if database_type == "postgresql":
+                cursor.execute('UPDATE "YouTubeVideos" SET ListenPosition=%s WHERE VideoID=%s',
+                             (listen_duration, video_id))
+            else:
+                cursor.execute("UPDATE YouTubeVideos SET ListenPosition=%s WHERE VideoID=%s",
+                             (listen_duration, video_id))
+
+            print(f"Inserted new listen duration for user {user_id} and video {video_id}: {listen_duration}")
+
+        cnx.commit()
+    except Exception as e:
+        logging.error(f"Failed to record YouTube listen duration due to: {e}")
+        cnx.rollback()
+    finally:
+        cursor.close()
 
 
 def get_local_episode_times(cnx, database_type, user_id):
@@ -4181,43 +4874,108 @@ def saved_episode_list(database_type, cnx, user_id):
     if database_type == "postgresql":
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
-        query = (
-            'SELECT "Podcasts".PodcastName, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
-            '"Episodes".EpisodeDescription, "Episodes".EpisodeID, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, '
-            '"Episodes".EpisodeDuration, "Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration, "Episodes".Completed '
-            'FROM "SavedEpisodes" '
-            'INNER JOIN "Episodes" ON "SavedEpisodes".EpisodeID = "Episodes".EpisodeID '
-            'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-            'LEFT JOIN "UserEpisodeHistory" ON "SavedEpisodes".EpisodeID = "UserEpisodeHistory".EpisodeID AND "UserEpisodeHistory".UserID = %s '
-            'WHERE "SavedEpisodes".UserID = %s '
-            'ORDER BY "SavedEpisodes".SaveDate DESC'
-        )
+        query = """
+            SELECT * FROM (
+                SELECT
+                    "Podcasts".PodcastName as podcastname,
+                    "Episodes".EpisodeTitle as episodetitle,
+                    "Episodes".EpisodePubDate as episodepubdate,
+                    "Episodes".EpisodeDescription as episodedescription,
+                    "Episodes".EpisodeID as episodeid,
+                    "Episodes".EpisodeArtwork as episodeartwork,
+                    "Episodes".EpisodeURL as episodeurl,
+                    "Episodes".EpisodeDuration as episodeduration,
+                    "Podcasts".WebsiteURL as websiteurl,
+                    "UserEpisodeHistory".ListenDuration as listenduration,
+                    "Episodes".Completed as completed,
+                    FALSE as is_youtube
+                FROM "SavedEpisodes"
+                INNER JOIN "Episodes" ON "SavedEpisodes".EpisodeID = "Episodes".EpisodeID
+                INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+                LEFT JOIN "UserEpisodeHistory" ON
+                    "SavedEpisodes".EpisodeID = "UserEpisodeHistory".EpisodeID
+                    AND "UserEpisodeHistory".UserID = %s
+                WHERE "SavedEpisodes".UserID = %s
+
+                UNION ALL
+
+                SELECT
+                    "Podcasts".PodcastName as podcastname,
+                    "YouTubeVideos".VideoTitle as episodetitle,
+                    "YouTubeVideos".PublishedAt as episodepubdate,
+                    "YouTubeVideos".VideoDescription as episodedescription,
+                    "YouTubeVideos".VideoID as episodeid,
+                    "YouTubeVideos".ThumbnailURL as episodeartwork,
+                    "YouTubeVideos".VideoURL as episodeurl,
+                    "YouTubeVideos".Duration as episodeduration,
+                    "Podcasts".WebsiteURL as websiteurl,
+                    "YouTubeVideos".ListenPosition as listenduration,
+                    "YouTubeVideos".Completed as completed,
+                    TRUE as is_youtube
+                FROM "SavedEpisodes"
+                INNER JOIN "YouTubeVideos" ON "SavedEpisodes".EpisodeID = "YouTubeVideos".VideoID
+                INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
+                WHERE "SavedEpisodes".UserID = %s
+            ) combined
+            ORDER BY episodepubdate DESC
+        """
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
-        query = (
-            "SELECT Podcasts.PodcastName, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-            "Episodes.EpisodeDescription, Episodes.EpisodeID, Episodes.EpisodeArtwork, Episodes.EpisodeURL, "
-            "Episodes.EpisodeDuration, Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration, Episodes.Completed "
-            "FROM SavedEpisodes "
-            "INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID "
-            "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-            "LEFT JOIN UserEpisodeHistory ON SavedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = %s "
-            "WHERE SavedEpisodes.UserID = %s "
-            "ORDER BY SavedEpisodes.SaveDate DESC"
-        )
+        query = """
+            SELECT * FROM (
+                SELECT
+                    Podcasts.PodcastName as podcastname,
+                    Episodes.EpisodeTitle as episodetitle,
+                    Episodes.EpisodePubDate as episodepubdate,
+                    Episodes.EpisodeDescription as episodedescription,
+                    Episodes.EpisodeID as episodeid,
+                    Episodes.EpisodeArtwork as episodeartwork,
+                    Episodes.EpisodeURL as episodeurl,
+                    Episodes.EpisodeDuration as episodeduration,
+                    Podcasts.WebsiteURL as websiteurl,
+                    UserEpisodeHistory.ListenDuration as listenduration,
+                    Episodes.Completed as completed,
+                    FALSE as is_youtube
+                FROM SavedEpisodes
+                INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID
+                INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                LEFT JOIN UserEpisodeHistory ON
+                    SavedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID
+                    AND UserEpisodeHistory.UserID = %s
+                WHERE SavedEpisodes.UserID = %s
 
-    cursor.execute(query, (user_id, user_id))
+                UNION ALL
+
+                SELECT
+                    Podcasts.PodcastName as podcastname,
+                    YouTubeVideos.VideoTitle as episodetitle,
+                    YouTubeVideos.PublishedAt as episodepubdate,
+                    YouTubeVideos.VideoDescription as episodedescription,
+                    YouTubeVideos.VideoID as episodeid,
+                    YouTubeVideos.ThumbnailURL as episodeartwork,
+                    YouTubeVideos.VideoURL as episodeurl,
+                    YouTubeVideos.Duration as episodeduration,
+                    Podcasts.WebsiteURL as websiteurl,
+                    YouTubeVideos.ListenPosition as listenduration,
+                    YouTubeVideos.Completed as completed,
+                    TRUE as is_youtube
+                FROM SavedEpisodes
+                INNER JOIN YouTubeVideos ON SavedEpisodes.EpisodeID = YouTubeVideos.VideoID
+                INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                WHERE SavedEpisodes.UserID = %s
+            ) combined
+            ORDER BY episodepubdate DESC
+        """
+
+    cursor.execute(query, (user_id, user_id, user_id))  # Three user_id parameters for both parts
     rows = cursor.fetchall()
-
     cursor.close()
 
     if not rows:
         return None
 
     saved_episodes = lowercase_keys(rows)
-
     return saved_episodes
-
 
 def save_episode(cnx, database_type, episode_id, user_id):
     cursor = cnx.cursor()
@@ -4623,30 +5381,35 @@ def check_podcast(cnx, database_type, user_id, podcast_name, podcast_url):
         if cursor:
             cursor.close()
 
-
-# def get_session_file_path():
-#     app_name = 'pinepods'
-#     data_dir = appdirs.user_data_dir(app_name)
-#     os.makedirs(data_dir, exist_ok=True)
-#     session_file_path = os.path.join(data_dir, "session.txt")
-#     return session_file_path
-
-
-# def save_session_to_file(session_id):
-#     session_file_path = get_session_file_path()
-#     with open(session_file_path, "w") as file:
-#         file.write(session_id)
-
-
-# def get_saved_session_from_file():
-#     app_name = 'pinepods'
-#     session_file_path = get_session_file_path()
-#     try:
-#         with open(session_file_path, "r") as file:
-#             session_id = file.read()
-#             return session_id
-#     except FileNotFoundError:
-#         return None
+def check_youtube_channel(cnx, database_type, user_id, channel_name, channel_url):
+    cursor = None
+    try:
+        cursor = cnx.cursor()
+        if database_type == "postgresql":
+            query = '''
+                SELECT PodcastID
+                FROM "Podcasts"
+                WHERE UserID = %s
+                AND PodcastName = %s
+                AND FeedURL = %s
+                AND IsYouTubeChannel = TRUE
+            '''
+        else:  # MySQL or MariaDB
+            query = '''
+                SELECT PodcastID
+                FROM Podcasts
+                WHERE UserID = %s
+                AND PodcastName = %s
+                AND FeedURL = %s
+                AND IsYouTubeChannel = TRUE
+            '''
+        cursor.execute(query, (user_id, channel_name, channel_url))
+        return cursor.fetchone() is not None
+    except Exception:
+        return False
+    finally:
+        if cursor:
+            cursor.close()
 
 
 def check_saved_session(cnx, database_type, session_value):
@@ -4959,13 +5722,46 @@ def clear_guest_data(cnx, database_type):
 
     return "Guest user data cleared successfully"
 
-def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode=False):
+def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode=False, is_youtube=False):
     if database_type == "postgresql":
         from psycopg.rows import dict_row
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
 
-        if person_episode:
+        if is_youtube:
+            # Query for YouTube videos
+            query_youtube = """
+                SELECT "Podcasts".PodcastID, "Podcasts".PodcastIndexID, "Podcasts".FeedURL,
+                        "Podcasts".PodcastName, "Podcasts".ArtworkURL,
+                        "YouTubeVideos".VideoTitle as EpisodeTitle,
+                        "YouTubeVideos".PublishedAt as EpisodePubDate,
+                        "YouTubeVideos".VideoDescription as EpisodeDescription,
+                        "YouTubeVideos".ThumbnailURL as EpisodeArtwork,
+                        "YouTubeVideos".VideoURL as EpisodeURL,
+                        "YouTubeVideos".Duration as EpisodeDuration,
+                        "YouTubeVideos".VideoID as EpisodeID,
+                        "YouTubeVideos".ListenPosition as ListenDuration,
+                        "YouTubeVideos".Completed,
+                        CASE WHEN q.EpisodeID IS NOT NULL THEN true ELSE false END as is_queued,
+                        CASE WHEN s.EpisodeID IS NOT NULL THEN true ELSE false END as is_saved,
+                        CASE WHEN d.EpisodeID IS NOT NULL THEN true ELSE false END as is_downloaded,
+                        TRUE::boolean as is_youtube
+                FROM "YouTubeVideos"
+                INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
+                LEFT JOIN "EpisodeQueue" q ON "YouTubeVideos".VideoID = q.EpisodeID AND q.UserID = %s
+                LEFT JOIN "SavedEpisodes" s ON "YouTubeVideos".VideoID = s.EpisodeID AND s.UserID = %s
+                LEFT JOIN "DownloadedEpisodes" d ON "YouTubeVideos".VideoID = d.EpisodeID AND d.UserID = %s
+                WHERE "YouTubeVideos".VideoID = %s AND "Podcasts".UserID = %s
+            """
+            cursor.execute(query_youtube, (user_id, user_id, user_id, episode_id, user_id))
+            result = cursor.fetchone()
+
+            # If not found, try with system user (1)
+            if not result:
+                cursor.execute(query_youtube, (user_id, user_id, user_id, episode_id, 1))
+                result = cursor.fetchone()
+
+        elif person_episode:
             # First get the episode from PeopleEpisodes and match with Episodes using title and URL
             query_people = """
                 SELECT pe.*,
@@ -4975,7 +5771,8 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode
                         COALESCE(pe.EpisodeArtwork, p.ArtworkURL) as final_artwork,
                         CASE WHEN q.EpisodeID IS NOT NULL THEN true ELSE false END as is_queued,
                         CASE WHEN s.EpisodeID IS NOT NULL THEN true ELSE false END as is_saved,
-                        CASE WHEN d.EpisodeID IS NOT NULL THEN true ELSE false END as is_downloaded
+                        CASE WHEN d.EpisodeID IS NOT NULL THEN true ELSE false END as is_downloaded,
+                        FALSE::boolean as is_youtube
                 FROM "PeopleEpisodes" pe
                 JOIN "Podcasts" p ON pe.PodcastID = p.PodcastID
                 JOIN "Episodes" e ON (
@@ -5035,7 +5832,8 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode
                         "UserEpisodeHistory".ListenDuration, "Episodes".Completed,
                         CASE WHEN q.EpisodeID IS NOT NULL THEN true ELSE false END as is_queued,
                         CASE WHEN s.EpisodeID IS NOT NULL THEN true ELSE false END as is_saved,
-                        CASE WHEN d.EpisodeID IS NOT NULL THEN true ELSE false END as is_downloaded
+                        CASE WHEN d.EpisodeID IS NOT NULL THEN true ELSE false END as is_downloaded,
+                        FALSE::boolean as is_youtube
                 FROM "Episodes"
                 INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
                 LEFT JOIN "UserEpisodeHistory" ON
@@ -5183,30 +5981,109 @@ def get_episode_metadata_id(database_type, cnx, episode_id):
         from psycopg.rows import dict_row
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
-        query = (
-            'SELECT "Podcasts".PodcastID, "Podcasts".FeedURL, "Podcasts".PodcastName, "Podcasts".ArtworkURL, "Episodes".EpisodeTitle, "Episodes".EpisodePubDate, '
-            '"Episodes".EpisodeDescription, "Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, "Episodes".EpisodeID, '
-            '"Podcasts".WebsiteURL, "UserEpisodeHistory".ListenDuration, "Episodes".Completed '
-            'FROM "Episodes" '
-            'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-            'LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID AND "Podcasts".UserID = "UserEpisodeHistory".UserID '
-            'WHERE "Episodes".EpisodeID = %s'
-        )
+        query = """
+            SELECT * FROM (
+                SELECT
+                    "Podcasts".PodcastID,
+                    "Podcasts".FeedURL,
+                    "Podcasts".PodcastName,
+                    "Podcasts".ArtworkURL,
+                    "Episodes".EpisodeTitle,
+                    "Episodes".EpisodePubDate,
+                    "Episodes".EpisodeDescription,
+                    "Episodes".EpisodeArtwork,
+                    "Episodes".EpisodeURL,
+                    "Episodes".EpisodeDuration,
+                    "Episodes".EpisodeID,
+                    "Podcasts".WebsiteURL,
+                    "UserEpisodeHistory".ListenDuration,
+                    "Episodes".Completed,
+                    FALSE::boolean as is_youtube
+                FROM "Episodes"
+                INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+                LEFT JOIN "UserEpisodeHistory" ON
+                    "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID
+                    AND "Podcasts".UserID = "UserEpisodeHistory".UserID
+                WHERE "Episodes".EpisodeID = %s
+
+                UNION ALL
+
+                SELECT
+                    "Podcasts".PodcastID,
+                    "Podcasts".FeedURL,
+                    "Podcasts".PodcastName,
+                    "Podcasts".ArtworkURL,
+                    "YouTubeVideos".VideoTitle as EpisodeTitle,
+                    "YouTubeVideos".PublishedAt as EpisodePubDate,
+                    "YouTubeVideos".VideoDescription as EpisodeDescription,
+                    "YouTubeVideos".ThumbnailURL as EpisodeArtwork,
+                    "YouTubeVideos".VideoURL as EpisodeURL,
+                    "YouTubeVideos".Duration as EpisodeDuration,
+                    "YouTubeVideos".VideoID as EpisodeID,
+                    "Podcasts".WebsiteURL,
+                    "YouTubeVideos".ListenPosition as ListenDuration,
+                    "YouTubeVideos".Completed,
+                    TRUE::boolean as is_youtube
+                FROM "YouTubeVideos"
+                INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
+                WHERE "YouTubeVideos".VideoID = %s
+            ) combined
+            LIMIT 1
+        """
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
-        query = (
-            "SELECT Podcasts.PodcastID, Podcasts.FeedURL, Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle, Episodes.EpisodePubDate, "
-            "Episodes.EpisodeDescription, Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, Episodes.EpisodeID, "
-            "Podcasts.WebsiteURL, UserEpisodeHistory.ListenDuration, Episodes.Completed "
-            "FROM Episodes "
-            "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-            "LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND Podcasts.UserID = UserEpisodeHistory.UserID "
-            "WHERE Episodes.EpisodeID = %s"
-        )
+        query = """
+            SELECT * FROM (
+                SELECT
+                    Podcasts.PodcastID,
+                    Podcasts.FeedURL,
+                    Podcasts.PodcastName,
+                    Podcasts.ArtworkURL,
+                    Episodes.EpisodeTitle,
+                    Episodes.EpisodePubDate,
+                    Episodes.EpisodeDescription,
+                    Episodes.EpisodeArtwork,
+                    Episodes.EpisodeURL,
+                    Episodes.EpisodeDuration,
+                    Episodes.EpisodeID,
+                    Podcasts.WebsiteURL,
+                    UserEpisodeHistory.ListenDuration,
+                    Episodes.Completed,
+                    FALSE as is_youtube
+                FROM Episodes
+                INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                LEFT JOIN UserEpisodeHistory ON
+                    Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+                    AND Podcasts.UserID = UserEpisodeHistory.UserID
+                WHERE Episodes.EpisodeID = %s
 
-    cursor.execute(query, (episode_id,))
+                UNION ALL
+
+                SELECT
+                    Podcasts.PodcastID,
+                    Podcasts.FeedURL,
+                    Podcasts.PodcastName,
+                    Podcasts.ArtworkURL,
+                    YouTubeVideos.VideoTitle as EpisodeTitle,
+                    YouTubeVideos.PublishedAt as EpisodePubDate,
+                    YouTubeVideos.VideoDescription as EpisodeDescription,
+                    YouTubeVideos.ThumbnailURL as EpisodeArtwork,
+                    YouTubeVideos.VideoURL as EpisodeURL,
+                    YouTubeVideos.Duration as EpisodeDuration,
+                    YouTubeVideos.VideoID as EpisodeID,
+                    Podcasts.WebsiteURL,
+                    YouTubeVideos.ListenPosition as ListenDuration,
+                    YouTubeVideos.Completed,
+                    TRUE as is_youtube
+                FROM YouTubeVideos
+                INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                WHERE YouTubeVideos.VideoID = %s
+            ) combined
+            LIMIT 1
+        """
+
+    cursor.execute(query, (episode_id, episode_id))
     row = cursor.fetchone()
-
     cursor.close()
 
     if not row:
@@ -5214,7 +6091,6 @@ def get_episode_metadata_id(database_type, cnx, episode_id):
 
     lower_row = lowercase_keys(row)
     bool_fix = convert_bools(lower_row, database_type)
-
     return bool_fix
 
 
@@ -5552,38 +6428,98 @@ def delete_selected_podcasts(cnx, database_type, delete_list, user_id):
 
 
 
-import time
-
-
-
 def search_data(database_type, cnx, search_term, user_id):
     if database_type == "postgresql":
         from psycopg.rows import dict_row
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
-        query = (
-            'SELECT * FROM "Podcasts" '
-            'INNER JOIN "Episodes" ON "Podcasts".PodcastID = "Episodes".PodcastID '
-            'WHERE "Podcasts".UserID = %s AND '
-            '"Episodes".EpisodeTitle ILIKE %s'
-        )
+        query = """
+            SELECT
+                p.PodcastID as podcastid,
+                p.PodcastName as podcastname,
+                p.ArtworkURL as artworkurl,
+                p.Author as author,
+                p.Categories as categories,
+                p.Description as description,
+                p.EpisodeCount as episodecount,
+                p.FeedURL as feedurl,
+                p.WebsiteURL as websiteurl,
+                p.Explicit as explicit,
+                p.UserID as userid,
+                p.IsYouTubeChannel as is_youtube,
+                COALESCE(e.EpisodeID, y.VideoID) as episodeid,
+                COALESCE(e.EpisodeTitle, y.VideoTitle) as episodetitle,
+                COALESCE(e.EpisodeDescription, y.VideoDescription) as episodedescription,
+                COALESCE(e.EpisodeURL, y.VideoURL) as episodeurl,
+                COALESCE(e.EpisodeArtwork, y.ThumbnailURL) as episodeartwork,
+                COALESCE(e.EpisodePubDate, y.PublishedAt) as episodepubdate,
+                COALESCE(e.EpisodeDuration, y.Duration) as episodeduration,
+                CASE
+                    WHEN y.VideoID IS NOT NULL THEN y.ListenPosition
+                    ELSE h.ListenDuration
+                END as listenduration,
+                COALESCE(e.Completed, y.Completed) as completed
+            FROM "Podcasts" p
+            LEFT JOIN (
+                SELECT * FROM "Episodes" WHERE EpisodeTitle ILIKE %s
+            ) e ON p.PodcastID = e.PodcastID
+            LEFT JOIN (
+                SELECT * FROM "YouTubeVideos" WHERE VideoTitle ILIKE %s
+            ) y ON p.PodcastID = y.PodcastID
+            LEFT JOIN "UserEpisodeHistory" h ON
+                (e.EpisodeID = h.EpisodeID AND h.UserID = %s)
+            WHERE p.UserID = %s
+                AND (e.EpisodeID IS NOT NULL OR y.VideoID IS NOT NULL)
+        """
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
-        query = (
-            "SELECT * FROM Podcasts "
-            "INNER JOIN Episodes ON Podcasts.PodcastID = Episodes.PodcastID "
-            "WHERE Podcasts.UserID = %s AND "
-            "Episodes.EpisodeTitle LIKE %s"
-        )
+        query = """
+            SELECT
+                p.PodcastID as podcastid,
+                p.PodcastName as podcastname,
+                p.ArtworkURL as artworkurl,
+                p.Author as author,
+                p.Categories as categories,
+                p.Description as description,
+                p.EpisodeCount as episodecount,
+                p.FeedURL as feedurl,
+                p.WebsiteURL as websiteurl,
+                p.Explicit as explicit,
+                p.UserID as userid,
+                p.IsYouTubeChannel as is_youtube,
+                COALESCE(e.EpisodeID, y.VideoID) as episodeid,
+                COALESCE(e.EpisodeTitle, y.VideoTitle) as episodetitle,
+                COALESCE(e.EpisodeDescription, y.VideoDescription) as episodedescription,
+                COALESCE(e.EpisodeURL, y.VideoURL) as episodeurl,
+                COALESCE(e.EpisodeArtwork, y.ThumbnailURL) as episodeartwork,
+                COALESCE(e.EpisodePubDate, y.PublishedAt) as episodepubdate,
+                COALESCE(e.EpisodeDuration, y.Duration) as episodeduration,
+                CASE
+                    WHEN y.VideoID IS NOT NULL THEN y.ListenPosition
+                    ELSE h.ListenDuration
+                END as listenduration,
+                COALESCE(e.Completed, y.Completed) as completed
+            FROM Podcasts p
+            LEFT JOIN (
+                SELECT * FROM Episodes WHERE EpisodeTitle LIKE %s
+            ) e ON p.PodcastID = e.PodcastID
+            LEFT JOIN (
+                SELECT * FROM YouTubeVideos WHERE VideoTitle LIKE %s
+            ) y ON p.PodcastID = y.PodcastID
+            LEFT JOIN UserEpisodeHistory h ON
+                (e.EpisodeID = h.EpisodeID AND h.UserID = %s)
+            WHERE p.UserID = %s
+                AND (e.EpisodeID IS NOT NULL OR y.VideoID IS NOT NULL)
+        """
 
-    # Add wildcards for the LIKE clause
+    # Add wildcards for the LIKE/ILIKE clause
     search_term = f"%{search_term}%"
 
     try:
         start = time.time()
         logging.info(f"Executing query: {query}")
         logging.info(f"Search term: {search_term}, User ID: {user_id}")
-        cursor.execute(query, (user_id, search_term))
+        cursor.execute(query, (search_term, search_term, user_id, user_id))
         result = cursor.fetchall()
         end = time.time()
         logging.info(f"Query executed in {end - start} seconds.")
@@ -5603,10 +6539,10 @@ def search_data(database_type, cnx, search_term, user_id):
                     row['explicit'] = 1 if row['explicit'] else 0
 
         return result
+
     except Exception as e:
         logging.error(f"Error retrieving Podcast Episodes: {e}")
         return None
-
 
 
 def queue_pod(database_type, cnx, episode_id, user_id):
@@ -5795,60 +6731,107 @@ def get_queued_episodes(database_type, cnx, user_id):
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
         get_queued_episodes_query = """
-        SELECT
-            "Episodes".EpisodeTitle,
-            "Podcasts".PodcastName,
-            "Episodes".EpisodePubDate,
-            "Episodes".EpisodeDescription,
-            "Episodes".EpisodeArtwork,
-            "Episodes".EpisodeURL,
-            "EpisodeQueue".QueuePosition,
-            "Episodes".EpisodeDuration,
-            "EpisodeQueue".QueueDate,
-            "UserEpisodeHistory".ListenDuration,
-            "Episodes".EpisodeID,
-            "Episodes".Completed
-        FROM "EpisodeQueue"
-        INNER JOIN "Episodes" ON "EpisodeQueue".EpisodeID = "Episodes".EpisodeID
-        INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
-        LEFT JOIN "UserEpisodeHistory" ON "EpisodeQueue".EpisodeID = "UserEpisodeHistory".EpisodeID AND "EpisodeQueue".UserID = "UserEpisodeHistory".UserID
-        WHERE "EpisodeQueue".UserID = %s
-        ORDER BY "EpisodeQueue".QueuePosition ASC
+        SELECT * FROM (
+            SELECT
+                "Episodes".EpisodeTitle as episodetitle,
+                "Podcasts".PodcastName as podcastname,
+                "Episodes".EpisodePubDate as episodepubdate,
+                "Episodes".EpisodeDescription as episodedescription,
+                "Episodes".EpisodeArtwork as episodeartwork,
+                "Episodes".EpisodeURL as episodeurl,
+                "EpisodeQueue".QueuePosition as queueposition,
+                "Episodes".EpisodeDuration as episodeduration,
+                "EpisodeQueue".QueueDate as queuedate,
+                "UserEpisodeHistory".ListenDuration as listenduration,
+                "Episodes".EpisodeID as episodeid,
+                "Episodes".Completed as completed,
+                FALSE as is_youtube
+            FROM "EpisodeQueue"
+            INNER JOIN "Episodes" ON "EpisodeQueue".EpisodeID = "Episodes".EpisodeID
+            INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+            LEFT JOIN "UserEpisodeHistory" ON
+                "EpisodeQueue".EpisodeID = "UserEpisodeHistory".EpisodeID
+                AND "EpisodeQueue".UserID = "UserEpisodeHistory".UserID
+            WHERE "EpisodeQueue".UserID = %s
+
+            UNION ALL
+
+            SELECT
+                "YouTubeVideos".VideoTitle as episodetitle,
+                "Podcasts".PodcastName as podcastname,
+                "YouTubeVideos".PublishedAt as episodepubdate,
+                "YouTubeVideos".VideoDescription as episodedescription,
+                "YouTubeVideos".ThumbnailURL as episodeartwork,
+                "YouTubeVideos".VideoURL as episodeurl,
+                "EpisodeQueue".QueuePosition as queueposition,
+                "YouTubeVideos".Duration as episodeduration,
+                "EpisodeQueue".QueueDate as queuedate,
+                "YouTubeVideos".ListenPosition as listenduration,
+                "YouTubeVideos".VideoID as episodeid,
+                "YouTubeVideos".Completed as completed,
+                TRUE as is_youtube
+            FROM "EpisodeQueue"
+            INNER JOIN "YouTubeVideos" ON "EpisodeQueue".EpisodeID = "YouTubeVideos".VideoID
+            INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
+            WHERE "EpisodeQueue".UserID = %s
+        ) combined
+        ORDER BY queueposition ASC
         """
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
         get_queued_episodes_query = """
-        SELECT
-            Episodes.EpisodeTitle,
-            Podcasts.PodcastName,
-            Episodes.EpisodePubDate,
-            Episodes.EpisodeDescription,
-            Episodes.EpisodeArtwork,
-            Episodes.EpisodeURL,
-            EpisodeQueue.QueuePosition,
-            Episodes.EpisodeDuration,
-            EpisodeQueue.QueueDate,
-            UserEpisodeHistory.ListenDuration,
-            Episodes.EpisodeID,
-            Episodes.Completed
-        FROM EpisodeQueue
-        INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
-        INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
-        LEFT JOIN UserEpisodeHistory ON EpisodeQueue.EpisodeID = UserEpisodeHistory.EpisodeID AND EpisodeQueue.UserID = UserEpisodeHistory.UserID
-        WHERE EpisodeQueue.UserID = %s
-        ORDER BY EpisodeQueue.QueuePosition ASC
+        SELECT * FROM (
+            SELECT
+                Episodes.EpisodeTitle as episodetitle,
+                Podcasts.PodcastName as podcastname,
+                Episodes.EpisodePubDate as episodepubdate,
+                Episodes.EpisodeDescription as episodedescription,
+                Episodes.EpisodeArtwork as episodeartwork,
+                Episodes.EpisodeURL as episodeurl,
+                EpisodeQueue.QueuePosition as queueposition,
+                Episodes.EpisodeDuration as episodeduration,
+                EpisodeQueue.QueueDate as queuedate,
+                UserEpisodeHistory.ListenDuration as listenduration,
+                Episodes.EpisodeID as episodeid,
+                Episodes.Completed as completed,
+                FALSE as is_youtube
+            FROM EpisodeQueue
+            INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
+            INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+            LEFT JOIN UserEpisodeHistory ON
+                EpisodeQueue.EpisodeID = UserEpisodeHistory.EpisodeID
+                AND EpisodeQueue.UserID = UserEpisodeHistory.UserID
+            WHERE EpisodeQueue.UserID = %s
+
+            UNION ALL
+
+            SELECT
+                YouTubeVideos.VideoTitle as episodetitle,
+                Podcasts.PodcastName as podcastname,
+                YouTubeVideos.PublishedAt as episodepubdate,
+                YouTubeVideos.VideoDescription as episodedescription,
+                YouTubeVideos.ThumbnailURL as episodeartwork,
+                YouTubeVideos.VideoURL as episodeurl,
+                EpisodeQueue.QueuePosition as queueposition,
+                YouTubeVideos.Duration as episodeduration,
+                EpisodeQueue.QueueDate as queuedate,
+                YouTubeVideos.ListenPosition as listenduration,
+                YouTubeVideos.VideoID as episodeid,
+                YouTubeVideos.Completed as completed,
+                TRUE as is_youtube
+            FROM EpisodeQueue
+            INNER JOIN YouTubeVideos ON EpisodeQueue.EpisodeID = YouTubeVideos.VideoID
+            INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+            WHERE EpisodeQueue.UserID = %s
+        ) combined
+        ORDER BY queueposition ASC
         """
 
-    cursor.execute(get_queued_episodes_query, (user_id,))
+    cursor.execute(get_queued_episodes_query, (user_id, user_id))
     queued_episodes = cursor.fetchall()
-
     cursor.close()
-
-    # Normalize keys to lowercase
     queued_episodes = lowercase_keys(queued_episodes)
-
     return queued_episodes
-
 
 def check_episode_exists(cnx, database_type, user_id, episode_title, episode_url):
     cursor = cnx.cursor()
@@ -7141,3 +8124,35 @@ def restore_server(cnx, database_pass, file_content):
             raise Exception(f"Restoration failed with error: {stderr.decode()}")
 
     return "Restoration completed successfully!"
+
+
+def get_video_date(video_id):
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    """Get upload date for a single video"""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    try:
+        # Add a small random delay to avoid rate limiting
+        time.sleep(random.uniform(0.5, 1.5))
+
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+
+        # Look for uploadDate in page content
+        date_pattern = r'"uploadDate":"([^"]+)"'
+        date_match = re.search(date_pattern, response.text)
+
+        if date_match:
+            date_str = date_match.group(1)
+            # Convert ISO format to datetime
+            upload_date = datetime.datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            return upload_date
+        return None
+
+    except Exception as e:
+        logger.error(f"Error fetching date for video {video_id}: {e}")
+        return None

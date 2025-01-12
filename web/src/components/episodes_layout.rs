@@ -12,9 +12,9 @@ use crate::requests::pod_req::{
     call_download_all_podcast, call_enable_auto_download, call_fetch_podcasting_2_pod_data,
     call_get_auto_download_status, call_get_auto_skip_times, call_get_podcast_id_from_ep,
     call_get_podcast_id_from_ep_name, call_remove_category, call_remove_podcasts_name,
-    AddCategoryRequest, AutoDownloadRequest, DownloadAllPodcastRequest,
-    FetchPodcasting2PodDataRequest, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
-    SkipTimesRequest,
+    call_remove_youtube_channel, AddCategoryRequest, AutoDownloadRequest,
+    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, PodcastValues,
+    RemoveCategoryRequest, RemovePodcastValuesName, RemoveYouTubeChannelValues, SkipTimesRequest,
 };
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
@@ -367,6 +367,7 @@ pub fn episode_layout() -> Html {
                                 categories: None,
                                 websiteurl: String::new(),
                                 podcastindexid: podcast_index_id,
+                                is_youtube: Some(false),
                             };
 
                             let api_key = api_key.clone();
@@ -425,6 +426,7 @@ pub fn episode_layout() -> Html {
                                     podcast_categories_str, // assuming no categories in local storage
                                     podcast_details.details.websiteurl,
                                     user_id,
+                                    podcast_details.details.is_youtube.unwrap(),
                                 );
                                 emit_click(on_title_click);
                                 let window = web_sys::window().expect("no global window exists");
@@ -741,6 +743,7 @@ pub fn episode_layout() -> Html {
         });
     }
 
+    let delete_history = history.clone();
     let delete_all_click = {
         let add_dispatch = _dispatch.clone();
         let pod_values = clicked_podcast_info.clone();
@@ -755,19 +758,29 @@ pub fn episode_layout() -> Html {
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
+            let hist = delete_history.clone();
             let page_state = page_state.clone();
             let pod_title_og = pod_values.clone().unwrap().podcastname.clone();
             let pod_feed_url_og = pod_values.clone().unwrap().feedurl.clone();
+            let is_youtube = pod_values.clone().unwrap().is_youtube.unwrap_or(false);
             app_dispatch.reduce_mut(|state| state.is_loading = Some(true));
             let is_added_inner = call_is_added.clone();
             let call_dispatch = add_dispatch.clone();
             let pod_title = pod_title_og.clone();
+            let pod_title_yt = pod_title_og.clone();
             let pod_feed_url = pod_feed_url_og.clone();
+            let pod_feed_url_yt = pod_feed_url_og.clone();
+            let pod_feed_url_check = pod_feed_url_og.clone();
             let user_id = user_id_og.clone().unwrap();
             let podcast_values = RemovePodcastValuesName {
                 podcast_name: pod_title,
                 podcast_url: pod_feed_url,
-                user_id: user_id,
+                user_id,
+            };
+            let remove_channel = RemoveYouTubeChannelValues {
+                user_id,
+                channel_name: pod_title_yt,
+                channel_url: pod_feed_url_yt,
             };
             let api_key_call = api_key_clone.clone();
             let server_name_call = server_name_clone.clone();
@@ -776,30 +789,51 @@ pub fn episode_layout() -> Html {
                 let dispatch_wasm = call_dispatch.clone();
                 let api_key_wasm = api_key_call.clone().unwrap();
                 let server_name_wasm = server_name_call.clone();
-                let pod_values_clone = podcast_values.clone(); // Make sure you clone the podcast values
-                match call_remove_podcasts_name(
-                    &server_name_wasm.unwrap(),
-                    &api_key_wasm,
-                    &pod_values_clone,
-                )
-                .await
-                {
+
+                let result = if pod_feed_url_check.starts_with("https://www.youtube.com") {
+                    call_remove_youtube_channel(
+                        &server_name_wasm.unwrap(),
+                        &api_key_wasm,
+                        &remove_channel,
+                    )
+                    .await
+                } else {
+                    call_remove_podcasts_name(
+                        &server_name_wasm.unwrap(),
+                        &api_key_wasm,
+                        &podcast_values,
+                    )
+                    .await
+                };
+
+                match result {
                     Ok(success) => {
                         if success {
                             dispatch_wasm.reduce_mut(|state| {
-                                state.info_message =
-                                    Option::from("Podcast successfully removed".to_string())
+                                state.info_message = Some(
+                                    if pod_feed_url_check.starts_with("https://www.youtube.com") {
+                                        "YouTube channel successfully removed".to_string()
+                                    } else {
+                                        "Podcast successfully removed".to_string()
+                                    },
+                                )
                             });
                             app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             is_added_inner.set(false);
-                            web_sys::console::log_1(&"adjusting podcast added".into());
                             app_dispatch.reduce_mut(|state| {
                                 state.podcast_added = Some(podcast_added);
                             });
+
+                            if pod_feed_url_check.starts_with("https://www.youtube.com") {
+                                hist.push("/podcasts");
+                            }
                         } else {
                             dispatch_wasm.reduce_mut(|state| {
-                                state.error_message =
-                                    Option::from("Failed to remove podcast".to_string())
+                                state.error_message = Some(if is_youtube {
+                                    "Failed to remove YouTube channel".to_string()
+                                } else {
+                                    "Failed to remove podcast".to_string()
+                                })
                             });
                             app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
@@ -807,8 +841,7 @@ pub fn episode_layout() -> Html {
                     }
                     Err(e) => {
                         dispatch_wasm.reduce_mut(|state| {
-                            state.error_message =
-                                Option::from(format!("Error removing podcast: {:?}", e))
+                            state.error_message = Some(format!("Error removing content: {:?}", e))
                         });
                         app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                     }
@@ -848,6 +881,18 @@ pub fn episode_layout() -> Html {
                         return;
                     }
                 };
+                let is_youtube = match search_state
+                    .podcast_feed_results
+                    .as_ref()
+                    .and_then(|results| results.episodes.get(0))
+                    .and_then(|episode| episode.is_youtube)
+                {
+                    Some(id) => id,
+                    None => {
+                        eprintln!("No is_youtube info found");
+                        return;
+                    }
+                };
                 let ep_api_key = api_key.clone();
                 let ep_server_name = server_name.clone();
                 let ep_user_id = user_id_copy.clone();
@@ -856,6 +901,7 @@ pub fn episode_layout() -> Html {
                     &ep_api_key.unwrap(),
                     episode_id,
                     ep_user_id.unwrap(),
+                    Some(is_youtube),
                 )
                 .await
                 {
@@ -2157,7 +2203,7 @@ pub fn episode_layout() -> Html {
         }
         {
             if let Some(audio_props) = &state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
             } else {
                 html! {}
             }

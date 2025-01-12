@@ -286,6 +286,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                     let episode_artwork_clone = episode.episodeartwork.clone();
                                     let episode_duration_clone = episode.episodeduration.clone();
                                     let episode_id_clone = episode.episodeid.clone();
+                                    let episode_is_youtube = Some(episode.is_youtube.clone());
                                     let episode_listened_clone = episode.listenduration.clone();
                                     let history_clone = history.clone();
                                     let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
@@ -345,6 +346,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                         audio_dispatch.clone(),
                                         audio_state.clone(),
                                         None,
+                                        episode_is_youtube,
                                     );
 
                                     let on_shownotes_click = on_shownotes_click(
@@ -405,7 +407,7 @@ pub fn search(_props: &SearchProps) -> Html {
             <App_drawer />
             {
                 if let Some(audio_props) = &audio_state.currently_playing {
-                    html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
+                    html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
                 } else {
                     html! {}
                 }

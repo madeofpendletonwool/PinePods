@@ -429,7 +429,7 @@ pub fn downloads() -> Html {
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
             } else {
                 html! {}
             }
@@ -504,6 +504,7 @@ pub fn render_podcast_with_episodes(
                             let episode_duration_clone = episode.episodeduration.clone();
                             let episode_id_clone = episode.episodeid.clone();
                             let episode_listened_clone = episode.listenduration.clone();
+                            let episode_is_youtube = Some(episode.is_youtube.clone());
                             let _completed = episode.completed;
                             let desc_expanded = desc_rc.expanded_descriptions.contains(id_string);
                             #[wasm_bindgen]
@@ -568,6 +569,7 @@ pub fn render_podcast_with_episodes(
                                 audio_dispatch.clone(),
                                 audio_state.clone(),
                                 is_local,
+                                episode_is_youtube,
                             );
 
                             let on_shownotes_click = on_shownotes_click(

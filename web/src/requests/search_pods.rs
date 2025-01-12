@@ -239,6 +239,7 @@ pub struct Episode {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "Episodeid")]
     pub episode_id: Option<i32>,
+    pub is_youtube: Option<bool>,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
@@ -497,10 +498,54 @@ pub async fn call_get_podcast_episodes(
             episode.guid = episode
                 .guid
                 .or_else(|| episode.episode_id.map(|id| id.to_string()));
+            episode.is_youtube = Some(false); // Set is_youtube to false for regular episodes
             episode
         })
         .collect::<Vec<_>>();
+    Ok(PodcastFeedResult { episodes })
+}
 
+pub async fn call_get_youtube_episodes(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
+    podcast_id: &i32,
+) -> Result<PodcastFeedResult, anyhow::Error> {
+    let url = format!(
+        "{}/api/data/youtube_episodes?user_id={}&podcast_id={}",
+        server_name, user_id, podcast_id
+    );
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to get podcast episodes: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+
+    let response_data: PodcastEpisodesResponse = serde_json::from_str(&response_text)?;
+
+    let episodes = response_data
+        .episodes
+        .into_iter()
+        .map(|mut episode| {
+            episode.guid = episode
+                .guid
+                .or_else(|| episode.episode_id.map(|id| id.to_string()));
+            episode.is_youtube = Some(true); // Set is_youtube to true for YouTube episodes
+            episode
+        })
+        .collect::<Vec<_>>();
     Ok(PodcastFeedResult { episodes })
 }
 
@@ -573,6 +618,7 @@ pub async fn call_parse_podcast_url(
                     guid: item.guid().map(|g| g.value().to_string()),
                     duration: Some(duration.unwrap_or_else(|| "00:00:00".to_string())),
                     episode_id: None,
+                    is_youtube: Some(false),
                 }
             })
             .collect();
@@ -681,6 +727,7 @@ pub struct SearchEpisode {
     pub episodeduration: i32,
     pub listenduration: Option<i32>,
     pub completed: bool,
+    pub is_youtube: bool,
 }
 
 pub async fn call_search_database(
@@ -718,4 +765,86 @@ pub async fn call_search_database(
     let results = search_response.data;
 
     Ok(results)
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct YouTubeVideo {
+    pub id: String,
+    pub title: String,
+    pub duration: Option<f64>,
+    pub url: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
+pub struct YouTubeChannel {
+    pub channel_id: String,
+    pub name: String,
+    pub description: String,
+    pub subscriber_count: Option<i64>,
+    pub url: String,
+    pub video_count: Option<i32>,
+    pub recent_videos: Vec<YouTubeVideo>,
+    pub thumbnail_url: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct YouTubeSearchResults {
+    pub channels: Vec<YouTubeChannel>,
+    pub videos: Vec<YouTubeVideo>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct YouTubeSearchResponse {
+    pub results: Vec<YouTubeChannel>,
+}
+
+pub async fn call_youtube_search(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    query: &str,
+    search_type: &str,
+    max_results: i32,
+) -> Result<YouTubeSearchResponse, Error> {
+    let encoded_query = js_sys::encode_uri_component(query)
+        .as_string()
+        .unwrap_or_else(|| query.to_string());
+
+    let url = format!(
+        "{}/api/data/search_youtube_channels?user_id={}&query={}&max_results={}",
+        server_name, user_id, encoded_query, max_results
+    );
+
+    web_sys::console::log_1(&format!("Making request to: {}", url).into());
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network request error: {}", e)))?;
+
+    if response.ok() {
+        let text = response
+            .text()
+            .await
+            .map_err(|e| Error::msg(format!("Failed to get response text: {}", e)))?;
+
+        web_sys::console::log_1(&format!("Raw response: {}", text).into());
+
+        let search_results: YouTubeSearchResponse = serde_json::from_str(&text).map_err(|e| {
+            web_sys::console::log_1(&format!("Parse error: {}", e).into());
+            Error::msg(format!(
+                "Failed to parse response: {} - Raw text: {}",
+                e, text
+            ))
+        })?;
+
+        Ok(search_results)
+    } else {
+        let error_text = response.status_text();
+        Err(Error::msg(format!(
+            "Error searching YouTube. Server response: {}",
+            error_text
+        )))
+    }
 }

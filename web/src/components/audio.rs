@@ -14,6 +14,7 @@ use crate::requests::pod_req::{
     call_remove_queued_episode, HistoryAddRequest, MarkEpisodeCompletedRequest,
     QueuePodcastRequest, RecordListenDurationRequest,
 };
+use _AudioPlayerProps::is_youtube;
 use gloo_timers::callback::Interval;
 use js_sys::Array;
 use js_sys::Object;
@@ -48,6 +49,7 @@ pub struct AudioPlayerProps {
     pub start_pos_sec: f64,
     pub end_pos_sec: f64,
     pub offline: bool,
+    pub is_youtube: bool,
 }
 
 #[derive(Properties, PartialEq)]
@@ -246,6 +248,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         .currently_playing
         .as_ref()
         .map(|props| props.end_pos_sec);
+    let is_youtube_vid = audio_state
+        .currently_playing
+        .as_ref()
+        .map(|props| props.is_youtube)
+        .unwrap_or(false);
     let history = BrowserHistory::new();
     let history_clone = history.clone();
     let episode_in_db = audio_state.episode_in_db.unwrap_or_default();
@@ -337,10 +344,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             user_id.clone(),
             api_key.clone(),
             server_name.clone(),
+            is_youtube_vid.clone(),
         ),
         {
             let dispatch = _audio_dispatch.clone();
-            move |(episode_id, user_id, api_key, server_name)| {
+            move |(episode_id, user_id, api_key, server_name, is_youtube_vid)| {
                 if let (Some(episode_id), Some(user_id), Some(api_key), Some(server_name)) =
                     (episode_id, user_id, api_key, server_name)
                 {
@@ -350,7 +358,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     let server_name = server_name.clone(); // Clone to make it owned
 
                     // Only proceed if the episode_id is not zero
-                    if episode_id != 0 {
+                    if episode_id != 0 && !is_youtube_vid {
                         wasm_bindgen_futures::spawn_local(async move {
                             let chap_request = FetchPodcasting2DataRequest {
                                 episode_id,
@@ -603,6 +611,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 episode_id: episode_id_loop.unwrap().clone(),
                                 user_id: user_id.unwrap().clone(),
                                 listen_duration,
+                                is_youtube: Some(is_youtube_vid),
                             };
 
                             wasm_bindgen_futures::spawn_local(async move {
@@ -763,6 +772,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                                 audio_dispatch.clone(),
                                                 audio_state.clone(),
                                                 None,
+                                                Some(next_episode.is_youtube.clone()),
                                             )
                                             .emit(MouseEvent::new("click").unwrap());
                                         } else {
@@ -1077,6 +1087,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 audio_dispatch.clone(),
                                 audio_state.clone(),
                                 None,
+                                Some(next_episode.is_youtube.clone()),
                             )
                             .emit(MouseEvent::new("click").unwrap());
                         } else {
@@ -1547,6 +1558,7 @@ pub fn on_play_pause(
     audio_dispatch: Dispatch<UIState>,
     audio_state: Rc<UIState>,
     is_local: Option<bool>,
+    is_youtube_vid: Option<bool>,
 ) -> Callback<MouseEvent> {
     Callback::from(move |e: MouseEvent| {
         let episode_url_for_play = episode_url_for_closure.clone();
@@ -1595,6 +1607,7 @@ pub fn on_play_pause(
                 audio_dis_play,
                 audio_state_play,
                 is_local,
+                is_youtube_vid,
             )
             .emit(e); // Pass the event instead of '_'
         }
@@ -1616,6 +1629,7 @@ pub fn on_play_click(
     audio_dispatch: Dispatch<UIState>,
     _audio_state: Rc<UIState>,
     is_local: Option<bool>,
+    is_youtube_vid: Option<bool>,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
         let episode_url_for_closure = episode_url_for_closure.clone();
@@ -1626,6 +1640,7 @@ pub fn on_play_click(
         let episode_duration_for_closure = episode_duration_for_closure.clone();
         let listen_duration_for_closure = listen_duration_for_closure.clone();
         let episode_id_for_closure = episode_id_for_closure.clone();
+        let episode_is_youtube = is_youtube_vid.clone().unwrap();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();
@@ -1789,17 +1804,18 @@ pub fn on_play_click(
                 }
             }
         });
-        let src = if let Some(_local) = is_local {
-            // Construct the URL for streaming from the local server
-            let src = format!(
+        let src = if episode_url_for_wasm.contains("youtube.com") {
+            format!(
+                "{}/api/data/stream/{}?api_key={}&user_id={}&type=youtube",
+                server_name, episode_id, api_key, user_id
+            )
+        } else if is_local.unwrap_or(false) {
+            format!(
                 "{}/api/data/stream/{}?api_key={}&user_id={}",
                 server_name, episode_id, api_key, user_id
-            );
-            src
+            )
         } else {
-            // Use the provided URL for streaming
-            let src = episode_url_for_wasm.clone();
-            src
+            episode_url_for_wasm.clone()
         };
         web_sys::console::log_1(&JsValue::from_str("about to not run pod id if 0"));
 
@@ -1811,6 +1827,7 @@ pub fn on_play_click(
                     &Some(api_key.clone()),
                     episode_id,
                     user_id,
+                    Some(episode_is_youtube.clone()),
                 )
                 .await
                 {
@@ -1845,6 +1862,7 @@ pub fn on_play_click(
                                         start_pos_sec,
                                         end_pos_sec: end_pos_sec as f64,
                                         offline: false,
+                                        is_youtube: episode_is_youtube.clone(),
                                     });
                                     audio_state.set_audio_source(src.to_string());
                                     if let Some(audio) = &audio_state.audio_element {
@@ -1886,6 +1904,7 @@ pub fn on_play_click(
                         start_pos_sec: 0.0,
                         end_pos_sec: 0.0,
                         offline: false,
+                        is_youtube: episode_is_youtube.clone(),
                     });
                     audio_state.set_audio_source(src.to_string());
                     if let Some(audio) = &audio_state.audio_element {
@@ -2016,6 +2035,7 @@ pub fn on_play_click_shared(
     episode_duration: i32,
     episode_id: i32,
     audio_dispatch: Dispatch<UIState>,
+    is_youtube_vid: bool,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
         let episode_url = episode_url.clone();
@@ -2024,6 +2044,7 @@ pub fn on_play_click_shared(
         let episode_release_date = episode_release_date.clone();
         let episode_artwork = episode_artwork.clone();
         let episode_duration = episode_duration.clone();
+        let episode_is_youtube = is_youtube_vid.clone();
         let episode_id = episode_id.clone();
         let audio_dispatch = audio_dispatch.clone();
 
@@ -2053,6 +2074,7 @@ pub fn on_play_click_shared(
                     start_pos_sec: 0.0, // Start playing from the beginning
                     end_pos_sec: 0.0,
                     offline: true,
+                    is_youtube: episode_is_youtube,
                 });
                 audio_state.set_audio_source(episode_url.clone());
                 if let Some(audio) = &audio_state.audio_element {

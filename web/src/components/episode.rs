@@ -310,6 +310,7 @@ pub fn epsiode() -> Html {
                                                                     is_downloaded: false,
                                                                     is_queued: false,
                                                                     is_saved: false,
+                                                                    is_youtube: false,
                                                                 },
                                                             });
                                                         state.selected_episode_id =
@@ -452,6 +453,7 @@ pub fn epsiode() -> Html {
                                                                     is_downloaded: false,
                                                                     is_queued: false,
                                                                     is_saved: false,
+                                                                    is_youtube: false,
                                                                 },
                                                             });
                                                         state.selected_episode_id = Some(0); // Set the episode ID to 0
@@ -643,6 +645,7 @@ pub fn epsiode() -> Html {
                                                                 is_downloaded: false,
                                                                 is_queued: false,
                                                                 is_saved: false,
+                                                                is_youtube: false,
                                                             },
                                                         });
                                                 });
@@ -1001,6 +1004,7 @@ pub fn epsiode() -> Html {
                         let podcast_of_episode = episode.episode.podcastid.clone();
                         let episode_listened_clone = Option::from(0);
                         let episode_id_clone = episode.episode.episodeid.clone();
+                        let episode_is_youtube = Some(episode.episode.is_youtube.clone());
 
                         let sanitized_description = sanitize_html_with_blank_target(&episode.episode.episodedescription.clone());
                         let description = sanitized_description;
@@ -1044,6 +1048,7 @@ pub fn epsiode() -> Html {
                             audio_dispatch.clone(),
                             audio_state.clone(),
                             None,
+                            episode_is_youtube,
                         );
 
                         // Create the play toggle handler
@@ -1358,6 +1363,7 @@ pub fn epsiode() -> Html {
                                                 Some(details.categories),
                                                 details.websiteurl,
                                                 user_id.unwrap(),
+                                                details.is_youtube,
                                             );
 
                                             // Execute the action created by create_on_title_click
@@ -1736,7 +1742,7 @@ pub fn epsiode() -> Html {
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
             } else {
                 html! {}
             }

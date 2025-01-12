@@ -10,6 +10,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from functools import lru_cache, wraps
+from yt_dlp import YoutubeDL
 
 # Needed Modules
 from passlib.context import CryptContext
@@ -75,6 +76,7 @@ import database_functions.auth_functions
 import database_functions.app_functions
 import database_functions.import_progress
 import database_functions.valkey_client
+import database_functions.youtube
 
 database_type = str(os.getenv('DB_TYPE', 'mariadb'))
 if database_type == "postgresql":
@@ -541,6 +543,26 @@ async def api_podcast_episodes(cnx=Depends(get_database_connection), api_key: st
         raise HTTPException(status_code=403,
                             detail="You can only return episodes of your own!")
 
+@app.get("/api/data/youtube_episodes")
+async def api_youtube_episodes(cnx=Depends(get_database_connection), api_key: str = Depends(get_api_key_from_header), user_id: int = Query(...), podcast_id: int = Query(...)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    # Allow the action if the API key belongs to the user, or it's the web API key
+    if key_id == user_id or is_web_key:
+        episodes = database_functions.functions.return_youtube_episodes(database_type, cnx, user_id, podcast_id)
+        if episodes is None:
+            episodes = []  # Return an empty list instead of raising an exception
+        return {"episodes": episodes}
+    else:
+        raise HTTPException(status_code=403,
+                            detail="You can only return episodes of your own!")
+
+
 @app.get("/api/data/get_episode_id_ep_name")
 async def api_episode_id(cnx=Depends(get_database_connection),
                               api_key: str = Depends(get_api_key_from_header),
@@ -592,22 +614,27 @@ async def api_podcast_id(cnx=Depends(get_database_connection),
                             detail="You can only return pocast ids of your own podcasts!")
 
 @app.get("/api/data/get_podcast_id_from_ep_id")
-async def api_get_podcast_id(episode_id: int, user_id: int, cnx=Depends(get_database_connection),
-                             api_key: str = Depends(get_api_key_from_header)):
+async def api_get_podcast_id(
+    episode_id: int,
+    user_id: int,
+    is_youtube: bool = False,  # Add optional parameter
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
     logging.info('Fetching API key')
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
     logging.info('Getting key ID')
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
     logging.info(f'Got key ID: {key_id}')
 
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == user_id or is_web_key:
-        podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
+        podcast_id = database_functions.functions.get_podcast_id_from_episode(
+            cnx, database_type, episode_id, user_id, is_youtube
+        )
         if podcast_id is None:
             raise HTTPException(status_code=404, detail="Podcast ID not found for the given episode ID")
         return {"podcast_id": podcast_id}
@@ -2108,6 +2135,7 @@ class RecordListenDurationData(BaseModel):
     episode_id: int
     user_id: int
     listen_duration: float
+    is_youtube: Optional[bool] = False
 
 
 @app.post("/api/data/record_listen_duration")
@@ -2127,11 +2155,13 @@ async def get(data: RecordListenDurationData, cnx=Depends(get_database_connectio
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
     if key_id == data.user_id or is_web_key:
-        database_functions.functions.record_listen_duration(cnx, database_type, data.episode_id, data.user_id, data.listen_duration)
+        if data.is_youtube:
+            database_functions.functions.record_youtube_listen_duration(cnx, database_type, data.episode_id, data.user_id, data.listen_duration)
+        else:
+            database_functions.functions.record_listen_duration(cnx, database_type, data.episode_id, data.user_id, data.listen_duration)
         return {"detail": "Listen duration recorded."}
     else:
         raise HTTPException(status_code=403, detail="You can only record your own listen duration")
-
 
 
 @app.get("/api/data/refresh_pods")
@@ -2234,7 +2264,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, cnx=Depends(get
 
 async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
     print("Starting refresh process")
-    # cnx = create_database_connection()
     print(f"Running refresh process for user in job {user_id}")
     try:
         # First get total count of podcasts
@@ -2291,20 +2320,22 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
         print('Getting list')
         if database_type == "postgresql":
             cursor.execute('''
-                SELECT "podcastid", "podcastname"
+                SELECT "podcastid", "podcastname", "feedurl", "artworkurl", "autodownload",
+                       "username", "password", "isyoutubechannel"
                 FROM "Podcasts"
                 WHERE "userid" = %s
             ''', (user_id,))
         else:
             cursor.execute('''
-                SELECT PodcastID, PodcastName
+                SELECT PodcastID, PodcastName, FeedURL, ArtworkURL, AutoDownload,
+                       Username, Password, IsYouTubeChannel
                 FROM Podcasts
                 WHERE UserID = %s
             ''', (user_id,))
         podcasts = cursor.fetchall()
         print('got list')
 
-# Process each podcast
+        # Process each podcast
         current = 0
         for podcast in podcasts:
             current += 1
@@ -2312,11 +2343,23 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                 if database_type == "postgresql":
                     podcast_id = podcast['podcastid']
                     podcast_name = podcast['podcastname']
+                    feed_url = podcast['feedurl']
+                    artwork_url = podcast['artworkurl']
+                    auto_download = podcast['autodownload']
+                    username = podcast['username']
+                    password = podcast['password']
+                    is_youtube = podcast['isyoutubechannel']
                 else:
                     podcast_id = podcast['PodcastID']
                     podcast_name = podcast['PodcastName']
+                    feed_url = podcast['FeedURL']
+                    artwork_url = podcast['ArtworkURL']
+                    auto_download = podcast['AutoDownload']
+                    username = podcast['Username']
+                    password = podcast['Password']
+                    is_youtube = podcast['IsYouTubeChannel']
             else:
-                podcast_id, podcast_name = podcast
+                podcast_id, podcast_name, feed_url, artwork_url, auto_download, username, password, is_youtube = podcast
 
             await websocket.send_json({
                 "progress": {
@@ -2327,18 +2370,45 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             })
 
             # Refresh this podcast
-            new_episodes = await asyncio.to_thread(
-                database_functions.functions.refresh_pods_for_user,
-                cnx,
-                database_type,
-                user_id
-            )
+            try:
+                if is_youtube:
+                    # Extract channel ID from feed URL
+                    channel_id = feed_url.split('channel/')[-1] if 'channel/' in feed_url else feed_url
+                    channel_id = channel_id.split('/')[0].split('?')[0]
+                    youtube_episodes = await asyncio.to_thread(
+                        database_functions.youtube.process_youtube_videos,
+                        database_type,
+                        podcast_id,
+                        channel_id,
+                        cnx
+                    )
+                    if youtube_episodes:
+                        for episode in youtube_episodes:
+                            if user_id in active_websockets:
+                                for ws in active_websockets[user_id]:
+                                    await ws.send_json({"new_episode": episode})
+                else:
+                    episodes = await asyncio.to_thread(
+                        database_functions.functions.add_episodes,
+                        cnx,
+                        database_type,
+                        podcast_id,
+                        feed_url,
+                        artwork_url,
+                        auto_download,
+                        username,
+                        password,
+                        True  # websocket=True
+                    )
 
-            # Send any new episodes
-            for episode_data in new_episodes:
-                if user_id in active_websockets:
-                    for ws in active_websockets[user_id]:
-                        await ws.send_json({"new_episode": episode_data})
+                    if episodes:
+                        for episode in episodes:
+                            if user_id in active_websockets:
+                                for ws in active_websockets[user_id]:
+                                    await ws.send_json({"new_episode": episode})
+            except Exception as e:
+                print(f"Error refreshing podcast {podcast_id}: {str(e)}")
+                continue
 
     except Exception as e:
         await websocket.send_json({"detail": f"Error during refresh: {e}"})
@@ -2421,6 +2491,27 @@ async def api_check_podcast(
     else:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
+@app.get("/api/data/check_youtube_channel", response_model=Dict[str, bool])
+async def api_check_youtube_channel(
+    user_id: int,
+    channel_name: str,
+    channel_url: str,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if is_valid_key:
+        exists = database_functions.functions.check_youtube_channel(
+            cnx, database_type, user_id, channel_name, channel_url
+        )
+        return {"exists": exists}
+    else:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+
 @app.get("/api/data/user_admin_check/{user_id}")
 async def api_user_admin_check_route(user_id: int, api_key: str = Depends(get_api_key_from_header),
                                      cnx=Depends(get_database_connection)):
@@ -2438,6 +2529,38 @@ async def api_user_admin_check_route(user_id: int, api_key: str = Depends(get_ap
                                 detail="You are not authorized to check admin status for other users")
     is_admin = await run_in_threadpool(database_functions.functions.user_admin_check, cnx, database_type, user_id)
     return {"is_admin": is_admin}
+
+class RemoveYouTubeChannelData(BaseModel):
+    user_id: int
+    channel_name: str
+    channel_url: str
+
+@app.post("/api/data/remove_youtube_channel")
+async def api_remove_youtube_channel_route(
+    data: RemoveYouTubeChannelData = Body(...),
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+    elevated_access = await has_elevated_access(api_key, cnx)
+    if not elevated_access:
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        if data.user_id != user_id_from_api_key:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not authorized to remove channels for other users"
+            )
+
+    database_functions.functions.remove_youtube_channel_by_url(
+        cnx, database_type, data.channel_name, data.channel_url, data.user_id
+    )
+    return {"success": True}
 
 class RemovePodcastData(BaseModel):
     user_id: int
@@ -2476,39 +2599,42 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
 class RemovePodcastIDData(BaseModel):
     user_id: int
     podcast_id: int
-
+    is_youtube: bool = False
 
 @app.post("/api/data/remove_podcast_id")
-async def api_remove_podcast_route_id(data: RemovePodcastIDData = Body(...), cnx=Depends(get_database_connection),
-                                   api_key: str = Depends(get_api_key_from_header)):
+async def api_remove_podcast_route_id(data: RemovePodcastIDData = Body(...),
+                                    cnx=Depends(get_database_connection),
+                                    api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
     elevated_access = await has_elevated_access(api_key, cnx)
-
     if not elevated_access:
-        # Get user ID from API key
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                                detail="You are not authorized to remove podcasts for other users")
-    logging.info('check gpod')
-    if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
-        logging.info('get cloud vals')
-        gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
-        logging.info('em cloud')
-        podcast_feed = database_functions.functions.get_podcast_feed_by_id(cnx, database_type, data.podcast_id)
-        gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, data.user_id)
-        if gpod_type == "nextcloud":
-            database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed)
-        else:
-            database_functions.functions.remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed, "pinepods")
-    logging.info('rm pod id')
-    database_functions.functions.remove_podcast_id(cnx, database_type, data.podcast_id, data.user_id)
+                                detail="You are not authorized to remove content for other users")
+
+    if data.is_youtube:
+        database_functions.functions.remove_youtube_channel(cnx, database_type, data.podcast_id, data.user_id)
+    else:
+        # Existing podcast removal logic
+        logging.info('check gpod')
+        if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
+            logging.info('get cloud vals')
+            gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
+            logging.info('em cloud')
+            podcast_feed = database_functions.functions.get_podcast_feed_by_id(cnx, database_type, data.podcast_id)
+            gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, data.user_id)
+            if gpod_type == "nextcloud":
+                database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed)
+            else:
+                database_functions.functions.remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed, "pinepods")
+        logging.info('rm pod id')
+        database_functions.functions.remove_podcast_id(cnx, database_type, data.podcast_id, data.user_id)
+
     return {"success": True}
 
 
@@ -3216,6 +3342,7 @@ class EpisodeMetadata(BaseModel):
     episode_id: int
     user_id: int
     person_episode: bool = False  # Default to False if not specified
+    is_youtube: bool = False
 
 @app.post("/api/data/get_episode_metadata")
 async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_database_connection),
@@ -3234,7 +3361,8 @@ async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_databa
             cnx,
             data.episode_id,
             data.user_id,
-            data.person_episode
+            data.person_episode,
+            data.is_youtube
         )
         return {"episode": episode}
     else:
@@ -4805,27 +4933,32 @@ async def api_get_person_subscriptions(
 async def stream_episode(
     episode_id: int,
     cnx=Depends(get_database_connection),
-    api_key: str = Query(..., alias='api_key'),  # Change here
-    user_id: int = Query(..., alias='user_id')   # Change here
+    api_key: str = Query(..., alias='api_key'),
+    user_id: int = Query(..., alias='user_id'),
+    source_type: str = Query(None, alias='type')  # Add source type parameter
 ):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-    # Allow the action if the API key belongs to the user or it's the web API key
+
     if key_id == user_id or is_web_key:
-        file_path = database_functions.functions.get_download_location(cnx, database_type, episode_id, user_id)
+        # Choose which lookup to use based on source_type
+        if source_type == "youtube":
+            file_path = database_functions.functions.get_youtube_video_location(cnx, database_type, episode_id, user_id)
+            print(f'file path in if source youtube {file_path}')
+        else:
+            file_path = database_functions.functions.get_download_location(cnx, database_type, episode_id, user_id)
+            print(f'file path in if source else {file_path}')
+
         if file_path:
             return FileResponse(path=file_path, media_type='audio/mpeg', filename=os.path.basename(file_path))
         else:
             raise HTTPException(status_code=404, detail="Episode not found or not downloaded")
     else:
         raise HTTPException(status_code=403, detail="You do not have permission to access this episode")
-
 
 class BackupUser(BaseModel):
     user_id: int
@@ -4985,6 +5118,213 @@ async def toggle_rss_feeds(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class YouTubeChannel(BaseModel):
+    channel_id: str
+    name: str
+    description: str
+    subscriber_count: Optional[int]
+    url: str
+    video_count: Optional[int]
+    thumbnail_url: Optional[str]
+    recent_videos: List[dict] = []
+
+    class Config:
+        json_encoders = {
+            list: lambda v: v  # Preserve lists during JSON encoding
+        }
+
+@app.get("/api/data/search_youtube_channels")
+async def search_youtube_channels(
+    query: str,
+    max_results: int = 5,
+    user_id: int = None,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    # Validate API key
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+    # Check if web key and verify user permission
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if not (key_id == user_id or is_web_key):
+        raise HTTPException(
+            status_code=403,
+            detail="You can only search with your own account."
+        )
+
+    try:
+        # First get channel ID using a search
+        search_url = f"ytsearch{max_results*4}:{query}"
+
+        ydl_opts = {
+            'quiet': True,
+            'extract_flat': True,
+            'no_warnings': True,
+            'skip_download': True,
+            'extract_info': True,
+        }
+
+        with YoutubeDL(ydl_opts) as ydl:
+            logging.info(f"Searching YouTube with query: {query}")
+            results = ydl.extract_info(search_url, download=False)
+
+            if not results or 'entries' not in results:
+                return {"results": []}
+
+            processed_results = []
+            seen_channels = set()  # Track unique channels
+            channel_videos = {}
+
+            for entry in results.get('entries', []):
+                try:
+                    channel_id = entry.get('channel_id') or entry.get('uploader_id')
+                    if not channel_id:
+                        continue
+
+                    # First collect the video regardless of whether we've seen the channel
+                    if channel_id not in channel_videos:
+                        channel_videos[channel_id] = []
+                    if len(channel_videos[channel_id]) < 3:  # Limit to 3 videos
+                        channel_videos[channel_id].append({
+                            'id': entry.get('id', ''),
+                            'title': entry.get('title', ''),
+                            'duration': entry.get('duration'),
+                            'url': f"https://www.youtube.com/watch?v={entry.get('id')}"
+                        })
+                        print(f"Added video to channel {channel_id}, now has {len(channel_videos[channel_id])} videos")
+
+
+                    # Now check if we've already processed this channel
+                    if channel_id in seen_channels:
+                        continue
+
+                    seen_channels.add(channel_id)
+
+                    # Get minimal channel info
+                    channel_opts = ydl_opts.copy()
+                    channel_opts['extract_flat'] = True
+                    channel_opts['process'] = False
+
+                    channel_url = f"https://www.youtube.com/channel/{channel_id}"
+                    channel_info = ydl.extract_info(
+                        channel_url,
+                        download=False,
+                        process=False  # Don't process more than necessary
+                    )
+
+                    # Get avatar URL from channel info
+                    thumbnail_url = None
+                    if channel_info and channel_info.get('thumbnails'):
+                        # Try to find avatar-specific thumbnails first
+                        avatar_thumbnails = [t for t in channel_info['thumbnails']
+                                            if t.get('id', '').startswith('avatar')]
+
+                        if avatar_thumbnails:
+                            # Get the largest avatar thumbnail
+                            thumbnail_url = avatar_thumbnails[-1]['url']
+                        else:
+                            # Fallback: try to find any thumbnail with "avatar" in the URL
+                            avatar_thumbnails = [t for t in channel_info['thumbnails']
+                                               if 'avatar' in t.get('url', '').lower()]
+                            if avatar_thumbnails:
+                                thumbnail_url = avatar_thumbnails[-1]['url']
+                            else:
+                                # Last resort: use the first thumbnail
+                                thumbnail_url = channel_info['thumbnails'][0]['url']
+                    print(f"Creating channel {channel_id} with {len(channel_videos[channel_id])} videos")
+                    channel = YouTubeChannel(
+                        channel_id=channel_id,
+                        name=entry.get('channel', '') or entry.get('uploader', ''),
+                        description=entry.get('description', '')[:500] if entry.get('description') else '',
+                        subscriber_count=None,
+                        url=f"https://www.youtube.com/channel/{channel_id}",
+                        video_count=None,
+                        thumbnail_url=thumbnail_url or entry.get('channel_thumbnail', ''),
+                        recent_videos=channel_videos[channel_id]  # <-- Use our collected videos here
+                    )
+
+                    if len(processed_results) < max_results:
+                        channel_dict = channel.dict()
+                        channel_dict['recent_videos'] = channel_videos[channel_id]  # Explicitly set after dict conversion
+                        processed_results.append(channel_dict)
+                    else:
+                        break
+
+                except Exception as entry_error:
+                    logging.error(f"Error processing channel entry: {entry_error}")
+                    continue
+
+            logging.info(f"Found {len(processed_results)} channels")
+            return {"results": processed_results}
+
+    except Exception as e:
+        logging.error(f"YouTube channel search error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error searching YouTube channels: {str(e)}"
+        )
+
+def process_youtube_channel(podcast_id: int, channel_id: str):
+    cnx = create_database_connection()
+    try:
+        database_functions.youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx)
+    finally:
+        if database_type == "postgresql":
+            connection_pool.putconn(cnx)
+        else:
+            cnx.close()
+
+@app.post("/api/data/youtube/subscribe")
+async def subscribe_to_youtube_channel(
+    channel_id: str,
+    user_id: int,
+    background_tasks: BackgroundTasks,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Subscribe to a YouTube channel"""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    try:
+        logger.info(f"Starting subscription for channel {channel_id}")
+
+        existing_id = database_functions.functions.check_existing_channel_subscription(cnx, channel_id, user_id)
+        if existing_id:
+            logger.info(f"Channel {channel_id} already subscribed")
+            return {
+                "success": True,
+                "podcast_id": existing_id,
+                "message": "Already subscribed to this channel"
+            }
+
+        logger.info("Getting channel info")
+        channel_info = await database_functions.youtube.get_channel_info(channel_id)
+
+        logger.info("Adding channel to database")
+        podcast_id = database_functions.functions.add_youtube_channel(cnx, channel_info, user_id)
+
+        logger.info(f"Starting background task for podcast_id {podcast_id}")
+        background_tasks.add_task(process_youtube_channel, podcast_id, channel_id)
+
+        logger.info("Subscription completed successfully")
+        return {
+            "success": True,
+            "podcast_id": podcast_id,
+            "message": "Channel subscription initiated. Videos will be processed in background."
+        }
+    except Exception as e:
+        logger.error(f"Error subscribing to channel: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error subscribing to channel: {str(e)}"
+        )
 
 class InitRequest(BaseModel):
     api_key: str

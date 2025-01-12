@@ -1,7 +1,9 @@
 use crate::components::context::AppState;
 use crate::components::podcast_layout::ClickedFeedURL;
 use crate::requests::pod_req::{call_check_podcast, call_get_podcast_id};
-use crate::requests::search_pods::{call_get_podcast_episodes, call_parse_podcast_url};
+use crate::requests::search_pods::{
+    call_get_podcast_episodes, call_get_youtube_episodes, call_parse_podcast_url,
+};
 use std::collections::HashMap;
 use web_sys::MouseEvent;
 use yew::Callback;
@@ -24,6 +26,7 @@ pub fn create_on_title_click(
     podcast_categories: Option<String>,
     podcast_link: String,
     user_id: i32,
+    is_youtube: bool,
     // ... other podcast-specific parameters ...
 ) -> Callback<MouseEvent> {
     let history = history.clone();
@@ -37,6 +40,8 @@ pub fn create_on_title_click(
         let server_clone = server_name.clone();
         let api_clone = api_key.clone().unwrap();
         let podcast_url_call = podcast_url.clone();
+        web_sys::console::log_1(&format!("Title click - is_youtube: {}", is_youtube).into());
+
         // Convert the categories string to a HashMap with integer keys
         let podcast_categories_map: Option<HashMap<String, String>> =
             podcast_categories.as_ref().map(|cats| {
@@ -58,6 +63,7 @@ pub fn create_on_title_click(
             categories: podcast_categories_map.clone(),
             websiteurl: podcast_link.clone(),
             podcastindexid: podcast_index_id.clone(),
+            is_youtube: Some(is_youtube),
         };
 
         let dispatch = dispatch.clone();
@@ -86,14 +92,26 @@ pub fn create_on_title_click(
                         .await
                         {
                             Ok(podcast_id) => {
-                                match call_get_podcast_episodes(
-                                    &server_clone,
-                                    &api_clone,
-                                    &user_id,
-                                    &podcast_id,
-                                )
-                                .await
-                                {
+                                // Determine which episode fetching function to use based on is_youtube
+                                let podcast_feed_results = if is_youtube {
+                                    call_get_youtube_episodes(
+                                        &server_clone,
+                                        &api_clone,
+                                        &user_id,
+                                        &podcast_id,
+                                    )
+                                    .await
+                                } else {
+                                    call_get_podcast_episodes(
+                                        &server_clone,
+                                        &api_clone,
+                                        &user_id,
+                                        &podcast_id,
+                                    )
+                                    .await
+                                };
+
+                                match podcast_feed_results {
                                     Ok(podcast_feed_results) => {
                                         dispatch.reduce_mut(move |state| {
                                             state.podcast_added = Some(true);

@@ -25,6 +25,7 @@ use components::search_new::SearchNew;
 use components::settings::Settings;
 use components::shared_episode::SharedEpisode;
 use components::user_stats::UserStats;
+use components::youtube_layout::YouTubeLayout;
 
 #[cfg(feature = "server_build")]
 use {components::login::ChangeServer, components::login::LogOut, components::login::Login};
@@ -72,6 +73,7 @@ fn switch(route: Route) -> Html {
         Route::SharedEpisode { url_key } => html! { <SharedEpisode url_key={url_key.clone()} /> },
         Route::EpisodeLayout => html! { <EpisodeLayout /> },
         Route::Podcasts => html! { <Podcasts /> },
+        Route::YoutubeLayout => html! { <YouTubeLayout /> },
         Route::Episode => html! { <Episode /> },
         Route::Person { name } => html! { <Person name={name.clone()} /> },
         #[cfg(not(feature = "server_build"))]

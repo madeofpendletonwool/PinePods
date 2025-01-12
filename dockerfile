@@ -38,7 +38,7 @@ FROM alpine
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 
 # Install runtime dependencies
-RUN apk add --no-cache nginx python3 openssl py3-pip bash mariadb-client postgresql-client curl cronie openrc supervisor
+RUN apk add --no-cache nginx python3 openssl py3-pip bash mariadb-client postgresql-client curl cronie openrc ffmpeg supervisor
 
 # Setup Python environment
 RUN python3 -m venv /opt/venv

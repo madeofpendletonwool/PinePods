@@ -316,7 +316,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                             pod_author: podcast.author.clone().unwrap(),
                             categories: categories_og_hashmap,
                             pod_description: podcast.description.clone().unwrap(),
-                            pod_episode_count: podcast.episodecount,
+                            pod_episode_count: podcast.episodecount.clone().unwrap_or_else(|| 0),
                             pod_feed_url: podcast_url.clone(),
                             pod_website: podcast.websiteurl.clone().unwrap(),
                             pod_explicit: podcast.explicit,
@@ -684,11 +684,12 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
                                             podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
                                             podcast.explicit.clone(),
-                                            podcast.episodecount.clone(),
+                                            podcast.episodecount.clone().unwrap_or_else(|| 0),
                                             Some(podcast.categories.clone()),
                                             podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
 
                                             user_id.unwrap(),
+                                            false,
                                         );
 
                                         let id_string = generate_unique_id(Some(podcast.podcastid.clone()), &podcast.feedurl.clone());
@@ -756,7 +757,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                             }
                                                         }
 
-                                                        <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount) }</p>
+                                                        <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount.unwrap_or_else(|| 0)) }</p>
                                                     </div>
                                                     <button class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
                                                         <i class={classes!(
@@ -887,15 +888,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
 
                                         let formatted_date = unix_timestamp_to_datetime_string(episode_pubdate_clone);
                                         let date_format = match_date_format(search_state_clone.date_format.as_deref());
-                                        // let datetime_str = if let Some(timestamp) = episode.datePublished {
-                                        //     if let Some(dt) = DateTime::<Utc>::from_timestamp(timestamp, 0) {
-                                        //         dt.format("%a, %d %b %Y %H:%M:%S %z").to_string()
-                                        //     } else {
-                                        //         "Invalid Date".to_string()
-                                        //     }
-                                        // } else {
-                                        //     "No Date Provided".to_string()
-                                        // };
                                         let datetime = parse_date(&formatted_date, &search_state_clone.user_tz);
                                         let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
                                         let formatted_duration = format_time(episode_duration_clone.into());
@@ -915,6 +907,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             dispatch.clone(),
                                             audio_state.clone(),
                                             None,
+                                            Some(false),
                                         );
 
                                         let description_class = if is_expanded {
@@ -1004,7 +997,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
 
                 {
                     if let Some(audio_props) = &audio_state.currently_playing {
-                        html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} /> }
+                        html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
                     } else {
                         html! {}
                     }
