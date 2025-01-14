@@ -28,6 +28,8 @@ import pytz
 from yt_dlp import YoutubeDL
 from database_functions import youtube
 import logging
+from cryptography.fernet import Fernet
+from requests.exceptions import RequestException
 
 # # Get the application root directory from the environment variable
 # app_root = os.environ.get('APP_ROOT')
@@ -2863,12 +2865,46 @@ def get_podcast_id_from_episode_name(cnx, database_type, episode_name, episode_u
 def mark_episode_completed(cnx, database_type, episode_id, user_id):
     cursor = cnx.cursor()
     try:
+        # First get the episode duration
         if database_type == "postgresql":
-            query = 'UPDATE "Episodes" SET Completed = TRUE WHERE EpisodeID = %s'
-        else:  # MySQL or MariaDB
-            query = "UPDATE Episodes SET Completed = 1 WHERE EpisodeID = %s"
+            duration_query = 'SELECT EpisodeDuration FROM "Episodes" WHERE EpisodeID = %s'
+        else:
+            duration_query = "SELECT EpisodeDuration FROM Episodes WHERE EpisodeID = %s"
 
-        cursor.execute(query, (episode_id,))
+        cursor.execute(duration_query, (episode_id,))
+        episode_duration = cursor.fetchone()
+
+        # Handle both tuple and dict return types
+        if isinstance(episode_duration, dict):
+            duration = episode_duration['episodeduration']
+        else:
+            duration = episode_duration[0] if episode_duration else None
+
+        if duration:
+            # Update completion status
+            if database_type == "postgresql":
+                query = 'UPDATE "Episodes" SET Completed = TRUE WHERE EpisodeID = %s'
+            else:
+                query = "UPDATE Episodes SET Completed = 1 WHERE EpisodeID = %s"
+            cursor.execute(query, (episode_id,))
+
+            # Update or insert listen duration in history
+            if database_type == "postgresql":
+                history_query = '''
+                    INSERT INTO "UserEpisodeHistory" (UserID, EpisodeID, ListenDate, ListenDuration)
+                    VALUES (%s, %s, NOW(), %s)
+                    ON CONFLICT (UserID, EpisodeID)
+                    DO UPDATE SET ListenDuration = %s, ListenDate = NOW()
+                '''
+            else:
+                history_query = '''
+                    INSERT INTO UserEpisodeHistory (UserID, EpisodeID, ListenDate, ListenDuration)
+                    VALUES (%s, %s, NOW(), %s)
+                    ON DUPLICATE KEY UPDATE ListenDuration = VALUES(ListenDuration),
+                                        ListenDate = NOW()
+                '''
+            cursor.execute(history_query, (user_id, episode_id, duration, duration))
+
         cnx.commit()
     finally:
         cursor.close()
@@ -2876,12 +2912,28 @@ def mark_episode_completed(cnx, database_type, episode_id, user_id):
 def mark_episode_uncompleted(cnx, database_type, episode_id, user_id):
     cursor = cnx.cursor()
     try:
+        # Update completion status
         if database_type == "postgresql":
             query = 'UPDATE "Episodes" SET Completed = FALSE WHERE EpisodeID = %s'
-        else:  # MySQL or MariaDB
+        else:
             query = "UPDATE Episodes SET Completed = 0 WHERE EpisodeID = %s"
-
         cursor.execute(query, (episode_id,))
+
+        # Reset listen duration to 0
+        if database_type == "postgresql":
+            history_query = '''
+                UPDATE "UserEpisodeHistory"
+                SET ListenDuration = 0, ListenDate = NOW()
+                WHERE UserID = %s AND EpisodeID = %s
+            '''
+        else:
+            history_query = '''
+                UPDATE UserEpisodeHistory
+                SET ListenDuration = 0, ListenDate = NOW()
+                WHERE UserID = %s AND EpisodeID = %s
+            '''
+        cursor.execute(history_query, (user_id, episode_id))
+
         cnx.commit()
     finally:
         cursor.close()
@@ -3623,39 +3675,52 @@ def get_local_episode_times(cnx, database_type, user_id):
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
 
-    # Correct SQL query to fetch all listen durations along with necessary URLs for the given user
     if database_type == "postgresql":
         cursor.execute("""
         SELECT
             e.EpisodeURL,
             p.FeedURL,
             ueh.ListenDuration,
-            e.EpisodeDuration
+            e.EpisodeDuration,
+            e.Completed
         FROM "UserEpisodeHistory" ueh
         JOIN "Episodes" e ON ueh.EpisodeID = e.EpisodeID
         JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
         WHERE ueh.UserID = %s
-        """, (user_id,))  # Ensuring the user_id is passed as a tuple
+        """, (user_id,))
     else:  # MySQL or MariaDB
         cursor.execute("""
         SELECT
             e.EpisodeURL,
             p.FeedURL,
             ueh.ListenDuration,
-            e.EpisodeDuration
+            e.EpisodeDuration,
+            e.Completed
         FROM UserEpisodeHistory ueh
         JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
         JOIN Podcasts p ON e.PodcastID = p.PodcastID
         WHERE ueh.UserID = %s
-        """, (user_id,))  # Ensuring the user_id is passed as a tuple
+        """, (user_id,))
 
-    episode_times = [{
-        "episode_url": row["EpisodeURL"] if database_type == "postgresql" else row["EpisodeURL"],
-        "podcast_url": row["FeedURL"] if database_type == "postgresql" else row["FeedURL"],
-        "listen_duration": row["ListenDuration"] if database_type == "postgresql" else row["ListenDuration"],
-        "episode_duration": row["EpisodeDuration"] if database_type == "postgresql" else row["EpisodeDuration"]
-    } for row in cursor.fetchall()]
-
+    # Handle psycopg3's inconsistent return types
+    episode_times = []
+    for row in cursor.fetchall():
+        if isinstance(row, dict):
+            episode_times.append({
+                "episode_url": row["episodeurl"],
+                "podcast_url": row["feedurl"],
+                "listen_duration": row["listenduration"],
+                "episode_duration": row["episodeduration"],
+                "completed": row["completed"]
+            })
+        else:
+            episode_times.append({
+                "episode_url": row[0],
+                "podcast_url": row[1],
+                "listen_duration": row[2],
+                "episode_duration": row[3],
+                "completed": row[4]
+            })
     cursor.close()
     return episode_times
 
@@ -7100,17 +7165,30 @@ def get_gpodder_settings(database_type, cnx, user_id):
 
 def get_nextcloud_settings(database_type, cnx, user_id):
     cursor = cnx.cursor()
-    query = (
-        'SELECT GpodderUrl, GpodderToken, GpodderLoginName FROM "Users" WHERE UserID = %s' if database_type == "postgresql" else
-        "SELECT GpodderUrl, GpodderToken, GpodderLoginName FROM Users WHERE UserID = %s"
-    )
-    cursor.execute(query, (user_id,))
-    result = cursor.fetchone()
-    cursor.close()
-    if result and result[0] and result[1] and result[2]:
-        return result[0], result[1], result[2]
-    else:
+    try:
+        query = (
+            'SELECT GpodderUrl, GpodderToken, GpodderLoginName FROM "Users" WHERE UserID = %s' if database_type == "postgresql" else
+            "SELECT GpodderUrl, GpodderToken, GpodderLoginName FROM Users WHERE UserID = %s"
+        )
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+
+        if result:
+            if isinstance(result, dict):
+                # Handle PostgreSQL dictionary result
+                url = result.get('gpodderurl')
+                token = result.get('gpoddertoken')
+                login = result.get('gpodderloginname')
+            else:
+                # Handle tuple result
+                url, token, login = result[0], result[1], result[2]
+
+            if url and token and login:
+                return url, token, login
+
         return None, None, None
+    finally:
+        cursor.close()
 
 def get_gpodder_type(cnx, database_type, user_id):
     cursor = cnx.cursor()
@@ -7336,11 +7414,6 @@ def remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login,
         print(f"Response body: {response.text}")
 
 def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login, pod_sync_type):
-    from cryptography.fernet import Fernet
-    from requests.auth import HTTPBasicAuth
-    import logging
-    from requests.exceptions import RequestException
-
     # Set up logging
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
@@ -7462,6 +7535,7 @@ def process_nextcloud_episode_actions(gpodder_url, gpodder_token, cnx, database_
     logger = logging.getLogger(__name__)
 
     try:
+        # Use the correct Nextcloud endpoint
         response = requests.get(
             f"{gpodder_url}/index.php/apps/gpoddersync/episode_action",
             headers={"Authorization": f"Bearer {gpodder_token}"}
@@ -7469,19 +7543,44 @@ def process_nextcloud_episode_actions(gpodder_url, gpodder_token, cnx, database_
         response.raise_for_status()
         episode_actions = response.json()
 
+        cursor = cnx.cursor()
+
         for action in episode_actions.get('actions', []):
             try:
                 if action["action"].lower() in ["play", "update_time"]:
                     if "position" in action and action["position"] != -1:
                         episode_id = get_episode_id_by_url(cnx, database_type, action["episode"])
                         if episode_id:
+                            # Update listen duration
                             record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
+
+                            # Check for completion, mirroring gPodder logic
+                            if ("total" in action and action["total"] > 0 and
+                                action["position"] >= action["total"]):
+                                if database_type == "postgresql":
+                                    update_query = '''
+                                        UPDATE "Episodes"
+                                        SET Completed = TRUE
+                                        WHERE EpisodeID = %s
+                                    '''
+                                else:
+                                    update_query = '''
+                                        UPDATE Episodes
+                                        SET Completed = TRUE
+                                        WHERE EpisodeID = %s
+                                    '''
+                                cursor.execute(update_query, (episode_id,))
+                                cnx.commit()
+                                logger.info(f"Marked episode {episode_id} as completed")
+
                             logger.info(f"Recorded listen duration for episode {episode_id}")
                         else:
                             logger.warning(f"No episode ID found for URL {action['episode']}")
             except Exception as e:
                 logger.error(f"Error processing episode action {action}: {str(e)}")
                 continue
+
+        cursor.close()
     except Exception as e:
         logger.error(f"Error fetching episode actions: {str(e)}")
         raise
@@ -7494,16 +7593,24 @@ def sync_nextcloud_episode_times(gpodder_url, gpodder_login, gpodder_token, cnx,
         update_actions = []
 
         for episode_time in local_episode_times:
-            update_actions.append({
-                "podcast": episode_time["podcast_url"],
-                "episode": episode_time["episode_url"],
-                "action": "play",
-                "timestamp": current_timestamp(),
-                "position": episode_time["listen_duration"],
-                "started": 0,
-                "total": episode_time["episode_duration"],
-                "guid": generate_guid(episode_time)
-            })
+            # Only include episodes with valid duration data
+            if episode_time["episode_duration"] and episode_time["listen_duration"]:
+                # If episode is completed, set position equal to total duration
+                position = (episode_time["episode_duration"]
+                          if episode_time["completed"]
+                          else episode_time["listen_duration"])
+
+                action = {
+                    "podcast": episode_time["podcast_url"],
+                    "episode": episode_time["episode_url"],
+                    "action": "play",
+                    "timestamp": current_timestamp(),
+                    "position": position,
+                    "started": 0,
+                    "total": episode_time["episode_duration"],
+                    "guid": generate_guid(episode_time)
+                }
+                update_actions.append(action)
 
         # Split into chunks and process
         update_actions_chunks = [
@@ -7575,7 +7682,12 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
             query = "SELECT FeedURL FROM Podcasts WHERE UserID = %s"
 
         cursor.execute(query, (user_id,))
-        local_podcasts = set(row[0] for row in cursor.fetchall())
+        local_podcasts = set()
+        for row in cursor.fetchall():
+            if isinstance(row, dict):
+                local_podcasts.add(row["feedurl"])  # PostgreSQL dict case
+            else:
+                local_podcasts.add(row[0])  # Tuple case
 
         podcasts_to_add = gpodder_podcasts_add - local_podcasts
         podcasts_to_remove = gpodder_podcasts_remove & local_podcasts
@@ -7656,7 +7768,63 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
         logger.error(f"Major error in refresh_gpodder_subscription: {str(e)}")
         raise
 
+def sync_local_episode_times(gpodder_url, gpodder_login, auth, cnx, database_type, user_id, UPLOAD_BULK_SIZE=30):
+    logger = logging.getLogger(__name__)
+
+    try:
+        local_episode_times = get_local_episode_times(cnx, database_type, user_id)
+        update_actions = []
+
+        for episode_time in local_episode_times:
+            # Only include episodes with valid duration data
+            if episode_time["episode_duration"] and episode_time["listen_duration"]:
+                # If episode is completed, set position to total duration
+                position = (episode_time["episode_duration"]
+                          if episode_time["completed"]
+                          else episode_time["listen_duration"])
+
+                action = {
+                    "podcast": episode_time["podcast_url"],
+                    "episode": episode_time["episode_url"],
+                    "action": "play",
+                    "timestamp": current_timestamp(),
+                    "position": position,
+                    "started": 0,
+                    "total": episode_time["episode_duration"]
+                }
+
+                # Add guid if available
+                if episode_time.get("guid"):
+                    action["guid"] = episode_time["guid"]
+
+                update_actions.append(action)
+
+        # Split into chunks and process
+        update_actions_chunks = [
+            update_actions[i:i + UPLOAD_BULK_SIZE]
+            for i in range(0, len(update_actions), UPLOAD_BULK_SIZE)
+        ]
+
+        for chunk in update_actions_chunks:
+            try:
+                response = requests.post(
+                    f"{gpodder_url}/api/2/episodes/{gpodder_login}.json",
+                    json=chunk,
+                    auth=auth,
+                    headers={"Accept": "application/json"}
+                )
+                response.raise_for_status()
+                logger.info(f"Successfully synced {len(chunk)} episode actions")
+            except Exception as e:
+                logger.error(f"Error uploading chunk: {str(e)}")
+                continue
+
+    except Exception as e:
+        logger.error(f"Error syncing local episode times: {str(e)}")
+        raise
+
 def process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type, user_id):
+    """Process incoming episode actions from gPodder"""
     logger = logging.getLogger(__name__)
 
     try:
@@ -7667,61 +7835,44 @@ def process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type
         episode_actions_response.raise_for_status()
         episode_actions = episode_actions_response.json()
 
+        cursor = cnx.cursor()
+
         for action in episode_actions.get('actions', []):
             try:
                 if action["action"].lower() in ["play", "update_time"]:
                     if "position" in action and action["position"] != -1:
                         episode_id = get_episode_id_by_url(cnx, database_type, action["episode"])
                         if episode_id:
+                            # Update listen duration
                             record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
+
+                            # Check for completion
+                            if ("total" in action and action["total"] > 0 and
+                                action["position"] >= action["total"]):
+                                if database_type == "postgresql":
+                                    update_query = '''
+                                        UPDATE "Episodes"
+                                        SET Completed = TRUE
+                                        WHERE EpisodeID = %s
+                                    '''
+                                else:
+                                    update_query = '''
+                                        UPDATE Episodes
+                                        SET Completed = TRUE
+                                        WHERE EpisodeID = %s
+                                    '''
+                                cursor.execute(update_query, (episode_id,))
+                                cnx.commit()
+                                logger.info(f"Marked episode {episode_id} as completed")
+
             except Exception as e:
                 logger.error(f"Error processing episode action {action}: {str(e)}")
                 continue
+
+        cursor.close()
+
     except Exception as e:
         logger.error(f"Error fetching episode actions: {str(e)}")
-        raise
-
-def sync_local_episode_times(gpodder_url, gpodder_login, auth, cnx, database_type, user_id, UPLOAD_BULK_SIZE=30):
-    logger = logging.getLogger(__name__)
-
-    try:
-        local_episode_times = get_local_episode_times(cnx, database_type, user_id)
-        update_actions = []
-
-        for episode_time in local_episode_times:
-            update_actions.append({
-                "podcast": episode_time["podcast_url"],
-                "episode": episode_time["episode_url"],
-                "action": "play",
-                "timestamp": current_timestamp(),
-                "position": episode_time["listen_duration"],
-                "started": 0,
-                "total": episode_time["episode_duration"],
-                "guid": generate_guid(episode_time)
-            })
-
-        # Split into chunks and process
-        update_actions_chunks = [
-            update_actions[i:i + UPLOAD_BULK_SIZE]
-            for i in range(0, len(update_actions), UPLOAD_BULK_SIZE)
-        ]
-
-        for chunk in update_actions_chunks:
-            try:
-                url = f"{gpodder_url}/api/2/episodes/{gpodder_login}.json"
-                response = requests.post(
-                    url,
-                    json=chunk,
-                    auth=auth,
-                    headers={"Accept": "application/json"}
-                )
-                response.raise_for_status()
-            except Exception as e:
-                logger.error(f"Error uploading chunk: {str(e)}")
-                continue
-
-    except Exception as e:
-        logger.error(f"Error syncing local episode times: {str(e)}")
         raise
 
 
