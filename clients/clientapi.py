@@ -2370,8 +2370,9 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             })
 
             # Refresh this podcast
+            print(f'is it youtube?: {is_youtube}')
             try:
-                if is_youtube:
+                if is_youtube is True:
                     # Extract channel ID from feed URL
                     channel_id = feed_url.split('channel/')[-1] if 'channel/' in feed_url else feed_url
                     channel_id = channel_id.split('/')[0].split('?')[0]
