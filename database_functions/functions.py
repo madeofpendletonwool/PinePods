@@ -27,6 +27,7 @@ from typing import List, Optional
 import pytz
 from yt_dlp import YoutubeDL
 from database_functions import youtube
+from database_functions import mp3_metadata
 import logging
 from cryptography.fernet import Fernet
 from requests.exceptions import RequestException
@@ -1930,26 +1931,26 @@ def return_selected_episode(database_type, cnx, user_id, title, url):
     return episodes
 
 
-
 def return_pods(database_type, cnx, user_id):
     if database_type == "postgresql":
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
-    else:  # Assuming MariaDB/MySQL if not PostgreSQL
+    else:
         cursor = cnx.cursor(dictionary=True)
 
+    # Base query remains the same but handles nulls and empty strings with NULLIF
     if database_type == "postgresql":
         query = """
             SELECT
                 p.PodcastID,
-                p.PodcastName,
-                p.ArtworkURL,
-                p.Description,
-                p.EpisodeCount,
-                p.WebsiteURL,
-                p.FeedURL,
-                p.Author,
-                COALESCE(p.Categories, '') as Categories,
+                COALESCE(NULLIF(p.PodcastName, ''), 'Unknown Podcast') as PodcastName,
+                COALESCE(NULLIF(p.ArtworkURL, ''), '/static/assets/logo_random/11.jpeg') as ArtworkURL,
+                COALESCE(NULLIF(p.Description, ''), 'No description available') as Description,
+                COALESCE(p.EpisodeCount, 0) as EpisodeCount,
+                COALESCE(NULLIF(p.WebsiteURL, ''), '') as WebsiteURL,
+                COALESCE(NULLIF(p.FeedURL, ''), '') as FeedURL,
+                COALESCE(NULLIF(p.Author, ''), 'Unknown Author') as Author,
+                COALESCE(NULLIF(p.Categories, ''), '') as Categories,
                 COALESCE(p.Explicit, FALSE) as Explicit,
                 COALESCE(p.PodcastIndexID, 0) as PodcastIndexID,
                 COUNT(DISTINCT h.UserEpisodeHistoryID) as play_count,
@@ -1968,18 +1969,18 @@ def return_pods(database_type, cnx, user_id):
             WHERE p.UserID = %s
             GROUP BY p.PodcastID
         """
-    else:  # MySQL or MariaDB
+    else:  # MySQL/MariaDB version
         query = """
             SELECT
                 p.PodcastID,
-                p.PodcastName,
-                p.ArtworkURL,
-                p.Description,
-                p.EpisodeCount,
-                p.WebsiteURL,
-                p.FeedURL,
-                p.Author,
-                COALESCE(p.Categories, '') as Categories,
+                COALESCE(NULLIF(p.PodcastName, ''), 'Unknown Podcast') as PodcastName,
+                COALESCE(NULLIF(p.ArtworkURL, ''), '/static/assets/logo_random/11.jpeg') as ArtworkURL,
+                COALESCE(NULLIF(p.Description, ''), 'No description available') as Description,
+                COALESCE(p.EpisodeCount, 0) as EpisodeCount,
+                COALESCE(NULLIF(p.WebsiteURL, ''), '') as WebsiteURL,
+                COALESCE(NULLIF(p.FeedURL, ''), '') as FeedURL,
+                COALESCE(NULLIF(p.Author, ''), 'Unknown Author') as Author,
+                COALESCE(NULLIF(p.Categories, ''), '') as Categories,
                 COALESCE(p.Explicit, FALSE) as Explicit,
                 COALESCE(p.PodcastIndexID, 0) as PodcastIndexID,
                 COUNT(DISTINCT h.UserEpisodeHistoryID) as play_count,
@@ -1999,19 +2000,48 @@ def return_pods(database_type, cnx, user_id):
             GROUP BY p.PodcastID
         """
 
-    cursor.execute(query, (user_id, user_id, user_id))
-    rows = cursor.fetchall()
-    cursor.close()
+    try:
+        cursor.execute(query, (user_id, user_id, user_id))
+        rows = cursor.fetchall()
+    except Exception as e:
+        logging.error(f"Database error in return_pods: {str(e)}")
+        return []
+    finally:
+        cursor.close()
 
     if not rows:
-        return None
+        return []
 
-    if database_type != "postgresql":
-        # Convert column names to lowercase for MySQL
-        rows = [{k.lower(): v for k, v in row.items()} for row in rows]
+    # Process all rows, regardless of database type
+    processed_rows = []
+    for row in rows:
+        # Convert to lowercase keys for consistency
+        processed_row = {k.lower(): v for k, v in row.items()}
 
-    return rows
+        # Define default values
+        defaults = {
+            'podcastname': 'Unknown Podcast',
+            'artworkurl': '/static/assets/logo_random/11.jpeg',
+            'description': 'No description available',
+            'episodecount': 0,
+            'websiteurl': '',
+            'feedurl': '',
+            'author': 'Unknown Author',
+            'categories': '',
+            'explicit': False,
+            'podcastindexid': 0,
+            'play_count': 0,
+            'episodes_played': 0
+        }
 
+        # Apply defaults for any missing or null values
+        for key, default_value in defaults.items():
+            if key not in processed_row or processed_row[key] is None or processed_row[key] == "":
+                processed_row[key] = default_value
+
+        processed_rows.append(processed_row)
+
+    return processed_rows
 
 def check_self_service(cnx, database_type):
     cursor = cnx.cursor()
@@ -2628,92 +2658,129 @@ def user_history(cnx, database_type, user_id):
     finally:
         cursor.close()
 
-def download_podcast(cnx, database_type, return_person_episodes, user_id):
+def download_podcast(cnx, database_type, episode_id, user_id):  # Fixed parameter name
     cursor = cnx.cursor()
-
-    # Check if the episode is already downloaded
+    # First, get all the episode details we need
     if database_type == "postgresql":
-        query = 'SELECT 1 FROM "DownloadedEpisodes" WHERE EpisodeID = %s AND UserID = %s'
-    else:  # MySQL or MariaDB
-        query = "SELECT 1 FROM DownloadedEpisodes WHERE EpisodeID = %s AND UserID = %s"
-    cursor.execute(query, (episode_id, user_id))
+        query = '''
+            SELECT
+                e.EpisodeID,
+                e.PodcastID,
+                e.EpisodeTitle,
+                e.EpisodePubDate,
+                e.EpisodeURL,
+                e.EpisodeDescription,
+                e.EpisodeArtwork,
+                p.PodcastName,
+                p.Author,
+                p.ArtworkURL
+            FROM "Episodes" e
+            JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
+            WHERE e.EpisodeID = %s
+        '''
+    else:
+        query = '''
+            SELECT
+                e.EpisodeID,
+                e.PodcastID,
+                e.EpisodeTitle,
+                e.EpisodePubDate,
+                e.EpisodeURL,
+                e.EpisodeDescription,
+                e.EpisodeArtwork,
+                p.PodcastName,
+                p.Author,
+                p.ArtworkURL
+            FROM Episodes e
+            JOIN Podcasts p ON e.PodcastID = p.PodcastID
+            WHERE e.EpisodeID = %s
+        '''
+
+    cursor.execute(query, (episode_id,))
     result = cursor.fetchone()
-    if result:
-        # Episode already downloaded
+
+    if result is None:
         cursor.close()
-        return True
-    # Get the EpisodeID and PodcastID from the Episodes table
-    if database_type == "postgresql":
-        query = 'SELECT PodcastID FROM "Episodes" WHERE EpisodeID = %s'
-    else:  # MySQL or MariaDB
-        query = "SELECT PodcastID FROM Episodes WHERE EpisodeID = %s"
-    cursor.execute(query, (episode_id,))
-    result = cursor.fetchone()
-    if result is None:
-        # Episode not found
-        return False
-
-    podcast_id = get_value(result, "PodcastID")
-    # Get the EpisodeURL from the Episodes table
-    if database_type == "postgresql":
-        query = 'SELECT EpisodeURL FROM "Episodes" WHERE EpisodeID = %s'
-    else:  # MySQL or MariaDB
-        query = "SELECT EpisodeURL FROM Episodes WHERE EpisodeID = %s"
-    cursor.execute(query, (episode_id,))
-    result = cursor.fetchone()
-    if result is None:
-        # Episode not found
         return False
 
     episode_url = get_value(result, "EpisodeURL")
-    # Get the PodcastName from the Podcasts table
-    if database_type == "postgresql":
-        query = 'SELECT PodcastName FROM "Podcasts" WHERE PodcastID = %s'
-    else:  # MySQL or MariaDB
-        query = "SELECT PodcastName FROM Podcasts WHERE PodcastID = %s"
-    cursor.execute(query, (podcast_id,))
-    result = cursor.fetchone()
-    if result is None:
-        # Podcast not found
-        return False
-
     podcast_name = get_value(result, "PodcastName")
-    # Create a directory named after the podcast, inside the main downloads directory
+    episode_title = get_value(result, "EpisodeTitle")
+    pub_date = get_value(result, "EpisodePubDate")
+
+    # Format the publication date
+    pub_date_str = pub_date.strftime("%Y-%m-%d")
+
+    # Clean filenames of invalid characters
+    podcast_name = "".join(c for c in podcast_name if c.isalnum() or c in (' ', '-', '_')).strip()
+    episode_title = "".join(c for c in episode_title if c.isalnum() or c in (' ', '-', '_')).strip()
+
+    # Create the download directory
     download_dir = os.path.join("/opt/pinepods/downloads", podcast_name)
     os.makedirs(download_dir, exist_ok=True)
-    # Generate the episode filename based on episode ID and user ID
-    filename = f"{user_id}-{episode_id}.mp3"
+
+    # Generate filename with enhanced details
+    filename = f"{pub_date_str}_{episode_title}_{user_id}-{episode_id}.mp3"
     file_path = os.path.join(download_dir, filename)
+
+    # Check if already downloaded
+    if database_type == "postgresql":
+        query = 'SELECT 1 FROM "DownloadedEpisodes" WHERE EpisodeID = %s AND UserID = %s'
+    else:
+        query = "SELECT 1 FROM DownloadedEpisodes WHERE EpisodeID = %s AND UserID = %s"
+
+    cursor.execute(query, (episode_id, user_id))
+    if cursor.fetchone():
+        cursor.close()
+        return True
+
+    # Download the file
     response = requests.get(episode_url, stream=True)
     response.raise_for_status()
-    # Get the current date and time for DownloadedDate
     downloaded_date = datetime.datetime.now()
-    # Get the file size from the Content-Length header
     file_size = int(response.headers.get("Content-Length", 0))
-    # Write the file to disk
+
     with open(file_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=1024):
             f.write(chunk)
-    # Insert a new row into the DownloadedEpisodes table
+
+    # After successful download, add metadata
+    metadata = {
+        'title': episode_title,
+        'artist': get_value(result, "Author"),
+        'album': podcast_name,
+        'date': pub_date_str,
+        'artwork_url': (get_value(result, "EpisodeArtwork") or
+                        get_value(result, "ArtworkURL"))
+    }
+
+    mp3_metadata.add_podcast_metadata(file_path, metadata)
+
+    # Update database
     if database_type == "postgresql":
-        query = ('INSERT INTO "DownloadedEpisodes" '
-                 '(UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation) '
-                 'VALUES (%s, %s, %s, %s, %s)')
-    else:  # MySQL or MariaDB
-        query = ("INSERT INTO DownloadedEpisodes "
-                 "(UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation) "
-                 "VALUES (%s, %s, %s, %s, %s)")
+        query = '''
+            INSERT INTO "DownloadedEpisodes"
+            (UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation)
+            VALUES (%s, %s, %s, %s, %s)
+        '''
+    else:
+        query = '''
+            INSERT INTO DownloadedEpisodes
+            (UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation)
+            VALUES (%s, %s, %s, %s, %s)
+        '''
+
     cursor.execute(query, (user_id, episode_id, downloaded_date, file_size, file_path))
-    # Update UserStats table to increment EpisodesDownloaded count
+
+    # Update download count
     if database_type == "postgresql":
-        query = ('UPDATE "UserStats" SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s')
-    else:  # MySQL or MariaDB
-        query = ("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s")
+        query = 'UPDATE "UserStats" SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s'
+    else:
+        query = "UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s"
+
     cursor.execute(query, (user_id,))
     cnx.commit()
-
-    if cursor:
-        cursor.close()
+    cursor.close()
 
     return True
 

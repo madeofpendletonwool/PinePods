@@ -30,3 +30,4 @@ redis
 feedgenerator
 yt-dlp
 beautifulsoup4
+mutagen
