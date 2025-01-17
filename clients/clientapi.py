@@ -2641,25 +2641,41 @@ async def api_remove_podcast_route_id(data: RemovePodcastIDData = Body(...),
 
 @app.get("/api/data/return_pods/{user_id}")
 async def api_return_pods(user_id: int, cnx=Depends(get_database_connection),
-                          api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-    if not is_valid_key:
-        raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                         api_key: str = Depends(get_api_key_from_header)):
+    try:
+        is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+        if not is_valid_key:
+            raise HTTPException(status_code=403,
+                              detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
-    is_web_key = api_key == base_webkey.web_key
+        is_web_key = api_key == base_webkey.web_key
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        if key_id == user_id or is_web_key:
+            pods = database_functions.functions.return_pods(database_type, cnx, user_id)
 
-    # Allow the action if the API key belongs to the user or it's the web API key
-    if key_id == user_id or is_web_key:
-        pods = database_functions.functions.return_pods(database_type, cnx, user_id)
-        return {"pods": pods}
-    else:
-        raise HTTPException(status_code=403,
-                            detail="You can only return pods for yourself!")
+            # Return empty list if no podcasts found
+            if not pods:
+                return {"pods": []}
 
+            # Filter out any None values that might have slipped through
+            cleaned_pods = []
+            for pod in pods:
+                if pod and isinstance(pod, dict):
+                    cleaned_pod = {
+                        k: v if v is not None else ""
+                        for k, v in pod.items()
+                    }
+                    cleaned_pods.append(cleaned_pod)
+
+            return {"pods": cleaned_pods}
+        else:
+            raise HTTPException(status_code=403,
+                              detail="You can only return pods for yourself!")
+
+    except Exception as e:
+        logging.error(f"Error in api_return_pods: {str(e)}")
+        return {"pods": [], "error": "An error occurred while retrieving podcasts"}
 
 @app.get("/api/data/user_history/{user_id}")
 async def api_user_history(user_id: int, cnx=Depends(get_database_connection),

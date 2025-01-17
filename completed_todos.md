@@ -52,10 +52,11 @@ Version 0.7.3
 - [ ] Container can be ran as host machine user
 - [ ] Nextcloud Sync Fixed
 - [ ] Episode Completion Status is now pushed to Nextcloud/Gpodder
-- [ ] Adjusted Downloaded Episode titles to be more descriptive
+- [x] Adjusted Downloaded Episode titles to be more descriptive - Also added metadata
 - [ ] Fixed issue with news feed adding
 - [ ] Additional Podcast parsing when things are missing
 - [ ] Add pinepods news feed to any admin rather than hard id of 2
+- [ ] Fix recent episodes so it handles incompletes better
 
 Version 0.7.2
 
