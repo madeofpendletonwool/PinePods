@@ -703,16 +703,29 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
         if not all(hasattr(entry, attr) for attr in ["title", "summary", "enclosures"]):
             continue
 
-        # Extract necessary information
-        parsed_title = entry.title
-        parsed_description = entry.get('content', [{}])[0].get('value', entry.summary)
-        parsed_audio_url = entry.enclosures[0].href if entry.enclosures else ""
-        parsed_release_datetime = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d %H:%M:%S")
+        # Title is required - if missing, skip this episode
+        if not hasattr(entry, 'title') or not entry.title:
+            continue
 
-        # Artwork prioritizing episode-specific artwork, then falling back to the feed's artwork if necessary
+        parsed_title = entry.title
+
+        # Description - use placeholder if missing
+        parsed_description = entry.get('content', [{}])[0].get('value') or entry.get('summary') or "No description available"
+
+        # Audio URL can be empty (non-audio posts are allowed)
+        parsed_audio_url = entry.enclosures[0].href if entry.enclosures else ""
+
+        # Release date - use current time as fallback if parsing fails
+        try:
+            parsed_release_datetime = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d %H:%M:%S")
+        except (AttributeError, ValueError):
+            parsed_release_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Artwork - use placeholders based on feed name/episode number
         parsed_artwork_url = (entry.get('itunes_image', {}).get('href') or
                             getattr(entry, 'image', {}).get('href') or
-                            artwork_url)
+                            artwork_url or  # This is the podcast's default artwork
+                            '/static/assets/default-episode.png')  # Final fallback artwork
 
         # Duration parsing
         parsed_duration = 0
@@ -1944,7 +1957,7 @@ def return_pods(database_type, cnx, user_id):
             SELECT
                 p.PodcastID,
                 COALESCE(NULLIF(p.PodcastName, ''), 'Unknown Podcast') as PodcastName,
-                COALESCE(NULLIF(p.ArtworkURL, ''), '/static/assets/logo_random/11.jpeg') as ArtworkURL,
+                COALESCE(NULLIF(p.ArtworkURL, ''), '/static/assets/default-podcast.png') as ArtworkURL,
                 COALESCE(NULLIF(p.Description, ''), 'No description available') as Description,
                 COALESCE(p.EpisodeCount, 0) as EpisodeCount,
                 COALESCE(NULLIF(p.WebsiteURL, ''), '') as WebsiteURL,
@@ -1974,7 +1987,7 @@ def return_pods(database_type, cnx, user_id):
             SELECT
                 p.PodcastID,
                 COALESCE(NULLIF(p.PodcastName, ''), 'Unknown Podcast') as PodcastName,
-                COALESCE(NULLIF(p.ArtworkURL, ''), '/static/assets/logo_random/11.jpeg') as ArtworkURL,
+                COALESCE(NULLIF(p.ArtworkURL, ''), '/static/assets/default-podcast.png') as ArtworkURL,
                 COALESCE(NULLIF(p.Description, ''), 'No description available') as Description,
                 COALESCE(p.EpisodeCount, 0) as EpisodeCount,
                 COALESCE(NULLIF(p.WebsiteURL, ''), '') as WebsiteURL,
@@ -2708,8 +2721,26 @@ def download_podcast(cnx, database_type, episode_id, user_id):  # Fixed paramete
     episode_title = get_value(result, "EpisodeTitle")
     pub_date = get_value(result, "EpisodePubDate")
 
-    # Format the publication date
-    pub_date_str = pub_date.strftime("%Y-%m-%d")
+    # Get user's time and date preferences
+    timezone, time_format, date_format = get_time_info(database_type, cnx, user_id)
+
+    # Use default format if user preferences aren't set
+    if not date_format:
+        date_format = "ISO"
+
+    # Format the publication date based on user preference
+    date_format_map = {
+        "ISO": "%Y-%m-%d",
+        "USA": "%m/%d/%Y",
+        "EUR": "%d.%m.%Y",
+        "JIS": "%Y-%m-%d",
+        "MDY": "%m-%d-%Y",
+        "DMY": "%d-%m-%Y",
+        "YMD": "%Y-%m-%d",
+    }
+
+    date_format_str = date_format_map.get(date_format, "%Y-%m-%d")  # Default to ISO if format not found
+    pub_date_str = pub_date.strftime(date_format_str)
 
     # Clean filenames of invalid characters
     podcast_name = "".join(c for c in podcast_name if c.isalnum() or c in (' ', '-', '_')).strip()
@@ -2731,6 +2762,29 @@ def download_podcast(cnx, database_type, episode_id, user_id):  # Fixed paramete
 
     cursor.execute(query, (episode_id, user_id))
     if cursor.fetchone():
+        cursor.close()
+        return True
+
+    if os.path.exists(file_path):
+        # File exists but not in database, let's add the database entry
+        downloaded_date = datetime.datetime.fromtimestamp(os.path.getctime(file_path))
+        file_size = os.path.getsize(file_path)
+
+        if database_type == "postgresql":
+            query = '''
+                INSERT INTO "DownloadedEpisodes"
+                (UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation)
+                VALUES (%s, %s, %s, %s, %s)
+            '''
+        else:
+            query = '''
+                INSERT INTO DownloadedEpisodes
+                (UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation)
+                VALUES (%s, %s, %s, %s, %s)
+            '''
+
+        cursor.execute(query, (user_id, episode_id, downloaded_date, file_size, file_path))
+        cnx.commit()
         cursor.close()
         return True
 
