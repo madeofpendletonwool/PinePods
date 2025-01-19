@@ -40,6 +40,8 @@ services:
       VALKEY_PORT: 6379
       # Enable or Disable Debug Mode for additional Printing
       DEBUG_MODE: False
+      PUID: ${UID:-911}
+      PGID: ${GID:-911}
     volumes:
       # Mount the download location on the server if you want to. You could mount a NAS to this folder or something similar
       - /home/user/pinepods/downloads:/opt/pinepods/downloads

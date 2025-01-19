@@ -20,6 +20,7 @@ use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;

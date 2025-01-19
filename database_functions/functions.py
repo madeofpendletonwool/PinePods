@@ -2716,10 +2716,24 @@ def download_podcast(cnx, database_type, episode_id, user_id):  # Fixed paramete
         cursor.close()
         return False
 
-    episode_url = get_value(result, "EpisodeURL")
-    podcast_name = get_value(result, "PodcastName")
-    episode_title = get_value(result, "EpisodeTitle")
-    pub_date = get_value(result, "EpisodePubDate")
+    # Get values based on result type
+    if isinstance(result, dict):
+        episode_url = result.get('episodeurl') or result.get('EpisodeURL')
+        podcast_name = result.get('podcastname') or result.get('PodcastName')
+        episode_title = result.get('episodetitle') or result.get('EpisodeTitle')
+        pub_date = result.get('episodepubdate') or result.get('EpisodePubDate')
+        author = result.get('author') or result.get('Author')
+        episode_artwork = result.get('episodeartwork') or result.get('EpisodeArtwork')
+        artwork_url = result.get('artworkurl') or result.get('ArtworkURL')
+    else:
+        # Match positions from SELECT query
+        episode_url = result[4]      # EpisodeURL
+        podcast_name = result[7]     # PodcastName
+        episode_title = result[2]    # EpisodeTitle
+        pub_date = result[3]         # EpisodePubDate
+        author = result[8]           # Author
+        episode_artwork = result[6]   # EpisodeArtwork
+        artwork_url = result[9]      # ArtworkURL
 
     # Get user's time and date preferences
     timezone, time_format, date_format = get_time_info(database_type, cnx, user_id)
@@ -2749,6 +2763,9 @@ def download_podcast(cnx, database_type, episode_id, user_id):  # Fixed paramete
     # Create the download directory
     download_dir = os.path.join("/opt/pinepods/downloads", podcast_name)
     os.makedirs(download_dir, exist_ok=True)
+    uid = int(os.environ.get('PUID', 1000))
+    gid = int(os.environ.get('PGID', 1000))
+    os.chown(download_dir, uid, gid)
 
     # Generate filename with enhanced details
     filename = f"{pub_date_str}_{episode_title}_{user_id}-{episode_id}.mp3"
@@ -2797,6 +2814,11 @@ def download_podcast(cnx, database_type, episode_id, user_id):  # Fixed paramete
     with open(file_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=1024):
             f.write(chunk)
+
+    uid = int(os.environ.get('PUID', 1000))
+    gid = int(os.environ.get('PGID', 1000))
+    os.chown(file_path, uid, gid)
+    os.chown(download_dir, uid, gid)
 
     # After successful download, add metadata
     metadata = {
@@ -6481,13 +6503,19 @@ def get_time_info(database_type, cnx, user_id):
     cursor.close()
 
     if result:
-        if database_type == "postgresql":
-            return result['timezone'], result['timeformat'], result['dateformat']
+        # Check if result is a dict or tuple
+        if isinstance(result, dict):
+            # Handle both postgres (lowercase) and mysql (uppercase) dict keys
+            timezone = result.get('timezone') or result.get('Timezone')
+            timeformat = result.get('timeformat') or result.get('TimeFormat')
+            dateformat = result.get('dateformat') or result.get('DateFormat')
         else:
-            return result['Timezone'], result['TimeFormat'], result['DateFormat']
+            # Handle tuple result (order should match SELECT query)
+            timezone, timeformat, dateformat = result
+
+        return timezone, timeformat, dateformat
     else:
         return None, None, None
-
 
 
 def first_login_done(database_type, cnx, user_id):

@@ -90,7 +90,10 @@ supervisord -c /pinepods/startup/supervisordebug.conf
 else
 supervisord -c /pinepods/startup/supervisord.conf
 fi
-# Create Admin User
+
+chown -R ${PUID}:${PGID} /opt/pinepods/downloads
+chown -R ${PUID}:${PGID} /opt/pinepods/backups
+
 # python3 /pinepods/create_user.py $DB_USER $DB_PASSWORD $DB_HOST $DB_NAME $DB_PORT "$FULLNAME" "$USERNAME" $EMAIL $PASSWORD
 # Store the PID of supervisord
 child=$!

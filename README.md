@@ -63,6 +63,15 @@ First, the server. You have multiple options for deploying Pinepods:
 You can also choose to use MySQL/MariaDB or Postgres as your database. Examples for both are provided below.
 
 ### Docker Compose
+#### User Permissions
+Pinepods can run with specific user permissions to ensure downloaded files are accessible on the host system. This is controlled through two environment variables:
+- `PUID`: Process User ID (defaults to 1000 if not set)
+- `PGID`: Process Group ID (defaults to 1000 if not set)
+
+To find your user's UID and GID, run:
+```bash
+id -u   # Your UID
+id -g   # Your GID
 
 #### Compose File - PostgreSQL (Recommended)
 ```yaml
@@ -106,6 +115,8 @@ services:
       VALKEY_PORT: 6379
       # Enable or Disable Debug Mode for additional Printing
       DEBUG_MODE: false
+      PUID: ${UID:-911}
+      PGID: ${GID:-911}
     volumes:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
@@ -160,6 +171,9 @@ services:
       VALKEY_PORT: 6379
       # Enable or Disable Debug Mode for additional Printing
       DEBUG_MODE: false
+      PUID: ${UID:-911}
+      PGID: ${GID:-911}
+
     volumes:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads

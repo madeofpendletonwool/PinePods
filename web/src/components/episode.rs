@@ -18,13 +18,16 @@ use crate::requests::pod_req::{
     call_queue_episode, call_remove_downloaded_episode, call_remove_queued_episode,
     call_remove_saved_episode, call_save_episode, DownloadEpisodeRequest, EpisodeInfo,
     EpisodeMetadataResponse, EpisodeRequest, FetchPodcasting2DataRequest,
-    MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest,
+    MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest, Transcript,
 };
 use crate::requests::search_pods::call_parse_podcast_url;
+use regex::Regex;
+use serde::Deserialize;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use web_sys::window;
+use wasm_bindgen_futures::{spawn_local, JsFuture};
 use web_sys::UrlSearchParams;
+use web_sys::{window, Request, RequestInit, Response};
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
@@ -56,6 +59,179 @@ fn get_current_url() -> String {
 
     // Return the original URL if we couldn't get the server name
     current_url
+}
+
+#[derive(Properties, PartialEq)]
+pub struct TranscriptModalProps {
+    pub transcripts: Vec<Transcript>,
+    pub onclose: Callback<()>,
+}
+
+#[function_component(TranscriptModal)]
+pub fn transcript_modal(props: &TranscriptModalProps) -> Html {
+    let transcript_content = use_state(|| None::<String>);
+    let loading = use_state(|| true);
+    let error = use_state(|| None::<String>);
+
+    // Load transcript content when component mounts
+    {
+        let transcripts = props.transcripts.clone();
+        let transcript_content = transcript_content.clone();
+        let loading = loading.clone();
+        let error = error.clone();
+
+        use_effect_with(transcripts, move |transcripts| {
+            if !transcripts.is_empty() {
+                // Clone the transcripts at the beginning to avoid lifetime issues
+                let transcript = transcripts
+                    .iter()
+                    .find(|t| t.mime_type == "text/vtt")
+                    .or_else(|| {
+                        transcripts
+                            .iter()
+                            .find(|t| t.mime_type == "application/srt")
+                    })
+                    .unwrap_or(&transcripts[0])
+                    .clone(); // Clone here to avoid lifetime issues
+
+                let url = transcript.url.clone();
+                let mime_type = transcript.mime_type.clone();
+
+                spawn_local(async move {
+                    let speaker_regex = Regex::new(r"<v\s+[^>]+>").unwrap();
+                    let simple_speaker_regex = Regex::new(r"<v\s+").unwrap();
+
+                    let mut opts = RequestInit::new();
+                    opts.method("GET");
+
+                    let request = Request::new_with_str_and_init(&url, &opts).unwrap();
+
+                    let window = web_sys::window().unwrap();
+                    let resp_value = JsFuture::from(window.fetch_with_request(&request))
+                        .await
+                        .unwrap();
+                    let resp: Response = resp_value.dyn_into().unwrap();
+
+                    match JsFuture::from(resp.text().unwrap()).await {
+                        Ok(text) => {
+                            let text = text.as_string().unwrap();
+                            // Basic parsing to clean up the transcript text
+                            let cleaned_text = match mime_type.as_str() {
+                                "text/html" => {
+                                    // For HTML content, we'll sanitize but preserve formatting
+                                    let div = web_sys::window()
+                                        .unwrap()
+                                        .document()
+                                        .unwrap()
+                                        .create_element("div")
+                                        .unwrap();
+                                    div.set_inner_html(&text);
+                                    div.text_content().unwrap_or_default()
+                                }
+                                _ => {
+                                    // For other formats (VTT, SRT), clean up as before
+                                    text.lines()
+                                        .filter(|line| {
+                                            !line.trim().is_empty()
+                                                && !line.trim().parse::<i32>().is_ok()
+                                                && !line.starts_with("WEBVTT")
+                                                && !line.contains("-->")
+                                        })
+                                        .map(|line| {
+                                            let line = speaker_regex.replace_all(line, "");
+                                            let line = simple_speaker_regex.replace_all(&line, "");
+                                            line.trim().to_string()
+                                        })
+                                        .filter(|line| !line.is_empty())
+                                        .collect::<Vec<_>>()
+                                        .join("\n")
+                                }
+                            };
+
+                            transcript_content.set(Some(cleaned_text));
+                            loading.set(false);
+                        }
+                        Err(e) => {
+                            error.set(Some(format!("Failed to load transcript: {:?}", e)));
+                            loading.set(false);
+                        }
+                    }
+                });
+            }
+
+            move || ()
+        });
+    }
+
+    let content_ref = use_node_ref();
+
+    use_effect_with(
+        (content_ref.clone(), transcript_content.clone()),
+        move |(content_ref, content)| {
+            if let Some(content) = content.as_ref() {
+                if content.contains('<') && content.contains('>') {
+                    if let Some(element) = content_ref.cast::<web_sys::HtmlElement>() {
+                        element.set_inner_html(content);
+                    }
+                }
+            }
+            || ()
+        },
+    );
+
+    html! {
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+             onclick={props.onclose.reform(|_| ())}>
+
+            <div class="item_container-text bg-custom-light dark:bg-custom-dark w-full max-w-3xl max-h-[80vh] rounded-lg shadow-lg p-6 m-4 relative overflow-hidden"
+                 onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+
+                // Close button
+                <button
+                    class="absolute right-4 top-4 p-2 rounded-full"
+                    onclick={props.onclose.reform(|_| ())}
+                >
+                    <i class="ph ph-x text-2xl ml-2"></i>
+                </button>
+
+                <h2 class="text-2xl font-bold mb-4 pr-12 item_container-text">{"Episode Transcript"}</h2>
+
+                <div class="overflow-y-auto max-h-[calc(80vh-8rem)]">
+                    if *loading {
+                        <div class="flex justify-center items-center h-64">
+                            <div class="animate-spin rounded-full h-16 w-16 border-4 border-current border-t-transparent">
+                            </div>
+                        </div>
+                    } else if let Some(err) = &*error {
+                        <div class="text-red-500 dark:text-red-400 p-4">
+                            {err}
+                        </div>
+                    } else if let Some(content) = &*transcript_content {
+                        <div class="space-y-4 item_container-text prose dark:prose-invert max-w-none">
+                            {
+                                // If the content contains HTML tags, render it safely
+                                if content.contains('<') && content.contains('>') {
+                                    html! {
+                                        <div class="transcript-content" ref={content_ref}/>
+                                    }
+                                } else {
+                                    html! {
+                                        <div>
+                                            { for content.split('\n').map(|line| {
+                                                html! {
+                                                    <p>{line}</p>
+                                                }
+                                            })}
+                                        </div>
+                                    }
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
 }
 
 #[function_component(Episode)]
@@ -1432,23 +1608,37 @@ pub fn epsiode() -> Html {
                                                 if let Some(transcript) = &audio_state.episode_page_transcript {
                                                     if !transcript.is_empty() {
                                                         let transcript_clone = transcript.clone();
+                                                        let dispatch = dispatch.clone();
+                                                        let dispatch_call = dispatch.clone();
                                                         html! {
                                                             <>
-                                                            { for transcript_clone.iter().map(|transcript| {
-                                                                let open_in_new_tab = open_in_new_tab.clone();
-                                                                let url = transcript.url.clone();
-                                                                html! {
-                                                                    <div class="header-info pb-2 pt-2">
-                                                                        <button
-                                                                            onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
-                                                                            title={"Transcript"}
-                                                                            class="font-bold item-container-button"
-                                                                        >
-                                                                            { "Episode Transcript" }
-                                                                        </button>
-                                                                    </div>
+                                                            <div class="header-info pb-2 pt-2">
+                                                                <button
+                                                                    onclick={Callback::from(move |_| {
+                                                                        dispatch_call.reduce_mut(|state| {
+                                                                            state.show_transcript_modal = Some(true);
+                                                                            state.current_transcripts = Some(transcript_clone.clone());
+                                                                        });
+                                                                    })}
+                                                                    title={"Transcript"}
+                                                                    class="font-bold item-container-button"
+                                                                >
+                                                                    { "View Transcript" }
+                                                                </button>
+                                                            </div>
+
+                                                            if let Some(show_modal) = state.show_transcript_modal {
+                                                                if show_modal {
+                                                                    <TranscriptModal
+                                                                        transcripts={state.current_transcripts.clone().unwrap_or_default()}
+                                                                        onclose={Callback::from(move |_| {
+                                                                            dispatch.reduce_mut(|state| {
+                                                                                state.show_transcript_modal = Some(false);
+                                                                            });
+                                                                        })}
+                                                                    />
                                                                 }
-                                                            })}
+                                                            }
                                                             </>
                                                         }
                                                     } else {
