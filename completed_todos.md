@@ -10,7 +10,6 @@ Next Minor Version:
 
 - [] Pass podcast info in /episode url in order to allow podcast name click to work - <- It passes the pod info but needs to dynamically load from that as a fallback still
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
-- [] Add additional safety parsing to ensure podcasts will display on pod feed page
 
 Version 0.7.3
 
@@ -49,7 +48,7 @@ Version 0.7.3
   pinepods-1  | [2025-01-13 14:02:29] [WARNING] - psycopg.pool: rolling back returned connection: <psycopg.Connection [INTRANS] (host=db user=postgres database=pinepods_database) at 0x7f746da62450>
 
 
-- [ ] Container can be ran as host machine user
+- [x] Allowed and documented option to download episodes as specific user on host machine
 - [x] Nextcloud Sync Fixed
 - [x] Episode Completion Status is now pushed to Nextcloud/Gpodder
 - [x] Adjusted Downloaded Episode titles to be more descriptive - Also added metadata
@@ -58,6 +57,11 @@ Version 0.7.3
 - [ ] Add pinepods news feed to any admin rather than hard id of 2
 - [x] Fix recent episodes so it handles incompletes better
 - [ ] Check mark episode complete on episode page
+- [ ] Uncomplete/complete - and in prog episode sorting on episode_layout page
+- [ ] Add completed icon and in prog info to episodes on episode_layout page
+- [ ] Check for and fix issues with refreshing again on every page
+- [ ] Fix issue with episodes page opening when clicking show notes while on episodes page already
+- [ ] Fix issues with ability to open episode_layout page from episode page. That includes whether the podcast is added or not
 
 Version 0.7.2
 
