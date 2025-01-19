@@ -125,6 +125,8 @@ pub struct AppState {
     pub youtube_search_results: Option<YouTubeSearchResults>,
     pub selected_youtube_channel: Option<YouTubeChannel>,
     pub is_youtube_loading: Option<bool>,
+    pub show_transcript_modal: Option<bool>,
+    pub current_transcripts: Option<Vec<Transcript>>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
