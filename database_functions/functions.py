@@ -4033,7 +4033,47 @@ def get_user_info(database_type, cnx):
             cursor.close()
 
 
+def get_my_user_info(database_type, cnx, user_id):
+    try:
+        if database_type == "postgresql":
+            cnx.row_factory = dict_row
+            cursor = cnx.cursor()
+            query = '''
+                SELECT UserID, Fullname, Username, Email,
+                       CASE WHEN IsAdmin THEN 1 ELSE 0 END AS IsAdmin
+                FROM "Users"
+                WHERE UserID = %s
+            '''
+        else:  # MySQL or MariaDB
+            cursor = cnx.cursor(dictionary=True)
+            query = """
+                SELECT UserID, Fullname, Username, Email, IsAdmin
+                FROM Users
+                WHERE UserID = %s
+            """
+        cursor.execute(query, (user_id,))
+        row = cursor.fetchone()
 
+        if not row:
+            return None
+
+        # Handle both dict and tuple cases
+        if isinstance(row, dict):
+            # For MySQL, convert keys to lowercase
+            if database_type != "postgresql":
+                return {k.lower(): v if v is not None else "" for k, v in row.items()}
+            return {k: v if v is not None else "" for k, v in row.items()}
+        else:
+            # Handle tuple case by creating dict with known column order
+            columns = ['userid', 'fullname', 'username', 'email', 'isadmin']
+            return {columns[i]: v if v is not None else "" for i, v in enumerate(row)}
+
+    except Exception as e:
+        print(f"Error getting user info: {e}")
+        return None
+    finally:
+        if cursor:
+            cursor.close()
 
 def get_api_info(database_type, cnx, user_id):
     # Check if the user is an admin
