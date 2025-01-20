@@ -119,6 +119,41 @@ pub async fn call_get_user_info(
     }
 }
 
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+#[allow(non_snake_case)]
+pub struct MyUserInfo {
+    pub userid: i32,
+    pub fullname: String,
+    pub username: String,
+    pub email: String,
+    pub isadmin: i32,
+}
+
+pub async fn call_get_my_user_info(
+    server_name: &String,
+    api_key: String,
+    user_id: i32,
+) -> Result<MyUserInfo, anyhow::Error> {
+    let url = format!("{}/api/data/my_user_info/{}", server_name, user_id);
+
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_text = response.text().await?;
+        let user_info: MyUserInfo = serde_json::from_str(&response_text)?;
+        Ok(user_info)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting user info. Status: {}",
+            response.status_text()
+        )))
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug, PartialEq, Clone)]
 pub struct AddSettingsUserRequest {
     pub(crate) fullname: String,

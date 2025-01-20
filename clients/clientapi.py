@@ -2476,6 +2476,41 @@ async def api_get_user_info(is_admin: bool = Depends(check_if_admin), cnx=Depend
     user_info = database_functions.functions.get_user_info(database_type, cnx)
     return user_info
 
+@app.get("/api/data/my_user_info/{user_id}")
+async def api_get_my_user_info(
+    user_id: int,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    try:
+        is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+        if not is_valid_key:
+            raise HTTPException(
+                status_code=403,
+                detail="Your API key is either invalid or does not have correct permission"
+            )
+
+        # Check if the API key belongs to the requested user_id
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        is_web_key = api_key == base_webkey.web_key
+
+        if key_id != user_id and not is_web_key:
+            raise HTTPException(
+                status_code=403,
+                detail="You can only retrieve your own user information!"
+            )
+
+        user_info = database_functions.functions.get_my_user_info(database_type, cnx, user_id)
+        if not user_info:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return user_info
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Error in api_get_my_user_info: {str(e)}")
+        raise HTTPException(status_code=500, detail="An error occurred while retrieving user information")
 
 @app.get("/api/data/check_podcast", response_model=Dict[str, bool])
 async def api_check_podcast(

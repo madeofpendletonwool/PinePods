@@ -516,21 +516,9 @@ For a podcast sync app I recommend Opodsync, but nextcloud sync works great too!
 
 ARM devices are also supported including raspberry pis. The app is shockingly performant on a raspberry pi as well. The only limitation is that a 64bit OS is required on an arm device. Setup is exactly the same, just use the latest tag and docker will auto pull the arm version.
 
-## ToDo pre-1.0
+## ToDo
 
-- [ ] Login with Github integration and cloud logins (OAuth) Potentially utilize https://authjs.dev/ to make this process easy.
-- [ ] Ensure descriptions appear when searching itunes podcasts. This will take some very fast external parsing.
-- [ ] Client sharing. Search network for other clients and play to them Lightweight client. I'm building a terminal based version called Pinepods Firewood, which will do this. Chromecast support will also be added.
-- [ ] Youtube subscriptions. Subscribe to youtube channels to get subscriptions based on the videos. Audio only.
-- [ ] How-to guides on doing things in the app
-- [ ] *Pinepods Firewood*. A light, terminal based client used as a remote streaming device or to just listen to podcasts in your terminal! No GUI
-- [ ] More useful Podcast saving. Perhaps implementing a tagging system for users to make tagged groups of podcasts.
-- [ ] Suggestions page - Create podcasts you might like based on the ones you already added
-- [ ] Playlist Priority - Similar to podcast republic
-- [ ] Better queue interaction. There should be a way to drop down current queue and view without changing route
-- [ ] Implement Podroll to Podcast page when offered
-- [ ] Option to use login images as background throughout app.
-- [ ] Side load audio from the web
+For a list of ToDo's check out the [Road to 1.0](https://github.com/madeofpendletonwool/PinePods/issues/397) issue. Updates and progress can be seen there:
 
 ### Clients to support
 
