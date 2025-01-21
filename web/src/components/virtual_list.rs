@@ -268,10 +268,12 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                     class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg"
                     style={format!("height: {}px; overflow: hidden;", *container_item_height)}
                 >
-                    <img
-                        src={episode.artwork.clone().unwrap_or_default()}
-                        alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())}
-                        class="episode-image"/>
+                    <div class="flex flex-col w-auto object-cover pl-4">
+                        <img
+                            src={episode.artwork.clone().unwrap_or_default()}
+                            alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())}
+                            class="episode-image"/>
+                    </div>
                     <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                         <div class="flex items-center space-x-2 cursor-pointer" onclick={make_shownotes_callback.clone()}>
                             <p class="item_container-text episode-title font-semibold line-clamp-2">

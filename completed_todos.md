@@ -56,11 +56,11 @@ Version 0.7.3
 - [x] Additional Podcast parsing when things are missing
 - [ ] Add pinepods news feed to any admin rather than hard id of 2
 - [x] Fix recent episodes so it handles incompletes better
-- [ ] Check mark episode complete on episode page
-- [ ] Uncomplete/complete - and in prog episode sorting on episode_layout page
-- [ ] Add completed icon and in prog info to episodes on episode_layout page
+- [x] Check mark episode complete on episode page
+- [x] Uncomplete/complete - and in prog episode sorting on episode_layout page
+- [x] Add completed icon and in prog info to episodes on episode_layout page
 - [ ] Check for and fix issues with refreshing again on every page
-- [ ] Fix issue with episodes page opening when clicking show notes while on episodes page already
+- [x] Fix issue with episodes page opening when clicking show notes while on episodes page already
 - [ ] Fix issues with ability to open episode_layout page from episode page. That includes whether the podcast is added or not
 
 Version 0.7.2
