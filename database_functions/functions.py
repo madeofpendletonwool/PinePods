@@ -1654,6 +1654,7 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
             'SELECT "Podcasts".PodcastID, "Podcasts".PodcastName, "Episodes".EpisodeID, '
             '"Episodes".EpisodeTitle, "Episodes".EpisodePubDate, "Episodes".EpisodeDescription, '
             '"Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, '
+            '"Episodes".Completed, '
             '"UserEpisodeHistory".ListenDuration, CAST("Episodes".EpisodeID AS VARCHAR) AS guid '
             'FROM "Episodes" '
             'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
@@ -1666,6 +1667,7 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
             "SELECT Podcasts.PodcastID, Podcasts.PodcastName, Episodes.EpisodeID, "
             "Episodes.EpisodeTitle, Episodes.EpisodePubDate, Episodes.EpisodeDescription, "
             "Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
+            "Episodes.Completed, "
             "UserEpisodeHistory.ListenDuration, CAST(Episodes.EpisodeID AS CHAR) AS guid "
             "FROM Episodes "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "

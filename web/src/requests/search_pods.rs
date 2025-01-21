@@ -240,6 +240,12 @@ pub struct Episode {
     #[serde(rename = "Episodeid")]
     pub episode_id: Option<i32>,
     pub is_youtube: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Completed")]
+    pub completed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "Listenduration")]
+    pub listen_duration: Option<i32>,
 }
 
 #[derive(Deserialize, Debug, PartialEq, Clone, Serialize)]
@@ -619,6 +625,8 @@ pub async fn call_parse_podcast_url(
                     duration: Some(duration.unwrap_or_else(|| "00:00:00".to_string())),
                     episode_id: None,
                     is_youtube: Some(false),
+                    completed: None,
+                    listen_duration: None,
                 }
             })
             .collect();

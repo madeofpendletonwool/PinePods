@@ -385,12 +385,24 @@ pub fn epsiode() -> Html {
         // fetch_episodes(api_key.flatten(), user_id, server_name, dispatch, error, pod_req::call_get_recent_eps);
         let effect_ep_in_db = ep_in_db.clone();
         use_effect_with(
-            (api_key.clone(), user_id.clone(), server_name.clone()),
+            (
+                api_key.clone(),
+                user_id.clone(),
+                server_name.clone(),
+                episode_id.clone(),
+            ),
             move |_| {
                 let error_clone = error.clone();
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
+                    // Reset loading state when episode_id changes
+                    loading_clone.set(true);
+
+                    // Clear previous episode data when transitioning
+                    effect_dispatch.reduce_mut(|state| {
+                        state.fetched_episode = None;
+                    });
                     web_sys::console::log_1(&"Fetching episode...".into());
                     web_sys::console::log_1(
                         &format!("First effect running with episode_id: {:?}", episode_id).into(),
