@@ -136,25 +136,31 @@ def add_custom_podcast(database_type, cnx, feed_url, user_id, username=None, pas
 def add_news_feed_if_not_added(database_type, cnx):
     cursor = cnx.cursor()
     try:
+        # Get all admin users
         if database_type == "postgresql":
-            cursor.execute('SELECT NewsFeedSubscribed FROM "AppSettings"')
+            cursor.execute('SELECT UserID FROM "Users" WHERE IsAdmin = TRUE')
         else:  # MySQL or MariaDB
-            cursor.execute("SELECT NewsFeedSubscribed FROM AppSettings")
+            cursor.execute("SELECT UserID FROM Users WHERE IsAdmin = 1")
 
-        result = cursor.fetchone()
-        if result is None or result[0] == 0:
-            # The news feed has not been added before, so add it
-            feed_url = "https://news.pinepods.online/feed.xml"
-            user_id = 2
-            add_custom_podcast(database_type, cnx, feed_url, user_id)
+        admin_users = cursor.fetchall()
+        feed_url = "https://news.pinepods.online/feed.xml"
 
-            # Update the AppSettings table to indicate that the news feed has been added
+        # Add feed for each admin user if they don't already have it
+        for admin in admin_users:
+            user_id = admin[0]
+
+            # Check if this user already has the news feed
             if database_type == "postgresql":
-                cursor.execute('UPDATE "AppSettings" SET NewsFeedSubscribed = TRUE')
+                cursor.execute('SELECT PodcastID FROM "Podcasts" WHERE UserID = %s AND FeedURL = %s', (user_id, feed_url))
             else:  # MySQL or MariaDB
-                cursor.execute("UPDATE AppSettings SET NewsFeedSubscribed = 1")
+                cursor.execute("SELECT PodcastID FROM Podcasts WHERE UserID = %s AND FeedURL = %s", (user_id, feed_url))
 
-            cnx.commit()
+            existing_feed = cursor.fetchone()
+
+            if existing_feed is None:
+                add_custom_podcast(database_type, cnx, feed_url, user_id)
+                cnx.commit()
+
     except (psycopg.ProgrammingError, mysql.connector.ProgrammingError) as e:
         print(f"Error in add_news_feed_if_not_added: {e}")
         cnx.rollback()

@@ -52,16 +52,19 @@ Version 0.7.3
 - [x] Nextcloud Sync Fixed
 - [x] Episode Completion Status is now pushed to Nextcloud/Gpodder
 - [x] Adjusted Downloaded Episode titles to be more descriptive - Also added metadata
-- [ ] Fixed issue with news feed adding
+- [x] Fixed issue with news feed adding
 - [x] Additional Podcast parsing when things are missing
-- [ ] Add pinepods news feed to any admin rather than hard id of 2
+- [x] Add pinepods news feed to any admin rather than hard id of 2
 - [x] Fix recent episodes so it handles incompletes better
 - [x] Check mark episode complete on episode page
 - [x] Uncomplete/complete - and in prog episode sorting on episode_layout page
 - [x] Add completed icon and in prog info to episodes on episode_layout page
 - [ ] Check for and fix issues with refreshing again on every page
 - [x] Fix issue with episodes page opening when clicking show notes while on episodes page already
-- [ ] Fix issues with ability to open episode_layout page from episode page. That includes whether the podcast is added or not
+- [x] Fix issues with ability to open episode_layout page from episode page. That includes whether the podcast is added or not
+- [ ] Add podcastindexid to episode page url vars - Then pass to dynamic func call
+- [ ] Validate Mysql functions
+- [ ] Build clients and verify
 
 Version 0.7.2
 
