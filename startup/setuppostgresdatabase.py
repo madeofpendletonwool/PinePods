@@ -536,6 +536,49 @@ try:
         )
     """)
 
+    def add_history_constraints_if_not_exists(cursor, cnx):
+        try:
+            # Check/add constraint for UserEpisodeHistory
+            cursor.execute("""
+                SELECT constraint_name
+                FROM information_schema.table_constraints
+                WHERE table_name = 'UserEpisodeHistory'
+                AND constraint_type = 'UNIQUE'
+                AND constraint_name = 'user_episode_unique'
+            """)
+
+            if not cursor.fetchone():
+                cursor.execute("""
+                    ALTER TABLE "UserEpisodeHistory"
+                    ADD CONSTRAINT user_episode_unique
+                    UNIQUE (UserID, EpisodeID)
+                """)
+                print("Added unique constraint to UserEpisodeHistory table.")
+                cnx.commit()
+
+            # Check/add constraint for UserVideoHistory
+            cursor.execute("""
+                SELECT constraint_name
+                FROM information_schema.table_constraints
+                WHERE table_name = 'UserVideoHistory'
+                AND constraint_type = 'UNIQUE'
+                AND constraint_name = 'user_video_unique'
+            """)
+
+            if not cursor.fetchone():
+                cursor.execute("""
+                    ALTER TABLE "UserVideoHistory"
+                    ADD CONSTRAINT user_video_unique
+                    UNIQUE (UserID, VideoID)
+                """)
+                print("Added unique constraint to UserVideoHistory table.")
+                cnx.commit()
+        except Exception as e:
+            print(f"Error adding unique constraints to history tables: {e}")
+
+    # Call this after creating both history tables
+    add_history_constraints_if_not_exists(cursor, cnx)
+
     cursor.execute("""CREATE TABLE IF NOT EXISTS "SavedEpisodes" (
                         SaveID SERIAL PRIMARY KEY,
                         UserID INT,

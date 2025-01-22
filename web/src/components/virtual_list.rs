@@ -239,6 +239,27 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
             };
             let preview_description = strip_images_from_html(&description);
 
+            let make_shownotes_callback = {
+                let history = props.history.clone();
+                let search_dispatch = props.search_dispatch.clone();
+                let podcast_link = props.podcast_link.clone();
+                let podcast_title = props.podcast_title.clone();
+                let episode_id = episode.episode_id.unwrap_or(0);
+                let episode_url = episode.enclosure_url.clone().unwrap_or_default();
+
+                Callback::from(move |_: MouseEvent| {
+                    on_shownotes_click(
+                        history.clone(),
+                        search_dispatch.clone(),
+                        Some(episode_id),
+                        Some(podcast_link.clone()),
+                        Some(episode_url.clone()),
+                        Some(podcast_title.clone()),
+                        true,
+                        None,
+                    ).emit(MouseEvent::new("click").unwrap());
+                })
+            };
 
             html! {
                 <>
@@ -247,12 +268,27 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                     class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg"
                     style={format!("height: {}px; overflow: hidden;", *container_item_height)}
                 >
-                    <img
-                        src={episode.artwork.clone().unwrap_or_default()}
-                        alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())}
-                        class="episode-image"/>
+                    <div class="flex flex-col w-auto object-cover pl-4">
+                        <img
+                            src={episode.artwork.clone().unwrap_or_default()}
+                            alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())}
+                            class="episode-image"/>
+                    </div>
                     <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                        <p class="item_container-text episode-title font-semibold line-clamp-2" onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_shownotes), Some(props.podcast_link.clone()), Some(shownotes_episode_url), Some(props.podcast_title.clone()), db_added, None)}>{ &episode.title.clone().unwrap_or_default() }</p>
+                        <div class="flex items-center space-x-2 cursor-pointer" onclick={make_shownotes_callback.clone()}>
+                            <p class="item_container-text episode-title font-semibold line-clamp-2">
+                                { &episode.title.clone().unwrap_or_default() }
+                            </p>
+                            {
+                                if episode.completed.unwrap_or(false) {
+                                    html! {
+                                        <i class="ph ph-check-circle text-2xl text-green-500"></i>
+                                    }
+                                } else {
+                                    html! {}
+                                }
+                            }
+                        </div>
                         {
                             html! {
                                 <div class="item-description-text cursor-pointer hidden md:block"
@@ -269,11 +305,39 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                             </svg>
                             { format_release.clone() }
                         </span>
+
                         {
-                            html! {
-                                <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
+                            if episode.completed.unwrap_or(false) {
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        <span class="item_container-text">{ formatted_duration }</span>
+                                        <span class="item_container-text">{ "-  Completed" }</span>
+                                    </div>
+                                }
+                            } else {
+                                if let Some(listen_duration) = episode.listen_duration {
+                                    let listen_duration_percentage = if episode_duration_in_seconds > 0 {
+                                        (listen_duration as f64 / episode_duration_in_seconds as f64) * 100.0
+                                    } else {
+                                        0.0
+                                    };
+                                    html! {
+                                        <div class="flex items-center space-x-2">
+                                            <span class="item_container-text">{ format_time(listen_duration as f64) }</span>
+                                            <div class="progress-bar-container">
+                                                <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
+                                            </div>
+                                            <span class="item_container-text">{ formatted_duration }</span>
+                                        </div>
+                                    }
+                                } else {
+                                    html! {
+                                        <span class="item_container-text">{ formatted_duration }</span>
+                                    }
+                                }
                             }
                         }
+
                     </div>
                     {
                         html! {

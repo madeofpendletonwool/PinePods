@@ -212,6 +212,8 @@ pub fn episode_layout() -> Html {
     let page_state = use_state(|| PageState::Hidden);
     let episode_search_term = use_state(|| String::new());
     let episode_sort_direction = use_state(|| Some(EpisodeSortDirection::NewestFirst)); // Default to newest first
+    let show_completed = use_state(|| false);
+    let show_in_progress = use_state(|| false);
 
     let history = BrowserHistory::new();
     // let node_ref = use_node_ref();
@@ -1692,8 +1694,10 @@ pub fn episode_layout() -> Html {
             podcast_feed_results.clone(),
             episode_search_term.clone(),
             episode_sort_direction.clone(),
+            show_completed.clone(),
+            show_in_progress.clone(),
         ),
-        |(episodes, search, sort_dir)| {
+        |(episodes, search, sort_dir, show_completed, show_in_progress)| {
             if let Some(results) = episodes {
                 let mut filtered = results
                     .episodes
@@ -1709,12 +1713,23 @@ pub fn episode_layout() -> Html {
                         } else {
                             true
                         };
-                        matches_search
+
+                        // Status filter
+                        let matches_status = if **show_completed {
+                            episode.completed.unwrap_or(false)
+                        } else if **show_in_progress {
+                            !episode.completed.unwrap_or(false)
+                                && episode.listen_duration.unwrap_or(0) > 0
+                        } else {
+                            true // Show all if no status filter is active
+                        };
+
+                        matches_search && matches_status
                     })
                     .cloned()
                     .collect::<Vec<_>>();
 
-                // Apply sorting
+                // Sort logic
                 if let Some(direction) = (*sort_dir).as_ref() {
                     filtered.sort_by(|a, b| match direction {
                         EpisodeSortDirection::NewestFirst => b.pub_date.cmp(&a.pub_date),
@@ -2097,11 +2112,11 @@ pub fn episode_layout() -> Html {
                                 html! {
                                     <div class="flex justify-between items-center mb-4">
                                         <div class="flex gap-4">
-                                            // Search input
+                                            // Search input (existing)
                                             <div class="filter-dropdown download-button relative">
                                                 <input
                                                     type="text"
-                                                    class="filter-input-pods appearance-none pr-8"
+                                                    class="filter-input appearance-none pr-8"
                                                     placeholder="Search"
                                                     value={(*episode_search_term).clone()}
                                                     oninput={
@@ -2116,8 +2131,80 @@ pub fn episode_layout() -> Html {
                                                 <i class="ph ph-magnifying-glass absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
                                             </div>
 
-                                            // Sort dropdown
-                                            <div class="filter-dropdown-pods font-bold rounded relative">
+                                            // Clear filter button
+                                            <button
+                                                onclick={
+                                                    let show_completed = show_completed.clone();
+                                                    let show_in_progress = show_in_progress.clone();
+                                                    let episode_search_term = episode_search_term.clone();
+                                                    Callback::from(move |_| {
+                                                        show_completed.set(false);
+                                                        show_in_progress.set(false);
+                                                        episode_search_term.set(String::new());
+                                                    })
+                                                }
+                                                class="filter-button font-medium py-2 px-2 rounded inline-flex items-center"
+                                            >
+                                                <i class="ph ph-broom text-2xl"></i>
+                                                <span class="text-lg ml-2 hidden md:inline">{"Clear"}</span>
+                                            </button>
+
+                                            // Completed filter button
+                                            <button
+                                                onclick={let show_completed = show_completed.clone();
+                                                    let show_in_progress = show_in_progress.clone();
+                                                    Callback::from(move |_| {
+                                                        show_completed.set(!*show_completed);
+                                                        // Ensure only one filter is active at a time
+                                                        if !*show_completed {
+                                                            show_in_progress.set(false);
+                                                        }
+                                                    })
+                                                }
+                                                class={classes!(
+                                                    "filter-button",
+                                                    "font-medium",
+                                                    "py-2",
+                                                    "px-2",
+                                                    "rounded",
+                                                    "inline-flex",
+                                                    "items-center",
+                                                    if *show_completed { "bg-accent-color" } else { "" }
+                                                )}
+                                            >
+                                                <i class="ph ph-check-circle text-2xl"></i>
+                                                <span class="text-lg ml-2 hidden md:inline">{"Completed"}</span>
+                                            </button>
+
+                                            // In Progress filter button
+                                            <button
+                                                onclick={let show_in_progress = show_in_progress.clone();
+                                                    let show_completed = show_completed.clone();
+                                                    Callback::from(move |_| {
+                                                        show_in_progress.set(!*show_in_progress);
+                                                        // Ensure only one filter is active at a time
+                                                        if !*show_in_progress {
+                                                            show_completed.set(false);
+                                                        }
+                                                    })
+                                                }
+                                                class={classes!(
+                                                    "filter-button",
+                                                    "font-medium",
+                                                    "py-2",
+                                                    "px-2",
+                                                    "rounded",
+                                                    "inline-flex",
+                                                    "items-center",
+                                                    if *show_in_progress { "bg-accent-color" } else { "" }
+                                                )}
+                                            >
+                                                <i class="ph ph-hourglass-medium text-2xl"></i>
+                                                <span class="text-lg ml-2 hidden md:inline">{"In Progress"}</span>
+                                            </button>
+
+                                            // Sort dropdown (existing)
+                                            <div class="filter-dropdown font-bold rounded relative">
                                                 <select
                                                     class="category-select appearance-none pr-8"
                                                     onchange={

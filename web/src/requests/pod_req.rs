@@ -1817,6 +1817,7 @@ pub struct PodcastDetails {
     pub explicit: bool,
     pub userid: i32,
     pub podcastindexid: i64,
+    #[serde(rename = "isyoutubechannel")]
     pub is_youtube: bool,
 }
 

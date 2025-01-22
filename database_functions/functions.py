@@ -136,25 +136,31 @@ def add_custom_podcast(database_type, cnx, feed_url, user_id, username=None, pas
 def add_news_feed_if_not_added(database_type, cnx):
     cursor = cnx.cursor()
     try:
+        # Get all admin users
         if database_type == "postgresql":
-            cursor.execute('SELECT NewsFeedSubscribed FROM "AppSettings"')
+            cursor.execute('SELECT UserID FROM "Users" WHERE IsAdmin = TRUE')
         else:  # MySQL or MariaDB
-            cursor.execute("SELECT NewsFeedSubscribed FROM AppSettings")
+            cursor.execute("SELECT UserID FROM Users WHERE IsAdmin = 1")
 
-        result = cursor.fetchone()
-        if result is None or result[0] == 0:
-            # The news feed has not been added before, so add it
-            feed_url = "https://news.pinepods.online/feed.xml"
-            user_id = 2
-            add_custom_podcast(database_type, cnx, feed_url, user_id)
+        admin_users = cursor.fetchall()
+        feed_url = "https://news.pinepods.online/feed.xml"
 
-            # Update the AppSettings table to indicate that the news feed has been added
+        # Add feed for each admin user if they don't already have it
+        for admin in admin_users:
+            user_id = admin[0]
+
+            # Check if this user already has the news feed
             if database_type == "postgresql":
-                cursor.execute('UPDATE "AppSettings" SET NewsFeedSubscribed = TRUE')
+                cursor.execute('SELECT PodcastID FROM "Podcasts" WHERE UserID = %s AND FeedURL = %s', (user_id, feed_url))
             else:  # MySQL or MariaDB
-                cursor.execute("UPDATE AppSettings SET NewsFeedSubscribed = 1")
+                cursor.execute("SELECT PodcastID FROM Podcasts WHERE UserID = %s AND FeedURL = %s", (user_id, feed_url))
 
-            cnx.commit()
+            existing_feed = cursor.fetchone()
+
+            if existing_feed is None:
+                add_custom_podcast(database_type, cnx, feed_url, user_id)
+                cnx.commit()
+
     except (psycopg.ProgrammingError, mysql.connector.ProgrammingError) as e:
         print(f"Error in add_news_feed_if_not_added: {e}")
         cnx.rollback()
@@ -1654,6 +1660,7 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
             'SELECT "Podcasts".PodcastID, "Podcasts".PodcastName, "Episodes".EpisodeID, '
             '"Episodes".EpisodeTitle, "Episodes".EpisodePubDate, "Episodes".EpisodeDescription, '
             '"Episodes".EpisodeArtwork, "Episodes".EpisodeURL, "Episodes".EpisodeDuration, '
+            '"Episodes".Completed, '
             '"UserEpisodeHistory".ListenDuration, CAST("Episodes".EpisodeID AS VARCHAR) AS guid '
             'FROM "Episodes" '
             'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
@@ -1666,6 +1673,7 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
             "SELECT Podcasts.PodcastID, Podcasts.PodcastName, Episodes.EpisodeID, "
             "Episodes.EpisodeTitle, Episodes.EpisodePubDate, Episodes.EpisodeDescription, "
             "Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration, "
+            "Episodes.Completed, "
             "UserEpisodeHistory.ListenDuration, CAST(Episodes.EpisodeID AS CHAR) AS guid "
             "FROM Episodes "
             "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
@@ -7890,6 +7898,9 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
         for feed_url in podcasts_to_add:
             try:
                 podcast_values = get_podcast_values(feed_url, user_id)
+                print(f"Debug - Explicit value: {podcast_values['pod_explicit']}")
+                print(f"Debug - Episode count: {podcast_values['pod_episode_count']}")
+                print(f"Debug - Full podcast values: {podcast_values}")
                 return_value = add_podcast(cnx, database_type, podcast_values, user_id)
                 if return_value:
                     logger.info(f"Successfully added {feed_url}")

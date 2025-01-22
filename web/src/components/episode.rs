@@ -13,14 +13,15 @@ use crate::components::host_component::HostDropdown;
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
 use crate::requests::pod_req::{
-    call_create_share_link, call_download_episode, call_fetch_podcasting_2_data,
-    call_get_episode_id, call_mark_episode_completed, call_mark_episode_uncompleted,
-    call_queue_episode, call_remove_downloaded_episode, call_remove_queued_episode,
-    call_remove_saved_episode, call_save_episode, DownloadEpisodeRequest, EpisodeInfo,
-    EpisodeMetadataResponse, EpisodeRequest, FetchPodcasting2DataRequest,
-    MarkEpisodeCompletedRequest, QueuePodcastRequest, SavePodcastRequest, Transcript,
+    call_check_podcast, call_create_share_link, call_download_episode,
+    call_fetch_podcasting_2_data, call_get_episode_id, call_mark_episode_completed,
+    call_mark_episode_uncompleted, call_queue_episode, call_remove_downloaded_episode,
+    call_remove_queued_episode, call_remove_saved_episode, call_save_episode,
+    DownloadEpisodeRequest, EpisodeInfo, EpisodeMetadataResponse, EpisodeRequest,
+    FetchPodcasting2DataRequest, MarkEpisodeCompletedRequest, QueuePodcastRequest,
+    SavePodcastRequest, Transcript,
 };
-use crate::requests::search_pods::call_parse_podcast_url;
+use crate::requests::search_pods::{call_get_podcast_details_dynamic, call_parse_podcast_url};
 use regex::Regex;
 use serde::Deserialize;
 use wasm_bindgen::closure::Closure;
@@ -385,12 +386,24 @@ pub fn epsiode() -> Html {
         // fetch_episodes(api_key.flatten(), user_id, server_name, dispatch, error, pod_req::call_get_recent_eps);
         let effect_ep_in_db = ep_in_db.clone();
         use_effect_with(
-            (api_key.clone(), user_id.clone(), server_name.clone()),
+            (
+                api_key.clone(),
+                user_id.clone(),
+                server_name.clone(),
+                episode_id.clone(),
+            ),
             move |_| {
                 let error_clone = error.clone();
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
+                    // Reset loading state when episode_id changes
+                    loading_clone.set(true);
+
+                    // Clear previous episode data when transitioning
+                    effect_dispatch.reduce_mut(|state| {
+                        state.fetched_episode = None;
+                    });
                     web_sys::console::log_1(&"Fetching episode...".into());
                     web_sys::console::log_1(
                         &format!("First effect running with episode_id: {:?}", episode_id).into(),
@@ -1511,6 +1524,13 @@ pub fn epsiode() -> Html {
                             let user_id = user_id.clone();
                             let history = history.clone();
 
+                            // Get the URL parameters for fallback
+                            let window = web_sys::window().expect("no global window exists");
+                            let search_params = window.location().search().unwrap();
+                            let url_params = web_sys::UrlSearchParams::new_with_str(&search_params).unwrap();
+                            let podcast_title = url_params.get("podcast_title").unwrap_or_default();
+                            let podcast_url = url_params.get("episode_url").unwrap_or_default();
+
                             Callback::from(move |event: MouseEvent| {
                                 let dispatch = dispatch.clone();
                                 let server_name = server_name.clone();
@@ -1518,11 +1538,44 @@ pub fn epsiode() -> Html {
                                 let podcast_id = podcast_id.clone();
                                 let user_id = user_id.clone();
                                 let history = history.clone();
+                                let podcast_title = podcast_title.clone();
+                                let podcast_url = podcast_url.clone();
 
                                 wasm_bindgen_futures::spawn_local(async move {
-                                    match pod_req::call_get_podcast_details(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), user_id.unwrap(), &podcast_id).await {
+                                    // Try the regular call first if we have a non-zero podcast_id
+                                    let result = if podcast_id != 0 {
+                                        pod_req::call_get_podcast_details(
+                                            &server_name.clone().unwrap(),
+                                            &api_key.clone().unwrap().unwrap(),
+                                            user_id.unwrap(),
+                                            &podcast_id
+                                        ).await
+                                    } else {
+                                        let is_added = call_check_podcast(
+                                            &server_name.clone().unwrap(),
+                                            &api_key.clone().unwrap().unwrap(),
+                                            user_id.unwrap(),
+                                            &podcast_title,
+                                            &podcast_url,
+                                        ).await
+                                        .map(|response| response.exists)
+                                        .unwrap_or(false);
+
+                                        // Fallback to dynamic call if podcast_id is 0
+                                        call_get_podcast_details_dynamic(
+                                            &server_name.clone().unwrap(),
+                                            &api_key.clone().unwrap().unwrap(),
+                                            user_id.unwrap(),
+                                            &podcast_title,
+                                            &podcast_url,
+                                            0,
+                                            is_added,  // Use the result from check_podcast
+                                            Some(false),
+                                        ).await.map(|response| response.details.into_podcast_details())
+                                    };
+
+                                    match result {
                                         Ok(details) => {
-                                            // Assuming details contain all necessary podcast info
                                             let final_click_action = create_on_title_click(
                                                 dispatch.clone(),
                                                 server_name.unwrap(),
@@ -1539,16 +1592,18 @@ pub fn epsiode() -> Html {
                                                 Some(details.categories),
                                                 details.websiteurl,
                                                 user_id.unwrap(),
-                                                details.is_youtube,
+                                                details.is_youtube, // assuming we renamed this field
                                             );
-
-                                            // Execute the action created by create_on_title_click
                                             final_click_action.emit(event);
                                         },
                                         Err(error) => {
-                                            web_sys::console::log_1(&format!("Error fetching podcast details: {}", error).into());
+                                            web_sys::console::log_1(&format!(
+                                                "Error fetching podcast details: {}", error
+                                            ).into());
                                             dispatch.reduce_mut(move |state| {
-                                                state.error_message = Some(format!("Failed to load details: {}", error));
+                                                state.error_message = Some(format!(
+                                                    "Failed to load details: {}", error
+                                                ));
                                             });
                                         }
                                     }
