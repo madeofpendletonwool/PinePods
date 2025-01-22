@@ -5,7 +5,7 @@ use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::episodes_layout::SafeHtml;
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{
-    call_add_podcast, call_check_podcast, call_remove_podcasts_name, PodcastValues,
+    call_add_podcast, call_check_podcast, call_remove_podcasts_name, PodcastDetails, PodcastValues,
     RemovePodcastValuesName,
 };
 use crate::requests::search_pods::{call_parse_podcast_url, UnifiedPodcast};
@@ -33,6 +33,30 @@ pub struct ClickedFeedURL {
     pub websiteurl: String,  // Changed from podcast_link
     pub podcastindexid: i64, // Changed from podcast_index_id
     pub is_youtube: Option<bool>,
+}
+
+// Add this function to convert between the types
+impl ClickedFeedURL {
+    pub fn into_podcast_details(self) -> PodcastDetails {
+        PodcastDetails {
+            podcastid: self.podcastid as i32, // Convert i64 to i32
+            podcastname: self.podcastname,
+            artworkurl: self.artworkurl,
+            author: self.author,
+            categories: self
+                .categories
+                .map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", "))
+                .unwrap_or_default(), // Convert HashMap to comma-separated string
+            description: self.description,
+            episodecount: self.episodecount,
+            feedurl: self.feedurl,
+            websiteurl: self.websiteurl,
+            explicit: self.explicit,
+            userid: 0, // Default value since it's not in ClickedFeedURL
+            podcastindexid: self.podcastindexid,
+            is_youtube: self.is_youtube.unwrap_or(false),
+        }
+    }
 }
 
 #[function_component(PodLayout)]

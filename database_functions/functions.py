@@ -7892,6 +7892,9 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
         for feed_url in podcasts_to_add:
             try:
                 podcast_values = get_podcast_values(feed_url, user_id)
+                print(f"Debug - Explicit value: {podcast_values['pod_explicit']}")
+                print(f"Debug - Episode count: {podcast_values['pod_episode_count']}")
+                print(f"Debug - Full podcast values: {podcast_values}")
                 return_value = add_podcast(cnx, database_type, podcast_values, user_id)
                 if return_value:
                     logger.info(f"Successfully added {feed_url}")
