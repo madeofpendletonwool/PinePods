@@ -480,65 +480,67 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 if let Some(audio_element) = state_clone.audio_element.as_ref() {
                     let time_in_seconds = audio_element.current_time();
                     let duration = audio_element.duration(); // Assuming you can get the duration from the audio_element
-                    let end_pos_sec = end_pos.clone(); // Get the end position
-                    web_sys::console::log_1(&format!("Time: {}", time_in_seconds).into());
-                    web_sys::console::log_1(&format!("Duration: {}", duration).into());
-                    web_sys::console::log_1(&format!("End Pos: {:?}", end_pos_sec).into());
-                    let complete_api_key = closure_api_key.clone();
-                    let complete_server_name = closure_server_name.clone();
-                    let complete_user_id = closure_user_id.clone();
-                    let complete_episode_id = closure_episode_id.clone();
-                    let offline_status_loop = offline_status.unwrap_or(false);
-                    if time_in_seconds >= (duration - end_pos_sec.unwrap()) {
-                        web_sys::console::log_1(&"Episode completed".into());
-                        audio_element.pause().unwrap_or(());
-                        // Manually trigger the `ended` event
-                        let event = web_sys::Event::new("ended").unwrap();
-                        audio_element.dispatch_event(&event).unwrap();
-                        // Call the endpoint to mark episode as completed
-                        if offline_status_loop {
-                            // If offline, store the episode in the local database
-                        } else {
-                            // If online, call the endpoint
-                            wasm_bindgen_futures::spawn_local(async move {
-                                if let (
-                                    Some(complete_api_key),
-                                    Some(complete_server_name),
-                                    Some(complete_user_id),
-                                    Some(complete_episode_id),
-                                ) = (
-                                    complete_api_key.as_ref(),
-                                    complete_server_name.as_ref(),
-                                    complete_user_id.as_ref(),
-                                    complete_episode_id.as_ref(),
-                                ) {
-                                    let request = MarkEpisodeCompletedRequest {
-                                        episode_id: *complete_episode_id, // Dereference the option
-                                        user_id: *complete_user_id,       // Dereference the option
-                                    };
+                    if !duration.is_nan() && duration > 0.0 {
+                        let end_pos_sec = end_pos.clone(); // Get the end position
+                        web_sys::console::log_1(&format!("Time: {}", time_in_seconds).into());
+                        web_sys::console::log_1(&format!("Duration: {}", duration).into());
+                        web_sys::console::log_1(&format!("End Pos: {:?}", end_pos_sec).into());
+                        let complete_api_key = closure_api_key.clone();
+                        let complete_server_name = closure_server_name.clone();
+                        let complete_user_id = closure_user_id.clone();
+                        let complete_episode_id = closure_episode_id.clone();
+                        let offline_status_loop = offline_status.unwrap_or(false);
+                        if time_in_seconds >= (duration - end_pos_sec.unwrap()) {
+                            web_sys::console::log_1(&"Episode completed".into());
+                            audio_element.pause().unwrap_or(());
+                            // Manually trigger the `ended` event
+                            let event = web_sys::Event::new("ended").unwrap();
+                            audio_element.dispatch_event(&event).unwrap();
+                            // Call the endpoint to mark episode as completed
+                            if offline_status_loop {
+                                // If offline, store the episode in the local database
+                            } else {
+                                // If online, call the endpoint
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    if let (
+                                        Some(complete_api_key),
+                                        Some(complete_server_name),
+                                        Some(complete_user_id),
+                                        Some(complete_episode_id),
+                                    ) = (
+                                        complete_api_key.as_ref(),
+                                        complete_server_name.as_ref(),
+                                        complete_user_id.as_ref(),
+                                        complete_episode_id.as_ref(),
+                                    ) {
+                                        let request = MarkEpisodeCompletedRequest {
+                                            episode_id: *complete_episode_id, // Dereference the option
+                                            user_id: *complete_user_id, // Dereference the option
+                                        };
 
-                                    match call_mark_episode_completed(
-                                        &complete_server_name,
-                                        &complete_api_key,
-                                        &request,
-                                    )
-                                    .await
-                                    {
-                                        Ok(_) => {}
-                                        Err(e) => {
-                                            web_sys::console::log_1(
-                                                &format!("Error: {}", e).into(),
-                                            );
+                                        match call_mark_episode_completed(
+                                            &complete_server_name,
+                                            &complete_api_key,
+                                            &request,
+                                        )
+                                        .await
+                                        {
+                                            Ok(_) => {}
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!("Error: {}", e).into(),
+                                                );
+                                            }
                                         }
                                     }
-                                }
-                            });
-                        }
+                                });
+                            }
 
-                        // Stop the interval
-                        if let Some(handle) = interval_handle.take() {
-                            handle.cancel();
-                            interval_handle.set(None);
+                            // Stop the interval
+                            if let Some(handle) = interval_handle.take() {
+                                handle.cancel();
+                                interval_handle.set(None);
+                            }
                         }
                     } else {
                         web_sys::console::log_1(&format!("Time: {}", time_in_seconds).into());
@@ -856,13 +858,16 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                                 // Update position state
                                 if let Some(audio_element) = &audio_state_clone.audio_element {
-                                    let position_state = MediaPositionState::new();
-                                    position_state.set_duration(audio_props.duration_sec);
-                                    position_state
-                                        .set_playback_rate(audio_state_clone.playback_speed);
-                                    position_state.set_position(audio_element.current_time());
-                                    let _ = media_session
-                                        .set_position_state_with_state(&position_state);
+                                    let duration = audio_props.duration_sec;
+                                    if !duration.is_nan() && duration > 0.0 {
+                                        let position_state = MediaPositionState::new();
+                                        position_state.set_duration(duration);
+                                        position_state
+                                            .set_playback_rate(audio_state_clone.playback_speed);
+                                        position_state.set_position(audio_element.current_time());
+                                        let _ = media_session
+                                            .set_position_state_with_state(&position_state);
+                                    }
                                 }
                             }
                             // Inside your use_effect_with block, after setting up the initial position state:
@@ -872,13 +877,19 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 let audio_state_for_callback = audio_state_clone.clone();
                                 let audio_element_clone = audio_element.clone();
                                 let timeupdate_callback = Closure::wrap(Box::new(move || {
-                                    let position_state = MediaPositionState::new();
-                                    position_state.set_duration(audio_element_clone.duration()); // Use the element's duration directly
-                                    position_state
-                                        .set_playback_rate(audio_state_for_callback.playback_speed);
-                                    position_state.set_position(audio_element_clone.current_time());
-                                    let _ = media_session_clone
-                                        .set_position_state_with_state(&position_state);
+                                    let duration = audio_element_clone.duration();
+                                    // Only update position state if we have a valid duration
+                                    if !duration.is_nan() && duration > 0.0 {
+                                        let position_state = MediaPositionState::new();
+                                        position_state.set_duration(duration);
+                                        position_state.set_playback_rate(
+                                            audio_state_for_callback.playback_speed,
+                                        );
+                                        position_state
+                                            .set_position(audio_element_clone.current_time());
+                                        let _ = media_session_clone
+                                            .set_position_state_with_state(&position_state);
+                                    }
                                 })
                                     as Box<dyn FnMut()>);
 

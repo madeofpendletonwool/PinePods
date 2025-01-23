@@ -62,9 +62,10 @@ Version 0.7.3
 - [ ] Check for and fix issues with refreshing again on every page
 - [x] Fix issue with episodes page opening when clicking show notes while on episodes page already
 - [x] Fix issues with ability to open episode_layout page from episode page. That includes whether the podcast is added or not
-- [ ] Add podcastindexid to episode page url vars - Then pass to dynamic func call
+- [x] Add podcastindexid to episode page url vars - Then pass to dynamic func call
 - [ ] Validate Mysql functions
 - [ ] Build clients and verify
+- [ ] Sometimes episodes are not even close to newest or right order in episode_layout
 
 Version 0.7.2
 
