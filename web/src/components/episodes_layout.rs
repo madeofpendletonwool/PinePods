@@ -20,7 +20,6 @@ use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -2237,7 +2236,7 @@ pub fn episode_layout() -> Html {
                                 }
                             }
                             {
-                                if let Some(results) = podcast_feed_results {
+                                if let Some(_) = podcast_feed_results {
                                     let podcast_link_clone = clicked_podcast_info.clone().unwrap().feedurl.clone();
                                     let podcast_title = clicked_podcast_info.clone().unwrap().podcastname.clone();
 

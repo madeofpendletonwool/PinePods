@@ -549,6 +549,7 @@ pub struct CreateFirstAdminRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct CreateFirstAdminResponse {
     pub message: String,
     pub user_id: i32,

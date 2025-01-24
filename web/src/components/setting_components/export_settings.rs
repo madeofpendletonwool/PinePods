@@ -1,10 +1,10 @@
-use yew::prelude::*;
-use wasm_bindgen::JsCast;
-use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
-use web_sys::{window, Blob, Url, BlobPropertyBag};
+use crate::requests::setting_reqs::call_backup_user;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
-use crate::requests::setting_reqs::{call_backup_user};
+use web_sys::{window, Blob, BlobPropertyBag, Url};
+use yew::prelude::*;
+use yewdux::prelude::*;
 
 #[function_component(ExportOptions)]
 pub fn export_options() -> Html {
@@ -13,10 +13,10 @@ pub fn export_options() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-        
-    let mut blob_property_bag = BlobPropertyBag::new();
-    blob_property_bag.type_("text/xml");
-    
+
+    let blob_property_bag = BlobPropertyBag::new();
+    blob_property_bag.set_type("text/xml");
+
     let onclick = {
         let blob_property_bag = blob_property_bag.clone();
         Callback::from(move |_| {
@@ -25,37 +25,49 @@ pub fn export_options() -> Html {
             let api_key = api_key.clone();
             let server_name = server_name.clone();
             wasm_bindgen_futures::spawn_local(async move {
-                match call_backup_user(&server_name.unwrap(), user_id.unwrap(), &api_key.unwrap().unwrap()).await {
+                match call_backup_user(
+                    &server_name.unwrap(),
+                    user_id.unwrap(),
+                    &api_key.unwrap().unwrap(),
+                )
+                .await
+                {
                     Ok(opml_content) => {
                         // Wrap the OPML content in an array and convert to JsValue
                         let array = js_sys::Array::new();
                         array.push(&JsValue::from_str(&opml_content));
-                        
+
                         // Create a new blob from the OPML content
-                        let blob = Blob::new_with_str_sequence_and_options(&array, &bloberty_bag).unwrap();
+                        let blob =
+                            Blob::new_with_str_sequence_and_options(&array, &bloberty_bag).unwrap();
                         let url = Url::create_object_url_with_blob(&blob).unwrap();
-    
+
                         // Trigger the download
                         if let Some(window) = window() {
                             let document = window.document().unwrap();
-                            let a = document.create_element("a").unwrap().dyn_into::<web_sys::HtmlAnchorElement>().unwrap();
+                            let a = document
+                                .create_element("a")
+                                .unwrap()
+                                .dyn_into::<web_sys::HtmlAnchorElement>()
+                                .unwrap();
                             a.set_href(&url);
                             a.set_download("podcasts.opml");
                             a.click();
-    
+
                             // Revoke the object URL to free up resources
                             Url::revoke_object_url(&url).unwrap();
                         }
                     }
                     Err(e) => {
-                        audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error exporting OPML: {}", e)));
+                        audio_dispatch.reduce_mut(|audio_state| {
+                            audio_state.error_message =
+                                Option::from(format!("Error exporting OPML: {}", e))
+                        });
                     }
                 }
             });
         })
     };
-
-
 
     html! {
         <div class="p-4"> // You can adjust the padding as needed
@@ -68,4 +80,3 @@ pub fn export_options() -> Html {
         </div>
     }
 }
-

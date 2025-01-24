@@ -31,7 +31,6 @@ const SCROLL_SPEED: f64 = 15.0; // Increased speed
 #[derive(Clone, Debug)]
 struct ScrollState {
     interval_id: Option<i32>,
-    scroll_direction: f64,
 }
 
 fn stop_auto_scroll(interval_id: i32) {
@@ -59,8 +58,6 @@ pub fn queue() -> Html {
     let touch_start_x = use_state(|| 0.0);
     let is_dragging = use_state(|| false);
     let active_modal = use_state(|| None::<i32>);
-    let show_modal = use_state(|| false);
-    let active_clonedal = active_modal.clone();
     let active_modal_clone = active_modal.clone();
     let on_modal_open = Callback::from(move |episode_id: i32| {
         active_modal_clone.set(Some(episode_id));
@@ -70,10 +67,7 @@ pub fn queue() -> Html {
         active_modal_clone.set(None);
     });
     let dragged_element = use_state(|| None::<web_sys::Element>);
-    let scroll_state = use_state(|| ScrollState {
-        interval_id: None,
-        scroll_direction: 0.0,
-    });
+    let scroll_state = use_state(|| ScrollState { interval_id: None });
 
     let api_key = post_state
         .auth_details
@@ -395,7 +389,6 @@ pub fn queue() -> Html {
                                                     let id = current_scroll as i32;
                                                     scroll_state.set(ScrollState {
                                                         interval_id: Some(id),
-                                                        scroll_direction: 0.0,
                                                     });
                                                     id
                                                 }) as f64;
@@ -456,7 +449,6 @@ pub fn queue() -> Html {
                                             stop_auto_scroll(interval_id);
                                             scroll_state.set(ScrollState {
                                                 interval_id: None,
-                                                scroll_direction: 0.0,
                                             });
                                         }
 
@@ -580,7 +572,6 @@ pub fn queue() -> Html {
                             let episode_url_clone = episode.episodeurl.clone();
                             let episode_title_clone = episode.episodetitle.clone();
                             let episode_description_clone = episode.episodedescription.clone();
-                            let episode_release_clone = episode.episodepubdate.clone();
                             let episode_artwork_clone = episode.episodeartwork.clone();
                             let episode_duration_clone = episode.episodeduration.clone();
                             let episode_id_clone = episode.episodeid.clone();
@@ -609,7 +600,6 @@ pub fn queue() -> Html {
                             let episode_url_for_closure = episode_url_clone.clone();
                             let episode_title_for_closure = episode_title_clone.clone();
                             let episode_description_for_closure = episode_description_clone.clone();
-                            let episode_release_for_closure = episode_release_clone.clone();
                             let episode_artwork_for_closure = episode_artwork_clone.clone();
                             let episode_duration_for_closure = episode_duration_clone.clone();
                             let episode_id_for_closure = episode_id_clone.clone();

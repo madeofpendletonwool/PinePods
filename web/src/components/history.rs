@@ -44,8 +44,6 @@ pub fn history() -> Html {
     let session_state = post_state.clone();
     let loading = use_state(|| true);
     let active_modal = use_state(|| None::<i32>);
-    let show_modal = use_state(|| false);
-    let active_clonedal = active_modal.clone();
     let active_modal_clone = active_modal.clone();
     let on_modal_open = Callback::from(move |episode_id: i32| {
         active_modal_clone.set(Some(episode_id));
@@ -446,7 +444,7 @@ pub fn history() -> Html {
                                         }
 
                         {
-                            if let Some(history_eps) = state.episode_history.clone() {
+                            if let Some(_history_eps) = state.episode_history.clone() {
                                 if (*filtered_episodes).is_empty() {
                                     empty_message(
                                         "No Episode History Found",
@@ -475,7 +473,6 @@ pub fn history() -> Html {
                                         let episode_url_clone = episode.episodeurl.clone();
                                         let episode_title_clone = episode.episodetitle.clone();
                                         let episode_description_clone = episode.episodedescription.clone();
-                                        let episode_release_clone = episode.episodepubdate.clone();
                                         let episode_artwork_clone = episode.episodeartwork.clone();
                                         let episode_duration_clone = episode.episodeduration.clone();
                                         let episode_id_clone = episode.episodeid.clone();
@@ -503,7 +500,6 @@ pub fn history() -> Html {
                                         let episode_url_for_closure = episode_url_clone.clone();
                                         let episode_title_for_closure = episode_title_clone.clone();
                                         let episode_description_for_closure = episode_description_clone.clone();
-                                        let episode_release_for_closure = episode_release_clone.clone();
                                         let episode_artwork_for_closure = episode_artwork_clone.clone();
                                         let episode_duration_for_closure = episode_duration_clone.clone();
                                         let episode_id_for_closure = episode_id_clone.clone();

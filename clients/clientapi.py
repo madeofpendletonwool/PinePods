@@ -5436,5 +5436,4 @@ if __name__ == '__main__':
         port=args.port,
         log_config=config_file,
         limit_concurrency=1000,
-        limit_max_requests=0
     )

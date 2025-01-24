@@ -1,6 +1,6 @@
 use crate::components::podcast_layout::ClickedFeedURL;
 use anyhow::Error;
-use chrono::DateTime;
+use chrono::{DateTime, Offset};
 use gloo_net::http::Request;
 use rss::Channel;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -565,21 +565,17 @@ pub async fn call_parse_podcast_url(
         "{}/api/data/fetch_podcast_feed?podcast_feed={}",
         server_name, encoded_podcast_url
     );
-
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-
     let request = Request::get(&endpoint)
         .header("Content-Type", "application/json")
         .header("Api-Key", api_key_ref)
         .send()
         .await?;
-
     if request.ok() {
         let response_text = request.text().await?;
         let channel = Channel::read_from(response_text.as_bytes())?;
-
         let podcast_artwork_url = channel
             .image()
             .map(|img| img.url().to_string())
@@ -590,10 +586,14 @@ pub async fn call_parse_podcast_url(
                     .map(|url| url.to_string())
             });
 
-        let episodes = channel
+        // Collect episodes into a vector first
+        let mut episodes: Vec<Episode> = channel
             .items()
             .iter()
             .map(|item| {
+                if let Some(pub_date) = item.pub_date() {
+                    web_sys::console::log_1(&format!("Raw pub date: {}", pub_date).into());
+                }
                 let duration = item
                     .itunes_ext()
                     .and_then(|ext| ext.duration())
@@ -603,14 +603,46 @@ pub async fn call_parse_podcast_url(
                         &format!("Missing duration for episode: {:?}", item.title()).into(),
                     );
                 }
-
                 Episode {
                     title: item.title().map(|t| t.to_string()),
                     description: item.description().map(|d| d.to_string()),
                     content: item.content().map(|c| c.to_string()),
                     enclosure_url: item.enclosure().map(|e| e.url().to_string()),
                     enclosure_length: item.enclosure().map(|e| e.length().to_string()),
-                    pub_date: item.pub_date().map(|p| p.to_string()),
+                    pub_date: item.pub_date().map(|p| {
+                        // Try RFC2822 first (most common in RSS)
+                        chrono::DateTime::parse_from_rfc2822(&p)
+                            .or_else(|_| chrono::DateTime::parse_from_rfc3339(&p)) // Try RFC3339
+                            .or_else(|_| {
+                                // Try parsing with various other formats
+                                let formats = [
+                                    "%Y-%m-%d",          // Plain date
+                                    "%Y-%m-%dT%H:%M:%S", // ISO without timezone
+                                    "%d/%m/%Y",          // Common localized format
+                                    "%m-%d-%Y",          // US format
+                                ];
+
+                                for format in formats {
+                                    if let Ok(dt) =
+                                        chrono::NaiveDateTime::parse_from_str(&p, format)
+                                    {
+                                        return Ok(chrono::DateTime::from_naive_utc_and_offset(
+                                            dt,
+                                            chrono::Utc.fix(),
+                                        ));
+                                    }
+                                }
+                                // Just return the original parsing error
+                                chrono::DateTime::parse_from_rfc2822(&p) // This will give us an error to return
+                            })
+                            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string())
+                            .unwrap_or_else(|_| {
+                                web_sys::console::log_1(
+                                    &format!("Failed to parse date: {}", p).into(),
+                                );
+                                p.to_string() // Keep original if all parsing fails
+                            })
+                    }),
                     authors: item
                         .author()
                         .map(|a| vec![a.to_string()])
@@ -630,6 +662,27 @@ pub async fn call_parse_podcast_url(
                 }
             })
             .collect();
+
+        // Sort episodes by publication date, newest first
+        episodes.sort_by(|a, b| {
+            let parse_date = |date_str: &Option<String>| {
+                date_str.as_ref().and_then(|d| {
+                    chrono::DateTime::parse_from_rfc2822(d)
+                        .or_else(|_| chrono::DateTime::parse_from_rfc3339(d))
+                        .ok()
+                })
+            };
+
+            let a_date = parse_date(&a.pub_date);
+            let b_date = parse_date(&b.pub_date);
+
+            match (a_date, b_date) {
+                (Some(a), Some(b)) => b.cmp(&a), // Newest first
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            }
+        });
 
         Ok(PodcastFeedResult { episodes })
     } else {

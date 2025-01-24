@@ -139,6 +139,7 @@ pub fn create_on_title_click(
                             .await
                         {
                             Ok(podcast_feed_results) => {
+                                web_sys::console::log_1(&format!("Feed results: {:?}", podcast_feed_results).into());
                                 dispatch.reduce_mut(move |state| {
                                     state.podcast_added = Some(false);
                                     state.podcast_feed_results = Some(podcast_feed_results);

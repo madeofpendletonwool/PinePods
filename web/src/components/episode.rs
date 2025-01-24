@@ -23,7 +23,6 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::{call_get_podcast_details_dynamic, call_parse_podcast_url};
 use regex::Regex;
-use serde::Deserialize;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::{spawn_local, JsFuture};
@@ -102,8 +101,8 @@ pub fn transcript_modal(props: &TranscriptModalProps) -> Html {
                     let speaker_regex = Regex::new(r"<v\s+[^>]+>").unwrap();
                     let simple_speaker_regex = Regex::new(r"<v\s+").unwrap();
 
-                    let mut opts = RequestInit::new();
-                    opts.method("GET");
+                    let opts = RequestInit::new();
+                    opts.set_method("GET");
 
                     let request = Request::new_with_str_and_init(&url, &opts).unwrap();
 

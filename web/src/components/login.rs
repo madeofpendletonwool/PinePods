@@ -1,11 +1,9 @@
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::UIStateMsg;
-use crate::components::gen_components::{AdminSetupData, FirstAdminModal, FirstAdminModalProps};
+use crate::components::gen_components::{AdminSetupData, FirstAdminModal};
 use crate::components::gen_funcs::{encode_password, validate_user_input, ValidationError};
 use crate::components::setting_components::theme_options::initialize_default_theme;
-use crate::requests::login_requests::{
-    self, call_check_mfa_enabled, call_create_first_admin, CreateFirstAdminRequest,
-};
+use crate::requests::login_requests::{self, call_check_mfa_enabled, call_create_first_admin};
 use crate::requests::login_requests::{call_add_login_user, AddUserRequest};
 use crate::requests::login_requests::{
     call_first_login_done, call_get_time_info, call_reset_password_create_code,
@@ -18,7 +16,6 @@ use md5;
 use rand::Rng;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
-use web_sys::HtmlInputElement;
 use web_sys::{console, window};
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};

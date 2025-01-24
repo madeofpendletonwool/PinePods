@@ -1,4 +1,3 @@
-use crate::components::audio::on_play_pause;
 use crate::components::context::{AppState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::downloads_tauri::{
@@ -29,9 +28,8 @@ use std::any::Any;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
-use wasm_bindgen::JsValue;
 use web_sys::HtmlElement;
-use web_sys::{console, window, Element, HtmlInputElement, MouseEvent};
+use web_sys::{window, Element, HtmlInputElement, MouseEvent};
 use yew::prelude::*;
 use yew::Callback;
 use yew_router::history::{BrowserHistory, History};
@@ -1707,7 +1705,7 @@ pub fn on_shownotes_click(
     shownotes_episode_url: Option<String>,
     episode_audio_url: Option<String>,
     podcast_title: Option<String>,
-    db_added: bool,
+    _db_added: bool,
     person_episode: Option<bool>, // New parameter
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
@@ -1812,11 +1810,11 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
 pub fn episode_item(
     episode: Box<dyn EpisodeTrait>,
     description: String,
-    is_expanded: bool,
+    _is_expanded: bool,
     format_release: &str,
     on_play_pause: Callback<MouseEvent>,
     on_shownotes_click: Callback<MouseEvent>,
-    toggle_expanded: Callback<MouseEvent>,
+    _toggle_expanded: Callback<MouseEvent>,
     episode_duration: i32,
     listen_duration: Option<i32>,
     page_type: &str,
@@ -1855,11 +1853,6 @@ pub fn episode_item(
         #[wasm_bindgen(js_namespace = window)]
         fn toggleDescription(guid: &str, expanded: bool);
     }
-    let description_class = if is_expanded {
-        "desc-expanded".to_string()
-    } else {
-        "desc-collapsed".to_string()
-    };
     html! {
         <div>
             <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg" style={format!("height: {}; overflow: hidden;", container_height)}>
@@ -1986,11 +1979,11 @@ pub fn episode_item(
 pub fn virtual_episode_item(
     episode: Box<dyn EpisodeTrait>,
     description: String,
-    is_expanded: bool,
+    _is_expanded: bool,
     format_release: &str,
     on_play_pause: Callback<MouseEvent>,
     on_shownotes_click: Callback<MouseEvent>,
-    toggle_expanded: Callback<MouseEvent>,
+    _toggle_expanded: Callback<MouseEvent>,
     episode_duration: i32,
     listen_duration: Option<i32>,
     page_type: &str,
@@ -2029,11 +2022,6 @@ pub fn virtual_episode_item(
         #[wasm_bindgen(js_namespace = window)]
         fn toggleDescription(guid: &str, expanded: bool);
     }
-    let description_class = if is_expanded {
-        "desc-expanded".to_string()
-    } else {
-        "desc-collapsed".to_string()
-    };
     html! {
         <div>
             <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg" style={format!("height: {}; overflow: hidden;", container_height)}>
@@ -2156,11 +2144,11 @@ pub fn virtual_episode_item(
 pub fn download_episode_item(
     episode: Box<dyn EpisodeTrait>,
     description: String,
-    is_expanded: bool,
+    _is_expanded: bool,
     format_release: &str,
     on_play_pause: Callback<MouseEvent>,
     on_shownotes_click: Callback<MouseEvent>,
-    toggle_expanded: Callback<MouseEvent>,
+    _toggle_expanded: Callback<MouseEvent>,
     episode_duration: i32,
     listen_duration: Option<i32>,
     page_type: &str,
@@ -2194,11 +2182,6 @@ pub fn download_episode_item(
         #[wasm_bindgen(js_namespace = window)]
         fn toggleDescription(guid: &str, expanded: bool);
     }
-    let description_class = if is_expanded {
-        "desc-expanded".to_string()
-    } else {
-        "desc-collapsed".to_string()
-    };
 
     html! {
         <div>
@@ -2328,11 +2311,11 @@ pub fn download_episode_item(
 pub fn queue_episode_item(
     episode: Box<dyn EpisodeTrait>,
     description: String,
-    is_expanded: bool,
+    _is_expanded: bool,
     format_release: &str,
     on_play_pause: Callback<MouseEvent>,
     on_shownotes_click: Callback<MouseEvent>,
-    toggle_expanded: Callback<MouseEvent>,
+    _toggle_expanded: Callback<MouseEvent>,
     episode_duration: i32,
     listen_duration: Option<i32>,
     page_type: &str,
@@ -2374,11 +2357,6 @@ pub fn queue_episode_item(
         #[wasm_bindgen(js_namespace = window)]
         fn toggleDescription(guid: &str, expanded: bool);
     }
-    let description_class = if is_expanded {
-        "desc-expanded".to_string()
-    } else {
-        "desc-collapsed".to_string()
-    };
 
     html! {
         <div>
@@ -2521,11 +2499,11 @@ pub fn queue_episode_item(
 pub fn person_episode_item(
     episode: Box<dyn EpisodeTrait>,
     description: String,
-    is_expanded: bool,
+    _is_expanded: bool,
     format_release: &str,
     on_play_pause: Callback<MouseEvent>,
     on_shownotes_click: Callback<MouseEvent>,
-    toggle_expanded: Callback<MouseEvent>,
+    _toggle_expanded: Callback<MouseEvent>,
     episode_duration: i32,
     listen_duration: Option<i32>,
     page_type: &str,
@@ -2561,11 +2539,6 @@ pub fn person_episode_item(
         #[wasm_bindgen(js_namespace = window)]
         fn toggleDescription(guid: &str, expanded: bool);
     }
-    let description_class = if is_expanded {
-        "desc-expanded".to_string()
-    } else {
-        "desc-collapsed".to_string()
-    };
 
     html! {
         <div>

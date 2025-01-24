@@ -8,7 +8,6 @@ Major Version:
 
 Next Minor Version:
 
-- [] Pass podcast info in /episode url in order to allow podcast name click to work - <- It passes the pod info but needs to dynamically load from that as a fallback still
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 
 Version 0.7.3
@@ -65,7 +64,7 @@ Version 0.7.3
 - [x] Add podcastindexid to episode page url vars - Then pass to dynamic func call
 - [ ] Validate Mysql functions
 - [ ] Build clients and verify
-- [ ] Sometimes episodes are not even close to newest or right order in episode_layout
+- [x] Sometimes episodes are not even close to newest or right order in episode_layout
 
 Version 0.7.2
 

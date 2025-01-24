@@ -14,7 +14,6 @@ use crate::requests::pod_req::{
     call_remove_queued_episode, HistoryAddRequest, MarkEpisodeCompletedRequest,
     QueuePodcastRequest, RecordListenDurationRequest,
 };
-use _AudioPlayerProps::is_youtube;
 use gloo_timers::callback::Interval;
 use js_sys::Array;
 use js_sys::Object;
@@ -134,13 +133,6 @@ pub fn volume_control(props: &VolumeControlProps) -> Html {
         })
     };
 
-    let volume_icon = match props.volume as i32 {
-        0 => "volume_off",
-        1..=33 => "volume_mute",
-        34..=66 => "volume_down",
-        _ => "volume_up",
-    };
-
     html! {
         <div class="volume-control-container">
             <button
@@ -254,7 +246,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         .map(|props| props.is_youtube)
         .unwrap_or(false);
     let history = BrowserHistory::new();
-    let history_clone = history.clone();
     let episode_in_db = audio_state.episode_in_db.unwrap_or_default();
     let progress: UseStateHandle<f64> = use_state(|| 0.0);
     let offline_status = audio_state
@@ -281,7 +272,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             }
         })
     };
-    let title_click_emit = title_click.clone();
     let src_clone = props.src.clone();
 
     // Update the audio source when `src` changes
@@ -1205,7 +1195,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     let click_start_time = start_time;
                                     let on_chapter_click = on_chapter_click.clone();
                                     let on_chapter_click_button = on_chapter_click.clone();
-                                    let toggle_playback = toggle_playback.clone();
 
                                     let click_handler = {
                                         let dispatch = audio_dispatch.clone();
@@ -1287,32 +1276,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             duration_hours, duration_minutes, duration_seconds
         );
         let on_shownotes_click = {
-            let history = history_clone.clone();
-            let dispatch = _dispatch.clone();
-            let episode_id = audio_state
-                .currently_playing
-                .as_ref()
-                .map(|audio_props| audio_props.episode_id);
             let show_modal = show_modal.clone();
 
             Callback::from(move |_: MouseEvent| {
                 show_modal.set(true); // Show modal instead of navigating
             })
-        };
-
-        // let progress: f64 = 0.0; // Assuming 'progress' is defined here as an example
-        let track_width_px: f64 = 300.0; // Explicitly typing the variable
-        let pixel_offset: f64 = 60.0; // Explicitly typing the variable
-        let offset_percentage: f64 = (pixel_offset / track_width_px) * 100.0; // This will also be f64
-
-        let progress_style = {
-            let progress_percentage: f64 = *progress; // Ensure this variable is typed as f64
-            let start: f64 = (progress_percentage - offset_percentage).max(0.0); // Using max on f64
-            let end: f64 = (progress_percentage + offset_percentage).min(100.0); // Using min on f64
-            format!(
-                "background: linear-gradient(to right, #1db954 0%, #1db954 {}%, var(--prog-bar-color) {}%, var(--prog-bar-color) 100%);",
-                start, end
-            )
         };
 
         let audio_bar_class = classes!(

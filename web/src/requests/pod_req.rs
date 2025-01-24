@@ -438,7 +438,7 @@ pub async fn call_get_podcasts_extra(
         .await
         .unwrap_or_else(|_| "Failed to get response text".to_string());
     match serde_json::from_str::<PodcastResponseExtra>(&response_text) {
-        Ok(mut response_body) => {
+        Ok(response_body) => {
             let mut pods = response_body.pods.unwrap_or_else(Vec::new);
             // Update is_youtube flag based on feedurl
             for pod in &mut pods {
