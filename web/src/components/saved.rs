@@ -47,8 +47,6 @@ pub fn saved() -> Html {
     let info_message = audio_state.info_message.clone();
     let dropdown_open = use_state(|| false);
     let active_modal = use_state(|| None::<i32>);
-    let show_modal = use_state(|| false);
-    let active_clonedal = active_modal.clone();
     let active_modal_clone = active_modal.clone();
     let on_modal_open = Callback::from(move |episode_id: i32| {
         active_modal_clone.set(Some(episode_id));
@@ -65,7 +63,6 @@ pub fn saved() -> Html {
     let episode_sort_direction = use_state(|| Some(SavedSortDirection::NewestFirst)); // Default to newest first
     let show_completed = use_state(|| false); // Toggle for showing completed episodes only
     let show_in_progress = use_state(|| false); // Toggle for showing in-progress episodes only
-    let show_filter_menu = use_state(|| false);
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -476,7 +473,7 @@ pub fn saved() -> Html {
                     }
 
                 {
-                    if let Some(saved_eps) = state.saved_episodes.clone() {
+                    if let Some(_saved_eps) = state.saved_episodes.clone() {
                         if (*filtered_episodes).is_empty() {
                             // Render "No Queued Episodes Found" if episodes list is empty
                             empty_message(
@@ -507,7 +504,6 @@ pub fn saved() -> Html {
                                 let episode_url_clone = episode.episodeurl.clone();
                                 let episode_title_clone = episode.episodetitle.clone();
                                 let episode_description_clone = episode.episodedescription.clone();
-                                let episode_release_clone = episode.episodepubdate.clone();
                                 let episode_artwork_clone = episode.episodeartwork.clone();
                                 let episode_duration_clone = episode.episodeduration.clone();
                                 let episode_id_clone = episode.episodeid.clone();
@@ -535,7 +531,6 @@ pub fn saved() -> Html {
                                 let episode_url_for_closure = episode_url_clone.clone();
                                 let episode_title_for_closure = episode_title_clone.clone();
                                 let episode_description_for_closure = episode_description_clone.clone();
-                                let episode_release_for_closure = episode_release_clone.clone();
                                 let episode_artwork_for_closure = episode_artwork_clone.clone();
                                 let episode_duration_for_closure = episode_duration_clone.clone();
                                 let episode_id_for_closure = episode_id_clone.clone();

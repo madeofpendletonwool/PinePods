@@ -1,5 +1,4 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::_EpisodeModalProps::format_release;
 use super::gen_components::{
     empty_message, on_shownotes_click, virtual_episode_item, Search_nav, UseScrollToTop,
 };

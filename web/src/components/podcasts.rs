@@ -6,11 +6,8 @@ use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
-use crate::requests::pod_req::{
-    call_remove_podcasts, call_remove_youtube_channel, PodcastResponseExtra, RemovePodcastValues,
-    RemoveYouTubeChannelValues,
-};
-use crate::requests::pod_req::{Podcast, PodcastExtra};
+use crate::requests::pod_req::PodcastExtra;
+use crate::requests::pod_req::{call_remove_podcasts, PodcastResponseExtra, RemovePodcastValues};
 use crate::requests::setting_reqs::call_add_custom_feed;
 use gloo_timers::callback::Timeout;
 use serde::Deserialize;
@@ -428,7 +425,6 @@ pub fn podcasts() -> Html {
     let stop_propagation = Callback::from(|e: MouseEvent| {
         e.stop_propagation();
     });
-    let remove_feed_url = feed_url.clone();
 
     let on_remove_click = {
         let dispatch_remove = dispatch.clone();

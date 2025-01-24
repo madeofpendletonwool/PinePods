@@ -1,7 +1,5 @@
 use crate::components::context::{AppState, UIState};
-use crate::components::gen_funcs::{
-    encode_password, validate_email, validate_username, ValidationError,
-};
+use crate::components::gen_funcs::{encode_password, validate_email, validate_username};
 use crate::requests::setting_reqs::{call_get_my_user_info, MyUserInfo};
 use crate::requests::setting_reqs::{
     call_set_email, call_set_fullname, call_set_password, call_set_username,
@@ -13,31 +11,15 @@ use yewdux::prelude::*;
 #[function_component(UserSelfSettings)]
 pub fn user_self_settings() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let ui_user = audio_dispatch.clone();
-    let ui_wasm = audio_dispatch.clone();
+    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID);
 
-    #[allow(non_camel_case_types)]
-    enum error_notice {
-        Hidden,
-        Shown,
-    }
-
     // In the component
-    let username_error = use_state(|| error_notice::Hidden);
-    let email_error = use_state(|| error_notice::Hidden);
-    let password_error = use_state(|| error_notice::Hidden);
-    let password_match_error = use_state(|| error_notice::Hidden);
-    let error_container = use_state(|| error_notice::Hidden);
     let updated_fields = use_state(Vec::new);
 
     // UI States for messages and status
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
-    let error_message_container = use_state(|| "".to_string());
     let update_trigger = use_state(|| false);
 
     // Form and main states
@@ -56,7 +38,7 @@ pub fn user_self_settings() -> Html {
     let show_password_error = use_state(|| false);
     let show_password_match_error = use_state(|| false);
 
-    // Success states
+    // Success states match *error_container { match *error_container {
     let show_success = use_state(|| false);
     let success_message = use_state(|| "".to_string());
 
@@ -327,7 +309,6 @@ pub fn user_self_settings() -> Html {
                         let show_success = show_success.clone();
                         let success_message = success_message.clone();
                         let audio_dispatch = audio_dispatch.clone();
-                        let updated_user = updated_fields_call.clone();
                         let updated_trigger_call = update_trigger.clone();
 
                         wasm_bindgen_futures::spawn_local(async move {
@@ -383,16 +364,6 @@ pub fn user_self_settings() -> Html {
                             </div>
                         </div>
                     </div>
-                }
-                {
-                    match *error_container {
-                        error_notice::Hidden => html! {},
-                        error_notice::Shown => html! {
-                            <div class="error-message mt-4">
-                                {(*error_message_container).clone()}
-                            </div>
-                        }
-                    }
                 }
             </div>
 

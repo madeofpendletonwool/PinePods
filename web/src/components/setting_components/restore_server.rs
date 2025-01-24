@@ -1,7 +1,5 @@
 use crate::components::context::AppState;
 use crate::requests::setting_reqs::call_restore_server;
-use js_sys::Uint8Array;
-use wasm_bindgen::JsCast;
 use web_sys::{Event, File, FormData, HtmlInputElement};
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};

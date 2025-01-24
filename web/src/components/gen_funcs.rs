@@ -168,12 +168,13 @@ pub fn validate_user_input(username: &str, password: &str, email: &str) -> Vec<V
 }
 
 pub fn unix_timestamp_to_datetime_string(timestamp: i64) -> String {
-    // Convert Unix timestamp to NaiveDateTime
-    let naive =
-        NaiveDateTime::from_timestamp_opt(timestamp, 0).unwrap_or_else(|| Utc::now().naive_utc());
+    // Convert Unix timestamp to DateTime<Utc>, then to NaiveDateTime
+    let datetime = DateTime::<Utc>::from_timestamp(timestamp, 0)
+        .unwrap_or_else(|| Utc::now())
+        .naive_utc();
 
     // Format with milliseconds padding
-    format!("{}.000", naive.format("%Y-%m-%d %H:%M:%S"))
+    format!("{}.000", datetime.format("%Y-%m-%d %H:%M:%S"))
 }
 
 pub fn validate_username(username: &str) -> Vec<ValidationError> {

@@ -359,7 +359,7 @@ fn render_host_with_episodes(
     desc_rc: Rc<ExpandedDescriptions>,
     desc_state: Dispatch<ExpandedDescriptions>,
     audio_dispatch: Dispatch<UIState>,
-    show_modal: bool,
+    _show_modal: bool,
     on_modal_open: Callback<i32>,
     on_modal_close: Callback<MouseEvent>,
     active_modal: UseStateHandle<Option<i32>>,
@@ -412,7 +412,6 @@ fn render_host_with_episodes(
                             let episode_url_for_closure = episode.episodeurl.clone();
                             let episode_title_for_closure = episode.episodetitle.clone();
                             let episode_description_for_closure = episode.episodedescription.clone();
-                            let episode_release_for_closure = episode.episodepubdate.clone();
                             let episode_artwork_for_closure = episode.episodeartwork.clone();
                             let episode_duration_for_closure = episode.episodeduration.clone();
                             let listener_duration_for_closure = episode.listenduration.clone();

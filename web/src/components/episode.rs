@@ -23,7 +23,6 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::{call_get_podcast_details_dynamic, call_parse_podcast_url};
 use regex::Regex;
-use serde::Deserialize;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::{spawn_local, JsFuture};
@@ -102,8 +101,8 @@ pub fn transcript_modal(props: &TranscriptModalProps) -> Html {
                     let speaker_regex = Regex::new(r"<v\s+[^>]+>").unwrap();
                     let simple_speaker_regex = Regex::new(r"<v\s+").unwrap();
 
-                    let mut opts = RequestInit::new();
-                    opts.method("GET");
+                    let opts = RequestInit::new();
+                    opts.set_method("GET");
 
                     let request = Request::new_with_str_and_init(&url, &opts).unwrap();
 
@@ -418,6 +417,10 @@ pub fn epsiode() -> Html {
                     let podcast_title = url_params.get("podcast_title").unwrap_or_default();
                     let episode_url = url_params.get("episode_url").unwrap_or_default();
                     let audio_url = url_params.get("audio_url").unwrap_or_default();
+                    let podcast_index_id = url_params
+                        .get("podcast_index_id")
+                        .and_then(|id| id.parse::<i64>().ok())
+                        .unwrap_or(0);
 
                     if !podcast_title.is_empty() && !episode_url.is_empty() && !audio_url.is_empty()
                     {
@@ -478,7 +481,8 @@ pub fn epsiode() -> Html {
                                                                     podcastname: podcast_title
                                                                         .clone(),
                                                                     podcastid: 0,
-                                                                    podcastindexid: 0,
+                                                                    podcastindexid:
+                                                                        podcast_index_id,
                                                                     feedurl: ep_url.clone(),
                                                                     episodepubdate: ep
                                                                         .pub_date
@@ -489,7 +493,7 @@ pub fn epsiode() -> Html {
                                                                     episodeartwork: ep
                                                                         .artwork
                                                                         .unwrap_or_default(),
-                                                                    episodeurl: ep_url.clone(),
+                                                                    episodeurl: audio_url.clone(),
                                                                     episodeduration,
                                                                     listenduration: Some(
                                                                         episodeduration,
@@ -576,6 +580,8 @@ pub fn epsiode() -> Html {
                                                     new_url.push_str(&urlencoding::encode(
                                                         &audio_url_clone,
                                                     ));
+                                                    new_url.push_str("&podcast_index_id=");
+                                                    new_url.push_str(&podcast_index_id.to_string());
 
                                                     window
                                                         .history()
@@ -621,7 +627,8 @@ pub fn epsiode() -> Html {
                                                                     podcastname: podcast_title
                                                                         .clone(),
                                                                     podcastid: 0,
-                                                                    podcastindexid: 0,
+                                                                    podcastindexid:
+                                                                        podcast_index_id,
                                                                     feedurl: ep_url.clone(),
                                                                     episodepubdate: ep
                                                                         .pub_date
@@ -632,7 +639,7 @@ pub fn epsiode() -> Html {
                                                                     episodeartwork: ep
                                                                         .artwork
                                                                         .unwrap_or_default(),
-                                                                    episodeurl: ep_url.clone(),
+                                                                    episodeurl: audio_url.clone(),
                                                                     episodeduration,
                                                                     listenduration: Some(
                                                                         episodeduration,
@@ -716,6 +723,8 @@ pub fn epsiode() -> Html {
                                                     new_url.push_str(&urlencoding::encode(
                                                         &audio_url_clone,
                                                     ));
+                                                    new_url.push_str("&podcast_index_id=");
+                                                    new_url.push_str(&podcast_index_id.to_string());
 
                                                     window
                                                         .history()
@@ -773,6 +782,8 @@ pub fn epsiode() -> Html {
                             new_url.push_str(&urlencoding::encode(&feed_url));
                             new_url.push_str("&audio_url=");
                             new_url.push_str(&urlencoding::encode(&audio_url));
+                            new_url.push_str("&podcast_index_id=");
+                            new_url.push_str(&podcast_index_id.to_string());
 
                             window
                                 .history()
@@ -813,7 +824,7 @@ pub fn epsiode() -> Html {
                                                                     .unwrap_or_default(),
                                                                 podcastname: podcast_title.clone(),
                                                                 podcastid: 0,
-                                                                podcastindexid: 0,
+                                                                podcastindexid: podcast_index_id,
                                                                 feedurl: feed_url.clone(),
                                                                 episodepubdate: ep
                                                                     .pub_date
@@ -824,7 +835,7 @@ pub fn epsiode() -> Html {
                                                                 episodeartwork: ep
                                                                     .artwork
                                                                     .unwrap_or_default(),
-                                                                episodeurl: feed_url.clone(),
+                                                                episodeurl: audio_url.clone(),
                                                                 episodeduration,
                                                                 listenduration: Some(
                                                                     episodeduration,
@@ -913,6 +924,8 @@ pub fn epsiode() -> Html {
                                         let podcast_title = fetched_episode.podcastname.clone();
                                         let audio_url = fetched_episode.episodeurl.clone();
                                         let real_episode_id = fetched_episode.episodeid.clone();
+                                        let podcast_index_id_push =
+                                            fetched_episode.podcastindexid.clone();
                                         web_sys::console::log_1(&"Fetched the ep".into());
                                         dispatch.reduce_mut(move |state| {
                                             state.selected_episode_id = Some(real_episode_id);
@@ -932,6 +945,8 @@ pub fn epsiode() -> Html {
                                         new_url.push_str(&urlencoding::encode(&episode_url));
                                         new_url.push_str("&audio_url=");
                                         new_url.push_str(&urlencoding::encode(&audio_url));
+                                        new_url.push_str("&podcast_index_id=");
+                                        new_url.push_str(&podcast_index_id_push.to_string());
 
                                         window
                                             .history()
@@ -1221,31 +1236,30 @@ pub fn epsiode() -> Html {
                             })
                         };
 
-                        // Create the original on_play_click callback
-                        let on_play_click = on_play_click(
-                            episode_url_for_closure.clone(),
-                            episode_title_for_closure.clone(),
-                            episode_description_for_closure.clone(),
-                            episode_release_date_for_closure.clone(),
-                            episode_artwork_for_closure.clone(),
-                            episode_duration_for_closure.clone(),
-                            episode_id_for_closure.clone(),
-                            listener_duration_for_closure.clone(),
-                            api_key_play.unwrap().unwrap(),
-                            user_id_play.unwrap(),
-                            server_name_play.unwrap(),
-                            audio_dispatch.clone(),
-                            audio_state.clone(),
-                            None,
-                            episode_is_youtube,
-                        );
-
                         // Create the play toggle handler
                         let handle_play_click = {
                             let audio_state = audio_state.clone();
                             let audio_dispatch = audio_dispatch.clone();
-                            let episode_id = episode_id_for_closure;
-                            let on_play = on_play_click.clone();
+                            let episode_id = episode_id_for_closure.clone();
+
+                            // Create the base on_play_click callback
+                            let on_play = on_play_click(
+                                episode_url_for_closure.clone(),
+                                episode_title_for_closure.clone(),
+                                episode_description_for_closure.clone(),
+                                episode_release_date_for_closure.clone(),
+                                episode_artwork_for_closure.clone(),
+                                episode_duration_for_closure.clone(),
+                                episode_id_for_closure.clone(),
+                                listener_duration_for_closure.clone(),
+                                api_key_play.unwrap().unwrap(),
+                                user_id_play.unwrap(),
+                                server_name_play.unwrap(),
+                                audio_dispatch.clone(),
+                                audio_state.clone(),
+                                None,
+                                episode_is_youtube,
+                            );
 
                             Callback::from(move |e: MouseEvent| {
                                 let is_this_episode_loaded = audio_state.currently_playing.as_ref()
@@ -1257,7 +1271,7 @@ pub fn epsiode() -> Html {
                                         state.toggle_playback();
                                     });
                                 } else {
-                                    // If this episode isn't loaded, use the original on_play_click
+                                    // If this episode isn't loaded, use the base on_play_click
                                     on_play.emit(e);
                                 }
                             })
@@ -1734,9 +1748,9 @@ pub fn epsiode() -> Html {
                                     <div class="episode-action-buttons">
                                     {
                                         if should_show_buttons {
-                                            if *ep_in_db {
-                                                html! {
-                                                    <>
+                                            html! {
+                                                <>
+                                                    // Play button always shown if media exists
                                                     <div class="button-row">
                                                         <button onclick={handle_play_click} class="play-button flex items-center justify-center gap-2 mt-2">
                                                             { if is_playing {
@@ -1746,49 +1760,68 @@ pub fn epsiode() -> Html {
                                                             }}
                                                             { if is_playing { "Pause" } else { "Play" } }
                                                         </button>
-                                                        <button onclick={toggle_queue} class="queue-button flex items-center justify-center gap-2 mt-2">
-                                                            { if *queue_status {
-                                                                html! { <i class="ph ph-queue text-2xl"></i> }
+
+                                                        // Other buttons only if episode is in database
+                                                        {
+                                                            if *ep_in_db {
+                                                                html! {
+                                                                    <>
+                                                                        <button onclick={toggle_queue} class="queue-button flex items-center justify-center gap-2 mt-2">
+                                                                            { if *queue_status {
+                                                                                html! { <i class="ph ph-queue text-2xl"></i> }
+                                                                            } else {
+                                                                                html! { <i class="ph ph-queue text-2xl"></i> }
+                                                                            }}
+                                                                            { if *queue_status { "Remove from Queue" } else { "Add to Queue" } }
+                                                                        </button>
+                                                                        <button onclick={toggle_save} class="save-button flex items-center justify-center gap-2 mt-2">
+                                                                            { if *save_status {
+                                                                                html! { <i class="ph ph-heart-break text-2xl"></i> }
+                                                                            } else {
+                                                                                html! { <i class="ph ph-heart text-2xl"></i> }
+                                                                            }}
+                                                                            { if *save_status { "Unsave" } else { "Save" } }
+                                                                        </button>
+                                                                    </>
+                                                                }
                                                             } else {
-                                                                html! { <i class="ph ph-queue text-2xl"></i> }
-                                                            }}
-                                                            { if *queue_status { "Remove from Queue" } else { "Add to Queue" } }
-                                                        </button>
-                                                        <button onclick={toggle_save} class="save-button flex items-center justify-center gap-2 mt-2">
-                                                            { if *save_status {
-                                                                html! { <i class="ph ph-heart-break text-2xl"></i> }
-                                                            } else {
-                                                                html! { <i class="ph ph-heart text-2xl"></i> }
-                                                            }}
-                                                            { if *save_status { "Unsave" } else { "Save" } }
-                                                        </button>
+                                                                html! {
+                                                                    <p class="no-media-warning item_container-text play-button">
+                                                                        {"Add podcast to enable more actions"}
+                                                                    </p>
+                                                                }
+                                                            }
+                                                        }
                                                     </div>
-                                                    <div class="button-row">
-                                                        <button onclick={toggle_download} class="download-button-ep flex items-center justify-center gap-2 mt-2">
-                                                            { if *download_status {
-                                                                html! { <i class="ph ph-trash text-2xl"></i> }
-                                                            } else {
-                                                                html! { <i class="ph ph-download text-2xl"></i> }
-                                                            }}
-                                                            { if *download_status { "Remove Download" } else { "Download" } }
-                                                        </button>
-                                                        <button onclick={toggle_completion} class="download-button-ep flex items-center justify-center gap-2 mt-2">
-                                                            { if *completion_status {
-                                                                html! { <i class="ph ph-x-circle text-2xl"></i> }
-                                                            } else {
-                                                                html! { <i class="ph ph-check-fat text-2xl"></i> }
-                                                            }}
-                                                            { if *completion_status { "Mark Incomplete" } else { "Mark Complete" } }
-                                                        </button>
-                                                    </div>
-                                                    </>
-                                                }
-                                            } else {
-                                                html! {
-                                                    <p class="no-media-warning item_container-text play-button">
-                                                        {"Add podcast to display actions"}
-                                                    </p>
-                                                }
+
+                                                    // Second row of buttons only if in database
+                                                    {
+                                                        if *ep_in_db {
+                                                            html! {
+                                                                <div class="button-row">
+                                                                    <button onclick={toggle_download} class="download-button-ep flex items-center justify-center gap-2 mt-2">
+                                                                        { if *download_status {
+                                                                            html! { <i class="ph ph-trash text-2xl"></i> }
+                                                                        } else {
+                                                                            html! { <i class="ph ph-download text-2xl"></i> }
+                                                                        }}
+                                                                        { if *download_status { "Remove Download" } else { "Download" } }
+                                                                    </button>
+                                                                    <button onclick={toggle_completion} class="download-button-ep flex items-center justify-center gap-2 mt-2">
+                                                                        { if *completion_status {
+                                                                            html! { <i class="ph ph-x-circle text-2xl"></i> }
+                                                                        } else {
+                                                                            html! { <i class="ph ph-check-fat text-2xl"></i> }
+                                                                        }}
+                                                                        { if *completion_status { "Mark Incomplete" } else { "Mark Complete" } }
+                                                                    </button>
+                                                                </div>
+                                                            }
+                                                        } else {
+                                                            html! {} // Empty VNode when not in database
+                                                        }
+                                                    }
+                                                </>
                                             }
                                         } else {
                                             html! {
@@ -1902,57 +1935,63 @@ pub fn epsiode() -> Html {
                                     <div class="episode-action-buttons">
                                     {
                                         if should_show_buttons {
-                                            if *ep_in_db {
-                                                html! {
-                                                    <>
-                                                    <button onclick={handle_play_click} class="play-button flex items-center justify-center gap-2">
-                                                        { if is_playing {
-                                                            html! { <i class="ph ph-pause text-2xl"></i> }
-                                                        } else {
-                                                            html! { <i class="ph ph-play text-2xl"></i> }
-                                                        }}
-                                                        { if is_playing { "Pause" } else { "Play" } }
-                                                    </button>
-                                                    <button onclick={toggle_queue} class="queue-button flex items-center justify-center gap-2">
-                                                        { if *queue_status {
-                                                            html! { <i class="ph ph-queue text-2xl"></i> }
-                                                        } else {
-                                                            html! { <i class="ph ph-queue text-2xl"></i> }
-                                                        }}
-                                                        { if *queue_status { "Remove from Queue" } else { "Add to Queue" } }
-                                                    </button>
-                                                    <button onclick={toggle_save} class="save-button flex items-center justify-center gap-2">
-                                                        { if *save_status {
-                                                            html! { <i class="ph ph-heart-break text-2xl"></i> }
-                                                        } else {
-                                                            html! { <i class="ph ph-heart text-2xl"></i> }
-                                                        }}
-                                                        { if *save_status { "Unsave" } else { "Save" } }
-                                                    </button>
-                                                    <button onclick={toggle_download} class="download-button-ep flex items-center justify-center gap-2">
-                                                        { if *download_status {
-                                                            html! { <i class="ph ph-trash text-2xl"></i> }
-                                                        } else {
-                                                            html! { <i class="ph ph-download text-2xl"></i> }
-                                                        }}
-                                                        { if *download_status { "Remove Download" } else { "Download" } }
-                                                    </button>
-                                                    <button onclick={toggle_completion} class="download-button-ep flex items-center justify-center gap-2">
-                                                        { if *completion_status {
-                                                            html! { <i class="ph ph-x-circle text-2xl"></i> }
-                                                        } else {
-                                                            html! { <i class="ph ph-check-fat text-2xl"></i> }
-                                                        }}
-                                                        { if *completion_status { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }
-                                                    </button>
-                                                    </>
+                                            html! {
+                                                <>
+                                                <button onclick={handle_play_click} class="play-button flex items-center justify-center gap-2">
+                                                    { if is_playing {
+                                                        html! { <i class="ph ph-pause text-2xl"></i> }
+                                                    } else {
+                                                        html! { <i class="ph ph-play text-2xl"></i> }
+                                                    }}
+                                                    { if is_playing { "Pause" } else { "Play" } }
+                                                </button>
+                                                {
+                                                    if *ep_in_db {
+                                                        html! {
+                                                            <>
+                                                            <button onclick={toggle_queue} class="queue-button flex items-center justify-center gap-2">
+                                                                { if *queue_status {
+                                                                    html! { <i class="ph ph-queue text-2xl"></i> }
+                                                                } else {
+                                                                    html! { <i class="ph ph-queue text-2xl"></i> }
+                                                                }}
+                                                                { if *queue_status { "Remove from Queue" } else { "Add to Queue" } }
+                                                            </button>
+                                                            <button onclick={toggle_save} class="save-button flex items-center justify-center gap-2">
+                                                                { if *save_status {
+                                                                    html! { <i class="ph ph-heart-break text-2xl"></i> }
+                                                                } else {
+                                                                    html! { <i class="ph ph-heart text-2xl"></i> }
+                                                                }}
+                                                                { if *save_status { "Unsave" } else { "Save" } }
+                                                            </button>
+                                                            <button onclick={toggle_download} class="download-button-ep flex items-center justify-center gap-2">
+                                                                { if *download_status {
+                                                                    html! { <i class="ph ph-trash text-2xl"></i> }
+                                                                } else {
+                                                                    html! { <i class="ph ph-download text-2xl"></i> }
+                                                                }}
+                                                                { if *download_status { "Remove Download" } else { "Download" } }
+                                                            </button>
+                                                            <button onclick={toggle_completion} class="download-button-ep flex items-center justify-center gap-2">
+                                                                { if *completion_status {
+                                                                    html! { <i class="ph ph-x-circle text-2xl"></i> }
+                                                                } else {
+                                                                    html! { <i class="ph ph-check-fat text-2xl"></i> }
+                                                                }}
+                                                                { if *completion_status { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }
+                                                            </button>
+                                                            </>
+                                                        }
+                                                    } else {
+                                                        html! {
+                                                            <p class="no-media-warning item_container-text play-button">
+                                                                {"Add podcast to enable more actions"}
+                                                            </p>
+                                                        }
+                                                    }
                                                 }
-                                            } else {
-                                                html! {
-                                                    <p class="no-media-warning item_container-text play-button">
-                                                        {"Add podcast to display actions"}
-                                                    </p>
-                                                }
+                                                </>
                                             }
                                         } else {
                                             html! {

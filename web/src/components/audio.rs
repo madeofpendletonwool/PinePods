@@ -14,7 +14,6 @@ use crate::requests::pod_req::{
     call_remove_queued_episode, HistoryAddRequest, MarkEpisodeCompletedRequest,
     QueuePodcastRequest, RecordListenDurationRequest,
 };
-use _AudioPlayerProps::is_youtube;
 use gloo_timers::callback::Interval;
 use js_sys::Array;
 use js_sys::Object;
@@ -134,13 +133,6 @@ pub fn volume_control(props: &VolumeControlProps) -> Html {
         })
     };
 
-    let volume_icon = match props.volume as i32 {
-        0 => "volume_off",
-        1..=33 => "volume_mute",
-        34..=66 => "volume_down",
-        _ => "volume_up",
-    };
-
     html! {
         <div class="volume-control-container">
             <button
@@ -254,7 +246,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         .map(|props| props.is_youtube)
         .unwrap_or(false);
     let history = BrowserHistory::new();
-    let history_clone = history.clone();
     let episode_in_db = audio_state.episode_in_db.unwrap_or_default();
     let progress: UseStateHandle<f64> = use_state(|| 0.0);
     let offline_status = audio_state
@@ -281,7 +272,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             }
         })
     };
-    let title_click_emit = title_click.clone();
     let src_clone = props.src.clone();
 
     // Update the audio source when `src` changes
@@ -480,65 +470,67 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 if let Some(audio_element) = state_clone.audio_element.as_ref() {
                     let time_in_seconds = audio_element.current_time();
                     let duration = audio_element.duration(); // Assuming you can get the duration from the audio_element
-                    let end_pos_sec = end_pos.clone(); // Get the end position
-                    web_sys::console::log_1(&format!("Time: {}", time_in_seconds).into());
-                    web_sys::console::log_1(&format!("Duration: {}", duration).into());
-                    web_sys::console::log_1(&format!("End Pos: {:?}", end_pos_sec).into());
-                    let complete_api_key = closure_api_key.clone();
-                    let complete_server_name = closure_server_name.clone();
-                    let complete_user_id = closure_user_id.clone();
-                    let complete_episode_id = closure_episode_id.clone();
-                    let offline_status_loop = offline_status.unwrap_or(false);
-                    if time_in_seconds >= (duration - end_pos_sec.unwrap()) {
-                        web_sys::console::log_1(&"Episode completed".into());
-                        audio_element.pause().unwrap_or(());
-                        // Manually trigger the `ended` event
-                        let event = web_sys::Event::new("ended").unwrap();
-                        audio_element.dispatch_event(&event).unwrap();
-                        // Call the endpoint to mark episode as completed
-                        if offline_status_loop {
-                            // If offline, store the episode in the local database
-                        } else {
-                            // If online, call the endpoint
-                            wasm_bindgen_futures::spawn_local(async move {
-                                if let (
-                                    Some(complete_api_key),
-                                    Some(complete_server_name),
-                                    Some(complete_user_id),
-                                    Some(complete_episode_id),
-                                ) = (
-                                    complete_api_key.as_ref(),
-                                    complete_server_name.as_ref(),
-                                    complete_user_id.as_ref(),
-                                    complete_episode_id.as_ref(),
-                                ) {
-                                    let request = MarkEpisodeCompletedRequest {
-                                        episode_id: *complete_episode_id, // Dereference the option
-                                        user_id: *complete_user_id,       // Dereference the option
-                                    };
+                    if !duration.is_nan() && duration > 0.0 {
+                        let end_pos_sec = end_pos.clone(); // Get the end position
+                        web_sys::console::log_1(&format!("Time: {}", time_in_seconds).into());
+                        web_sys::console::log_1(&format!("Duration: {}", duration).into());
+                        web_sys::console::log_1(&format!("End Pos: {:?}", end_pos_sec).into());
+                        let complete_api_key = closure_api_key.clone();
+                        let complete_server_name = closure_server_name.clone();
+                        let complete_user_id = closure_user_id.clone();
+                        let complete_episode_id = closure_episode_id.clone();
+                        let offline_status_loop = offline_status.unwrap_or(false);
+                        if time_in_seconds >= (duration - end_pos_sec.unwrap()) {
+                            web_sys::console::log_1(&"Episode completed".into());
+                            audio_element.pause().unwrap_or(());
+                            // Manually trigger the `ended` event
+                            let event = web_sys::Event::new("ended").unwrap();
+                            audio_element.dispatch_event(&event).unwrap();
+                            // Call the endpoint to mark episode as completed
+                            if offline_status_loop {
+                                // If offline, store the episode in the local database
+                            } else {
+                                // If online, call the endpoint
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    if let (
+                                        Some(complete_api_key),
+                                        Some(complete_server_name),
+                                        Some(complete_user_id),
+                                        Some(complete_episode_id),
+                                    ) = (
+                                        complete_api_key.as_ref(),
+                                        complete_server_name.as_ref(),
+                                        complete_user_id.as_ref(),
+                                        complete_episode_id.as_ref(),
+                                    ) {
+                                        let request = MarkEpisodeCompletedRequest {
+                                            episode_id: *complete_episode_id, // Dereference the option
+                                            user_id: *complete_user_id, // Dereference the option
+                                        };
 
-                                    match call_mark_episode_completed(
-                                        &complete_server_name,
-                                        &complete_api_key,
-                                        &request,
-                                    )
-                                    .await
-                                    {
-                                        Ok(_) => {}
-                                        Err(e) => {
-                                            web_sys::console::log_1(
-                                                &format!("Error: {}", e).into(),
-                                            );
+                                        match call_mark_episode_completed(
+                                            &complete_server_name,
+                                            &complete_api_key,
+                                            &request,
+                                        )
+                                        .await
+                                        {
+                                            Ok(_) => {}
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!("Error: {}", e).into(),
+                                                );
+                                            }
                                         }
                                     }
-                                }
-                            });
-                        }
+                                });
+                            }
 
-                        // Stop the interval
-                        if let Some(handle) = interval_handle.take() {
-                            handle.cancel();
-                            interval_handle.set(None);
+                            // Stop the interval
+                            if let Some(handle) = interval_handle.take() {
+                                handle.cancel();
+                                interval_handle.set(None);
+                            }
                         }
                     } else {
                         web_sys::console::log_1(&format!("Time: {}", time_in_seconds).into());
@@ -856,13 +848,16 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                                 // Update position state
                                 if let Some(audio_element) = &audio_state_clone.audio_element {
-                                    let position_state = MediaPositionState::new();
-                                    position_state.set_duration(audio_props.duration_sec);
-                                    position_state
-                                        .set_playback_rate(audio_state_clone.playback_speed);
-                                    position_state.set_position(audio_element.current_time());
-                                    let _ = media_session
-                                        .set_position_state_with_state(&position_state);
+                                    let duration = audio_props.duration_sec;
+                                    if !duration.is_nan() && duration > 0.0 {
+                                        let position_state = MediaPositionState::new();
+                                        position_state.set_duration(duration);
+                                        position_state
+                                            .set_playback_rate(audio_state_clone.playback_speed);
+                                        position_state.set_position(audio_element.current_time());
+                                        let _ = media_session
+                                            .set_position_state_with_state(&position_state);
+                                    }
                                 }
                             }
                             // Inside your use_effect_with block, after setting up the initial position state:
@@ -872,13 +867,19 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 let audio_state_for_callback = audio_state_clone.clone();
                                 let audio_element_clone = audio_element.clone();
                                 let timeupdate_callback = Closure::wrap(Box::new(move || {
-                                    let position_state = MediaPositionState::new();
-                                    position_state.set_duration(audio_element_clone.duration()); // Use the element's duration directly
-                                    position_state
-                                        .set_playback_rate(audio_state_for_callback.playback_speed);
-                                    position_state.set_position(audio_element_clone.current_time());
-                                    let _ = media_session_clone
-                                        .set_position_state_with_state(&position_state);
+                                    let duration = audio_element_clone.duration();
+                                    // Only update position state if we have a valid duration
+                                    if !duration.is_nan() && duration > 0.0 {
+                                        let position_state = MediaPositionState::new();
+                                        position_state.set_duration(duration);
+                                        position_state.set_playback_rate(
+                                            audio_state_for_callback.playback_speed,
+                                        );
+                                        position_state
+                                            .set_position(audio_element_clone.current_time());
+                                        let _ = media_session_clone
+                                            .set_position_state_with_state(&position_state);
+                                    }
                                 })
                                     as Box<dyn FnMut()>);
 
@@ -1194,7 +1195,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     let click_start_time = start_time;
                                     let on_chapter_click = on_chapter_click.clone();
                                     let on_chapter_click_button = on_chapter_click.clone();
-                                    let toggle_playback = toggle_playback.clone();
 
                                     let click_handler = {
                                         let dispatch = audio_dispatch.clone();
@@ -1276,32 +1276,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             duration_hours, duration_minutes, duration_seconds
         );
         let on_shownotes_click = {
-            let history = history_clone.clone();
-            let dispatch = _dispatch.clone();
-            let episode_id = audio_state
-                .currently_playing
-                .as_ref()
-                .map(|audio_props| audio_props.episode_id);
             let show_modal = show_modal.clone();
 
             Callback::from(move |_: MouseEvent| {
                 show_modal.set(true); // Show modal instead of navigating
             })
-        };
-
-        // let progress: f64 = 0.0; // Assuming 'progress' is defined here as an example
-        let track_width_px: f64 = 300.0; // Explicitly typing the variable
-        let pixel_offset: f64 = 60.0; // Explicitly typing the variable
-        let offset_percentage: f64 = (pixel_offset / track_width_px) * 100.0; // This will also be f64
-
-        let progress_style = {
-            let progress_percentage: f64 = *progress; // Ensure this variable is typed as f64
-            let start: f64 = (progress_percentage - offset_percentage).max(0.0); // Using max on f64
-            let end: f64 = (progress_percentage + offset_percentage).min(100.0); // Using min on f64
-            format!(
-                "background: linear-gradient(to right, #1db954 0%, #1db954 {}%, var(--prog-bar-color) {}%, var(--prog-bar-color) 100%);",
-                start, end
-            )
         };
 
         let audio_bar_class = classes!(

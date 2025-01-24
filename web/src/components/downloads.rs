@@ -499,7 +499,6 @@ pub fn render_podcast_with_episodes(
                             let episode_url_clone = episode.episodeurl.clone();
                             let episode_title_clone = episode.episodetitle.clone();
                             let episode_description_clone = episode.episodedescription.clone();
-                            let episode_release_clone = episode.episodepubdate.clone();
                             let episode_artwork_clone = episode.episodeartwork.clone();
                             let episode_duration_clone = episode.episodeduration.clone();
                             let episode_id_clone = episode.episodeid.clone();
@@ -533,7 +532,6 @@ pub fn render_podcast_with_episodes(
                             let episode_url_for_closure = episode_url_clone.clone();
                             let episode_title_for_closure = episode_title_clone.clone();
                             let episode_description_for_closure = episode_description_clone.clone();
-                            let episode_release_for_closure = episode_release_clone.clone();
                             let episode_artwork_for_closure = episode_artwork_clone.clone();
                             let episode_duration_for_closure = episode_duration_clone.clone();
                             let listener_duration_for_closure = episode_listened_clone.clone();

@@ -1,10 +1,9 @@
 use crate::components::context::{AppState, UIState};
-use crate::requests::setting_reqs::{call_set_theme, call_get_theme, SetThemeRequest};
+use crate::requests::setting_reqs::{call_get_theme, call_set_theme, SetThemeRequest};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::console;
 use web_sys::window;
-use web_sys::{Element, HtmlSelectElement};
+use web_sys::HtmlSelectElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
 
@@ -38,7 +37,9 @@ pub fn theme() -> Html {
                             loading.set(false);
                         }
                         Err(e) => {
-                            web_sys::console::log_1(&format!("Error fetching theme: {:?}", e).into());
+                            web_sys::console::log_1(
+                                &format!("Error fetching theme: {:?}", e).into(),
+                            );
                             loading.set(false);
                         }
                     }
@@ -60,7 +61,7 @@ pub fn theme() -> Html {
     let on_submit = {
         let selected_theme = selected_theme.clone();
         let state = state.clone();
-        
+
         Callback::from(move |_| {
             let audio_dispatch = audio_dispatch.clone();
             let theme = (*selected_theme).clone();
@@ -68,9 +69,11 @@ pub fn theme() -> Html {
             if theme.is_empty() {
                 return;
             }
-            
+
             // Call JavaScript theme change function
-            unsafe { changeTheme(&theme) };
+            {
+                changeTheme(&theme)
+            };
 
             // Store in local storage
             if let Some(window) = web_sys::window() {
@@ -94,12 +97,14 @@ pub fn theme() -> Html {
                     match call_set_theme(&Some(server_name), &Some(api_key), &request).await {
                         Ok(_) => {
                             audio_dispatch.reduce_mut(|state| {
-                                state.info_message = Some("Theme updated successfully!".to_string());
+                                state.info_message =
+                                    Some("Theme updated successfully!".to_string());
                             });
                         }
                         Err(e) => {
                             audio_dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!("Failed to update theme: {}", e));
+                                state.error_message =
+                                    Some(format!("Failed to update theme: {}", e));
                             });
                         }
                     }
@@ -109,10 +114,25 @@ pub fn theme() -> Html {
     };
 
     let theme_options = vec![
-        "Light", "Dark", "Nordic Light", "Nordic", "Abyss", "Dracula",
-        "Midnight Ocean", "Forest Depths", "Sunset Horizon", "Arctic Frost",
-        "Cyber Synthwave", "Github Light", "Neon", "Kimbie", "Gruvbox Light",
-        "Gruvbox Dark", "Greenie Meanie", "Wildberries", "Hot Dog Stand - MY EYES"
+        "Light",
+        "Dark",
+        "Nordic Light",
+        "Nordic",
+        "Abyss",
+        "Dracula",
+        "Midnight Ocean",
+        "Forest Depths",
+        "Sunset Horizon",
+        "Arctic Frost",
+        "Cyber Synthwave",
+        "Github Light",
+        "Neon",
+        "Kimbie",
+        "Gruvbox Light",
+        "Gruvbox Dark",
+        "Greenie Meanie",
+        "Wildberries",
+        "Hot Dog Stand - MY EYES",
     ];
 
     html! {
@@ -134,7 +154,7 @@ pub fn theme() -> Html {
                 </div>
             } else {
                 <div class="theme-select-container relative">
-                    <select 
+                    <select
                         onchange={on_change}
                         class="theme-select-dropdown w-full p-3 pr-10 rounded-lg border appearance-none cursor-pointer"
                         value={(*selected_theme).clone()}
@@ -154,7 +174,7 @@ pub fn theme() -> Html {
                     </div>
                 </div>
 
-                <button 
+                <button
                     onclick={on_submit}
                     class="theme-submit-button mt-4 w-full p-3 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
                 >
@@ -574,41 +594,12 @@ pub fn initialize_default_theme() {
                 }
                 _ => {
                     // No theme found, set Nordic as default
-                    storage.set_item("selected_theme", "Nordic").unwrap_or_default();
+                    storage
+                        .set_item("selected_theme", "Nordic")
+                        .unwrap_or_default();
                     changeTheme("Nordic");
                 }
             }
         }
-    }
-}
-
-pub fn log_css_variables() {
-    let window = window().expect("no global `window` exists");
-    let document = window.document().expect("should have a document on window");
-    let root: Element = document
-        .document_element()
-        .expect("document should have a root element");
-
-    let computed_style = window
-        .get_computed_style(&root)
-        .expect("should be able to get computed style")
-        .expect("computed style should not be null");
-
-    let variable_names = vec![
-        "--background-color",
-        "--button-color",
-        "--text-color",
-        "--accent-color",
-        "--error-color",
-        "--bonus-color",
-        "--secondary-background",
-        "--standout-color",
-        "--hover-color",
-    ];
-
-    for var_name in variable_names {
-        let _value = computed_style
-            .get_property_value(var_name)
-            .expect("should get property value");
     }
 }

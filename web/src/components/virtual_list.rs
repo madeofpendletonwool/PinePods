@@ -2,7 +2,7 @@ use super::gen_components::{on_shownotes_click, ContextButton, EpisodeModal, Epi
 use super::gen_funcs::{format_datetime, match_date_format, parse_date};
 use crate::components::audio::on_play_pause;
 use crate::components::context::{AppState, UIState};
-use crate::components::episodes_layout::{AppStateMsg, SafeHtml};
+use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::{
     convert_time_to_seconds, sanitize_html_with_blank_target, truncate_description,
 };
@@ -118,16 +118,13 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
             };
 
             let episode = &props.episodes[index];
-            let history_clone = props.history.clone();
             let dispatch = props.dispatch.clone();
-            let search_dispatch = props.search_dispatch.clone();
             let search_state_clone = props.search_state.clone();
             let search_ui_state_clone = props.search_ui_state.clone();
 
             let episode_url_clone = episode.enclosure_url.clone().unwrap_or_default();
             let episode_title_clone = episode.title.clone().unwrap_or_default();
             let episode_description_clone = episode.description.clone().unwrap_or_default();
-            let episode_release_clone = episode.pub_date.clone().unwrap_or_default();
             let episode_artwork_clone = episode.artwork.clone().unwrap_or_default();
             let episode_duration_clone = episode.duration.clone().unwrap_or_default();
             let episode_is_youtube = episode.is_youtube.clone();
@@ -139,9 +136,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 }
             };
             let episode_id_clone = episode.episode_id.unwrap_or(0);
-            let db_added = episode_id_clone != 0;
 
-            let episode_id_shownotes = episode_id_clone.clone();
             let server_name_play = props.server_name.clone();
             let user_id_play = props.user_id;
             let api_key_play = props.api_key.clone();
@@ -153,22 +148,6 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 (sanitized_description, false)
             } else {
                 truncate_description(sanitized_description, 300)
-            };
-
-            let search_state_toggle = search_state_clone.clone();
-            let toggle_expanded = {
-                let search_dispatch_clone = search_dispatch.clone();
-                let episode_guid = episode.guid.clone().unwrap();
-                Callback::from(move |_: MouseEvent| {
-                    let guid_clone = episode_guid.clone();
-                    let search_dispatch_call = search_dispatch_clone.clone();
-
-                    if search_state_toggle.expanded_descriptions.contains(&guid_clone) {
-                        search_dispatch_call.apply(AppStateMsg::CollapseEpisode(guid_clone));
-                    } else {
-                        search_dispatch_call.apply(AppStateMsg::ExpandEpisode(guid_clone));
-                    }
-                })
             };
 
             let date_format = match_date_format(search_state_clone.date_format.as_deref());
@@ -193,12 +172,6 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 episode_is_youtube,
             );
 
-            let description_class = if is_expanded {
-                "desc-expanded".to_string()
-            } else {
-                "desc-collapsed".to_string()
-            };
-
             let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
             let formatted_duration = format_time(episode_duration_in_seconds.into());
             let is_current_episode = props.search_ui_state
@@ -214,29 +187,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
 
 
             let episode_url_for_ep_item = episode_url_clone.clone();
-            let shownotes_episode_url = episode_url_clone.clone();
             let should_show_buttons = !episode_url_for_ep_item.is_empty();
-            let make_shownotes_callback = {
-                let history = history_clone.clone();
-                let search_dispatch = search_dispatch.clone();
-                let podcast_link = props.podcast_link.clone();
-                let podcast_title = props.podcast_title.clone();
-                let episode_id = episode_id_clone;
-                let episode_url = episode_url_clone.clone();
-
-                Callback::from(move |_: MouseEvent| {
-                    on_shownotes_click(
-                        history.clone(),
-                        search_dispatch.clone(),
-                        Some(episode_id),
-                        Some(podcast_link.clone()),
-                        Some(episode_url.clone()),
-                        Some(podcast_title.clone()),
-                        true,
-                        None,
-                    ).emit(MouseEvent::new("click").unwrap());
-                })
-            };
             let preview_description = strip_images_from_html(&description);
 
             let make_shownotes_callback = {
