@@ -97,7 +97,6 @@ fn host_item(props: &HostItemProps) -> Html {
             server_name,
             urlencoding::encode(original_url)
         );
-        web_sys::console::log_1(&format!("Proxied URL: {}", proxied_url).into());
         proxied_url
     }
 
@@ -241,7 +240,6 @@ pub fn host_dropdown(
             let history_clone = history.clone();
 
             let on_host_click = {
-                web_sys::console::log_1(&"".into());
                 let dispatch_clone = _search_dispatch.clone();
                 let server_name = server_name.clone();
                 let api_key = api_key.clone();
@@ -325,14 +323,6 @@ pub fn host_dropdown(
                                     let podcast_index_id = feed_id.unwrap_or(0);
 
                                     async move {
-                                        // Only log once per unique podcast
-                                        web_sys::console::log_1(
-                                            &format!(
-                                                "Processing podcast: {:?} - {:?} (Index ID: {})",
-                                                feed_title, feed_url, podcast_index_id
-                                            )
-                                            .into(),
-                                        );
                                         let podcast_exists = call_check_podcast(
                                             &server_name.clone().unwrap(),
                                             &api_key.clone().unwrap().unwrap(),
@@ -345,13 +335,6 @@ pub fn host_dropdown(
                                         .exists;
 
                                         if podcast_exists {
-                                            web_sys::console::log_1(
-                                                &format!(
-                                                    "Podcast exists: {:?} - {:?}",
-                                                    feed_title, feed_url
-                                                )
-                                                .into(),
-                                            );
                                             if let Ok(podcast_id) = call_get_podcast_id(
                                                 &server_name.clone().unwrap(),
                                                 &api_key.clone().unwrap(),
@@ -384,13 +367,6 @@ pub fn host_dropdown(
                                                 None
                                             }
                                         } else {
-                                            web_sys::console::log_1(
-                                                &format!(
-                                                    "Podcast does not exist: {:?} - {:?}",
-                                                    feed_title, feed_url
-                                                )
-                                                .into(),
-                                            );
                                             match call_get_podcast_details_dynamic(
                                                 &server_name.clone().unwrap(),
                                                 &api_key.clone().unwrap().unwrap(),
@@ -404,13 +380,6 @@ pub fn host_dropdown(
                                             .await
                                             {
                                                 Ok(clicked_feed_url) => {
-                                                    web_sys::console::log_1(
-                                                        &format!(
-                                                            "Dynamic fetch successful: {:?}",
-                                                            clicked_feed_url
-                                                        )
-                                                        .into(),
-                                                    );
                                                     use rand::Rng;
                                                     let unique_id = 1_000_000_000
                                                         + rand::thread_rng()

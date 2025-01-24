@@ -178,9 +178,6 @@ pub fn subscribed_people() -> Html {
                             .await
                         {
                             Ok(new_episodes) => {
-                                web_sys::console::log_1(
-                                    &format!("Received episodes: {:?}", new_episodes).into(),
-                                );
                                 subscribed_people.set(
                                     (*subscribed_people)
                                         .clone()

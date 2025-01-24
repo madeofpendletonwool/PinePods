@@ -121,7 +121,6 @@ pub async fn update_local_database(episode_info: EpisodeInfo) -> Result<(), JsVa
     let invoke_fn = invoke
         .dyn_ref::<js_sys::Function>()
         .ok_or_else(|| JsValue::from_str("invoke is not a function"))?;
-    web_sys::console::log_1(&format!("Episode info before update: {:?}", episode_info).into());
     // Create arguments object with episodeInfo field
     let args = js_sys::Object::new();
     let episode_info_value = serde_wasm_bindgen::to_value(&episode_info)?;
@@ -385,7 +384,6 @@ pub fn downloads() -> Html {
             let dispatch = effect_dispatch.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
-                web_sys::console::log_1(&"Starting podcast fetch".into());
 
                 // First ensure we have a valid podcast feed state, even if empty
                 dispatch.reduce_mut(move |state| {
@@ -393,12 +391,10 @@ pub fn downloads() -> Html {
                         pods: Some(Vec::new()),
                     });
                 });
-                web_sys::console::log_1(&"Set initial state".into());
 
                 // Then try to fetch and update
                 match fetch_local_podcasts().await {
                     Ok(fetched_podcasts) => {
-                        web_sys::console::log_1(&"Got podcasts".into());
                         dispatch.reduce_mut(move |state| {
                             state.podcast_feed_return = Some(PodcastResponse {
                                 pods: Some(fetched_podcasts),
@@ -411,16 +407,13 @@ pub fn downloads() -> Html {
                         );
                     }
                 }
-                web_sys::console::log_1(&"Starting episode part".into());
                 // Similar pattern for episodes
                 if let Ok(fetched_episodes) = fetch_local_episodes().await {
-                    web_sys::console::log_1(&"In episode".into());
                     let completed_episode_ids: Vec<i32> = fetched_episodes
                         .iter()
                         .filter(|ep| ep.listenduration.is_some())
                         .map(|ep| ep.episodeid)
                         .collect();
-                    web_sys::console::log_1(&"Got episodes. Setting state".into());
                     dispatch.reduce_mut(move |state| {
                         state.downloaded_episodes = Some(EpisodeDownloadResponse {
                             episodes: fetched_episodes,

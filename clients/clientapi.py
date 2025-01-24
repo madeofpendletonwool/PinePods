@@ -704,6 +704,7 @@ class ClickedFeedURL(BaseModel):
     categories: Optional[Dict[str, str]]
     websiteurl: str
     podcastindexid: int
+    is_youtube: Optional[bool]
 
 @app.get("/api/data/get_podcast_details_dynamic", response_model=ClickedFeedURL)
 async def get_podcast_details(
@@ -751,7 +752,8 @@ async def get_podcast_details(
             episodecount=details["episodecount"],
             categories=categories_dict,
             websiteurl=details["websiteurl"],
-            podcastindexid=details["podcastindexid"]
+            podcastindexid=details["podcastindexid"],
+            is_youtube=details["isyoutubechannel"]
         )
         return pod_details
     else:
@@ -783,6 +785,7 @@ async def get_podcast_details(
             categories=categories_dict,
             websiteurl=podcast_values['pod_website'],
             podcastindexid=podcast_index_id,
+            is_youtube=False
         )
 
 class ImportProgressResponse(BaseModel):

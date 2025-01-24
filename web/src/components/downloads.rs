@@ -183,7 +183,6 @@ pub fn downloads() -> Html {
                                     state.completed_episodes = Some(completed_episode_ids);
                                 });
                                 loading_ep.set(false);
-                                // web_sys::console::log_1(&format!("State after update: {:?}", state).into()); // Log state after update
                             }
                             Err(e) => {
                                 error_clone.set(Some(e.to_string()));

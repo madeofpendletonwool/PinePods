@@ -148,8 +148,6 @@ pub fn mfa_options() -> Html {
 
             // Now call the API to generate the TOTP secret
             wasm_bindgen_futures::spawn_local(async move {
-                // log mfa status
-                web_sys::console::log_1(&format!("MFA Status: {:?}", mfa_status).into());
                 match call_generate_mfa_secret(
                     server_name.clone().unwrap(),
                     api_key.clone().unwrap().unwrap(),

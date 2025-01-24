@@ -632,10 +632,8 @@ pub fn podcasts() -> Html {
                             if let Some(ref mut podcast_response) = state.podcast_feed_return_extra
                             {
                                 if let Some(ref mut pods) = podcast_response.pods {
-                                    web_sys::console::log_1(&JsValue::from_str("Adding Podcast"));
                                     pods.push(PodcastExtra::from(new_podcast.clone()));
                                 } else {
-                                    web_sys::console::log_1(&JsValue::from_str("Creating Podcast"));
                                     podcast_response.pods =
                                         Some(vec![PodcastExtra::from(new_podcast.clone())]);
                                 }

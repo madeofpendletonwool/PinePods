@@ -240,13 +240,6 @@ pub fn epsiode() -> Html {
 
     let session_dispatch = dispatch.clone();
     let session_state = state.clone();
-    web_sys::console::log_1(
-        &format!(
-            "Component mounted with episode_id: {:?}",
-            state.selected_episode_id
-        )
-        .into(),
-    );
 
     use_effect_with((), move |_| {
         // Check if the page reload action has already occurred to prevent redundant execution
@@ -403,10 +396,6 @@ pub fn epsiode() -> Html {
                     effect_dispatch.reduce_mut(|state| {
                         state.fetched_episode = None;
                     });
-                    web_sys::console::log_1(&"Fetching episode...".into());
-                    web_sys::console::log_1(
-                        &format!("First effect running with episode_id: {:?}", episode_id).into(),
-                    );
                     let dispatch = effect_dispatch.clone();
 
                     // Check if the URL contains the parameters for the episode
@@ -424,7 +413,6 @@ pub fn epsiode() -> Html {
 
                     if !podcast_title.is_empty() && !episode_url.is_empty() && !audio_url.is_empty()
                     {
-                        web_sys::console::log_1(&"Episode parameters found".into());
                         // URL contains episode parameters, handle the episode setup
                         let podcast_title_clone = podcast_title.clone();
                         let episode_url_clone = episode_url.clone();
@@ -468,9 +456,6 @@ pub fn epsiode() -> Html {
                                             .await
                                             {
                                                 Ok(fetched_episode_id) => {
-                                                    web_sys::console::log_1(
-                                                        &"Episode ID fetched".into(),
-                                                    );
                                                     dispatch.reduce_mut(move |state| {
                                                         state.fetched_episode =
                                                             Some(EpisodeMetadataResponse {
@@ -519,7 +504,6 @@ pub fn epsiode() -> Html {
                                                     let user_id_clone = user_id.clone();
                                                     let api_key_clone = api_key.clone();
                                                     let server_name_clone = server_name.clone();
-                                                    web_sys::console::log_1(&format!("About to fetch podcasting 2.0 data with ID: {:?}", fetched_episode_id).into());
 
                                                     // Use fetched_episode_id directly since we already have it
                                                     let chap_request =
@@ -527,7 +511,6 @@ pub fn epsiode() -> Html {
                                                             episode_id: fetched_episode_id, // Use this instead of checking ui_state
                                                             user_id: user_id_clone,
                                                         };
-                                                    web_sys::console::log_1(&"in 2.0...".into());
 
                                                     wasm_bindgen_futures::spawn_local(async move {
                                                         match call_fetch_podcasting_2_data(
@@ -538,9 +521,6 @@ pub fn epsiode() -> Html {
                                                         .await
                                                         {
                                                             Ok(response) => {
-                                                                web_sys::console::log_1(
-                                                                    &"got 2.0...".into(),
-                                                                );
                                                                 aud_dispatch.reduce_mut(|state| {
                                                                     state.episode_page_transcript =
                                                                         Some(response.transcripts);
@@ -562,7 +542,6 @@ pub fn epsiode() -> Html {
                                                     });
 
                                                     // Update the URL with the parameters if they are not already there
-                                                    web_sys::console::log_1(&"preloadfalse".into());
                                                     let mut new_url =
                                                         window.location().origin().unwrap();
                                                     new_url.push_str(
@@ -705,7 +684,6 @@ pub fn epsiode() -> Html {
                                                     }
 
                                                     // Update the URL with the parameters if they are not already there
-                                                    web_sys::console::log_1(&"preloadfalse".into());
                                                     let mut new_url =
                                                         window.location().origin().unwrap();
                                                     new_url.push_str(
@@ -767,7 +745,6 @@ pub fn epsiode() -> Html {
                     } else if let Some(id) = episode_id {
                         // Handle the case where no URL parameters are provided (original behavior)
                         if id == 0 {
-                            web_sys::console::log_1(&"Episode ID is 0".into());
                             let feed_url = effect_pod_state.selected_episode_url.clone().unwrap();
                             let podcast_title =
                                 effect_pod_state.selected_podcast_title.clone().unwrap();
@@ -812,7 +789,6 @@ pub fn epsiode() -> Html {
                                                 ep.duration.unwrap_or_default().as_str(),
                                             );
                                             if let Ok(episodeduration) = time_sec {
-                                                web_sys::console::log_1(&"preloadfalse3".into());
                                                 let episodeduration: i32 =
                                                     episodeduration.try_into().unwrap_or(0);
                                                 dispatch.reduce_mut(move |state| {
@@ -863,14 +839,12 @@ pub fn epsiode() -> Html {
                                 }
                             });
                         } else {
-                            web_sys::console::log_1(&"Episode ID is not 0".into());
                             let episode_request = EpisodeRequest {
                                 episode_id: id,
                                 user_id: user_id.clone(),
                                 person_episode: effect_pod_state.person_episode.unwrap_or(false), // Defaults to false if None
                             };
                             effect_ep_in_db.set(true);
-                            web_sys::console::log_1(&"preepmetadata".into());
                             wasm_bindgen_futures::spawn_local(async move {
                                 match pod_req::call_get_episode_metadata(
                                     &server_name,
@@ -918,15 +892,12 @@ pub fn epsiode() -> Html {
                                                 }
                                             });
                                         }
-
-                                        web_sys::console::log_1(&"preloadfalse4".into());
                                         let episode_url = fetched_episode.feedurl.clone();
                                         let podcast_title = fetched_episode.podcastname.clone();
                                         let audio_url = fetched_episode.episodeurl.clone();
                                         let real_episode_id = fetched_episode.episodeid.clone();
                                         let podcast_index_id_push =
                                             fetched_episode.podcastindexid.clone();
-                                        web_sys::console::log_1(&"Fetched the ep".into());
                                         dispatch.reduce_mut(move |state| {
                                             state.selected_episode_id = Some(real_episode_id);
                                             state.fetched_episode = Some(EpisodeMetadataResponse {
@@ -987,31 +958,10 @@ pub fn epsiode() -> Html {
 
         use_effect_with(state.fetched_episode.clone(), move |_| {
             if let Some(episode) = &state.fetched_episode {
-                // Add debug logging
-                web_sys::console::log_1(
-                    &format!(
-                        "Episode data received: completed={}, queued={}, saved={}, downloaded={}",
-                        episode.episode.completed,
-                        episode.episode.is_queued,
-                        episode.episode.is_saved,
-                        episode.episode.is_downloaded
-                    )
-                    .into(),
-                );
-
                 completion_status.set(episode.episode.completed);
                 queue_status.set(episode.episode.is_queued);
                 save_status.set(episode.episode.is_saved);
                 download_status.set(episode.episode.is_downloaded);
-
-                // Verify states were set
-                web_sys::console::log_1(
-                    &format!(
-                        "States updated: completion={}, queue={}, save={}, download={}",
-                        *completion_status, *queue_status, *save_status, *download_status
-                    )
-                    .into(),
-                );
             } else {
                 web_sys::console::log_1(&"No episode data received".into());
             }
@@ -1626,8 +1576,6 @@ pub fn epsiode() -> Html {
                         };
                         let episode_url_check = episode_url_clone;
                         let should_show_buttons = !episode_url_check.is_empty();
-                        web_sys::console::log_1(&format!("Episode URL: {}", episode_url_check).into());
-                        web_sys::console::log_1(&format!("Should show buttons: {}", should_show_buttons).into());
 
                         let open_in_new_tab = Callback::from(move |url: String| {
                             let window = web_sys::window().unwrap();

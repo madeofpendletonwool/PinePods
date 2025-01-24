@@ -258,14 +258,11 @@ pub async fn call_get_podcast_info(
     search_api_url: &Option<String>,
     search_index: &str,
 ) -> Result<PodcastSearchResult, anyhow::Error> {
-    web_sys::console::log_1(&JsValue::from_str("Calling get podcast info"));
-    web_sys::console::log_1(&JsValue::from_str(podcast_value));
     let url = if let Some(api_url) = search_api_url {
         format!("{}?query={}&index={}", api_url, podcast_value, search_index)
     } else {
         return Err(anyhow::Error::msg("API URL is not provided"));
     };
-    web_sys::console::log_1(&JsValue::from_str(&url));
     let response = Request::get(&url).send().await.map_err(|err| {
         web_sys::console::log_1(&JsValue::from_str(&format!("Request error: {:?}", err)));
         anyhow::Error::new(err)
@@ -278,12 +275,6 @@ pub async fn call_get_podcast_info(
             )));
             anyhow::Error::new(err)
         })?;
-
-        // Log the raw response
-        web_sys::console::log_1(&JsValue::from_str(&format!(
-            "Raw response: {}",
-            response_text
-        )));
 
         // Try to parse and log any deserialization errors
         match serde_json::from_str::<PodcastSearchResult>(&response_text) {
@@ -356,30 +347,21 @@ pub async fn call_get_person_info(
     } else {
         return Err(anyhow::Error::msg("API URL is not provided"));
     };
-    web_sys::console::log_1(&JsValue::from_str(&url));
-    web_sys::console::log_1(&JsValue::from_str("Calling get person info"));
-
     let response = Request::get(&url)
         .send()
         .await
         .map_err(|err| anyhow::Error::new(err))?;
-    web_sys::console::log_1(&JsValue::from_str("post request"));
 
     if response.ok() {
-        web_sys::console::log_1(&JsValue::from_str("inside ok"));
         let response_text = response
             .text()
             .await
             .map_err(|err| anyhow::Error::new(err))?;
-        web_sys::console::log_1(&JsValue::from_str("post text"));
-
-        web_sys::console::log_1(&JsValue::from_str(&response_text));
 
         let search_results: PeopleFeedResult = serde_json::from_str(&response_text)?;
 
         Ok(search_results)
     } else {
-        web_sys::console::log_1(&JsValue::from_str("inside error"));
         Err(anyhow::Error::msg(format!(
             "Failed to fetch person info: {}",
             response.status_text()
@@ -414,8 +396,6 @@ pub async fn call_get_podpeople_podcasts(
     } else {
         return Err(anyhow::Error::msg("API URL is not provided"));
     };
-
-    web_sys::console::log_1(&JsValue::from_str("Calling podpeople API"));
 
     let response = Request::get(&url)
         .header("Content-Type", "application/json")
@@ -591,9 +571,6 @@ pub async fn call_parse_podcast_url(
             .items()
             .iter()
             .map(|item| {
-                if let Some(pub_date) = item.pub_date() {
-                    web_sys::console::log_1(&format!("Raw pub date: {}", pub_date).into());
-                }
                 let duration = item
                     .itunes_ext()
                     .and_then(|ext| ext.duration())
@@ -876,8 +853,6 @@ pub async fn call_youtube_search(
         server_name, user_id, encoded_query, max_results
     );
 
-    web_sys::console::log_1(&format!("Making request to: {}", url).into());
-
     let response = Request::get(&url)
         .header("Api-Key", api_key)
         .send()
@@ -889,8 +864,6 @@ pub async fn call_youtube_search(
             .text()
             .await
             .map_err(|e| Error::msg(format!("Failed to get response text: {}", e)))?;
-
-        web_sys::console::log_1(&format!("Raw response: {}", text).into());
 
         let search_results: YouTubeSearchResponse = serde_json::from_str(&text).map_err(|e| {
             web_sys::console::log_1(&format!("Parse error: {}", e).into());

@@ -131,7 +131,6 @@ pub fn nextcloud_options() -> Html {
 
             if !server.trim().is_empty() {
                 wasm_bindgen_futures::spawn_local(async move {
-                    web_sys::console::log_1(&JsValue::from_str("Initiating Nextcloud login"));
                     match initiate_nextcloud_login(
                         &server,
                         &server_name.clone().unwrap(),
@@ -290,7 +289,6 @@ pub fn nextcloud_options() -> Html {
 
             if !server.trim().is_empty() {
                 wasm_bindgen_futures::spawn_local(async move {
-                    web_sys::console::log_1(&JsValue::from_str("Initiating Nextcloud login..."));
                     let auth_request = GpodderAuthRequest {
                         user_id: user_id.clone().unwrap(),
                         gpodder_url: server.clone(),

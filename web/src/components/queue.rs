@@ -328,7 +328,6 @@ pub fn queue() -> Html {
                                                 } else {
                                                 }
                                             });
-                                            // web_sys::console::log_1(format!("dragged: {}, target: {}", dragged_id, target_id).into()
                                         }
 
                                         dragging.set(None);

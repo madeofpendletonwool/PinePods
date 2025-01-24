@@ -1733,7 +1733,6 @@ pub fn on_play_click(
                     call_add_history(&history_server_name, history_api_key, &history_add);
                 match add_history_future.await {
                     Ok(_) => {
-                        web_sys::console::log_1(&JsValue::from_str("History successfully added"));
                     }
                     Err(e) => {
                         web_sys::console::log_1(&JsValue::from_str(&format!(
@@ -1776,7 +1775,7 @@ pub fn on_play_click(
             );
             match add_history_future.await {
                 Ok(_) => {
-                    web_sys::console::log_1(&"Successfully incremented playcount".into());
+                    // web_sys::console::log_1(&"Successfully incremented playcount".into());
                 }
                 Err(_e) => {
                     web_sys::console::log_1(&format!("Failed to increment: {:?}", _e).into());
@@ -1796,11 +1795,9 @@ pub fn on_play_click(
         } else {
             episode_url_for_wasm.clone()
         };
-        web_sys::console::log_1(&JsValue::from_str("about to not run pod id if 0"));
 
         wasm_bindgen_futures::spawn_local(async move {
             if episode_id != 0 {
-                web_sys::console::log_1(&JsValue::from_str("must not be zero"));
                 match call_get_podcast_id_from_ep(
                     &server_name,
                     &Some(api_key.clone()),
@@ -1865,7 +1862,6 @@ pub fn on_play_click(
                 };
             } else {
                 // Directly play the episode without skip times
-                web_sys::console::log_1(&JsValue::from_str("must be zero"));
                 audio_dispatch.reduce_mut(move |audio_state| {
                     audio_state.audio_playing = Some(true);
                     audio_state.playback_speed = 1.0;
@@ -2026,13 +2022,6 @@ pub fn on_play_click_shared(
         let episode_is_youtube = is_youtube_vid.clone();
         let episode_id = episode_id.clone();
         let audio_dispatch = audio_dispatch.clone();
-
-        web_sys::console::log_1(&JsValue::from_str("Playing shared episode..."));
-        web_sys::console::log_1(&JsValue::from_str(&episode_title));
-        web_sys::console::log_1(&JsValue::from_str(&episode_url));
-        web_sys::console::log_1(&JsValue::from_str(&episode_artwork));
-        web_sys::console::log_1(&JsValue::from_str(&episode_duration.to_string()));
-        web_sys::console::log_1(&JsValue::from_str(&episode_id.to_string()));
 
         // No user-specific checks or DB operations needed, just play the episode
         wasm_bindgen_futures::spawn_local(async move {

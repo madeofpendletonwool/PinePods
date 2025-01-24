@@ -58,7 +58,7 @@ Version 0.7.3
 - [x] Check mark episode complete on episode page
 - [x] Uncomplete/complete - and in prog episode sorting on episode_layout page
 - [x] Add completed icon and in prog info to episodes on episode_layout page
-- [ ] Check for and fix issues with refreshing again on every page
+- [x] Check for and fix issues with refreshing again on every page
 - [x] Fix issue with episodes page opening when clicking show notes while on episodes page already
 - [x] Fix issues with ability to open episode_layout page from episode page. That includes whether the podcast is added or not
 - [x] Add podcastindexid to episode page url vars - Then pass to dynamic func call

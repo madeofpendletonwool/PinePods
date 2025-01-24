@@ -1714,8 +1714,6 @@ pub fn on_shownotes_click(
         let shownotes_episode_url_call = shownotes_episode_url.clone();
         let episode_audio_url = episode_audio_url.clone();
         let podcast_title = podcast_title.clone();
-        web_sys::console::log_1(&format!("ep id pre episode: {:?}", episode_id).into());
-        web_sys::console::log_1(&format!("title pre episode: {:?}", podcast_title).into());
         wasm_bindgen_futures::spawn_local(async move {
             dispatch_clone.reduce_mut(move |state| {
                 state.selected_episode_id = episode_id;

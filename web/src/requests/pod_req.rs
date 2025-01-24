@@ -165,7 +165,6 @@ pub async fn call_add_podcast(
 
     if response.ok() {
         let response_body = response.json::<PodcastStatusResponse>().await?;
-        web_sys::console::log_1(&serde_json::to_string(&response_body).unwrap().into());
         Ok(response_body)
     } else {
         Err(Error::msg(format!(
@@ -368,13 +367,6 @@ pub struct PodcastExtra {
 impl From<Podcast> for PodcastExtra {
     fn from(podcast: Podcast) -> Self {
         let is_youtube = podcast.feedurl.contains("youtube.com");
-        web_sys::console::log_1(
-            &format!(
-                "Converting Podcast to PodcastExtra, feedurl: {}, is_youtube: {}",
-                podcast.feedurl, is_youtube
-            )
-            .into(),
-        );
 
         PodcastExtra {
             podcastid: podcast.podcastid,
@@ -443,13 +435,6 @@ pub async fn call_get_podcasts_extra(
             // Update is_youtube flag based on feedurl
             for pod in &mut pods {
                 pod.is_youtube = pod.feedurl.contains("youtube.com");
-                web_sys::console::log_1(
-                    &format!(
-                        "Podcast {}: feedurl = {}, is_youtube = {}",
-                        pod.podcastname, pod.feedurl, pod.is_youtube
-                    )
-                    .into(),
-                );
             }
             Ok(pods)
         }
@@ -1310,7 +1295,6 @@ pub async fn call_get_episode_metadata(
 
     let response_data: EpisodeMetadataResponse = serde_json::from_str(&response_text)
         .map_err(|e| anyhow::Error::msg(format!("Deserialization Error: {}", e)))?;
-    web_sys::console::log_1(&"Got the metadata".into());
     Ok(response_data.episode)
 }
 
@@ -1707,12 +1691,6 @@ pub async fn call_get_episode_id(
     }
 
     let response_text = response.text().await?;
-
-    // Log the response text
-    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(&format!(
-        "Response text: {}",
-        response_text
-    )));
 
     // Try to parse the response text into an i32
     match response_text.trim().parse::<i32>() {
