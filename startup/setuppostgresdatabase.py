@@ -623,24 +623,45 @@ try:
 
     # Create the EpisodeQueue table
     cursor.execute("""CREATE TABLE IF NOT EXISTS "EpisodeQueue" (
-                    QueueID SERIAL PRIMARY KEY,
-                    QueueDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UserID INT,
-                    EpisodeID INT,
-                    QueuePosition INT NOT NULL DEFAULT 0,
-                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
-                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
-                    )""")
-
-    cursor.execute("""CREATE TABLE IF NOT EXISTS "VideoQueue" (
         QueueID SERIAL PRIMARY KEY,
         QueueDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UserID INT,
-        VideoID INT,
+        EpisodeID INT,
         QueuePosition INT NOT NULL DEFAULT 0,
+        is_youtube BOOLEAN DEFAULT FALSE,
         FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
-        FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID)
+        FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
     )""")
+
+    # Function to add is_youtube column if it doesn't exist
+    def add_queue_youtube_column_if_not_exist(cursor, cnx):
+        try:
+            # Start a new transaction
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='episodequeue'
+                AND column_name = 'is_youtube'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                try:
+                    # Add the is_youtube column
+                    cursor.execute("""
+                        ALTER TABLE "EpisodeQueue"
+                        ADD COLUMN is_youtube BOOLEAN DEFAULT FALSE
+                    """)
+                    cnx.commit()
+                    print("Added 'is_youtube' column to 'EpisodeQueue' table.")
+                except Exception as e:
+                    cnx.rollback()  # Rollback on error
+                    if 'already exists' not in str(e):  # Only log if it's not an 'already exists' error
+                        print(f"Error adding is_youtube column to EpisodeQueue table: {e}")
+            else:
+                cnx.commit()  # Commit even if column exists to clear transaction
+        except Exception as e:
+            cnx.rollback()  # Rollback the outer transaction if needed
+            print(f"Error checking for is_youtube column: {e}")
 
     # Create the Sessions table
     cursor.execute("""CREATE TABLE IF NOT EXISTS "Sessions" (

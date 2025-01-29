@@ -751,7 +751,7 @@ pub struct SearchEpisode {
     pub author: String,
     pub categories: String,
     pub description: String,
-    pub episodecount: i32,
+    pub episodecount: Option<i32>,
     pub feedurl: String,
     pub websiteurl: String,
     pub explicit: i32,
@@ -774,15 +774,12 @@ pub async fn call_search_database(
     request_data: &SearchRequest,
 ) -> Result<Vec<SearchEpisode>, Error> {
     let url = format!("{}/api/data/search_data", server_name);
-
-    // Convert Option<String> to Option<&str>
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
     let request_body = serde_json::to_string(request_data)
         .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
-
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
@@ -796,13 +793,20 @@ pub async fn call_search_database(
             response.status_text()
         )));
     }
-    // Deserialize the response body into a SearchResponse
-    let search_response: SearchResponse = response.json().await?;
 
-    // Extract the vector of episodes from the SearchResponse
-    let results = search_response.data;
-
-    Ok(results)
+    // Get the response text first for debugging
+    let response_text = response.text().await?;
+    // Try to parse as SearchResponse and log any errors
+    // Try to parse as SearchResponse and log any errors
+    match serde_json::from_str::<SearchResponse>(&response_text) {
+        Ok(search_response) => Ok(search_response.data),
+        Err(e) => {
+            web_sys::console::log_1(&format!("Deserialization error: {}", e).into());
+            web_sys::console::log_1(&format!("Error location: column {}", e.column()).into());
+            web_sys::console::log_1(&format!("Error line: {}", e.line()).into());
+            Err(anyhow::Error::msg(format!("Deserialization failed: {}", e)))
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]

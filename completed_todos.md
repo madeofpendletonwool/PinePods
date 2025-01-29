@@ -21,9 +21,9 @@ Version 0.7.3
   - [x] Dynamic updating youtube channels
   - [x] Delete youtube subs
   - [ ] Allow user to adjust amount of time to save/download youtube videos
-  - [ ] Ensure youtube videos update completion/listen time status correctly
-  - [ ] check refreshing on episode/other youtube related pages
-  - [ ] Make /episode page work with youtube
+  - [x] Ensure youtube videos update completion/listen time status correctly
+  - [x] check refreshing on episode/other youtube related pages
+  - [x] Make /episode page work with youtube
   - [ ] Bad url while no channels added
   pinepods-1  | [2025-01-13 14:02:27] [INFO] - database_functions.youtube: ==================================================
   pinepods-1  | [2025-01-13 14:02:27] [INFO] - database_functions.youtube: Starting YouTube channel processing
@@ -65,6 +65,8 @@ Version 0.7.3
 - [ ] Validate Mysql functions
 - [ ] Build clients and verify
 - [x] Sometimes episodes are not even close to newest or right order in episode_layout
+- [ ] After adding podcast we no longer show dumpster
+- [ ] Think the weird yt refreshing after search is messing up which one is subbed to
 
 Version 0.7.2
 

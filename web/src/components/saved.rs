@@ -571,6 +571,7 @@ pub fn saved() -> Html {
                                     Some(String::from("saved")),
                                     true,
                                     None,
+                                    Some(episode_is_youtube),
                                 );
 
                                 let episode_url_for_ep_item = episode_url_clone.clone();

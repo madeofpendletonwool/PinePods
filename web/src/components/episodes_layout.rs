@@ -1896,20 +1896,24 @@ pub fn episode_layout() -> Html {
                                                 <p class="header-info">{ format!("Authors: {}", &podcast_info.author) }</p>
                                                 <p class="header-info">{ format!("Explicit: {}", if podcast_info.explicit { "Yes" } else { "No" }) }</p>
                                                 {
-                                                    if let Some(people) = &state.podcast_people {
-                                                        if !people.is_empty() {
-                                                            html! {
-                                                                <div class="header-info relative">
-                                                                    <div class="max-w-full overflow-x-auto">  // Allow horizontal scrolling
-                                                                        <HostDropdown
-                                                                            title="Hosts"
-                                                                            hosts={people.clone()}
-                                                                            podcast_feed_url={podcast_info.feedurl}
-                                                                            podcast_id={*podcast_id}
-                                                                            podcast_index_id={podcast_info.podcastindexid}
-                                                                        />
+                                                    if !podcast_info.is_youtube.unwrap_or(false) {  // Only show if not a YouTube channel
+                                                        if let Some(people) = &state.podcast_people {
+                                                            if !people.is_empty() {
+                                                                html! {
+                                                                    <div class="header-info relative">
+                                                                        <div class="max-w-full overflow-x-auto">
+                                                                            <HostDropdown
+                                                                                title="Hosts"
+                                                                                hosts={people.clone()}
+                                                                                podcast_feed_url={podcast_info.feedurl}
+                                                                                podcast_id={*podcast_id}
+                                                                                podcast_index_id={podcast_info.podcastindexid}
+                                                                            />
+                                                                        </div>
                                                                     </div>
-                                                                </div>
+                                                                }
+                                                            } else {
+                                                                html! {}
                                                             }
                                                         } else {
                                                             html! {}

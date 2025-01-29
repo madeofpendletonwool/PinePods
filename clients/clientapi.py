@@ -1735,46 +1735,57 @@ class RecordHistoryData(BaseModel):
     episode_id: int
     user_id: int
     episode_pos: float
-
+    is_youtube: bool = False  # Default to False for backward compatibility
 
 @app.post("/api/data/record_podcast_history")
 async def api_record_podcast_history(data: RecordHistoryData, cnx=Depends(get_database_connection),
-                                     api_key: str = Depends(get_api_key_from_header)):
+                                   api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                          detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == data.user_id or is_web_key:
-        database_functions.functions.record_podcast_history(cnx, database_type, data.episode_id, data.user_id, data.episode_pos)
-        return {"detail": "Podcast history recorded."}
+        database_functions.functions.record_podcast_history(
+            cnx,
+            database_type,
+            data.episode_id,
+            data.user_id,
+            data.episode_pos,
+            data.is_youtube
+        )
+        return {"detail": "History recorded successfully."}
     else:
         raise HTTPException(status_code=403,
-                            detail="You can only make sessions for yourself!")
+                          detail="You can only make sessions for yourself!")
+
 
 class GetEpisodeIdRequest(BaseModel):
     podcast_id: int
     user_id: int
+    is_youtube: bool = False  # Add default False
 
 
 @app.post("/api/data/get_episode_id")
 async def api_get_episode_id(data: GetEpisodeIdRequest, cnx=Depends(get_database_connection),
-                             api_key: str = Depends(get_api_key_from_header)):
+                           api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
-    # Fetch the first episode ID for the given podcast
-    episode_id = database_functions.functions.get_first_episode_id(cnx, database_type, data.podcast_id, data.user_id)
+    episode_id = database_functions.functions.get_first_episode_id(
+        cnx,
+        database_type,
+        data.podcast_id,
+        data.user_id,
+        data.is_youtube
+    )
+
     if episode_id is None:
         raise HTTPException(status_code=404, detail="No episodes found for this podcast.")
-
     return {"episode_id": episode_id}
 
 
@@ -1782,78 +1793,92 @@ async def api_get_episode_id(data: GetEpisodeIdRequest, cnx=Depends(get_database
 class DownloadPodcastData(BaseModel):
     episode_id: int
     user_id: int
-
+    is_youtube: bool = False  # Default to False for backward compatibility
 
 @app.post("/api/data/download_podcast")
-async def api_download_podcast(data: DownloadPodcastData, background_tasks: BackgroundTasks, cnx=Depends(get_database_connection),
-                               api_key: str = Depends(get_api_key_from_header)):
+async def api_download_podcast(data: DownloadPodcastData, background_tasks: BackgroundTasks,
+                             cnx=Depends(get_database_connection),
+                             api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                          detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        ep_status = database_functions.functions.check_downloaded(cnx, database_type, data.user_id, data.episode_id)
+        # Check if already downloaded
+        table = "DownloadedVideos" if data.is_youtube else "DownloadedEpisodes"
+        id_field = "VideoID" if data.is_youtube else "EpisodeID"
+        ep_status = database_functions.functions.check_downloaded(cnx, database_type, data.user_id,
+                                                               data.episode_id, data.is_youtube)
+
         if ep_status:
-            return {"detail": "Podcast already downloaded."}
+            return {"detail": "Content already downloaded."}
         else:
-            background_tasks.add_task(download_podcast_fun, data.episode_id, data.user_id)
-            return {"detail": "Podcast download started."}
+            background_tasks.add_task(download_content_fun, data.episode_id, data.user_id, data.is_youtube)
+            return {"detail": "Download started."}
     else:
         raise HTTPException(status_code=403,
-                            detail="You can only download podcasts for yourself!")
+                          detail="You can only download content for yourself!")
 
-def download_podcast_fun(episode_id: int, user_id: int):
-    cnx = create_database_connection()  # replace with your function to create a new database connection
-    logger.error('downloading fun for log')
+def download_content_fun(episode_id: int, user_id: int, is_youtube: bool):
+    cnx = create_database_connection()
     try:
-        database_functions.functions.download_podcast(cnx, database_type, episode_id, user_id)
+        if is_youtube:
+            database_functions.functions.download_youtube_video(cnx, database_type, episode_id, user_id)
+        else:
+            database_functions.functions.download_podcast(cnx, database_type, episode_id, user_id)
     finally:
-        cnx.close()  # make sure to close the connection when you're done
+        cnx.close()
+
 
 class DownloadAllPodcastData(BaseModel):
     podcast_id: int
     user_id: int
+    is_youtube: bool = False
 
 @app.post("/api/data/download_all_podcast")
-async def api_download_all_podcast(data: DownloadAllPodcastData, background_tasks: BackgroundTasks, cnx=Depends(get_database_connection),
-                                   api_key: str = Depends(get_api_key_from_header)):
+async def api_download_all_podcast(data: DownloadAllPodcastData, background_tasks: BackgroundTasks,
+                                 cnx=Depends(get_database_connection),
+                                 api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
-
-    # Check if the provided API key is the web key
+                          detail="Your API key is either invalid or does not have correct permission")
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        episode_ids = database_functions.functions.get_episode_ids_for_podcast(cnx, database_type, data.podcast_id)
-        if not episode_ids:
-            return {"detail": "No episodes found for the given podcast."}
-
-        for episode_id in episode_ids:
-            if not database_functions.functions.check_downloaded(cnx, database_type, data.user_id, episode_id):
-                background_tasks.add_task(download_all_podcast_fun, episode_id, data.user_id)
-
-        return {"detail": "Podcast download started for all episodes."}
+        if data.is_youtube:
+            video_ids = database_functions.functions.get_video_ids_for_podcast(cnx, database_type, data.podcast_id)
+            if not video_ids:
+                return {"detail": "No videos found for the given YouTube channel."}
+            for video_id in video_ids:
+                # Changed this line to use check_downloaded with is_youtube=True
+                if not database_functions.functions.check_downloaded(cnx, database_type, data.user_id, video_id, True):
+                    background_tasks.add_task(download_all_podcast_fun, video_id, data.user_id, True)
+            return {"detail": "Video download started for all videos."}
+        else:
+            episode_ids = database_functions.functions.get_episode_ids_for_podcast(cnx, database_type, data.podcast_id)
+            if not episode_ids:
+                return {"detail": "No episodes found for the given podcast."}
+            for episode_id in episode_ids:
+                if not database_functions.functions.check_downloaded(cnx, database_type, data.user_id, episode_id):
+                    background_tasks.add_task(download_all_podcast_fun, episode_id, data.user_id, False)
+            return {"detail": "Podcast download started for all episodes."}
     else:
         raise HTTPException(status_code=403,
-                            detail="You can only download podcasts for yourself!")
+                          detail="You can only download content for yourself!")
 
-def download_all_podcast_fun(episode_id: int, user_id: int):
-    cnx = create_database_connection()  # replace with your function to create a new database connection
-    logger.error('Starting download for episode: %d', episode_id)
+def download_all_podcast_fun(episode_id: int, user_id: int, is_youtube: bool = False):
+    cnx = create_database_connection()
+    logger.error('Starting download for %s: %d', 'video' if is_youtube else 'episode', episode_id)
     try:
-        database_functions.functions.download_podcast(cnx, database_type, episode_id, user_id)
+        if is_youtube:
+            database_functions.functions.download_youtube_video(cnx, database_type, episode_id, user_id)
+        else:
+            database_functions.functions.download_podcast(cnx, database_type, episode_id, user_id)
     finally:
         cnx.close()  # make sure to close the connection when you're done
 
@@ -1861,32 +1886,31 @@ def download_all_podcast_fun(episode_id: int, user_id: int):
 class DeletePodcastData(BaseModel):
     episode_id: int
     user_id: int
-
+    is_youtube: bool = False  # Default to False for backward compatibility
 
 @app.post("/api/data/delete_episode")
 async def api_delete_podcast(data: DeletePodcastData, cnx=Depends(get_database_connection),
-                             api_key: str = Depends(get_api_key_from_header)):
+                           api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                          detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        database_functions.functions.delete_episode(database_type, cnx, data.episode_id, data.user_id)
-        return {"detail": "Podcast deleted."}
+        database_functions.functions.delete_episode(database_type, cnx, data.episode_id,
+                                                 data.user_id, data.is_youtube)
+        return {"detail": "Content deleted."}
     else:
         raise HTTPException(status_code=403,
-                            detail="You can only delete podcasts for yourself!")
+                          detail="You can only delete content for yourself!")
 
 class MarkEpisodeCompletedData(BaseModel):
     episode_id: int
     user_id: int
+    is_youtube: bool = False  # Added field with default False
 
 @app.post("/api/data/mark_episode_completed")
 async def api_mark_episode_completed(data: MarkEpisodeCompletedData, cnx=Depends(get_database_connection),
@@ -1903,7 +1927,13 @@ async def api_mark_episode_completed(data: MarkEpisodeCompletedData, cnx=Depends
 
     # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        database_functions.functions.mark_episode_completed(cnx, database_type, data.episode_id, data.user_id)
+        database_functions.functions.mark_episode_completed(
+            cnx,
+            database_type,
+            data.episode_id,
+            data.user_id,
+            data.is_youtube
+        )
         return {"detail": "Episode marked as completed."}
     else:
         raise HTTPException(status_code=403,
@@ -1915,20 +1945,23 @@ async def api_mark_episode_uncompleted(data: MarkEpisodeCompletedData, cnx=Depen
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                          detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        database_functions.functions.mark_episode_uncompleted(cnx, database_type, data.episode_id, data.user_id)
-        return {"detail": "Episode marked as completed."}
+        database_functions.functions.mark_episode_uncompleted(
+            cnx,
+            database_type,
+            data.episode_id,
+            data.user_id,
+            data.is_youtube
+        )
+        return {"detail": "Episode marked as uncompleted."}
     else:
         raise HTTPException(status_code=403,
-                            detail="You can only mark episodes as completed for yourself.")
+                          detail="You can only mark episodes as uncompleted for yourself.")
 
 class AutoDownloadRequest(BaseModel):
     podcast_id: int
@@ -2030,57 +2063,60 @@ async def api_get_auto_skip_times(data: AutoSkipTimesRequest, cnx=Depends(get_da
 class SaveEpisodeData(BaseModel):
     episode_id: int
     user_id: int
-
+    is_youtube: bool = False
 
 @app.post("/api/data/save_episode")
 async def api_save_episode(data: SaveEpisodeData, cnx=Depends(get_database_connection),
-                           api_key: str = Depends(get_api_key_from_header)):
+                         api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                          detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        ep_status = database_functions.functions.check_saved(cnx, database_type, data.user_id, data.episode_id)
+        ep_status = database_functions.functions.check_saved(
+            cnx, database_type, data.user_id, data.episode_id, data.is_youtube
+        )
         if ep_status:
-            return {"detail": "Episode already saved."}
+            return {"detail": f"{'Video' if data.is_youtube else 'Episode'} already saved."}
         else:
-            success = database_functions.functions.save_episode(cnx, database_type, data.episode_id, data.user_id)
+            success = database_functions.functions.save_episode(
+                cnx, database_type, data.episode_id, data.user_id, data.is_youtube
+            )
         if success:
-            return {"detail": "Episode saved!"}
+            return {"detail": f"{'Video' if data.is_youtube else 'Episode'} saved!"}
         else:
-            raise HTTPException(status_code=400, detail="Error saving episode.")
+            raise HTTPException(status_code=400, detail=f"Error saving {'video' if data.is_youtube else 'episode'}.")
     else:
         raise HTTPException(status_code=403,
-                            detail="You can only save episodes of your own!")
-
+                          detail=f"You can only save {'videos' if data.is_youtube else 'episodes'} of your own!")
 
 class RemoveSavedEpisodeData(BaseModel):
     episode_id: int
     user_id: int
-
+    is_youtube: bool = False
 
 @app.post("/api/data/remove_saved_episode")
 async def api_remove_saved_episode(data: RemoveSavedEpisodeData, cnx=Depends(get_database_connection),
-                                   api_key: str = Depends(get_api_key_from_header)):
+                                 api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if is_valid_key:
         key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
         if key_id == data.user_id:
-            database_functions.functions.remove_saved_episode(cnx, database_type, data.episode_id, data.user_id)
-            return {"detail": "Saved episode removed."}
+            database_functions.functions.remove_saved_episode(
+                cnx, database_type, data.episode_id, data.user_id, data.is_youtube
+            )
+            return {"detail": f"Saved {'video' if data.is_youtube else 'episode'} removed."}
         else:
             raise HTTPException(status_code=403,
-                                detail="You can only return episodes of your own!")
+                              detail=f"You can only remove {'videos' if data.is_youtube else 'episodes'} of your own!")
     else:
         raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                          detail="Your API key is either invalid or does not have correct permission")
+
 
 class AddCategoryData(BaseModel):
     podcast_id: int
@@ -3890,62 +3926,58 @@ async def search_data(data: SearchPodcastData, cnx=Depends(get_database_connecti
 class QueuePodData(BaseModel):
     episode_id: int
     user_id: int
-
+    is_youtube: bool = False
 
 @app.post("/api/data/queue_pod")
 async def queue_pod(data: QueuePodData, cnx=Depends(get_database_connection),
-                    api_key: str = Depends(get_api_key_from_header)):
+                   api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                          detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        ep_status = database_functions.functions.check_queued(database_type, cnx, data.episode_id, data.user_id)
+        ep_status = database_functions.functions.check_queued(
+            database_type, cnx, data.episode_id, data.user_id, data.is_youtube
+        )
         if ep_status:
-            return {"data": "Episode already in queue"}
+            return {"data": f"{'Video' if data.is_youtube else 'Episode'} already in queue"}
         else:
-            result = database_functions.functions.queue_pod(database_type, cnx, data.episode_id, data.user_id)
+            result = database_functions.functions.queue_pod(
+                database_type, cnx, data.episode_id, data.user_id, data.is_youtube
+            )
             return {"data": result}
-
     else:
         raise HTTPException(status_code=403,
-                            detail="You can only add episodes to your own queue!")
-
+                          detail=f"You can only add {'videos' if data.is_youtube else 'episodes'} to your own queue!")
 
 class QueueRmData(BaseModel):
     episode_id: int
     user_id: int
-
+    is_youtube: bool = False
 
 @app.post("/api/data/remove_queued_pod")
 async def remove_queued_pod(data: QueueRmData, cnx=Depends(get_database_connection),
-                            api_key: str = Depends(get_api_key_from_header)):
+                          api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
-                            detail="Your API key is either invalid or does not have correct permission")
+                          detail="Your API key is either invalid or does not have correct permission")
 
-    # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
 
-    # Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id or is_web_key:
-        result = database_functions.functions.remove_queued_pod(database_type, cnx, data.episode_id, data.user_id)
+        result = database_functions.functions.remove_queued_pod(
+            database_type, cnx, data.episode_id, data.user_id, data.is_youtube
+        )
         return {"data": result}
     else:
         raise HTTPException(status_code=403,
-                            detail="You can only remove episodes for your own queue!")
-
-
+                          detail=f"You can only remove {'videos' if data.is_youtube else 'episodes'} for your own queue!")
 # class QueuedEpisodesData(BaseModel):
 #     user_id: int
 

@@ -52,7 +52,7 @@ fn map_podcast_details_to_podcast(details: PodcastDetails) -> Podcast {
         author: Some(details.author),
         categories: details.categories,
         explicit: details.explicit,
-        podcastindexid: details.podcastindexid,
+        podcastindexid: details.podcastindexid.unwrap_or(0),
     }
 }
 

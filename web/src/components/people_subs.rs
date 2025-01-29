@@ -461,6 +461,7 @@ fn render_host_with_episodes(
                                 Some(String::from("Not needed")),
                                 true,
                                 Some(true),
+                                Some(false),
                             );
 
                             #[wasm_bindgen]

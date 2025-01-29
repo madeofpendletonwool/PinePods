@@ -53,7 +53,7 @@ impl ClickedFeedURL {
             websiteurl: self.websiteurl,
             explicit: self.explicit,
             userid: 0, // Default value since it's not in ClickedFeedURL
-            podcastindexid: self.podcastindexid,
+            podcastindexid: Some(self.podcastindexid),
             is_youtube: self.is_youtube.unwrap_or(false),
         }
     }

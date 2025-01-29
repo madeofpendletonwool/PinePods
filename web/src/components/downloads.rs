@@ -253,6 +253,7 @@ pub fn downloads() -> Html {
                     let request = DownloadEpisodeRequest {
                         episode_id,
                         user_id: user_id_cloned,
+                        is_youtube: state.selected_is_youtube.unwrap_or(false),
                     };
                     let server_name_cloned = server_name_cloned.clone();
                     let api_key_cloned = api_key_cloned.clone();
@@ -578,6 +579,7 @@ pub fn render_podcast_with_episodes(
                                 Some(String::from("Not needed")),
                                 true,
                                 None,
+                                episode_is_youtube,
                             );
 
                             let on_checkbox_change_cloned = on_checkbox_change.clone();

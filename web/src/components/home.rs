@@ -461,16 +461,27 @@ pub fn episode(props: &EpisodeProps) -> Html {
         Some(props.episode.is_youtube.clone()),
     );
 
-    let on_shownotes_click = on_shownotes_click(
-        history_clone.clone(),
-        dispatch.clone(),
-        Some(props.episode.episodeid.clone()),
-        Some(props.page_type.clone()),
-        Some(props.page_type.clone()),
-        Some(props.page_type.clone()),
-        true,
-        None,
-    );
+    let on_shownotes_click = {
+        web_sys::console::log_1(
+            &format!(
+                "Creating shownotes click with is_youtube: {}",
+                props.episode.is_youtube
+            )
+            .into(),
+        );
+
+        on_shownotes_click(
+            history_clone.clone(),
+            dispatch.clone(),
+            Some(props.episode.episodeid.clone()),
+            Some(props.page_type.clone()),
+            Some(props.page_type.clone()),
+            Some(props.page_type.clone()),
+            true,
+            None,
+            Some(props.episode.is_youtube.clone()),
+        )
+    };
 
     let is_completed = state
         .completed_episodes

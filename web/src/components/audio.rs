@@ -469,12 +469,31 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             let interval = Interval::new(1000, move || {
                 if let Some(audio_element) = state_clone.audio_element.as_ref() {
                     let time_in_seconds = audio_element.current_time();
-                    let duration = audio_element.duration(); // Assuming you can get the duration from the audio_element
+                    let duration = audio_element.duration();
+
+                    // Time updates happen regardless of duration
+                    let hours = (time_in_seconds / 3600.0).floor() as i32;
+                    let minutes = ((time_in_seconds % 3600.0) / 60.0).floor() as i32;
+                    let seconds = (time_in_seconds % 60.0).floor() as i32;
+                    let formatted_time = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
+
+                    let progress_percentage = if duration > 0.0 && !duration.is_nan() {
+                        time_in_seconds / duration * 100.0
+                    } else {
+                        0.0
+                    };
+
+                    audio_dispatch.reduce_mut(move |state_clone| {
+                        // Update the global state with the current time
+                        state_clone.current_time_seconds = time_in_seconds;
+                        state_clone.current_time_formatted = formatted_time;
+                    });
+
+                    progress.set(progress_percentage);
+
+                    // Episode completion check only happens when we have valid duration
                     if !duration.is_nan() && duration > 0.0 {
-                        let end_pos_sec = end_pos.clone(); // Get the end position
-                        web_sys::console::log_1(&format!("Time: {}", time_in_seconds).into());
-                        web_sys::console::log_1(&format!("Duration: {}", duration).into());
-                        web_sys::console::log_1(&format!("End Pos: {:?}", end_pos_sec).into());
+                        let end_pos_sec = end_pos.clone();
                         let complete_api_key = closure_api_key.clone();
                         let complete_server_name = closure_server_name.clone();
                         let complete_user_id = closure_user_id.clone();
@@ -506,6 +525,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                         let request = MarkEpisodeCompletedRequest {
                                             episode_id: *complete_episode_id, // Dereference the option
                                             user_id: *complete_user_id, // Dereference the option
+                                            is_youtube: is_youtube_vid,
                                         };
 
                                         match call_mark_episode_completed(
@@ -532,32 +552,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 interval_handle.set(None);
                             }
                         }
-                    } else {
-                        web_sys::console::log_1(&format!("Time: {}", time_in_seconds).into());
-                        let hours = (time_in_seconds / 3600.0).floor() as i32;
-                        let minutes = ((time_in_seconds % 3600.0) / 60.0).floor() as i32;
-                        let seconds = (time_in_seconds % 60.0).floor() as i32;
-                        let formatted_time = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
-                        web_sys::console::log_1(
-                            &format!("Formatted Time: {}", formatted_time).into(),
-                        );
-                        // Calculate progress as a percentage
-                        let progress_percentage = if duration > 0.0 {
-                            time_in_seconds / duration * 100.0
-                        } else {
-                            0.0
-                        };
-                        web_sys::console::log_1(
-                            &format!("Progress: {}", progress_percentage).into(),
-                        );
-
-                        audio_dispatch.reduce_mut(move |state_clone| {
-                            // Update the global state with the current time
-                            state_clone.current_time_seconds = time_in_seconds;
-                            state_clone.current_time_formatted = formatted_time;
-                        });
-
-                        progress.set(progress_percentage);
                     }
                 }
             });
@@ -731,6 +725,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                         let request = QueuePodcastRequest {
                                             episode_id: current_episode_id.clone().unwrap(),
                                             user_id: user_id.clone().unwrap(), // replace with the actual user ID
+                                            is_youtube: current_episode.is_youtube,
                                         };
                                         let remove_result = call_remove_queued_episode(
                                             &server_name.clone().unwrap(),
@@ -1676,6 +1671,7 @@ pub fn on_play_click(
                     &check_user_id,
                     &episode_title,
                     &episode_url,
+                    episode_is_youtube,
                 )
                 .await
                 {
@@ -1727,13 +1723,13 @@ pub fn on_play_click(
                     episode_id,
                     episode_pos,
                     user_id,
+                    is_youtube: episode_is_youtube,
                 };
 
                 let add_history_future =
                     call_add_history(&history_server_name, history_api_key, &history_add);
                 match add_history_future.await {
-                    Ok(_) => {
-                    }
+                    Ok(_) => {}
                     Err(e) => {
                         web_sys::console::log_1(&JsValue::from_str(&format!(
                             "Failed to add history: {:?}",
@@ -1748,6 +1744,7 @@ pub fn on_play_click(
                 let request = QueuePodcastRequest {
                     episode_id,
                     user_id, // replace with the actual user ID
+                    is_youtube: episode_is_youtube,
                 };
 
                 let queue_api = Option::from(queue_api_key);

@@ -688,6 +688,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let request = QueuePodcastRequest {
                 episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
+                is_youtube: episode.get_is_youtube(),
             };
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
@@ -733,6 +734,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let request = QueuePodcastRequest {
                 episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
+                is_youtube: episode.get_is_youtube(),
             };
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
@@ -803,7 +805,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let episode_clone = episode.clone();
             let request = SavePodcastRequest {
                 episode_id: episode.get_episode_id(Some(0)), // changed from episode_title
-                user_id: user_id.unwrap(),                   // replace with the actual user ID
+                user_id: user_id.unwrap(),
+                is_youtube: episode.get_is_youtube(),
             };
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
@@ -847,6 +850,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let request = SavePodcastRequest {
                 episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(),
+                is_youtube: episode.get_is_youtube(),
             };
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
@@ -919,6 +923,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let request = DownloadEpisodeRequest {
                 episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
+                is_youtube: episode.get_is_youtube(),
             };
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
@@ -965,6 +970,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let request = DownloadEpisodeRequest {
                 episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
+                is_youtube: episode.get_is_youtube(),
             };
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
@@ -1181,6 +1187,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let request = MarkEpisodeCompletedRequest {
                 episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
+                is_youtube: episode.get_is_youtube(),
             };
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
@@ -1239,6 +1246,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let request = MarkEpisodeCompletedRequest {
                 episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
+                is_youtube: episode.get_is_youtube(),
             };
             let server_name = server_name_copy; // replace with the actual server name
             let api_key = api_key_copy; // replace with the actual API key
@@ -1457,6 +1465,7 @@ pub trait EpisodeTrait {
     fn get_episode_artwork(&self) -> String;
     fn get_episode_title(&self) -> String;
     fn get_episode_id(&self, fallback_id: Option<i32>) -> i32;
+    fn get_is_youtube(&self) -> bool;
     fn clone_box(&self) -> Box<dyn EpisodeTrait>;
     // fn eq(&self, other: &dyn EpisodeTrait) -> bool;
     fn as_any(&self) -> &dyn Any;
@@ -1499,6 +1508,10 @@ impl EpisodeTrait for Episode {
         Box::new(self.clone())
     }
 
+    fn get_is_youtube(&self) -> bool {
+        self.is_youtube
+    }
+
     fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
@@ -1520,6 +1533,10 @@ impl EpisodeTrait for QueuedEpisode {
 
     fn clone_box(&self) -> Box<dyn EpisodeTrait> {
         Box::new(self.clone())
+    }
+
+    fn get_is_youtube(&self) -> bool {
+        self.is_youtube
     }
 
     fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
@@ -1544,6 +1561,10 @@ impl EpisodeTrait for SavedEpisode {
         Box::new(self.clone())
     }
 
+    fn get_is_youtube(&self) -> bool {
+        self.is_youtube
+    }
+
     fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid.clone()
     }
@@ -1564,6 +1585,10 @@ impl EpisodeTrait for HistoryEpisode {
 
     fn clone_box(&self) -> Box<dyn EpisodeTrait> {
         Box::new(self.clone())
+    }
+
+    fn get_is_youtube(&self) -> bool {
+        self.is_youtube
     }
 
     fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
@@ -1592,6 +1617,10 @@ impl EpisodeTrait for EpisodeDownload {
         Box::new(self.clone())
     }
 
+    fn get_is_youtube(&self) -> bool {
+        self.is_youtube
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -1612,6 +1641,10 @@ impl EpisodeTrait for SearchEpisode {
 
     fn clone_box(&self) -> Box<dyn EpisodeTrait> {
         Box::new(self.clone())
+    }
+
+    fn get_is_youtube(&self) -> bool {
+        self.is_youtube
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -1642,6 +1675,10 @@ impl EpisodeTrait for SearchNewEpisode {
         Box::new(self.clone())
     }
 
+    fn get_is_youtube(&self) -> bool {
+        self.is_youtube.unwrap_or(false)
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -1670,6 +1707,10 @@ impl EpisodeTrait for PeopleEpisode {
         Box::new(self.clone())
     }
 
+    fn get_is_youtube(&self) -> bool {
+        false
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -1692,12 +1733,15 @@ impl EpisodeTrait for PersonEpisode {
         Box::new(self.clone())
     }
 
+    fn get_is_youtube(&self) -> bool {
+        self.is_youtube
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
-// Implement other methods
 pub fn on_shownotes_click(
     history: BrowserHistory,
     dispatch: Dispatch<AppState>,
@@ -1705,24 +1749,33 @@ pub fn on_shownotes_click(
     shownotes_episode_url: Option<String>,
     episode_audio_url: Option<String>,
     podcast_title: Option<String>,
-    _db_added: bool,
-    person_episode: Option<bool>, // New parameter
+    db_added: bool,
+    person_episode: Option<bool>,
+    is_youtube: Option<bool>,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
+        web_sys::console::log_1(
+            &format!("Executing shownotes click. is_youtube: {:?}", is_youtube).into(),
+        );
+
+        let show_notes = shownotes_episode_url.clone();
+        let ep_aud = episode_audio_url.clone();
+        let pod_tit = podcast_title.clone();
+
         let dispatch_clone = dispatch.clone();
         let history_clone = history.clone();
-        let shownotes_episode_url_call = shownotes_episode_url.clone();
-        let episode_audio_url = episode_audio_url.clone();
-        let podcast_title = podcast_title.clone();
+
         wasm_bindgen_futures::spawn_local(async move {
             dispatch_clone.reduce_mut(move |state| {
                 state.selected_episode_id = episode_id;
-                state.selected_episode_url = shownotes_episode_url_call.clone();
-                state.selected_episode_audio_url = episode_audio_url;
-                state.selected_podcast_title = podcast_title;
-                state.person_episode = person_episode; // Set the new state value
+                state.selected_episode_url = show_notes;
+                state.selected_episode_audio_url = ep_aud;
+                state.selected_podcast_title = pod_tit;
+                state.person_episode = person_episode;
+                state.selected_is_youtube = is_youtube;
                 state.fetched_episode = None;
             });
+
             history_clone.push("/episode");
         });
     })
