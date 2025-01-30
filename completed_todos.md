@@ -9,6 +9,7 @@ Major Version:
 Next Minor Version:
 
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
+- [ ] Allow user to adjust amount of time to save/download youtube videos
 
 Version 0.7.3
 
@@ -20,7 +21,6 @@ Version 0.7.3
   - [x] When searching channels show more recent vids than just one
   - [x] Dynamic updating youtube channels
   - [x] Delete youtube subs
-  - [ ] Allow user to adjust amount of time to save/download youtube videos
   - [x] Ensure youtube videos update completion/listen time status correctly
   - [x] check refreshing on episode/other youtube related pages
   - [x] Make /episode page work with youtube
@@ -66,7 +66,8 @@ Version 0.7.3
 - [ ] Build clients and verify
 - [x] Sometimes episodes are not even close to newest or right order in episode_layout
 - [ ] After adding podcast we no longer show dumpster
-- [ ] Think the weird yt refreshing after search is messing up which one is subbed to
+- [x] Think the weird yt double refreshing after search is messing up which one is subbed to
+- [x] Queuing yt ep also queues standard pod counterpart id
 
 Version 0.7.2
 

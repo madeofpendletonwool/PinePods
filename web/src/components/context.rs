@@ -246,3 +246,9 @@ pub struct FilterState {
     pub selected_category: Option<String>,
     pub category_filter_list: Option<Vec<String>>,
 }
+
+// Add this alongside your other state structs
+#[derive(Default, Clone, PartialEq, Store)]
+pub struct PodcastState {
+    pub added_podcast_urls: HashSet<String>,
+}

@@ -104,7 +104,6 @@ pub fn error_message(props: &ErrorMessageProps) -> Html {
         html! {}
     }
 }
-
 #[allow(non_camel_case_types)]
 #[function_component(Search_nav)]
 pub fn search_bar() -> Html {
@@ -113,20 +112,35 @@ pub fn search_bar() -> Html {
     let podcast_value = use_state(|| "".to_string());
     let search_index = use_state(|| "podcast_index".to_string()); // Default to "podcast_index"
     let (_app_state, dispatch) = use_store::<AppState>();
+    let is_submitting = use_state(|| false);
 
     let history_clone = history.clone();
     let podcast_value_clone = podcast_value.clone();
     let search_index_clone = search_index.clone();
     // State for toggling the dropdown in mobile view
     let mobile_dropdown_open = use_state(|| false);
-    let on_submit = {
-        Callback::from(move |_| {
+
+    let handle_submit = {
+        let is_submitting = is_submitting.clone();
+        let state = state.clone();
+        let history = history_clone.clone();
+        let podcast_value = podcast_value_clone.clone();
+        let search_index = search_index_clone.clone();
+        let dispatch = dispatch.clone();
+
+        move || {
+            if *is_submitting {
+                return;
+            }
+            is_submitting.set(true);
+
             let submit_state = state.clone();
             let api_url = state.server_details.as_ref().map(|ud| ud.api_url.clone());
-            let history = history_clone.clone();
-            let search_value = podcast_value_clone.clone();
-            let search_index = search_index_clone.clone();
+            let history = history.clone();
+            let search_value = podcast_value.clone();
+            let search_index = search_index.clone();
             let dispatch = dispatch.clone();
+            let is_submitting_clone = is_submitting.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 dispatch.reduce_mut(|state| state.is_loading = Some(true));
@@ -209,7 +223,18 @@ pub fn search_bar() -> Html {
                         dispatch.reduce_mut(|state| state.is_loading = Some(false));
                     }
                 }
+
+                // Reset submission state after completion
+                is_submitting_clone.set(false);
             });
+        }
+    };
+
+    let on_submit = {
+        let handle_submit = handle_submit.clone();
+        Callback::from(move |e: SubmitEvent| {
+            e.prevent_default();
+            handle_submit();
         })
     };
 
@@ -222,14 +247,14 @@ pub fn search_bar() -> Html {
     };
 
     let on_submit_click = {
-        let on_submit = on_submit.clone(); // Clone the existing on_submit logic
+        let handle_submit = handle_submit.clone();
         Callback::from(move |_: MouseEvent| {
-            on_submit.emit(()); // Invoke the existing on_submit logic
+            handle_submit();
         })
     };
 
     let on_search_click = {
-        let on_submit = on_submit.clone();
+        let handle_submit = handle_submit.clone();
         let mobile_dropdown_open = mobile_dropdown_open.clone();
         Callback::from(move |_: MouseEvent| {
             if web_sys::window()
@@ -242,19 +267,12 @@ pub fn search_bar() -> Html {
             {
                 mobile_dropdown_open.set(!*mobile_dropdown_open);
             } else {
-                on_submit.emit(());
+                handle_submit();
             }
         })
     };
 
-    let prevent_default_submit = {
-        let on_submit = on_submit.clone();
-        Callback::from(move |e: SubmitEvent| {
-            e.prevent_default(); // Prevent the default form submission
-            on_submit.emit(()); // Emit the on_submit event
-        })
-    };
-
+    // Rest of your component code remains the same...
     let dropdown_open = use_state(|| false);
 
     let toggle_dropdown = {
@@ -296,10 +314,9 @@ pub fn search_bar() -> Html {
     };
 
     html! {
-        <div class="episodes-container w-full search-background"> // Ensure full width and set background color
-            <form class="search-bar-container flex justify-end w-full mx-auto border-solid border-b-2 border-color" onsubmit={prevent_default_submit}>
-                <div class="relative inline-flex"> // Set a max-width for the search bar content
-                    // Dropdown Button
+        <div class="episodes-container w-full search-background">
+            <form class="search-bar-container flex justify-end w-full mx-auto border-solid border-b-2 border-color" onsubmit={on_submit}>
+                <div class="relative inline-flex">
                     <button
                         id="dropdown-button"
                         onclick={toggle_dropdown}
@@ -307,12 +324,10 @@ pub fn search_bar() -> Html {
                         type="button"
                     >
                         {format!("{} ", search_index_display)}
-                        // SVG icon
                         <svg class="w-2.5 h-2.5 ms-2.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
                             <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 4 4 4-4"/>
                         </svg>
                     </button>
-                    // Dropdown Content
                     {
                         if *dropdown_open {
                             html! {
@@ -321,7 +336,6 @@ pub fn search_bar() -> Html {
                                         <li class="dropdown-option" onclick={on_dropdown_select_itunes.clone()}>{ "iTunes" }</li>
                                         <li class="dropdown-option" onclick={on_dropdown_select_podcast_index.clone()}>{ "Podcast Index" }</li>
                                         <li class="dropdown-option" onclick={on_dropdown_select_youtube.clone()}>{ "YouTube" }</li>
-                                        // Add more categories as needed
                                     </ul>
                                 </div>
                             }
@@ -330,8 +344,6 @@ pub fn search_bar() -> Html {
                         }
                     }
 
-                // Search Input Field
-                // <div class="relative w-full">
                     <input
                         type="search"
                         id="search-dropdown"
@@ -341,23 +353,19 @@ pub fn search_bar() -> Html {
                         oninput={on_input_change.clone()}
                     />
                 </div>
-                // Search Button
                 <button
                     type="submit"
                     class="search-btn p-2.5 text-sm font-medium rounded-lg border focus:ring-4 focus:outline-none"
                     onclick={on_search_click.clone()}
                 >
-                        // SVG icon for search button
-                        <svg class="w-4 h-4" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
-                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/>
-                        </svg>
+                    <svg class="w-4 h-4" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
+                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/>
+                    </svg>
                 </button>
                 {
-                    // Mobile dropdown content
                     if *mobile_dropdown_open {
                         html! {
                             <div class="search-drop absolute top-full right-0 z-10 divide-y rounded-lg shadow p-6">
-                                // Outline buttons for podcast_index or itunes
                                 <div class="inline-flex rounded-md shadow-sm mb-2" role="group">
                                     <button
                                         type="button"
@@ -376,7 +384,6 @@ pub fn search_bar() -> Html {
                                         {"iTunes"}
                                     </button>
                                 </div>
-                                // Text field for search
                                 <input
                                     type="text"
                                     class="search-input shorter-input block p-2.5 w-full text-sm rounded-lg mb-2"
@@ -384,14 +391,15 @@ pub fn search_bar() -> Html {
                                     value={(*podcast_value).clone()}
                                     oninput={on_input_change.clone()}
                                 />
-                                // Search button
-                                <button class="search-btn border-0 no-margin mt-4 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" onclick={on_submit_click.clone()}>
+                                <button
+                                    class="search-btn border-0 no-margin mt-4 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                    onclick={on_submit_click.clone()}
+                                >
                                     {"Search"}
                                 </button>
                             </div>
                         }
-                    }
-                    else {
+                    } else {
                         html! {}
                     }
                 }

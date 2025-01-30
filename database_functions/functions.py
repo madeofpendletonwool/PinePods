@@ -7297,6 +7297,7 @@ def get_queued_episodes(database_type, cnx, user_id):
                 "EpisodeQueue".EpisodeID = "UserEpisodeHistory".EpisodeID
                 AND "EpisodeQueue".UserID = "UserEpisodeHistory".UserID
             WHERE "EpisodeQueue".UserID = %s
+            AND "EpisodeQueue".is_youtube = FALSE
 
             UNION ALL
 
@@ -7318,6 +7319,7 @@ def get_queued_episodes(database_type, cnx, user_id):
             INNER JOIN "YouTubeVideos" ON "EpisodeQueue".EpisodeID = "YouTubeVideos".VideoID
             INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
             WHERE "EpisodeQueue".UserID = %s
+            AND "EpisodeQueue".is_youtube = TRUE
         ) combined
         ORDER BY queueposition ASC
         """
@@ -7346,6 +7348,7 @@ def get_queued_episodes(database_type, cnx, user_id):
                 EpisodeQueue.EpisodeID = UserEpisodeHistory.EpisodeID
                 AND EpisodeQueue.UserID = UserEpisodeHistory.UserID
             WHERE EpisodeQueue.UserID = %s
+            AND EpisodeQueue.is_youtube = FALSE
 
             UNION ALL
 
@@ -7367,6 +7370,7 @@ def get_queued_episodes(database_type, cnx, user_id):
             INNER JOIN YouTubeVideos ON EpisodeQueue.EpisodeID = YouTubeVideos.VideoID
             INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
             WHERE EpisodeQueue.UserID = %s
+            AND EpisodeQueue.is_youtube = TRUE
         ) combined
         ORDER BY queueposition ASC
         """
