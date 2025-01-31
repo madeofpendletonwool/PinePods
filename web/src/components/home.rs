@@ -462,14 +462,6 @@ pub fn episode(props: &EpisodeProps) -> Html {
     );
 
     let on_shownotes_click = {
-        web_sys::console::log_1(
-            &format!(
-                "Creating shownotes click with is_youtube: {}",
-                props.episode.is_youtube
-            )
-            .into(),
-        );
-
         on_shownotes_click(
             history_clone.clone(),
             dispatch.clone(),

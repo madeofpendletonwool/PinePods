@@ -5382,7 +5382,7 @@ async def subscribe_to_youtube_channel(
     try:
         logger.info(f"Starting subscription for channel {channel_id}")
 
-        existing_id = database_functions.functions.check_existing_channel_subscription(cnx, channel_id, user_id)
+        existing_id = database_functions.functions.check_existing_channel_subscription(cnx, database_type, channel_id, user_id)
         if existing_id:
             logger.info(f"Channel {channel_id} already subscribed")
             return {
@@ -5395,7 +5395,7 @@ async def subscribe_to_youtube_channel(
         channel_info = await database_functions.youtube.get_channel_info(channel_id)
 
         logger.info("Adding channel to database")
-        podcast_id = database_functions.functions.add_youtube_channel(cnx, channel_info, user_id)
+        podcast_id = database_functions.functions.add_youtube_channel(cnx, database_type, channel_info, user_id)
 
         logger.info(f"Starting background task for podcast_id {podcast_id}")
         background_tasks.add_task(process_youtube_channel, podcast_id, channel_id)

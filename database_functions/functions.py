@@ -843,34 +843,48 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
         return new_episodes
     return first_episode_id
 
-def check_existing_channel_subscription(cnx, channel_id: str, user_id: int) -> Optional[int]:
+def check_existing_channel_subscription(cnx, database_type: str, channel_id: str, user_id: int) -> Optional[int]:
     """Check if user is already subscribed to this channel"""
     cursor = cnx.cursor()
     try:
-        cursor.execute("""
-            SELECT PodcastID FROM "Podcasts"
-            WHERE WebsiteURL = %s AND UserID = %s
-        """, (f"https://www.youtube.com/channel/{channel_id}", user_id))
-        result = cursor.fetchone()
+        if database_type == "postgresql":
+            query = """
+                SELECT PodcastID FROM "Podcasts"
+                WHERE WebsiteURL = %s AND UserID = %s
+            """
+        else:  # MariaDB
+            query = """
+                SELECT PodcastID FROM Podcasts
+                WHERE WebsiteURL = %s AND UserID = %s
+            """
 
-        if result:
-            return result[0] if isinstance(result, tuple) else result['podcastid']
-        return None
+        cursor.execute(query, (f"https://www.youtube.com/channel/{channel_id}", user_id))
+        result = cursor.fetchone()
+        return result[0] if result else None
     except Exception as e:
         raise e
 
-def add_youtube_channel(cnx, channel_info: dict, user_id: int) -> int:
+def add_youtube_channel(cnx, database_type: str, channel_info: dict, user_id: int) -> int:
     """Add YouTube channel to Podcasts table"""
     cursor = cnx.cursor()
     try:
-        print(f"Attempting to insert channel: {channel_info['name']}")  # Debug print
-        cursor.execute("""
-            INSERT INTO "Podcasts" (
-                PodcastName, FeedURL, ArtworkURL, Author, Description,
-                WebsiteURL, UserID, IsYouTubeChannel, Categories
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, %s)
-            RETURNING PodcastID
-        """, (
+        if database_type == "postgresql":
+            query = """
+                INSERT INTO "Podcasts" (
+                    PodcastName, FeedURL, ArtworkURL, Author, Description,
+                    WebsiteURL, UserID, IsYouTubeChannel, Categories
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, %s)
+                RETURNING PodcastID
+            """
+        else:  # MariaDB
+            query = """
+                INSERT INTO Podcasts (
+                    PodcastName, FeedURL, ArtworkURL, Author, Description,
+                    WebsiteURL, UserID, IsYouTubeChannel, Categories
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, 1, %s)
+            """
+
+        values = (
             channel_info['name'],
             f"https://www.youtube.com/channel/{channel_info['channel_id']}",
             channel_info['thumbnail_url'],
@@ -879,36 +893,53 @@ def add_youtube_channel(cnx, channel_info: dict, user_id: int) -> int:
             f"https://www.youtube.com/channel/{channel_info['channel_id']}",
             user_id,
             ""
-        ))
-        result = cursor.fetchone()
-        print(f"Insert result: {result}")  # Debug print
+        )
 
-        # Handle both tuple and dict return types
-        if isinstance(result, dict):
-            podcast_id = result['podcastid']
-        else:  # Tuple
-            podcast_id = result[0]
-
-        print(f"Extracted podcast_id: {podcast_id}")  # Debug print
-        cnx.commit()
+        cursor.execute(query, values)
+        if database_type == "postgresql":
+            result = cursor.fetchone()
+            if result is None:
+                raise ValueError("No result returned from insert")
+            # Handle both tuple and dict return types
+            if isinstance(result, dict):
+                podcast_id = result.get('podcastid')
+                if podcast_id is None:
+                    raise ValueError("No podcast ID in result dict")
+            else:  # it's a tuple
+                podcast_id = result[0]
+            cnx.commit()  # Add this line for PostgreSQL
+        else:  # MariaDB
+            podcast_id = cursor.lastrowid
+            cnx.commit()
         return podcast_id
     except Exception as e:
-        print(f"Error in add_youtube_channel: {str(e)}")  # Debug print
+        print(f"Error in add_youtube_channel: {str(e)}")
         cnx.rollback()
         raise e
 
-def add_youtube_videos(cnx, podcast_id: int, videos: list):
+def add_youtube_videos(cnx, database_type: str, podcast_id: int, videos: list):
     """Add YouTube videos to YouTubeVideos table"""
     cursor = cnx.cursor()
     try:
-        for video in videos:
-            cursor.execute("""
+        if database_type == "postgresql":
+            query = """
                 INSERT INTO "YouTubeVideos" (
                     PodcastID, VideoTitle, VideoDescription,
                     VideoURL, ThumbnailURL, PublishedAt,
                     Duration, YouTubeVideoID
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
+            """
+        else:  # MariaDB
+            query = """
+                INSERT INTO YouTubeVideos (
+                    PodcastID, VideoTitle, VideoDescription,
+                    VideoURL, ThumbnailURL, PublishedAt,
+                    Duration, YouTubeVideoID
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """
+
+        for video in videos:
+            cursor.execute(query, (
                 podcast_id,
                 video['title'],
                 video['description'],
@@ -1404,21 +1435,22 @@ def return_episodes(database_type, cnx, user_id):
                     "YouTubeVideos".ListenPosition as listenduration,
                     "YouTubeVideos".VideoID as episodeid,
                     "YouTubeVideos".Completed as completed,
-                    CASE WHEN "SavedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
-                    CASE WHEN "EpisodeQueue".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
-                    CASE WHEN "DownloadedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                    CASE WHEN "SavedVideos".VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                    CASE WHEN "EpisodeQueue".EpisodeID IS NOT NULL AND "EpisodeQueue".is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
+                    CASE WHEN "DownloadedVideos".VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                     TRUE as is_youtube
                 FROM "YouTubeVideos"
                 INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
-                LEFT JOIN "SavedEpisodes" ON
-                    "YouTubeVideos".VideoID = "SavedEpisodes".EpisodeID
-                    AND "SavedEpisodes".UserID = %s
+                LEFT JOIN "SavedVideos" ON
+                    "YouTubeVideos".VideoID = "SavedVideos".VideoID
+                    AND "SavedVideos".UserID = %s
                 LEFT JOIN "EpisodeQueue" ON
                     "YouTubeVideos".VideoID = "EpisodeQueue".EpisodeID
                     AND "EpisodeQueue".UserID = %s
-                LEFT JOIN "DownloadedEpisodes" ON
-                    "YouTubeVideos".VideoID = "DownloadedEpisodes".EpisodeID
-                    AND "DownloadedEpisodes".UserID = %s
+                    AND "EpisodeQueue".is_youtube = TRUE
+                LEFT JOIN "DownloadedVideos" ON
+                    "YouTubeVideos".VideoID = "DownloadedVideos".VideoID
+                    AND "DownloadedVideos".UserID = %s
                 WHERE "YouTubeVideos".PublishedAt >= NOW() - INTERVAL '30 days'
                 AND "Podcasts".UserID = %s
             ) combined
@@ -1473,21 +1505,22 @@ def return_episodes(database_type, cnx, user_id):
                     YouTubeVideos.ListenPosition as listenduration,
                     YouTubeVideos.VideoID as episodeid,
                     YouTubeVideos.Completed as completed,
-                    CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
-                    CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
-                    CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                    TRUE as is_youtube
+                    CASE WHEN SavedVideos.VideoID IS NOT NULL THEN 1 ELSE 0 END AS saved,
+                    CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL AND EpisodeQueue.is_youtube = 1 THEN 1 ELSE 0 END AS queued,
+                    CASE WHEN DownloadedVideos.VideoID IS NOT NULL THEN 1 ELSE 0 END AS downloaded,
+                    1 as is_youtube
                 FROM YouTubeVideos
                 INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
-                LEFT JOIN SavedEpisodes ON
-                    YouTubeVideos.VideoID = SavedEpisodes.EpisodeID
-                    AND SavedEpisodes.UserID = %s
+                LEFT JOIN SavedVideos ON
+                    YouTubeVideos.VideoID = SavedVideos.VideoID
+                    AND SavedVideos.UserID = %s
                 LEFT JOIN EpisodeQueue ON
                     YouTubeVideos.VideoID = EpisodeQueue.EpisodeID
                     AND EpisodeQueue.UserID = %s
-                LEFT JOIN DownloadedEpisodes ON
-                    YouTubeVideos.VideoID = DownloadedEpisodes.EpisodeID
-                    AND DownloadedEpisodes.UserID = %s
+                    AND EpisodeQueue.is_youtube = 1
+                LEFT JOIN DownloadedVideos ON
+                    YouTubeVideos.VideoID = DownloadedVideos.VideoID
+                    AND DownloadedVideos.UserID = %s
                 WHERE YouTubeVideos.PublishedAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                 AND Podcasts.UserID = %s
             ) combined
@@ -1701,6 +1734,10 @@ def return_podcast_episodes(database_type, cnx, user_id, podcast_id):
     # Normalize keys
     rows = capitalize_keys(rows)
 
+    if database_type != "postgresql":
+        for row in rows:
+            row['Completed'] = bool(row['Completed'])
+
     return rows or None
 
 def return_youtube_episodes(database_type, cnx, user_id, podcast_id):
@@ -1804,6 +1841,12 @@ def get_podcast_details(database_type, cnx, user_id, podcast_id):
             count_result = cursor.fetchone()
             episode_count = count_result['count'] if isinstance(count_result, dict) else count_result[0]
             lower_row['episodecount'] = episode_count
+
+        if database_type != "postgresql":
+            lower_row['explicit'] = bool(lower_row.get('explicit', 0))
+            lower_row['isyoutubechannel'] = bool(lower_row.get('isyoutubechannel', 0))
+            # You might also want to handle autodownload if it's used in the frontend
+            lower_row['autodownload'] = bool(lower_row.get('autodownload', 0))
 
         bool_fix = convert_bools(lower_row, database_type)
         cursor.close()
@@ -3271,8 +3314,9 @@ def mark_episode_completed(cnx, database_type, episode_id, user_id, is_youtube=F
                 history_query = '''
                     INSERT INTO UserVideoHistory (UserID, VideoID, ListenDate, ListenDuration)
                     VALUES (%s, %s, NOW(), %s)
-                    ON DUPLICATE KEY UPDATE ListenDuration = VALUES(ListenDuration),
-                                        ListenDate = NOW()
+                    ON DUPLICATE KEY UPDATE
+                        ListenDuration = %s,
+                        ListenDate = NOW()
                 '''
         else:
             # Original episode logic
@@ -3291,10 +3335,12 @@ def mark_episode_completed(cnx, database_type, episode_id, user_id, is_youtube=F
                 history_query = '''
                     INSERT INTO UserEpisodeHistory (UserID, EpisodeID, ListenDate, ListenDuration)
                     VALUES (%s, %s, NOW(), %s)
-                    ON DUPLICATE KEY UPDATE ListenDuration = VALUES(ListenDuration),
-                                        ListenDate = NOW()
+                    ON DUPLICATE KEY UPDATE
+                        ListenDuration = %s,
+                        ListenDate = NOW()
                 '''
 
+        # Get duration
         cursor.execute(duration_query, (episode_id,))
         duration_result = cursor.fetchone()
         if duration_result:
@@ -3306,10 +3352,18 @@ def mark_episode_completed(cnx, database_type, episode_id, user_id, is_youtube=F
             duration = None
 
         if duration:
+            # Update completion status
             cursor.execute(update_query, (episode_id,))
-            cursor.execute(history_query, (user_id, episode_id, duration, duration))
+
+            # Update history
+            history_params = (user_id, episode_id, duration, duration)
+            cursor.execute(history_query, history_params)
 
         cnx.commit()
+    except Exception as e:
+        cnx.rollback()
+        print(f"Error in mark_episode_completed: {str(e)}")
+        raise e
     finally:
         cursor.close()
 
@@ -3644,7 +3698,7 @@ def download_episode_list(database_type, cnx, user_id):
                     DownloadedEpisodes.DownloadedLocation,
                     UserEpisodeHistory.ListenDuration as listenduration,
                     Episodes.Completed,
-                    FALSE as is_youtube
+                    0 as is_youtube
                 FROM DownloadedEpisodes
                 INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID
                 INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
@@ -3671,7 +3725,7 @@ def download_episode_list(database_type, cnx, user_id):
                     DownloadedVideos.DownloadedLocation,
                     YouTubeVideos.ListenPosition as listenduration,
                     YouTubeVideos.Completed,
-                    TRUE as is_youtube
+                    1 as is_youtube
                 FROM DownloadedVideos
                 INNER JOIN YouTubeVideos ON DownloadedVideos.VideoID = YouTubeVideos.VideoID
                 INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
@@ -3688,6 +3742,11 @@ def download_episode_list(database_type, cnx, user_id):
         return None
 
     downloaded_episodes = lowercase_keys(rows)
+
+    if database_type != "postgresql":
+        for episode in downloaded_episodes:
+            episode['completed'] = bool(episode['completed'])
+            episode['is_youtube'] = bool(episode['is_youtube'])
     return downloaded_episodes
 
 def save_email_settings(cnx, database_type, email_settings):
@@ -5426,7 +5485,7 @@ def saved_episode_list(database_type, cnx, user_id):
                     "Podcasts".WebsiteURL as websiteurl,
                     "UserVideoHistory".ListenDuration as listenduration,
                     "YouTubeVideos".Completed as completed,
-                    TRUE as is_youtube
+                    0 = 1 as is_youtube
                 FROM "SavedVideos"
                 INNER JOIN "YouTubeVideos" ON "SavedVideos".VideoID = "YouTubeVideos".VideoID
                 INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
@@ -5453,7 +5512,7 @@ def saved_episode_list(database_type, cnx, user_id):
                     Podcasts.WebsiteURL as websiteurl,
                     UserEpisodeHistory.ListenDuration as listenduration,
                     Episodes.Completed as completed,
-                    FALSE as is_youtube
+                    0 as is_youtube
                 FROM SavedEpisodes
                 INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID
                 INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
@@ -5476,7 +5535,7 @@ def saved_episode_list(database_type, cnx, user_id):
                     Podcasts.WebsiteURL as websiteurl,
                     UserVideoHistory.ListenDuration as listenduration,
                     YouTubeVideos.Completed as completed,
-                    TRUE as is_youtube
+                    1 as is_youtube
                 FROM SavedVideos
                 INNER JOIN YouTubeVideos ON SavedVideos.VideoID = YouTubeVideos.VideoID
                 INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
@@ -5496,6 +5555,12 @@ def saved_episode_list(database_type, cnx, user_id):
         return None
 
     saved_episodes = lowercase_keys(rows)
+
+    if database_type != "postgresql":
+        for episode in saved_episodes:
+            episode['completed'] = bool(episode['completed'])
+            episode['is_youtube'] = bool(episode['is_youtube'])
+
     return saved_episodes
 
 def save_episode(cnx, database_type, episode_id, user_id, is_youtube=False):
@@ -5555,44 +5620,38 @@ def check_saved(cnx, database_type, user_id, episode_id, is_youtube=False):
 def remove_saved_episode(cnx, database_type, episode_id, user_id, is_youtube=False):
     cursor = cnx.cursor()
     try:
+        logging.info(f"Removing {'video' if is_youtube else 'episode'} {episode_id} for user {user_id}")
         if is_youtube:
             if database_type == "postgresql":
-                query = (
-                    'SELECT SaveID FROM "SavedVideos" '
-                    'INNER JOIN "YouTubeVideos" ON "SavedVideos".VideoID = "YouTubeVideos".VideoID '
-                    'INNER JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID '
-                    'WHERE "YouTubeVideos".VideoID = %s AND "Podcasts".UserID = %s'
-                )
+                query = """
+                    SELECT SaveID FROM "SavedVideos"
+                    WHERE VideoID = %s AND UserID = %s
+                """
             else:
-                query = (
-                    "SELECT SaveID FROM SavedVideos "
-                    "INNER JOIN YouTubeVideos ON SavedVideos.VideoID = YouTubeVideos.VideoID "
-                    "INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID "
-                    "WHERE YouTubeVideos.VideoID = %s AND Podcasts.UserID = %s"
-                )
+                query = """
+                    SELECT SaveID FROM SavedVideos
+                    WHERE VideoID = %s AND UserID = %s
+                """
         else:
             if database_type == "postgresql":
-                query = (
-                    'SELECT SaveID FROM "SavedEpisodes" '
-                    'INNER JOIN "Episodes" ON "SavedEpisodes".EpisodeID = "Episodes".EpisodeID '
-                    'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-                    'WHERE "Episodes".EpisodeID = %s AND "Podcasts".UserID = %s'
-                )
+                query = """
+                    SELECT SaveID FROM "SavedEpisodes"
+                    WHERE EpisodeID = %s AND UserID = %s
+                """
             else:
-                query = (
-                    "SELECT SaveID FROM SavedEpisodes "
-                    "INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID "
-                    "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-                    "WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s"
-                )
-
+                query = """
+                    SELECT SaveID FROM SavedEpisodes
+                    WHERE EpisodeID = %s AND UserID = %s
+                """
         cursor.execute(query, (episode_id, user_id))
         result = cursor.fetchone()
-
         if not result:
+            logging.warning(f"No saved {'video' if is_youtube else 'episode'} found for ID {episode_id} and user {user_id}")
             return
 
-        save_id = get_saved_value(result, "SaveID")
+        # Handle both dictionary and tuple result types
+        save_id = result['saveid'] if isinstance(result, dict) else result[0]
+        logging.info(f"Found SaveID: {save_id}")
 
         # Remove the saved entry
         if is_youtube:
@@ -5607,16 +5666,20 @@ def remove_saved_episode(cnx, database_type, episode_id, user_id, is_youtube=Fal
                 query = "DELETE FROM SavedEpisodes WHERE SaveID = %s"
 
         cursor.execute(query, (save_id,))
+        rows_affected = cursor.rowcount
+        logging.info(f"Deleted {rows_affected} rows")
 
         # Update UserStats
         if database_type == "postgresql":
             query = 'UPDATE "UserStats" SET EpisodesSaved = EpisodesSaved - 1 WHERE UserID = %s'
         else:
             query = "UPDATE UserStats SET EpisodesSaved = EpisodesSaved - 1 WHERE UserID = %s"
+
         cursor.execute(query, (user_id,))
+        stats_rows_affected = cursor.rowcount
+        logging.info(f"Updated {stats_rows_affected} user stats rows")
 
         cnx.commit()
-
     except Exception as e:
         logging.error(f"Error during {'video' if is_youtube else 'episode'} removal: {e}")
         cnx.rollback()
@@ -6395,77 +6458,106 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode
 
     else:
         cursor = cnx.cursor(dictionary=True)
-        if person_episode:
-            # MariaDB version of people episodes query
-            query_people = """
-                SELECT pe.*,
-                       p.PodcastID, p.PodcastName, p.ArtworkURL as podcast_artwork,
-                       p.FeedURL, p.WebsiteURL, p.PodcastIndexID,
-                       e.EpisodeID as real_episode_id,
-                       COALESCE(pe.EpisodeArtwork, p.ArtworkURL) as final_artwork,
-                       CASE WHEN q.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_queued,
-                       CASE WHEN s.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_saved,
-                       CASE WHEN d.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_downloaded
-                FROM PeopleEpisodes pe
-                JOIN Podcasts p ON pe.PodcastID = p.PodcastID
-                JOIN Episodes e ON (
-                    e.EpisodeTitle = pe.EpisodeTitle
-                    AND e.EpisodeURL = pe.EpisodeURL
-                )
-                LEFT JOIN EpisodeQueue q ON e.EpisodeID = q.EpisodeID AND q.UserID = %s
-                LEFT JOIN SavedEpisodes s ON e.EpisodeID = s.EpisodeID AND s.UserID = %s
-                LEFT JOIN DownloadedEpisodes d ON e.EpisodeID = d.EpisodeID AND d.UserID = %s
-                WHERE pe.EpisodeID = %s
+        if is_youtube:
+            # MariaDB version of YouTube videos query
+            query = """
+                SELECT Podcasts.PodcastID, Podcasts.PodcastIndexID, Podcasts.FeedURL,
+                    Podcasts.PodcastName, Podcasts.ArtworkURL,
+                    YouTubeVideos.VideoTitle as EpisodeTitle,
+                    YouTubeVideos.PublishedAt as EpisodePubDate,
+                    YouTubeVideos.VideoDescription as EpisodeDescription,
+                    YouTubeVideos.ThumbnailURL as EpisodeArtwork,
+                    YouTubeVideos.VideoURL as EpisodeURL,
+                    YouTubeVideos.Duration as EpisodeDuration,
+                    YouTubeVideos.VideoID as EpisodeID,
+                    YouTubeVideos.ListenPosition as ListenDuration,
+                    YouTubeVideos.Completed,
+                    CASE WHEN q.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_queued,
+                    CASE WHEN s.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_saved,
+                    CASE WHEN d.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_downloaded,
+                    1 as is_youtube
+                FROM YouTubeVideos
+                INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                LEFT JOIN EpisodeQueue q ON YouTubeVideos.VideoID = q.EpisodeID AND q.UserID = %s
+                LEFT JOIN SavedEpisodes s ON YouTubeVideos.VideoID = s.EpisodeID AND s.UserID = %s
+                LEFT JOIN DownloadedEpisodes d ON YouTubeVideos.VideoID = d.EpisodeID AND d.UserID = %s
+                WHERE YouTubeVideos.VideoID = %s AND Podcasts.UserID = %s
             """
-            cursor.execute(query_people, (user_id, user_id, user_id, episode_id))
-            people_episode = cursor.fetchone()
+            cursor.execute(query, (user_id, user_id, user_id, episode_id, user_id))
+            result = cursor.fetchone()
+        elif person_episode:
+                # MariaDB version of people episodes query
+                query_people = """
+                    SELECT pe.*,
+                        p.PodcastID, p.PodcastName, p.ArtworkURL as podcast_artwork,
+                        p.FeedURL, p.WebsiteURL, p.PodcastIndexID,
+                        e.EpisodeID as real_episode_id,
+                        COALESCE(pe.EpisodeArtwork, p.ArtworkURL) as final_artwork,
+                        CASE WHEN q.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_queued,
+                        CASE WHEN s.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_saved,
+                        CASE WHEN d.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_downloaded,
+                        FALSE as is_youtube
+                    FROM PeopleEpisodes pe
+                    JOIN Podcasts p ON pe.PodcastID = p.PodcastID
+                    JOIN Episodes e ON (
+                        e.EpisodeTitle = pe.EpisodeTitle
+                        AND e.EpisodeURL = pe.EpisodeURL
+                    )
+                    LEFT JOIN EpisodeQueue q ON e.EpisodeID = q.EpisodeID AND q.UserID = %s
+                    LEFT JOIN SavedEpisodes s ON e.EpisodeID = s.EpisodeID AND s.UserID = %s
+                    LEFT JOIN DownloadedEpisodes d ON e.EpisodeID = d.EpisodeID AND d.UserID = %s
+                    WHERE pe.EpisodeID = %s
+                """
+                cursor.execute(query_people, (user_id, user_id, user_id, episode_id))
+                people_episode = cursor.fetchone()
 
-            if not people_episode:
-                raise ValueError(f"No people episode found with ID {episode_id}")
+                if not people_episode:
+                    raise ValueError(f"No people episode found with ID {episode_id}")
 
-            # Get additional data using the real episode ID
-            query_history = """
-                SELECT UserEpisodeHistory.ListenDuration, Episodes.Completed
-                FROM Episodes
-                LEFT JOIN UserEpisodeHistory ON
-                    Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
-                    AND UserEpisodeHistory.UserID = %s
-                WHERE Episodes.EpisodeID = %s
-            """
-            cursor.execute(query_history, (user_id, people_episode['real_episode_id']))
-            history_data = cursor.fetchone() or {}
+                # Get additional data using the real episode ID
+                query_history = """
+                    SELECT UserEpisodeHistory.ListenDuration, Episodes.Completed
+                    FROM Episodes
+                    LEFT JOIN UserEpisodeHistory ON
+                        Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+                        AND UserEpisodeHistory.UserID = %s
+                    WHERE Episodes.EpisodeID = %s
+                """
+                cursor.execute(query_history, (user_id, people_episode['real_episode_id']))
+                history_data = cursor.fetchone() or {}
 
-            # Combine the data
-            result = {
-                'episodetitle': people_episode['episodetitle'],
-                'podcastname': people_episode['podcastname'],
-                'podcastid': people_episode['podcastid'],
-                'podcastindexid': people_episode['podcastindexid'],
-                'feedurl': people_episode['feedurl'],
-                'episodepubdate': people_episode['episodepubdate'].isoformat() if people_episode['episodepubdate'] else None,
-                'episodedescription': people_episode['episodedescription'],
-                'episodeartwork': people_episode['final_artwork'],
-                'episodeurl': people_episode['episodeurl'],
-                'episodeduration': people_episode['episodeduration'],
-                'listenduration': history_data.get('listenduration'),
-                'episodeid': people_episode['real_episode_id'],
-                'completed': bool(history_data.get('completed', 0)),
-                'is_queued': bool(people_episode['is_queued']),
-                'is_saved': bool(people_episode['is_saved']),
-                'is_downloaded': bool(people_episode['is_downloaded'])
-            }
+                # Combine the data
+                result = {
+                    'episodetitle': people_episode['episodetitle'],
+                    'podcastname': people_episode['podcastname'],
+                    'podcastid': people_episode['podcastid'],
+                    'podcastindexid': people_episode['podcastindexid'],
+                    'feedurl': people_episode['feedurl'],
+                    'episodepubdate': people_episode['episodepubdate'].isoformat() if people_episode['episodepubdate'] else None,
+                    'episodedescription': people_episode['episodedescription'],
+                    'episodeartwork': people_episode['final_artwork'],
+                    'episodeurl': people_episode['episodeurl'],
+                    'episodeduration': people_episode['episodeduration'],
+                    'listenduration': history_data.get('listenduration'),
+                    'episodeid': people_episode['real_episode_id'],
+                    'completed': bool(history_data.get('completed', 0)),
+                    'is_queued': bool(people_episode['is_queued']),
+                    'is_saved': bool(people_episode['is_saved']),
+                    'is_downloaded': bool(people_episode['is_downloaded'])
+                }
         else:
             # MariaDB version of regular episodes query
             query = """
                 SELECT Podcasts.PodcastID, Podcasts.PodcastIndexID, Podcasts.FeedURL,
-                       Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle,
-                       Episodes.EpisodePubDate, Episodes.EpisodeDescription,
-                       Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration,
-                       Episodes.EpisodeID, Podcasts.WebsiteURL,
-                       UserEpisodeHistory.ListenDuration, Episodes.Completed,
-                       CASE WHEN q.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_queued,
-                       CASE WHEN s.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_saved,
-                       CASE WHEN d.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_downloaded
+                    Podcasts.PodcastName, Podcasts.ArtworkURL, Episodes.EpisodeTitle,
+                    Episodes.EpisodePubDate, Episodes.EpisodeDescription,
+                    Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration,
+                    Episodes.EpisodeID, Podcasts.WebsiteURL,
+                    UserEpisodeHistory.ListenDuration, Episodes.Completed,
+                    CASE WHEN q.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_queued,
+                    CASE WHEN s.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_saved,
+                    CASE WHEN d.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_downloaded,
+                    FALSE as is_youtube
                 FROM Episodes
                 INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
                 LEFT JOIN UserEpisodeHistory ON
@@ -6488,7 +6580,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode
 
         if not result:
             raise ValueError(f"No episode found with ID {episode_id}" +
-                           (" for person episode" if person_episode else f" for user {user_id}"))
+                        (" for person episode" if person_episode else f" for user {user_id}"))
 
         # Convert boolean fields for MariaDB
         if result:
@@ -6496,6 +6588,7 @@ def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode
             result['is_queued'] = bool(result.get('is_queued', 0))
             result['is_saved'] = bool(result.get('is_saved', 0))
             result['is_downloaded'] = bool(result.get('is_downloaded', 0))
+            result['is_youtube'] = bool(result.get('is_youtube', 0))
 
             # Format date if present
             if result.get('episodepubdate'):
@@ -7074,6 +7167,11 @@ def search_data(database_type, cnx, search_term, user_id):
                 if 'explicit' in row:
                     row['explicit'] = 1 if row['explicit'] else 0
 
+        if database_type != "postgresql":
+            for row in result:
+                row['is_youtube'] = bool(row.get('is_youtube', 0))
+                row['completed'] = bool(row.get('completed', 0))
+
         return result
 
     except Exception as e:
@@ -7340,7 +7438,7 @@ def get_queued_episodes(database_type, cnx, user_id):
                 UserEpisodeHistory.ListenDuration as listenduration,
                 Episodes.EpisodeID as episodeid,
                 Episodes.Completed as completed,
-                FALSE as is_youtube
+                0 as is_youtube
             FROM EpisodeQueue
             INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
             INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
@@ -7365,7 +7463,7 @@ def get_queued_episodes(database_type, cnx, user_id):
                 YouTubeVideos.ListenPosition as listenduration,
                 YouTubeVideos.VideoID as episodeid,
                 YouTubeVideos.Completed as completed,
-                TRUE as is_youtube
+                1 as is_youtube
             FROM EpisodeQueue
             INNER JOIN YouTubeVideos ON EpisodeQueue.EpisodeID = YouTubeVideos.VideoID
             INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
@@ -7379,6 +7477,10 @@ def get_queued_episodes(database_type, cnx, user_id):
     queued_episodes = cursor.fetchall()
     cursor.close()
     queued_episodes = lowercase_keys(queued_episodes)
+    if database_type != "postgresql":
+        for episode in queued_episodes:
+            episode['completed'] = bool(episode['completed'])
+            episode['is_youtube'] = bool(episode['is_youtube'])
     return queued_episodes
 
 def check_episode_exists(cnx, database_type, user_id, episode_title, episode_url):

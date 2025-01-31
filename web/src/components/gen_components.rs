@@ -365,34 +365,58 @@ pub fn search_bar() -> Html {
                 {
                     if *mobile_dropdown_open {
                         html! {
-                            <div class="search-drop absolute top-full right-0 z-10 divide-y rounded-lg shadow p-6">
-                                <div class="inline-flex rounded-md shadow-sm mb-2" role="group">
+                            <div class="search-drop absolute top-full right-0 z-10 divide-y rounded-lg shadow p-4">
+                                <div class="flex justify-between mb-4" role="group">
                                     <button
                                         type="button"
-                                        class={format!("px-4 py-2 text-sm font-medium rounded-l-lg search-drop-button {}",
+                                        class={format!("p-2 rounded-lg search-drop-button flex items-center justify-center w-10 h-10 hover:bg-opacity-20 {}",
                                             if *search_index == "podcast_index" { "active" } else { "" })}
                                         onclick={on_dropdown_select_podcast_index}
                                     >
-                                        {"Podcast Index"}
+                                        <img 
+                                            src="/static/assets/logos/podcastindex.svg" 
+                                            alt="Podcast Index"
+                                            class="w-6 h-6"
+                                        />
                                     </button>
+                                    
                                     <button
                                         type="button"
-                                        class={format!("px-4 py-2 text-sm font-medium rounded-r-lg search-drop-button {}",
+                                        class={format!("p-2 rounded-lg search-drop-button flex items-center justify-center w-10 h-10 hover:bg-opacity-20 {}",
                                             if *search_index == "itunes" { "active" } else { "" })}
                                         onclick={on_dropdown_select_itunes}
                                     >
-                                        {"iTunes"}
+                                        <img 
+                                            src="/static/assets/logos/itunes.png" 
+                                            alt="iTunes"
+                                            class="w-6 h-6"
+                                        />
+                                    </button>
+                    
+                                    <button
+                                        type="button"
+                                        class={format!("p-2 rounded-lg search-drop-button flex items-center justify-center w-10 h-10 hover:bg-opacity-20 {}",
+                                            if *search_index == "youtube" { "active" } else { "" })}
+                                        onclick={on_dropdown_select_youtube}
+                                    >
+                                        <img 
+                                            src="/static/assets/logos/youtube.png" 
+                                            alt="YouTube"
+                                            class="w-6 h-6"
+                                        />
                                     </button>
                                 </div>
+                    
                                 <input
                                     type="text"
-                                    class="search-input shorter-input block p-2.5 w-full text-sm rounded-lg mb-2"
+                                    class="search-input block p-2 w-full text-sm rounded-lg mb-4"
                                     placeholder="Search"
                                     value={(*podcast_value).clone()}
                                     oninput={on_input_change.clone()}
                                 />
+                    
                                 <button
-                                    class="search-btn border-0 no-margin mt-4 font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                    class="search-btn w-full font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
                                     onclick={on_submit_click.clone()}
                                 >
                                     {"Search"}

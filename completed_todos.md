@@ -65,7 +65,7 @@ Version 0.7.3
 - [ ] Validate Mysql functions
 - [ ] Build clients and verify
 - [x] Sometimes episodes are not even close to newest or right order in episode_layout
-- [ ] After adding podcast we no longer show dumpster
+- [ ] After adding podcast we no longer show dumpster - screw that
 - [x] Think the weird yt double refreshing after search is messing up which one is subbed to
 - [x] Queuing yt ep also queues standard pod counterpart id
 

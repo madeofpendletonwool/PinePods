@@ -88,8 +88,8 @@ try:
 
     # Add EnableRSSFeeds column if it doesn't exist
     cursor.execute("""
-        SELECT COUNT(*) 
-        FROM information_schema.columns 
+        SELECT COUNT(*)
+        FROM information_schema.columns
         WHERE table_name = 'Users'
         AND column_name = 'EnableRSSFeeds'
     """)
@@ -316,25 +316,50 @@ try:
 
     # Create the Podcasts table if it doesn't exist
     cursor.execute("""CREATE TABLE IF NOT EXISTS Podcasts (
-                        PodcastID INT AUTO_INCREMENT PRIMARY KEY,
-                        PodcastIndexID INT,
-                        PodcastName TEXT,
-                        ArtworkURL TEXT,
-                        Author TEXT,
-                        Categories TEXT,
-                        Description TEXT,
-                        EpisodeCount INT,
-                        FeedURL TEXT,
-                        WebsiteURL TEXT,
-                        Explicit TINYINT(1),
-                        UserID INT,
-                        AutoDownload TINYINT(1) DEFAULT 0,
-                        StartSkip INT DEFAULT 0,
-                        EndSkip INT DEFAULT 0,
-                        Username TEXT,
-                        Password TEXT,
-                        FOREIGN KEY (UserID) REFERENCES Users(UserID)
-                    )""")
+        PodcastID INT AUTO_INCREMENT PRIMARY KEY,
+        PodcastIndexID INT,
+        PodcastName TEXT,
+        ArtworkURL TEXT,
+        Author TEXT,
+        Categories TEXT,
+        Description TEXT,
+        EpisodeCount INT,
+        FeedURL TEXT,
+        WebsiteURL TEXT,
+        Explicit TINYINT(1),
+        UserID INT,
+        AutoDownload TINYINT(1) DEFAULT 0,
+        StartSkip INT DEFAULT 0,
+        EndSkip INT DEFAULT 0,
+        Username TEXT,
+        Password TEXT,
+        IsYouTubeChannel TINYINT(1) DEFAULT 0,
+        FOREIGN KEY (UserID) REFERENCES Users(UserID)
+        )""")
+
+    def add_youtube_column_if_not_exist(cursor, cnx):
+        try:
+            # Check if column exists in MySQL
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'IsYouTubeChannel'
+                AND TABLE_SCHEMA = DATABASE()
+            """)
+            existing_column = cursor.fetchone()
+
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN IsYouTubeChannel TINYINT(1) DEFAULT 0
+                """)
+                print("Added 'IsYouTubeChannel' column to 'Podcasts' table.")
+                cnx.commit()
+        except Exception as e:
+            print(f"Error adding IsYouTubeChannel column to Podcasts table: {e}")
+
+    add_youtube_column_if_not_exist(cursor, cnx)
 
     def add_user_pass_columns_if_not_exist(cursor, cnx):
         try:
@@ -401,6 +426,29 @@ try:
             ALTER TABLE Episodes
             ADD COLUMN Completed TINYINT(1) DEFAULT 0
         """)
+
+    try:
+        # YouTubeVideos table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS YouTubeVideos (
+                VideoID INT AUTO_INCREMENT PRIMARY KEY,
+                PodcastID INT,
+                VideoTitle TEXT,
+                VideoDescription TEXT,
+                VideoURL TEXT,
+                ThumbnailURL TEXT,
+                PublishedAt TIMESTAMP,
+                Duration INT,
+                YouTubeVideoID TEXT,
+                Completed TINYINT(1) DEFAULT 0,
+                ListenPosition INT DEFAULT 0,
+                FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
+            )
+        """)
+        cnx.commit()
+
+    except Exception as e:
+        print(f"Error creating YoutubeVideos Table: {e}")
 
 
     def create_index_if_not_exists(cursor, index_name, table_name, column_name):
@@ -490,6 +538,24 @@ try:
                         FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
                     )""")
 
+    try:
+        # UserVideoHistory table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS UserVideoHistory (
+                UserVideoHistoryID INT AUTO_INCREMENT PRIMARY KEY,
+                UserID INT,
+                VideoID INT,
+                ListenDate TIMESTAMP,
+                ListenDuration INT DEFAULT 0,
+                FOREIGN KEY (UserID) REFERENCES Users(UserID),
+                FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID)
+            )
+        """)
+        cnx.commit()
+
+    except Exception as e:
+        print(f"Error creating UserVideoHistory table: {e}")
+
     cursor.execute("""CREATE TABLE IF NOT EXISTS SavedEpisodes (
                         SaveID INT AUTO_INCREMENT PRIMARY KEY,
                         UserID INT,
@@ -498,6 +564,23 @@ try:
                         FOREIGN KEY (UserID) REFERENCES Users(UserID),
                         FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
                     )""")
+
+    try:
+        # SavedVideos table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS SavedVideos (
+                SaveID INT AUTO_INCREMENT PRIMARY KEY,
+                UserID INT,
+                VideoID INT,
+                SaveDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (UserID) REFERENCES Users(UserID),
+                FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID)
+            )
+        """)
+        cnx.commit()
+
+    except Exception as e:
+        print(f"Error creating SavedVideos table: {e}")
 
 
     # Create the DownloadedEpisodes table
@@ -512,16 +595,70 @@ try:
                     FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
                     )""")
 
+    try:
+        # DownloadedVideos table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS DownloadedVideos (
+                DownloadID INT AUTO_INCREMENT PRIMARY KEY,
+                UserID INT,
+                VideoID INT,
+                DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                DownloadedSize INT,
+                DownloadedLocation VARCHAR(255),
+                FOREIGN KEY (UserID) REFERENCES Users(UserID),
+                FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID)
+            )
+        """)
+        cnx.commit()
+
+    except Exception as e:
+        print(f"Error creating DownloadedVideos table: {e}")
+
     # Create the EpisodeQueue table
     cursor.execute("""CREATE TABLE IF NOT EXISTS EpisodeQueue (
-                    QueueID INT AUTO_INCREMENT PRIMARY KEY,
-                    QueueDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UserID INT,
-                    EpisodeID INT,
-                    QueuePosition INT NOT NULL DEFAULT 0,
-                    FOREIGN KEY (UserID) REFERENCES Users(UserID),
-                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
-                    )""")
+        QueueID INT AUTO_INCREMENT PRIMARY KEY,
+        QueueDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UserID INT,
+        EpisodeID INT,
+        QueuePosition INT NOT NULL DEFAULT 0,
+        is_youtube TINYINT(1) DEFAULT 0,
+        FOREIGN KEY (UserID) REFERENCES Users(UserID),
+        FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+    )""")
+
+    def add_queue_youtube_column_if_not_exist(cursor, cnx):
+        try:
+            # Check if column exists in MySQL
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'EpisodeQueue'
+                AND COLUMN_NAME = 'is_youtube'
+                AND TABLE_SCHEMA = DATABASE()
+            """)
+            existing_column = cursor.fetchone()
+
+            if not existing_column:
+                try:
+                    # Add the is_youtube column
+                    cursor.execute("""
+                        ALTER TABLE EpisodeQueue
+                        ADD COLUMN is_youtube TINYINT(1) DEFAULT 0
+                    """)
+                    cnx.commit()
+                    print("Added 'is_youtube' column to 'EpisodeQueue' table.")
+                except Exception as e:
+                    cnx.rollback()
+                    if 'Duplicate column name' not in str(e):  # MySQL specific error message
+                        print(f"Error adding is_youtube column to EpisodeQueue table: {e}")
+            else:
+                cnx.commit()  # Commit transaction even if column exists
+
+        except Exception as e:
+            cnx.rollback()
+            print(f"Error checking for is_youtube column: {e}")
+
+        add_queue_youtube_column_if_not_exist(cursor, cnx)
 
     # Create the Sessions table
     cursor.execute("""CREATE TABLE IF NOT EXISTS Sessions (

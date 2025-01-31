@@ -629,39 +629,64 @@ try:
         EpisodeID INT,
         QueuePosition INT NOT NULL DEFAULT 0,
         is_youtube BOOLEAN DEFAULT FALSE,
-        FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
-        FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
+        FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
     )""")
 
-    # Function to add is_youtube column if it doesn't exist
+    def remove_episode_queue_constraint(cursor, cnx):
+        try:
+            # First check if the constraint exists
+            check_constraint_query = """
+                SELECT constraint_name 
+                FROM information_schema.table_constraints 
+                WHERE table_name = 'EpisodeQueue' 
+                AND constraint_name = 'EpisodeQueue_episodeid_fkey'
+                AND constraint_type = 'FOREIGN KEY'
+            """
+            cursor.execute(check_constraint_query)
+            constraint = cursor.fetchone()
+            
+            if constraint:
+                # If it exists, drop it
+                cursor.execute('ALTER TABLE "EpisodeQueue" DROP CONSTRAINT "EpisodeQueue_episodeid_fkey"')
+                cnx.commit()
+                print("Removed EpisodeQueue foreign key constraint")
+            else:
+                print("EpisodeQueue foreign key constraint not found - no action needed")
+                
+        except Exception as e:
+            print(f"Error managing EpisodeQueue constraint: {e}")
+            cnx.rollback()
+
+    remove_episode_queue_constraint(cursor, cnx)
+
     def add_queue_youtube_column_if_not_exist(cursor, cnx):
         try:
-            # Start a new transaction
+            # Check if column exists using PostgreSQL's system catalog
             cursor.execute("""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name='episodequeue'
-                AND column_name = 'is_youtube'
+                SELECT EXISTS (
+                    SELECT 1 
+                    FROM information_schema.columns 
+                    WHERE table_name = 'EpisodeQueue' 
+                    AND column_name = 'is_youtube'
+                )
             """)
-            existing_column = cursor.fetchone()
-            if not existing_column:
-                try:
-                    # Add the is_youtube column
-                    cursor.execute("""
-                        ALTER TABLE "EpisodeQueue"
-                        ADD COLUMN is_youtube BOOLEAN DEFAULT FALSE
-                    """)
-                    cnx.commit()
-                    print("Added 'is_youtube' column to 'EpisodeQueue' table.")
-                except Exception as e:
-                    cnx.rollback()  # Rollback on error
-                    if 'already exists' not in str(e):  # Only log if it's not an 'already exists' error
-                        print(f"Error adding is_youtube column to EpisodeQueue table: {e}")
+            column_exists = cursor.fetchone()[0]
+            
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE "EpisodeQueue"
+                    ADD COLUMN is_youtube BOOLEAN DEFAULT FALSE
+                """)
+                cnx.commit()
+                print("Added 'is_youtube' column to 'EpisodeQueue' table.")
             else:
-                cnx.commit()  # Commit even if column exists to clear transaction
+                print("Column 'is_youtube' already exists in 'EpisodeQueue' table.")
+                
         except Exception as e:
-            cnx.rollback()  # Rollback the outer transaction if needed
-            print(f"Error checking for is_youtube column: {e}")
+            cnx.rollback()
+            print(f"Error managing is_youtube column: {e}")
+
+    add_queue_youtube_column_if_not_exist(cursor, cnx)
 
     # Create the Sessions table
     cursor.execute("""CREATE TABLE IF NOT EXISTS "Sessions" (
