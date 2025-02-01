@@ -10,13 +10,15 @@ Next Minor Version:
 
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [ ] Allow user to adjust amount of time to save/download youtube videos
+- [ ] After adding podcast we no longer show dumpster
+- [ ] Bad url while no channels added youtube
 
 Version 0.7.3
 
-- [ ] Youtube Subscriptions
+- [x] Youtube Subscriptions
   - [x] Fix refreshing so it handlees youtube subscriptions
   - [x] Thumbnails for youtube episodes currently are just sections of the video
-  - [ ] Validate some more channel adds
+  - [x] Validate some more channel adds
   - [x] Speed up channel add process by only checking recent videos up to 30 days.
   - [x] When searching channels show more recent vids than just one
   - [x] Dynamic updating youtube channels
@@ -24,8 +26,6 @@ Version 0.7.3
   - [x] Ensure youtube videos update completion/listen time status correctly
   - [x] check refreshing on episode/other youtube related pages
   - [x] Make /episode page work with youtube
-  - [ ] Bad url while no channels added
-
 - [x] Allowed and documented option to download episodes as specific user on host machine
 - [x] Nextcloud Sync Fixed
 - [x] Episode Completion Status is now pushed to Nextcloud/Gpodder
@@ -41,10 +41,9 @@ Version 0.7.3
 - [x] Fix issue with episodes page opening when clicking show notes while on episodes page already
 - [x] Fix issues with ability to open episode_layout page from episode page. That includes whether the podcast is added or not
 - [x] Add podcastindexid to episode page url vars - Then pass to dynamic func call
-- [ ] Validate Mysql functions
-- [ ] Build clients and verify
+- [x] Validate Mysql functions
+- [x] Build clients and verify
 - [x] Sometimes episodes are not even close to newest or right order in episode_layout
-- [ ] After adding podcast we no longer show dumpster - screw that
 - [x] Think the weird yt double refreshing after search is messing up which one is subbed to
 - [x] Queuing yt ep also queues standard pod counterpart id
 

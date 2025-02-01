@@ -31,14 +31,14 @@ jobs:
       - name: Install Flatpak SDK
         run: |
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub org.gnome.Platform//46 org.gnome.Sdk//46
+          flatpak install --user -y flathub org.gnome.Platform//47 org.gnome.Sdk//47
 
       - name: Update manifest version and URL
         run: |
-          sed -i "s|url: .*|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/pinepods_${VERSION}_amd64.deb|" clients/flatpak/com.gooseberrydevelopment.pinepods.yml
-          DEB_URL=$(grep url clients/flatpak/com.gooseberrydevelopment.pinepods.yml | awk '{print $2}')
+          sed -i "s|url: .*|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/pinepods_${VERSION}_amd64.deb|" com.gooseberrydevelopment.pinepods.yml
+          DEB_URL=$(grep url com.gooseberrydevelopment.pinepods.yml | awk '{print $2}')
           SHA256=$(curl -sL $DEB_URL | sha256sum | cut -d' ' -f1)
-          sed -i "s|sha256: .*|sha256: $SHA256|" clients/flatpak/com.gooseberrydevelopment.pinepods.yml
+          sed -i "s|sha256: .*|sha256: $SHA256|" com.gooseberrydevelopment.pinepods.yml
 
       - name: Get shared Modules
         run: |
@@ -49,7 +49,7 @@ jobs:
         run: |
           flatpak-builder --force-clean --sandbox --user --install-deps-from=flathub --ccache \
               --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo builddir \
-              clients/flatpak/com.gooseberrydevelopment.pinepods.yml
+              com.gooseberrydevelopment.pinepods.yml
 
           flatpak remote-add --user --no-gpg-verify test-repo "$(pwd)/repo"
           flatpak install --user -y test-repo ${{ env.FLATPAK_ID }}
@@ -70,8 +70,7 @@ jobs:
         run: |
           mkdir flatpak_output
           cp ${{ env.FLATPAK_ID }}.flatpak flatpak_output/
-          cp clients/flatpak/com.gooseberrydevelopment.pinepods.yml flatpak_output/
-          cp clients/flatpak/${{ env.FLATPAK_ID }}.metainfo.xml flatpak_output/
+          cp com.gooseberrydevelopment.pinepods.yml flatpak_output/
           tar -czvf flatpak_files.tar.gz flatpak_output
 
       - name: Upload Flatpak archive
