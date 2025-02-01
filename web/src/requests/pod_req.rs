@@ -288,7 +288,8 @@ pub struct Podcast {
     pub categories: String, // Keeping as String since it's handled as empty string "{}" or "{}"
     #[serde(deserialize_with = "bool_from_int")]
     pub explicit: bool,
-    pub podcastindexid: i64,
+    #[serde(default)] // Add this line
+    pub podcastindexid: Option<i64>,
 }
 
 pub async fn call_get_podcasts(
@@ -379,7 +380,7 @@ impl From<Podcast> for PodcastExtra {
             author: podcast.author,
             categories: podcast.categories,
             explicit: podcast.explicit,
-            podcastindexid: podcast.podcastindexid,
+            podcastindexid: podcast.podcastindexid.unwrap_or(0),
             play_count: 0,
             episodes_played: 0,
             oldest_episode_date: None,
@@ -401,7 +402,7 @@ impl From<PodcastExtra> for Podcast {
             author: podcast_extra.author,
             categories: podcast_extra.categories,
             explicit: podcast_extra.explicit,
-            podcastindexid: podcast_extra.podcastindexid,
+            podcastindexid: Some(podcast_extra.podcastindexid),
         }
     }
 }
@@ -1240,8 +1241,9 @@ pub async fn call_remove_downloaded_episode(
 
 // Get Single Epsiode
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Default, Serialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
+#[serde(default)] 
 pub struct EpisodeInfo {
     pub episodetitle: String,
     pub podcastname: String,

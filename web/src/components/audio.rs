@@ -1953,6 +1953,7 @@ pub fn on_play_click_offline(
         let episode_duration_for_wasm = episode_info_for_closure.episodeduration.clone();
         let episode_id_for_wasm = episode_info_for_closure.episodeid.clone();
         let listen_duration_for_closure = episode_info_for_closure.listenduration.clone();
+        let episode_is_youtube_for_wasm = episode_info.is_youtube.clone();
 
         wasm_bindgen_futures::spawn_local(async move {
             match start_local_file_server(&file_path).await {
@@ -1979,6 +1980,7 @@ pub fn on_play_click_offline(
                             start_pos_sec: listen_duration_for_closure.unwrap_or(0) as f64,
                             end_pos_sec: 0.0,
                             offline: true,
+                            is_youtube: episode_is_youtube_for_wasm,
                         });
                         audio_state.set_audio_source(src.to_string());
                         if let Some(audio) = &audio_state.audio_element {

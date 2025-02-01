@@ -1085,6 +1085,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 episode_id,
                 user_id: user_id_copy.unwrap(),
                 person_episode: false,
+                is_youtube: episode.get_is_youtube(),
             };
             let server_name = server_name_copy.clone().unwrap();
             let ep_api_key = api_key_copy.clone().flatten();
@@ -1107,8 +1108,11 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             Err(e) => {
                                 post_state.reduce_mut(|state| {
                                     state.error_message =
-                                        Some(format!("Failed to download episode audio: {:?}", e))
+                                        Some(format!("Failed to download episode audio: {:?}", e.clone()))
                                 });
+                                web_sys::console::log_1(
+                                    &format!("audio fail: {:?}", e).into(),
+                                );
                             }
                         }
 
@@ -1116,16 +1120,22 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         if let Err(e) = download_file(artwork_url, artwork_filename.clone()).await {
                             post_state.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Failed to download episode artwork: {:?}", e))
+                                    Some(format!("Failed to download episode artwork: {:?}", e.clone()))
                             });
+                            web_sys::console::log_1(
+                                &format!("art fail: {:?}", e).into(),
+                            );
                         }
 
                         // Update local JSON database
                         if let Err(e) = update_local_database(episode_info).await {
                             post_state.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Failed to update local database: {:?}", e))
+                                    Some(format!("Failed to update local database: {:?}", e.clone()))
                             });
+                            web_sys::console::log_1(
+                                &format!("Unable to parse Podcasts: {:?}", e).into(),
+                            );
                         }
 
                         // Fetch and update local podcast metadata

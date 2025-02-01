@@ -1838,7 +1838,7 @@ pub fn epsiode() -> Html {
                                         <img src={episode.episode.episodeartwork.clone()} class="episode-artwork" />
                                         // Add overflow-hidden to episode-details to prevent children from expanding it
                                         <div class="episode-details overflow-hidden">
-                                            <h1 class="podcast-title" onclick={on_title_click.clone()}>{ &episode.episode.podcastname }</h1>
+                                            <h1 class="podcast-title hover-pointer-podcast-name" onclick={on_title_click.clone()}>{ &episode.episode.podcastname }</h1>
                                             // Add max-w-full to ensure title container stays within bounds
                                             <div class="flex items-center space-x-2 cursor-pointer max-w-full">
                                                 <h2 class="episode-title truncate">{ &episode.episode.episodetitle }</h2>

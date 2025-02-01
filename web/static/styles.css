@@ -3526,6 +3526,10 @@ button.item-container-action-button.item-container-action-button {
     /* Add some space below the title */
 }
 
+.hover-pointer-podcast-name {
+    cursor: pointer;
+}
+
 .episode-title {
     font-size: 1.5rem;
     /* Adjust as needed */

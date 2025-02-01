@@ -52,7 +52,7 @@ fn map_podcast_details_to_podcast(details: PodcastDetails) -> Podcast {
         author: Some(details.author),
         categories: details.categories,
         explicit: details.explicit,
-        podcastindexid: details.podcastindexid.unwrap_or(0),
+        podcastindexid: Some(details.podcastindexid.unwrap_or(0)),
     }
 }
 
@@ -404,7 +404,7 @@ pub fn host_dropdown(
                                                             })
                                                             .unwrap_or_default(),
                                                         explicit: details.explicit, // Changed from podcast_explicit
-                                                        podcastindexid: details.podcastindexid, // Changed from podcast_index_id
+                                                        podcastindexid: Some(details.podcastindexid), // Changed from podcast_index_id
                                                     })
                                                 }
                                                 Err(e) => {

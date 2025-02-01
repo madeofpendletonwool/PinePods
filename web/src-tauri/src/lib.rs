@@ -72,7 +72,12 @@ async fn download_file(url: String, filename: String) -> Result<(), String> {
 
     // Use tokio::task::spawn_blocking for blocking operations
     tokio::task::spawn_blocking(move || {
-        let response = ureq::get(&url).call().map_err(|e| e.to_string())?;
+        // Create agent with increased redirect limit
+        let agent = ureq::AgentBuilder::new()
+            .redirects(20)  // Changed from max_redirects to redirects
+            .build();
+        
+        let response = agent.get(&url).call().map_err(|e| e.to_string())?;
         let mut reader = response.into_reader();
         let mut file = File::create(app_dir.join(&filename)).map_err(|e| e.to_string())?;
         copy(&mut reader, &mut file).map_err(|e| e.to_string())?;
@@ -82,12 +87,14 @@ async fn download_file(url: String, filename: String) -> Result<(), String> {
     .map_err(|e| e.to_string())?
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
+#[derive(Debug, Deserialize, Default, Clone, PartialEq, Serialize)]
+#[serde(default)] 
 pub struct EpisodeInfo {
     pub episodetitle: String,
     pub podcastname: String,
     pub podcastid: i32,
-    pub podcastindexid: i64,
+    pub podcastindexid: Option<i64>,
+    pub feedurl: String,  // This field exists in the response
     pub episodepubdate: String,
     pub episodedescription: String,
     pub episodeartwork: String,
@@ -96,7 +103,11 @@ pub struct EpisodeInfo {
     pub listenduration: Option<i32>,
     pub episodeid: i32,
     pub completed: bool,
+    pub is_queued: bool,
+    pub is_saved: bool,
+    pub is_downloaded: bool,
     pub downloadedlocation: Option<String>,
+    pub is_youtube: bool,
 }
 
 #[command]
@@ -216,7 +227,7 @@ fn list_app_files() -> Result<Vec<FileEntry>, String> {
 #[derive(Deserialize, Debug, Clone, Serialize)]
 pub struct PodcastDetails {
     pub podcastid: i32,
-    pub podcastindexid: i64,
+    pub podcastindexid: Option<i64>,
     pub artworkurl: String,
     pub author: String,
     pub categories: String,
@@ -263,7 +274,7 @@ async fn update_podcast_db(podcast_details: PodcastDetails) -> Result<(), String
 #[allow(non_snake_case)]
 pub struct Podcast {
     pub podcastid: i32,
-    pub podcastindexid: i64,
+    pub podcastindexid: Option<i64>,
     pub podcastname: String,
     pub artworkurl: Option<String>,
     pub description: Option<String>,
@@ -273,6 +284,7 @@ pub struct Podcast {
     pub author: Option<String>,
     pub categories: String, // Keeping as String since it's handled as empty string "{}" or "{}"
     pub explicit: bool,
+    // pub is_youtube: bool,
 }
 
 #[command]
