@@ -86,7 +86,7 @@ jobs:
           tar -czvf snap_files.tar.gz snap_output
 
       - name: Upload Snap archive
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: snap-files
           path: snap_files.tar.gz

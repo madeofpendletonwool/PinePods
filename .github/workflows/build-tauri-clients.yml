@@ -164,49 +164,49 @@ jobs:
         if: ${{ matrix.os == 'windows-latest' }}
 
       - name: Archive build 1 (Ubuntu)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-build
           path: ./web/src-tauri/target/release/bundle/deb/${{ env.ARTIFACT_NAME1 }}
         if: ${{ matrix.os == 'ubuntu-latest' }}
 
       - name: Archive build 2 (Ubuntu)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-build
           path: ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}
         if: ${{ matrix.os == 'ubuntu-latest' }}
 
       - name: Archive build 3 (Ubuntu)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-build
           path: ./web/src-tauri/target/release/bundle/rpm/${{ env.ARTIFACT_NAME3 }}
         if: ${{ matrix.os == 'ubuntu-latest' }}
 
       - name: Archive build 1 (Ubuntu ARM)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-build
           path: ./web/src-tauri/target/release/bundle/deb/${{ env.ARTIFACT_NAME1 }}
         if: ${{ matrix.os == 'ubuntu-arm64' }}
 
       - name: Archive build 2 (Ubuntu ARM)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-build
           path: ./web/src-tauri/target/release/bundle/appimage/${{ env.ARTIFACT_NAME2 }}
         if: ${{ matrix.os == 'ubuntu-arm64' }}
 
       - name: Archive build 3 (Ubuntu ARM)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-build
           path: ./web/src-tauri/target/release/bundle/rpm/${{ env.ARTIFACT_NAME3 }}
         if: ${{ matrix.os == 'ubuntu-arm64' }}
 
       - name: Archive build (macOS)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-build
           path: |
@@ -215,7 +215,7 @@ jobs:
         if: ${{ matrix.os == 'macOS-latest' || matrix.os == 'macOS-13' }}
 
       - name: Archive build (Windows)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-build
           path: |
