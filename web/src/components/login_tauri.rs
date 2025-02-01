@@ -115,10 +115,15 @@ pub fn login() -> Html {
                 if let Ok(local_storage) = window.local_storage() {
                     if let Some(storage) = local_storage {
                         if let Ok(Some(stored_theme)) = storage.get_item("selected_theme") {
+                            // Convert 'nordic' to 'Nordic' if needed
+                            let theme_to_use = if stored_theme == "nordic" {
+                                String::from("Nordic")
+                            } else {
+                                stored_theme
+                            };
+                            
                             // Set the theme using your existing theme change function
-                            crate::components::setting_components::theme_options::changeTheme(
-                                &stored_theme,
-                            );
+                            crate::components::setting_components::theme_options::changeTheme(&theme_to_use);
                         }
 
                         if let Ok(Some(user_state)) = storage.get_item("userState") {

@@ -297,9 +297,11 @@ pub async fn call_delete_user(
             .await
             .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
         Err(Error::msg(format!(
-            "Error deleting user: {}",
-            response.status_text()
+            "Error deleting user - Status: {}, Body: {}",
+            status, error_text
         )))
     }
 }
@@ -1249,14 +1251,12 @@ pub async fn initiate_nextcloud_login(
 ) -> Result<NextcloudInitiateResponse, Error> {
     // Construct the URL with query parameters
     let url = format!("{}/api/data/initiate_nextcloud_login", server_name);
-    web_sys::console::log_1(&url.clone().into());
     let request_body = LoginInitiateRequest {
         user_id,
         nextcloud_url: nextcloud_url.to_string(),
     };
     let json_body = serde_json::to_string(&request_body)
         .map_err(|e| Error::msg(format!("Failed to serialize request body: {}", e)))?;
-    web_sys::console::log_1(&api_key.into());
 
     let response = Request::post(&url)
         .header("Content-Type", "application/json")
@@ -1268,9 +1268,6 @@ pub async fn initiate_nextcloud_login(
 
     // Get the response body as text
     let response_body = response.text().await?;
-
-    // Log the response body for debugging
-    web_sys::console::log_1(&response_body.clone().into());
 
     // Parse the JSON response into the NextcloudLoginResponse struct
     if response.ok() {
@@ -1555,21 +1552,8 @@ pub async fn call_add_custom_feed(
         .await
         .map_err(Error::msg)?;
 
-    web_sys::console::log_1(&JsValue::from_str(&format!(
-        "Response Status: {}",
-        response.status()
-    )));
-    web_sys::console::log_1(&JsValue::from_str(&format!(
-        "Response Headers: {:?}",
-        response.headers()
-    )));
-
     if response.ok() {
         let response_text = response.text().await.map_err(Error::msg)?;
-        web_sys::console::log_1(&JsValue::from_str(&format!(
-            "Response Body: {}",
-            response_text
-        )));
 
         let add_custom_podcast_response: AddCustomPodcastResponse =
             serde_json::from_str(&response_text).map_err(Error::msg)?;
@@ -1636,7 +1620,6 @@ pub async fn fetch_import_progress(
         .header("Api-Key", api_key_ref)
         .send()
         .await?;
-    web_sys::console::log_1(&format!("import prog: {:?}", &response).into());
     if response.ok() {
         let progress_response: ImportProgressResponse = response.json().await?;
         Ok((

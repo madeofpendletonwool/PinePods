@@ -40,7 +40,6 @@ pub fn create_on_title_click(
         let server_clone = server_name.clone();
         let api_clone = api_key.clone().unwrap();
         let podcast_url_call = podcast_url.clone();
-        web_sys::console::log_1(&format!("Title click - is_youtube: {}", is_youtube).into());
 
         // Convert the categories string to a HashMap with integer keys
         let podcast_categories_map: Option<HashMap<String, String>> =
@@ -139,7 +138,6 @@ pub fn create_on_title_click(
                             .await
                         {
                             Ok(podcast_feed_results) => {
-                                web_sys::console::log_1(&format!("Feed results: {:?}", podcast_feed_results).into());
                                 dispatch.reduce_mut(move |state| {
                                     state.podcast_added = Some(false);
                                     state.podcast_feed_results = Some(podcast_feed_results);

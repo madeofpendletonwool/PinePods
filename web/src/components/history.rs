@@ -541,6 +541,7 @@ pub fn history() -> Html {
                                             Some(String::from("history")),
                                             true,
                                             None,
+                                            Some(episode_is_youtube),
                                         );
 
                                         let episode_url_for_ep_item = episode_url_clone.clone();

@@ -115,7 +115,6 @@ pub fn import_options() -> Html {
                                 let interval: Rc<RefCell<Option<Interval>>> =
                                     Rc::new(RefCell::new(None));
                                 let interval_clone = interval.clone();
-                                web_sys::console::log_1(&JsValue::from_str("opml import success"));
 
                                 let callback = Closure::wrap(Box::new(move || {
                                     let dispatch_wasm = dispatch_wasm_call.clone();
@@ -127,16 +126,11 @@ pub fn import_options() -> Html {
                                     let current_podcast = current_podcast.clone();
                                     let total_podcasts = total_podcasts.clone();
                                     let interval = interval_clone.clone();
-                                    web_sys::console::log_1(&JsValue::from_str("pod closure"));
-
                                     wasm_bindgen_futures::spawn_local(async move {
                                         match fetch_import_progress(&server_name, &api_key, user_id)
                                             .await
                                         {
                                             Ok((current, total, podcast)) => {
-                                                web_sys::console::log_1(&JsValue::from_str(
-                                                    "got progress",
-                                                ));
                                                 import_progress.set(current);
                                                 total_podcasts.set(total as usize);
                                                 current_podcast.set(podcast);

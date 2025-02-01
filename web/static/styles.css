@@ -615,12 +615,11 @@ body {
 
 .search-input {
     padding: 5px 10px;
-    margin-right: 10px;
-    border: 1px solid var(--border-color);
     background-color: var(--background-color);
-    border-color: var(--border-color);
     border-radius: 4px;
     color: var(--text-color);
+    outline: none;
+    border: none;
 }
 
 .search-input:focus {
@@ -647,10 +646,6 @@ body {
     cursor: pointer;
 }
 
-.search-btn:hover {
-    background-color: var(--hover-color);
-}
-
 .search-button:focus {
     outline-color: var(--hover-color);
     ring-color: var(--link-color);
@@ -671,12 +666,6 @@ body {
     margin-right: 10px;
     /* Add padding to the bottom of the button */
     padding-bottom: 10px;
-}
-
-.search-drop-button:hover {
-    color: var(--text-color);
-    background-color: transparent;
-    border-color: var(--border-color);
 }
 
 .search-drop-button.active {
@@ -3535,6 +3524,10 @@ button.item-container-action-button.item-container-action-button {
     /* Make the title bold */
     margin-bottom: 0.5rem;
     /* Add some space below the title */
+}
+
+.hover-pointer-podcast-name {
+    cursor: pointer;
 }
 
 .episode-title {

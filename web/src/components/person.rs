@@ -676,7 +676,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             server_name_iter,
                                             api_key_iter,
                                             &history,
-                                            podcast.podcastindexid.clone(),
+                                            podcast.podcastindexid.clone().unwrap(),
                                             podcast.podcastname.clone(),
                                             podcast.feedurl.clone(),
                                             podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
@@ -927,7 +927,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                     class="episode-image"/>
                                                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                                                     <p class="item_container-text episode-title font-semibold"
-                                                    onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_for_ep_item), Some(podcast_link_clone), Some(shownotes_episode_url), Some(podcast_title), db_added, None)}
+                                                    onclick={on_shownotes_click(history_clone.clone(), search_dispatch.clone(), Some(episode_id_for_ep_item), Some(podcast_link_clone), Some(shownotes_episode_url), Some(podcast_title), db_added, None, Some(false))}
                                                     >{ &episode.title.clone().unwrap_or_default() }</p>
                                                     // <p class="text-gray-600">{ &episode.description.clone().unwrap_or_default() }</p>
                                                     {

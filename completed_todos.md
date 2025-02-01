@@ -9,6 +9,7 @@ Major Version:
 Next Minor Version:
 
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
+- [ ] Allow user to adjust amount of time to save/download youtube videos
 
 Version 0.7.3
 
@@ -20,32 +21,10 @@ Version 0.7.3
   - [x] When searching channels show more recent vids than just one
   - [x] Dynamic updating youtube channels
   - [x] Delete youtube subs
-  - [ ] Allow user to adjust amount of time to save/download youtube videos
-  - [ ] Ensure youtube videos update completion/listen time status correctly
-  - [ ] check refreshing on episode/other youtube related pages
-  - [ ] Make /episode page work with youtube
+  - [x] Ensure youtube videos update completion/listen time status correctly
+  - [x] check refreshing on episode/other youtube related pages
+  - [x] Make /episode page work with youtube
   - [ ] Bad url while no channels added
-  pinepods-1  | [2025-01-13 14:02:27] [INFO] - database_functions.youtube: ==================================================
-  pinepods-1  | [2025-01-13 14:02:27] [INFO] - database_functions.youtube: Starting YouTube channel processing
-  pinepods-1  | [2025-01-13 14:02:27] [INFO] - database_functions.youtube: Podcast ID: 65
-  pinepods-1  | [2025-01-13 14:02:27] [INFO] - database_functions.youtube: Channel ID: https:
-  pinepods-1  | [2025-01-13 14:02:27] [INFO] - database_functions.youtube: ==================================================
-  pinepods-1  | [2025-01-13 14:02:27] [INFO] - database_functions.youtube: Cutoff date set to: 2024-12-14 14:02:27.888506+00:00
-  pinepods-1  | [2025-01-13 14:02:27] [INFO] - database_functions.youtube: Initializing YouTube-DL with options:
-  pinepods-1  | [2025-01-13 14:02:27] [INFO] - database_functions.youtube: {'quiet': True, 'no_warnings': True, 'extract_flat': True, 'ignoreerrors': True}
-  pinepods-1  | [2025-01-13 14:02:27] [INFO] - database_functions.youtube: Fetching channel data from: https://www.youtube.com/channel/https:/videos
-  pinepods-1  | ERROR: [youtube:tab] https:: Unable to download API page: HTTP Error 400: Bad Request (caused by <HTTPError 400: Bad Request>)
-  pinepods-1  | [2025-01-13 14:02:29] [INFO] - database_functions.youtube: Initial channel data fetch successful
-  pinepods-1  | [2025-01-13 14:02:29] [INFO] - database_functions.youtube: Raw result keys: No results
-  pinepods-1  | [2025-01-13 14:02:29] [ERROR] - database_functions.youtube: No video list found in results
-  pinepods-1  | [2025-01-13 14:02:29] [ERROR] - database_functions.youtube: Available keys: None
-  pinepods-1  | [2025-01-13 14:02:29] [INFO] - database_functions.youtube:
-  pinepods-1  | Cleaning up database connection
-  pinepods-1  | [2025-01-13 14:02:29] [INFO] - database_functions.youtube: ==================================================
-  pinepods-1  | [2025-01-13 14:02:29] [INFO] - database_functions.youtube: Channel processing complete
-  pinepods-1  | [2025-01-13 14:02:29] [INFO] - database_functions.youtube: ==================================================
-  pinepods-1  | [2025-01-13 14:02:29] [WARNING] - psycopg.pool: rolling back returned connection: <psycopg.Connection [INTRANS] (host=db user=postgres database=pinepods_database) at 0x7f746da62450>
-
 
 - [x] Allowed and documented option to download episodes as specific user on host machine
 - [x] Nextcloud Sync Fixed
@@ -58,13 +37,16 @@ Version 0.7.3
 - [x] Check mark episode complete on episode page
 - [x] Uncomplete/complete - and in prog episode sorting on episode_layout page
 - [x] Add completed icon and in prog info to episodes on episode_layout page
-- [ ] Check for and fix issues with refreshing again on every page
+- [x] Check for and fix issues with refreshing again on every page
 - [x] Fix issue with episodes page opening when clicking show notes while on episodes page already
 - [x] Fix issues with ability to open episode_layout page from episode page. That includes whether the podcast is added or not
 - [x] Add podcastindexid to episode page url vars - Then pass to dynamic func call
 - [ ] Validate Mysql functions
 - [ ] Build clients and verify
 - [x] Sometimes episodes are not even close to newest or right order in episode_layout
+- [ ] After adding podcast we no longer show dumpster - screw that
+- [x] Think the weird yt double refreshing after search is messing up which one is subbed to
+- [x] Queuing yt ep also queues standard pod counterpart id
 
 Version 0.7.2
 

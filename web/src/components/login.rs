@@ -83,15 +83,8 @@ pub fn login() -> Html {
 
             match call_self_service_login_status(server_name).await {
                 Ok((status, admin_created)) => {
-                    web_sys::console::log_1(
-                        &format!("Status: {}, Admin Created: {}", status, admin_created).into(),
-                    );
                     self_service_enabled.set(status);
                     first_admin_created.set(admin_created);
-                    web_sys::console::log_1(
-                        &format!("After set - first_admin_created: {}", *first_admin_created)
-                            .into(),
-                    );
                 }
                 Err(e) => {
                     web_sys::console::log_1(&format!("Error checking status: {:?}", e).into());
@@ -130,16 +123,11 @@ pub fn login() -> Html {
     let effect_loading = loading.clone();
     // User Auto Login with saved state
     use_effect_with((), {
-        web_sys::console::log_1(&"start of effect".into());
         let history = history.clone();
         move |_| {
-            web_sys::console::log_1(&"moving in".into());
             effect_loading.set(true);
-            web_sys::console::log_1(&"moving in2".into());
             if let Some(window) = web_sys::window() {
-                web_sys::console::log_1(&"moving in3".into());
                 if let Ok(local_storage) = window.local_storage() {
-                    web_sys::console::log_1(&"moving in4".into());
                     if let Some(storage) = local_storage {
                         if let Ok(Some(stored_theme)) = storage.get_item("selected_theme") {
                             // Set the theme using your existing theme change function
@@ -147,9 +135,7 @@ pub fn login() -> Html {
                                 &stored_theme,
                             );
                         }
-                        web_sys::console::log_1(&"pre user".into());
                         if let Ok(Some(user_state)) = storage.get_item("userState") {
-                            web_sys::console::log_1(&"post user".into());
                             let app_state_result = AppState::deserialize(&user_state);
 
                             if let Ok(Some(auth_state)) = storage.get_item("userAuthState") {
@@ -1396,9 +1382,6 @@ pub fn login() -> Html {
     };
 
     let modal_content = {
-        web_sys::console::log_1(
-            &format!("Rendering - first_admin_created: {}", *first_admin_created).into(),
-        );
         if !*first_admin_created {
             html! {
                 <FirstAdminModal

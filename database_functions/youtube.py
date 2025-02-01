@@ -193,7 +193,7 @@ def process_youtube_videos(database_type, podcast_id: int, channel_id: str, cnx)
                         logger.info(f"Video already exists, skipping: {video['title']}")
 
                 if new_videos:
-                    functions.add_youtube_videos(cnx, podcast_id, new_videos)
+                    functions.add_youtube_videos(cnx, database_type, podcast_id, new_videos)
                     logger.info(f"Successfully added {len(new_videos)} new videos")
                 else:
                     logger.info("No new videos to add")

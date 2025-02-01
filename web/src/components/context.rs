@@ -104,6 +104,7 @@ pub struct AppState {
     pub selected_episode_audio_url: Option<String>,
     pub selected_podcast_title: Option<String>,
     pub person_episode: Option<bool>,
+    pub selected_is_youtube: Option<bool>,
     pub add_user_request: Option<AddUserRequest>,
     pub time_zone_setup: Option<TimeZoneInfo>,
     pub add_settings_user_reqeust: Option<AddSettingsUserRequest>,
@@ -244,4 +245,10 @@ impl AppState {
 pub struct FilterState {
     pub selected_category: Option<String>,
     pub category_filter_list: Option<Vec<String>>,
+}
+
+// Add this alongside your other state structs
+#[derive(Default, Clone, PartialEq, Store)]
+pub struct PodcastState {
+    pub added_podcast_urls: HashSet<String>,
 }

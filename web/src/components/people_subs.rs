@@ -178,9 +178,6 @@ pub fn subscribed_people() -> Html {
                             .await
                         {
                             Ok(new_episodes) => {
-                                web_sys::console::log_1(
-                                    &format!("Received episodes: {:?}", new_episodes).into(),
-                                );
                                 subscribed_people.set(
                                     (*subscribed_people)
                                         .clone()
@@ -464,6 +461,7 @@ fn render_host_with_episodes(
                                 Some(String::from("Not needed")),
                                 true,
                                 Some(true),
+                                Some(false),
                             );
 
                             #[wasm_bindgen]

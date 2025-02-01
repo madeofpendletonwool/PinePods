@@ -328,7 +328,6 @@ pub fn queue() -> Html {
                                                 } else {
                                                 }
                                             });
-                                            // web_sys::console::log_1(format!("dragged: {}, target: {}", dragged_id, target_id).into()
                                         }
 
                                         dragging.set(None);
@@ -641,6 +640,7 @@ pub fn queue() -> Html {
                                 Some(String::from("queue")),
                                 true,
                                 None,
+                                episode_is_youtube,
                             );
                             let episode_url_for_ep_item = episode_url_clone.clone();
                             let check_episode_id = &episode.episodeid.clone();

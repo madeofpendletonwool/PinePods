@@ -164,7 +164,6 @@ pub fn user_self_settings() -> Html {
             updated_fields_call.set(Vec::new());
 
             if !username.is_empty() {
-                web_sys::console::log_1(&"Username is not empty".into());
                 let errors = validate_username(&username);
                 if !errors.is_empty() {
                     web_sys::console::log_1(&"Username validation failed".into());
@@ -172,7 +171,6 @@ pub fn user_self_settings() -> Html {
                     return;
                 }
 
-                web_sys::console::log_1(&"Username validation passed".into());
                 let server_name = server_name.clone();
                 let api_key = api_key.clone();
                 let show_success = show_success.clone();
@@ -183,13 +181,9 @@ pub fn user_self_settings() -> Html {
 
                 // Update username
                 let username_clone = (*username).clone();
-                web_sys::console::log_1(
-                    &format!("Attempting to update username to: {}", username_clone).into(),
-                );
                 wasm_bindgen_futures::spawn_local(async move {
                     match call_set_username(server_name, api_key, user_id, username_clone).await {
                         Ok(_) => {
-                            web_sys::console::log_1(&"Username update successful".into());
                             let mut fields = (*updated_user).clone();
                             fields.push("username");
                             updated_user.set(fields.clone());

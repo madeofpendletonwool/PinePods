@@ -413,10 +413,7 @@ pub fn user_settings() -> Html {
                     match call_delete_user(server_name.unwrap(), api_key.unwrap().unwrap(), user_id)
                         .await
                     {
-                        Ok(response) => {
-                            web_sys::console::log_1(
-                                &format!("User deleted: {}", response.status).into(),
-                            );
+                        Ok(_response) => {
                             user_dispatch.reduce_mut(|state| {
                                 state.info_message = Some("User deleted successfully".to_string())
                             });
@@ -718,9 +715,6 @@ pub fn user_settings() -> Html {
                                                 password_error.set(password_error_notice::Shown);
                                             } else {
                                                 page_state_pass.set(PageState::Hidden);
-                                                web_sys::console::log_1(
-                                                    &format!("pw: {}", hash_pw.clone()).into(),
-                                                );
                                                 match call_set_password(
                                                     server_name_unwrapped,
                                                     api_key_unwrapped.clone(),

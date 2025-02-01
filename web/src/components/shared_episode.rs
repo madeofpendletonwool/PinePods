@@ -30,7 +30,6 @@ pub struct SharedProps {
 
 #[function_component(SharedEpisode)]
 pub fn shared_episode(_props: &SharedProps) -> Html {
-    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("shared ep hit"));
     let (state, dispatch) = use_store::<AppState>();
 
     let error = use_state(|| None);
@@ -58,7 +57,6 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
 
         // Resize event listener
         use_effect_with((), move |_| {
-            web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("resize event"));
             let window = window().unwrap();
             let closure_window = window.clone();
             let closure = Closure::wrap(Box::new(move || {
@@ -76,7 +74,6 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
             || ()
         });
     }
-    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("window type check"));
 
     {
         let ui_dispatch = audio_dispatch.clone();
@@ -102,11 +99,9 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
             }
         });
     }
-    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("messaging setup"));
 
     // Fetch episode on component mount
     {
-        web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("in ep setup"));
         let error = error.clone();
         let effect_dispatch = dispatch.clone();
         let loading_clone = loading.clone();
@@ -122,9 +117,6 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                 location.protocol().unwrap(),
                 location.host().unwrap()
             ); // Extracts the protocol and host
-
-            web_sys::console::log_1(&format!("Server name: {}", server_name).into());
-
             let dispatch = effect_dispatch.clone();
 
             // Fetch the URL key from the current window location
@@ -140,8 +132,6 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                 wasm_bindgen_futures::spawn_local(async move {
                     match call_get_episode_by_url_key(&server_name, &url_key).await {
                         Ok(shared_episode_data) => {
-                            web_sys::console::log_1(&"Shared episode data fetched".into());
-
                             dispatch.reduce_mut(move |state| {
                                 state.shared_fetched_episode = Some(shared_episode_data);
                             });
@@ -160,7 +150,6 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
             || ()
         });
     }
-    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str("ep setup"));
 
     // let completion_status = use_state(|| false); // State to track completion status
 
@@ -219,11 +208,6 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                         let date_format = match_date_format(state.date_format.as_deref());
                         let format_duration = format_time(episode.episode.episodeduration as f64);
                         let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
-
-                        let episode_url_check = episode_url_clone;
-                        let should_show_buttons = !episode_url_check.is_empty();
-                        web_sys::console::log_1(&format!("Episode URL: {}", episode_url_check).into());
-                        web_sys::console::log_1(&format!("Should show buttons: {}", should_show_buttons).into());
 
                         let open_in_new_tab = Callback::from(move |url: String| {
                             let window = web_sys::window().unwrap();

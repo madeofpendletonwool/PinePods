@@ -197,6 +197,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 let podcast_title = props.podcast_title.clone();
                 let episode_id = episode.episode_id.unwrap_or(0);
                 let episode_url = episode.enclosure_url.clone().unwrap_or_default();
+                let is_youtube = episode.is_youtube.clone();
 
                 Callback::from(move |_: MouseEvent| {
                     on_shownotes_click(
@@ -208,6 +209,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                         Some(podcast_title.clone()),
                         true,
                         None,
+                        is_youtube
                     ).emit(MouseEvent::new("click").unwrap());
                 })
             };
@@ -362,6 +364,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                     let podcast_title = props.podcast_title.clone();
                     let episode_id = episode.episode_id.unwrap_or(0);
                     let episode_url = episode.enclosure_url.clone().unwrap_or_default();
+                    let is_youtube = episode.is_youtube.clone();
 
                     Callback::from(move |_: MouseEvent| {
                         on_shownotes_click(
@@ -373,6 +376,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                             Some(podcast_title.clone()),
                             true,
                             None,
+                            is_youtube,
                         ).emit(MouseEvent::new("click").unwrap());
                     })
                 };

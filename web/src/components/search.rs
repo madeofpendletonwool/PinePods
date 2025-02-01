@@ -354,6 +354,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                         Some(String::from("search")),
                                         true,
                                         None,
+                                        episode_is_youtube,
                                     );
 
                                     let episode_url_for_ep_item = episode_url_clone.clone();

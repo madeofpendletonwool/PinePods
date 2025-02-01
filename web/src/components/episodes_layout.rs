@@ -1148,7 +1148,6 @@ pub fn episode_layout() -> Html {
                                 }
                             }
                         });
-                        web_sys::console::log_1(&"Category added successfully".into());
                     }
                     Err(err) => {
                         web_sys::console::log_1(&format!("Error adding category: {}", err).into());
@@ -1167,9 +1166,6 @@ pub fn episode_layout() -> Html {
             let closest_button = target.closest("button").unwrap();
             if let Some(button) = closest_button {
                 if let Some(category) = button.get_attribute("data-category") {
-                    web_sys::console::log_1(
-                        &format!("Setting category to remove: {}", category).into(),
-                    );
                     category_to_remove.set(Some(category));
                 }
             }
@@ -1191,9 +1187,6 @@ pub fn episode_layout() -> Html {
                 let api_key = api_key.clone().unwrap();
                 let user_id = user_id.unwrap();
                 let category_request = category.clone();
-                web_sys::console::log_1(
-                    &format!("Category that we're removing: {}", category).into(),
-                );
                 wasm_bindgen_futures::spawn_local(async move {
                     let request_data = RemoveCategoryRequest {
                         podcast_id,
@@ -1217,7 +1210,6 @@ pub fn episode_layout() -> Html {
                                     }
                                 }
                             });
-                            web_sys::console::log_1(&"Category removed successfully".into());
                         }
                         Err(err) => {
                             web_sys::console::log_1(
@@ -1612,18 +1604,11 @@ pub fn episode_layout() -> Html {
                                 });
                                 app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 is_added_inner.set(true);
-                                web_sys::console::log_1(&"adjusting podcast added".into());
                                 if let Some(call_podcast_id) = response_body.podcast_id {
                                     // Use the podcast_id for further processing if needed
-                                    web_sys::console::log_1(
-                                        &format!("Podcast ID: {}", call_podcast_id).into(),
-                                    );
                                     callback_podcast_id.set(call_podcast_id);
                                 }
                                 if let Some(first_episode_id) = response_body.first_episode_id {
-                                    web_sys::console::log_1(
-                                        &format!("First Episode ID: {}", first_episode_id).into(),
-                                    );
                                     // Set the episode_id to the first episode's ID
                                     let episode_id = Some(first_episode_id);
 
@@ -1631,11 +1616,6 @@ pub fn episode_layout() -> Html {
                                     app_dispatch.reduce_mut(|state| {
                                         state.selected_episode_id = episode_id; // Example usage
                                     });
-
-                                    // Example log to confirm it's set
-                                    web_sys::console::log_1(
-                                        &format!("Episode ID set to: {}", first_episode_id).into(),
-                                    );
                                 }
 
                                 // Fetch episodes from the database after adding the podcast
@@ -1879,14 +1859,12 @@ pub fn episode_layout() -> Html {
                                                     }
                                                     {
                                                         if search_state.podcast_added.unwrap() {
-                                                            web_sys::console::log_1(&"toggling on".into());
                                                             html! {
                                                                 <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
                                                                     { download_all }
                                                                 </button>
                                                             }
                                                         } else {
-                                                            web_sys::console::log_1(&"toggling off".into());
                                                             html! {}
                                                         }
                                                     }
@@ -1918,20 +1896,24 @@ pub fn episode_layout() -> Html {
                                                 <p class="header-info">{ format!("Authors: {}", &podcast_info.author) }</p>
                                                 <p class="header-info">{ format!("Explicit: {}", if podcast_info.explicit { "Yes" } else { "No" }) }</p>
                                                 {
-                                                    if let Some(people) = &state.podcast_people {
-                                                        if !people.is_empty() {
-                                                            html! {
-                                                                <div class="header-info relative">
-                                                                    <div class="max-w-full overflow-x-auto">  // Allow horizontal scrolling
-                                                                        <HostDropdown
-                                                                            title="Hosts"
-                                                                            hosts={people.clone()}
-                                                                            podcast_feed_url={podcast_info.feedurl}
-                                                                            podcast_id={*podcast_id}
-                                                                            podcast_index_id={podcast_info.podcastindexid}
-                                                                        />
+                                                    if !podcast_info.is_youtube.unwrap_or(false) {  // Only show if not a YouTube channel
+                                                        if let Some(people) = &state.podcast_people {
+                                                            if !people.is_empty() {
+                                                                html! {
+                                                                    <div class="header-info relative">
+                                                                        <div class="max-w-full overflow-x-auto">
+                                                                            <HostDropdown
+                                                                                title="Hosts"
+                                                                                hosts={people.clone()}
+                                                                                podcast_feed_url={podcast_info.feedurl}
+                                                                                podcast_id={*podcast_id}
+                                                                                podcast_index_id={podcast_info.podcastindexid}
+                                                                            />
+                                                                        </div>
                                                                     </div>
-                                                                </div>
+                                                                }
+                                                            } else {
+                                                                html! {}
                                                             }
                                                         } else {
                                                             html! {}
