@@ -72,13 +72,13 @@ async fn download_file(url: String, filename: String) -> Result<(), String> {
 
     // Use tokio::task::spawn_blocking for blocking operations
     tokio::task::spawn_blocking(move || {
-        // Create agent with increased redirect limit
-        let agent = ureq::AgentBuilder::new()
-            .redirects(20)  // Changed from max_redirects to redirects
-            .build();
-        
-        let response = agent.get(&url).call().map_err(|e| e.to_string())?;
-        let mut reader = response.into_reader();
+        let agent = ureq::Agent::config_builder()
+            .max_redirects(20)
+            .build()
+            .new_agent();
+            
+        let mut response = agent.get(&url).call().map_err(|e| e.to_string())?;
+        let mut reader = response.body_mut().with_config().reader(); // Alternative approach
         let mut file = File::create(app_dir.join(&filename)).map_err(|e| e.to_string())?;
         copy(&mut reader, &mut file).map_err(|e| e.to_string())?;
         Ok(())
