@@ -48,21 +48,29 @@ jobs:
             echo "VERSION=$LATEST_RELEASE" >> $GITHUB_ENV
           fi
 
+      - name: Download Tauri DEB artifacts
+        if: github.event.workflow_run.conclusion == 'success'
+        uses: dawidd6/action-download-artifact@v2
+        with:
+          workflow: Build Tauri Clients
+          name: ubuntu-latest-builds
+          path: ./debs
+
+      - name: Calculate SHA256 from downloaded DEBs
+        if: github.event.workflow_run.conclusion == 'success'
+        run: |
+          echo "AMD64_SHA256=$(sha256sum debs/Pinepods_${VERSION}_amd64.deb | cut -d' ' -f1)" >> $GITHUB_ENV
+          echo "ARM64_SHA256=$(sha256sum debs/Pinepods_${VERSION}_arm64.deb | cut -d' ' -f1)" >> $GITHUB_ENV
+
       - name: Update manifest version and URL
         run: |
           echo "Updating manifest for version: $VERSION"
           sed -i "s|url: .*github.com.*amd64.deb|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_amd64.deb|" com.gooseberrydevelopment.pinepods.yml
           sed -i "s|url: .*github.com.*arm64.deb|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_arm64.deb|" com.gooseberrydevelopment.pinepods.yml
           
-          # Get AMD64 checksum
-          AMD64_URL="https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_amd64.deb"
-          AMD64_SHA256=$(curl -sL "$AMD64_URL" | sha256sum | cut -d' ' -f1)
-          sed -i "0,/sha256: .*/{s|sha256: .*|sha256: $AMD64_SHA256|}" com.gooseberrydevelopment.pinepods.yml
-          
-          # Get ARM64 checksum
-          ARM64_URL="https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_arm64.deb"
-          ARM64_SHA256=$(curl -sL "$ARM64_URL" | sha256sum | cut -d' ' -f1)
-          sed -i "1,/sha256: .*/{s|sha256: .*|sha256: $ARM64_SHA256|}" com.gooseberrydevelopment.pinepods.yml
+          # Update checksums using the calculated values
+          sed -i "0,/sha256: .*/{s|sha256: .*|sha256: ${{ env.AMD64_SHA256 }}|}" com.gooseberrydevelopment.pinepods.yml
+          sed -i "1,/sha256: .*/{s|sha256: .*|sha256: ${{ env.ARM64_SHA256 }}|}" com.gooseberrydevelopment.pinepods.yml
           
           echo "Updated manifest content:"
           cat com.gooseberrydevelopment.pinepods.yml
