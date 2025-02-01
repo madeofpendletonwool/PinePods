@@ -658,7 +658,7 @@ try:
             cnx.rollback()
             print(f"Error checking for is_youtube column: {e}")
 
-        add_queue_youtube_column_if_not_exist(cursor, cnx)
+    add_queue_youtube_column_if_not_exist(cursor, cnx)
 
     # Create the Sessions table
     cursor.execute("""CREATE TABLE IF NOT EXISTS Sessions (
