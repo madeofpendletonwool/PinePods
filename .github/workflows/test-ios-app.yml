@@ -64,7 +64,7 @@ jobs:
       # --release --export-method app-store-connect
 
       - name: Upload IPA
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Pinepods-iOS
           path: web/src-tauri/gen/apple/build/arm64/*.ipa

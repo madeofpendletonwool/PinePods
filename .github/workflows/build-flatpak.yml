@@ -70,7 +70,7 @@ jobs:
           tar -czvf flatpak_files.tar.gz flatpak_output
 
       - name: Upload Flatpak archive
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: flatpak-files
           path: flatpak_files.tar.gz

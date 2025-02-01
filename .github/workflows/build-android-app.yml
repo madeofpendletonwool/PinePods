@@ -110,13 +110,13 @@ jobs:
           NDK_JOB_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
       - name: Archive build 1 (apk)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: apk-build
           path: ./web/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
 
       - name: Archive build 2 (aab)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: aab-build
           path: ./web/src-tauri/gen/android/app/build/outputs/bundle/universalRelease/app-universal-release.aab
