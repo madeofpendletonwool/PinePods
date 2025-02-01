@@ -185,17 +185,25 @@ jobs:
             ./web/src-tauri/target/release/bundle/rpm/${{ env.ARTIFACT_NAME3 }}
         if: ${{ matrix.os == 'ubuntu-arm64' }}
 
-      # macOS builds (no changes needed - already consolidated)
-      - name: Archive build (macOS)
+      # macOS builds - with distinct names
+      - name: Archive build (macOS ARM)
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os }}-build
+          name: macos-arm64-builds
           path: |
             ./web/src-tauri/target/release/bundle/dmg/${{ env.ARTIFACT_NAME1 }}
             ./web/src-tauri/target/release/bundle/macos/${{ env.ARTIFACT_NAME2 }}
-        if: ${{ matrix.os == 'macOS-latest' || matrix.os == 'macOS-13' }}
+        if: ${{ matrix.os == 'macOS-latest' }}
 
-      # Windows builds (no changes needed - already consolidated)
+      - name: Archive build (macOS x64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x64-builds
+          path: |
+            ./web/src-tauri/target/release/bundle/dmg/${{ env.ARTIFACT_NAME1 }}
+            ./web/src-tauri/target/release/bundle/macos/${{ env.ARTIFACT_NAME2 }}
+        if: ${{ matrix.os == 'macOS-13' }}
+
       - name: Archive build (Windows)
         uses: actions/upload-artifact@v4
         with:
