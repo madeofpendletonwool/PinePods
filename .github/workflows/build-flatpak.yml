@@ -53,19 +53,33 @@ jobs:
           curl -L "https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_amd64.deb" -o amd64.deb
           curl -L "https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_arm64.deb" -o arm64.deb
           
-          # Calculate checksums
-          echo "AMD64_SHA256=$(sha256sum amd64.deb | cut -d' ' -f1)" >> $GITHUB_ENV
-          echo "ARM64_SHA256=$(sha256sum arm64.deb | cut -d' ' -f1)" >> $GITHUB_ENV
+          # Calculate and display checksums
+          AMD64_SHA256=$(sha256sum amd64.deb | cut -d' ' -f1)
+          ARM64_SHA256=$(sha256sum arm64.deb | cut -d' ' -f1)
+          echo "Calculated AMD64 SHA256: $AMD64_SHA256"
+          echo "Calculated ARM64 SHA256: $ARM64_SHA256"
+          
+          # Export to environment
+          echo "AMD64_SHA256=$AMD64_SHA256" >> $GITHUB_ENV
+          echo "ARM64_SHA256=$ARM64_SHA256" >> $GITHUB_ENV
 
       - name: Update manifest version and URL
         run: |
           echo "Updating manifest for version: $VERSION"
-          sed -i "s|url: .*github.com.*amd64.deb|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_amd64.deb|" com.gooseberrydevelopment.pinepods.yml
-          sed -i "s|url: .*github.com.*arm64.deb|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_arm64.deb|" com.gooseberrydevelopment.pinepods.yml
           
-          # Update checksums using the calculated values
-          sed -i "0,/sha256: .*/{s|sha256: .*|sha256: ${{ env.AMD64_SHA256 }}|}" com.gooseberrydevelopment.pinepods.yml
-          sed -i "1,/sha256: .*/{s|sha256: .*|sha256: ${{ env.ARM64_SHA256 }}|}" com.gooseberrydevelopment.pinepods.yml
+          # Show environment variables
+          echo "Using AMD64 SHA256: $AMD64_SHA256"
+          echo "Using ARM64 SHA256: $ARM64_SHA256"
+          
+          # Update AMD64 entry first
+          sed -i "/.*amd64.deb/,/sha256:/ s|sha256: .*|sha256: $AMD64_SHA256|" com.gooseberrydevelopment.pinepods.yml
+          
+          # Update ARM64 entry second
+          sed -i "/.*arm64.deb/,/sha256:/ s|sha256: .*|sha256: $ARM64_SHA256|" com.gooseberrydevelopment.pinepods.yml
+          
+          # Update URLs
+          sed -i "s|url: .*amd64.deb|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_amd64.deb|" com.gooseberrydevelopment.pinepods.yml
+          sed -i "s|url: .*arm64.deb|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_arm64.deb|" com.gooseberrydevelopment.pinepods.yml
           
           echo "Updated manifest content:"
           cat com.gooseberrydevelopment.pinepods.yml
