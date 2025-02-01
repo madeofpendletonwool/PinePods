@@ -1,10 +1,10 @@
 name: Build Pinepods Flatpak
 
 on:
-  # workflow_run:
-  #   workflows: ["Build Tauri Clients"]
-  #   types:
-  #     - completed
+  workflow_run:
+    workflows: ["Build Tauri Clients"]
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       version:
@@ -22,16 +22,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
-      - name: Get version
-        id: get_version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
-          else
-            LATEST_RELEASE=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
-            echo "VERSION=$LATEST_RELEASE" >> $GITHUB_ENV
-          fi
 
       - name: Install Flatpak
         run: |
@@ -54,19 +44,34 @@ jobs:
         run: |
           git clone https://github.com/flathub/shared-modules
 
-      - name: Build Flatpak
+      # Test build steps
+      - name: Build and test Flatpak
         run: |
-          flatpak-builder --repo=repo --force-clean build-dir clients/flatpak/com.gooseberrydevelopment.pinepods.yml
+          flatpak-builder --force-clean --sandbox --user --install-deps-from=flathub --ccache \
+              --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo builddir \
+              clients/flatpak/com.gooseberrydevelopment.pinepods.yml
+
+          flatpak remote-add --user --no-gpg-verify test-repo "$(pwd)/repo"
+          flatpak install --user -y test-repo ${{ env.FLATPAK_ID }}
+
+          # Basic launch test (timeout after 30s)
+          timeout 30s flatpak run ${{ env.FLATPAK_ID }} || true
+
+          # Verify metainfo
+          flatpak run --command=cat ${{ env.FLATPAK_ID }} \
+              /app/share/metainfo/${{ env.FLATPAK_ID }}.metainfo.xml
 
       - name: Create Flatpak bundle
         run: |
           flatpak build-bundle repo ${{ env.FLATPAK_ID }}.flatpak ${{ env.FLATPAK_ID }}
 
+      # Archive everything needed for the Flathub PR
       - name: Archive Flatpak files
         run: |
           mkdir flatpak_output
           cp ${{ env.FLATPAK_ID }}.flatpak flatpak_output/
           cp clients/flatpak/com.gooseberrydevelopment.pinepods.yml flatpak_output/
+          cp clients/flatpak/${{ env.FLATPAK_ID }}.metainfo.xml flatpak_output/
           tar -czvf flatpak_files.tar.gz flatpak_output
 
       - name: Upload Flatpak archive
@@ -74,36 +79,3 @@ jobs:
         with:
           name: flatpak-files
           path: flatpak_files.tar.gz
-
-    # # Submit to flathub
-    #   - name: Setup Git for Flathub submission
-    #     run: |
-    #       git config --global user.name "GitHub Action"
-    #       git config --global user.email "action@github.com"
-
-    #   - name: Clone Flathub repository
-    #     run: |
-    #       git clone --branch=new-pr https://github.com/flathub/flathub.git
-
-    #   - name: Prepare Flathub submission
-    #     env:
-    #       VERSION: ${{ github.event.release.tag_name }}
-    #     run: |
-    #       cd flathub
-    #       git checkout -b ${{ env.FLATPAK_ID }}-${{ env.VERSION }}
-    #       cp ../clients/flatpak/com.gooseberrydevelopment.pinepods.yml .
-    #       git add com.gooseberrydevelopment.pinepods.yml
-    #       git commit -m "Update ${{ env.FLATPAK_ID }} to ${{ env.VERSION }}"
-    #       git push origin ${{ env.FLATPAK_ID }}-${{ env.VERSION }}
-
-    #   - name: Create Pull Request
-    #     uses: peter-evans/create-pull-request@v5
-    #     with:
-    #       token: ${{ secrets.GITHUB_TOKEN }}
-    #       commit-message: Update ${{ env.FLATPAK_ID }} to ${{ env.VERSION }}
-    #       title: Update ${{ env.FLATPAK_ID }} to ${{ env.VERSION }}
-    #       body: |
-    #         This PR updates ${{ env.FLATPAK_ID }} to version ${{ env.VERSION }}.
-    #       branch: ${{ env.FLATPAK_ID }}-${{ env.VERSION }}
-    #       base: new-pr
-    #       repository: flathub/flathub
