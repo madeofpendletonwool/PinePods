@@ -794,6 +794,7 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
         # Get the EpisodeID for the newly added episode
         if cursor.rowcount > 0:
             print(f"Added episode '{parsed_title}'")
+            check_and_send_notification(cnx, database_type, podcast_id, parsed_title)
             if websocket:
                 # Get the episode ID using a SELECT query right after insert
                 if database_type == "postgresql":
@@ -5879,6 +5880,287 @@ def remove_category(cnx, database_type, podcast_id, user_id, category):
         cursor.close()
 
 
+# In database_functions/functions.py
+#
+def send_ntfy_notification(topic: str, server_url: str, title: str, message: str):
+    try:
+        import requests
+
+        # Default to ntfy.sh if no server URL provided
+        base_url = server_url.rstrip('/') if server_url else "https://ntfy.sh"
+        url = f"{base_url}/{topic}"
+
+        headers = {
+            "Title": title,
+            "Content-Type": "text/plain"
+        }
+
+        response = requests.post(url, headers=headers, data=message)
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        logging.error(f"Error sending NTFY notification: {e}")
+        return False
+
+def send_gotify_notification(server_url: str, token: str, title: str, message: str):
+    try:
+        import requests
+
+        url = f"{server_url.rstrip('/')}/message"
+
+        headers = {
+            "X-Gotify-Key": token
+        }
+
+        data = {
+            "title": title,
+            "message": message,
+            "priority": 5
+        }
+
+        response = requests.post(url, headers=headers, json=data)
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        logging.error(f"Error sending Gotify notification: {e}")
+        return False
+
+# Base notification functions for actual episode notifications
+def send_ntfy_notification(topic: str, server_url: str, title: str, message: str):
+    try:
+        base_url = server_url.rstrip('/') if server_url else "https://ntfy.sh"
+        url = f"{base_url}/{topic}"
+        headers = {
+            "Title": title,
+            "Content-Type": "text/plain"
+        }
+        # Add short timeout - if it takes more than 2 seconds, abort
+        response = requests.post(url, headers=headers, data=message, timeout=2)
+        response.raise_for_status()
+        return True
+    except requests.Timeout:
+        logging.error(f"Timeout sending notification to {url}")
+        return False
+    except Exception as e:
+        logging.error(f"Error sending NTFY notification: {e}")
+        return False
+
+def send_gotify_notification(server_url: str, token: str, title: str, message: str):
+    try:
+        url = f"{server_url.rstrip('/')}/message"
+        data = {
+            "title": title,
+            "message": message,
+            "priority": 5
+        }
+        headers = {
+            "X-Gotify-Key": token
+        }
+        response = requests.post(url, headers=headers, json=data, timeout=2)
+        response.raise_for_status()
+        return True
+    except requests.Timeout:
+        logging.error(f"Timeout sending notification to {url}")
+        return False
+    except Exception as e:
+        logging.error(f"Error sending Gotify notification: {e}")
+        return False
+
+# Test versions that specifically mention they're test notifications
+def send_test_ntfy_notification(topic: str, server_url: str):
+    return send_ntfy_notification(
+        topic=topic,
+        server_url=server_url,
+        title="Pinepods Test Notification",
+        message="This is a test notification from your Pinepods server!"
+    )
+
+def send_test_gotify_notification(server_url: str, token: str):
+    return send_gotify_notification(
+        server_url=server_url,
+        token=token,
+        title="Pinepods Test Notification",
+        message="This is a test notification from your Pinepods server!"
+    )
+
+def send_test_notification(cnx, database_type, user_id, platform):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = """
+                SELECT Platform, Enabled, NtfyTopic, NtfyServerUrl, GotifyUrl, GotifyToken
+                FROM "UserNotificationSettings"
+                WHERE UserID = %s AND Platform = %s AND Enabled = TRUE
+            """
+        else:
+            query = """
+                SELECT Platform, Enabled, NtfyTopic, NtfyServerUrl, GotifyUrl, GotifyToken
+                FROM UserNotificationSettings
+                WHERE UserID = %s AND Platform = %s AND Enabled = TRUE
+            """
+        cursor.execute(query, (user_id, platform))
+        settings = cursor.fetchone()
+        if not settings:
+            logging.error("No notification settings found")
+            return False
+
+        if isinstance(settings, dict):  # PostgreSQL dict case
+            if platform == 'ntfy':
+                return send_test_ntfy_notification(
+                    topic=settings['ntfytopic'],  # Note: lowercase from your logs
+                    server_url=settings['ntfyserverurl']  # Note: lowercase from your logs
+                )
+            else:  # gotify
+                return send_test_gotify_notification(
+                    server_url=settings['gotifyurl'],  # Note: lowercase from your logs
+                    token=settings['gotifytoken']  # Note: lowercase from your logs
+                )
+        else:  # MySQL or PostgreSQL tuple case
+            if platform == 'ntfy':
+                return send_test_ntfy_notification(
+                    settings[2],  # NtfyTopic
+                    settings[3]  # NtfyServerUrl
+                )
+            else:  # gotify
+                return send_test_gotify_notification(
+                    settings[4],  # GotifyUrl
+                    settings[5]  # GotifyToken
+                )
+    except Exception as e:
+        logging.error(f"Error sending test notification: {e}")
+        logging.error(f"Settings object type: {type(settings)}")
+        logging.error(f"Settings content: {settings}")
+        return False
+    finally:
+        cursor.close()
+
+def get_notification_settings(cnx, database_type, user_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = """
+                SELECT Platform, Enabled, NtfyTopic, NtfyServerUrl, GotifyUrl, GotifyToken
+                FROM "UserNotificationSettings"
+                WHERE UserID = %s
+            """
+        else:  # MySQL
+            query = """
+                SELECT Platform, Enabled, NtfyTopic, NtfyServerUrl, GotifyUrl, GotifyToken
+                FROM UserNotificationSettings
+                WHERE UserID = %s
+            """
+
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchall()
+
+        settings = []
+        for row in result:
+            if isinstance(row, dict):  # PostgreSQL with RealDictCursor
+                setting = {
+                    "platform": row["platform"],
+                    "enabled": bool(row["enabled"]),
+                    "ntfy_topic": row["ntfytopic"],
+                    "ntfy_server_url": row["ntfyserverurl"],
+                    "gotify_url": row["gotifyurl"],
+                    "gotify_token": row["gotifytoken"]
+                }
+            else:  # MySQL or PostgreSQL with regular cursor
+                setting = {
+                    "platform": row[0],
+                    "enabled": bool(row[1]),
+                    "ntfy_topic": row[2],
+                    "ntfy_server_url": row[3],
+                    "gotify_url": row[4],
+                    "gotify_token": row[5]
+                }
+            settings.append(setting)
+
+        return settings
+
+    except Exception as e:
+        logging.error(f"Error fetching notification settings: {e}")
+        raise
+    finally:
+        cursor.close()
+
+def update_notification_settings(cnx, database_type, user_id, platform, enabled, ntfy_topic=None,
+                               ntfy_server_url=None, gotify_url=None, gotify_token=None):
+    cursor = cnx.cursor()
+    try:
+        # First check if settings exist for this user and platform
+        if database_type == "postgresql":
+            check_query = """
+                SELECT 1 FROM "UserNotificationSettings"
+                WHERE UserID = %s AND Platform = %s
+            """
+        else:
+            check_query = """
+                SELECT 1 FROM UserNotificationSettings
+                WHERE UserID = %s AND Platform = %s
+            """
+
+        cursor.execute(check_query, (user_id, platform))
+        exists = cursor.fetchone() is not None
+
+        if exists:
+            if database_type == "postgresql":
+                query = """
+                    UPDATE "UserNotificationSettings"
+                    SET Enabled = %s,
+                        NtfyTopic = %s,
+                        NtfyServerUrl = %s,
+                        GotifyUrl = %s,
+                        GotifyToken = %s
+                    WHERE UserID = %s AND Platform = %s
+                """
+            else:
+                query = """
+                    UPDATE UserNotificationSettings
+                    SET Enabled = %s,
+                        NtfyTopic = %s,
+                        NtfyServerUrl = %s,
+                        GotifyUrl = %s,
+                        GotifyToken = %s
+                    WHERE UserID = %s AND Platform = %s
+                """
+        else:
+            if database_type == "postgresql":
+                query = """
+                    INSERT INTO "UserNotificationSettings"
+                    (UserID, Platform, Enabled, NtfyTopic, NtfyServerUrl, GotifyUrl, GotifyToken)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
+            else:
+                query = """
+                    INSERT INTO UserNotificationSettings
+                    (UserID, Platform, Enabled, NtfyTopic, NtfyServer_url, GotifyUrl, GotifyToken)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
+
+        params = (
+            enabled if exists else user_id,
+            ntfy_topic if exists else platform,
+            ntfy_server_url if exists else enabled,
+            gotify_url if exists else ntfy_topic,
+            gotify_token if exists else ntfy_server_url,
+            user_id if exists else gotify_url,
+            platform if exists else gotify_token
+        )
+
+        cursor.execute(query, params)
+        cnx.commit()
+        return True
+
+    except Exception as e:
+        logging.error(f"Error updating notification settings: {e}")
+        cnx.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+
+
 def increment_played(cnx, database_type, user_id):
     cursor = cnx.cursor()
     if database_type == "postgresql":
@@ -8895,3 +9177,152 @@ def get_video_date(video_id):
     except Exception as e:
         logger.error(f"Error fetching date for video {video_id}: {e}")
         return None
+
+def check_and_send_notification(cnx, database_type, podcast_id, episode_title):
+    cursor = cnx.cursor()
+    try:
+        # First check if notifications are enabled for this podcast
+        if database_type == "postgresql":
+            query = """
+                SELECT p.NotificationsEnabled, p.UserID, p.PodcastName,
+                       uns.Platform, uns.Enabled, uns.NtfyTopic, uns.NtfyServerUrl,
+                       uns.GotifyUrl, uns.GotifyToken
+                FROM "Podcasts" p
+                JOIN "UserNotificationSettings" uns ON p.UserID = uns.UserID
+                WHERE p.PodcastID = %s AND p.NotificationsEnabled = true AND uns.Enabled = true
+            """
+        else:
+            query = """
+                SELECT p.NotificationsEnabled, p.UserID, p.PodcastName,
+                       uns.Platform, uns.Enabled, uns.NtfyTopic, uns.NtfyServerUrl,
+                       uns.GotifyUrl, uns.GotifyToken
+                FROM Podcasts p
+                JOIN UserNotificationSettings uns ON p.UserID = uns.UserID
+                WHERE p.PodcastID = %s AND p.NotificationsEnabled = 1 AND uns.Enabled = 1
+            """
+
+        cursor.execute(query, (podcast_id,))
+        result = cursor.fetchone()
+
+        if not result:
+            return False
+
+        # Handle dict vs tuple result
+        if isinstance(result, dict):
+            platform = result['platform']
+            podcast_name = result['podcastname']
+            if platform == 'ntfy':
+                return send_ntfy_notification(
+                    topic=result['ntfy_topic'],
+                    server_url=result['ntfy_server_url'],
+                    title=f"New Episode: {podcast_name}",
+                    message=f"New episode published: {episode_title}"
+                )
+            else:  # gotify
+                return send_gotify_notification(
+                    server_url=result['gotify_url'],
+                    token=result['gotify_token'],
+                    title=f"New Episode: {podcast_name}",
+                    message=f"New episode published: {episode_title}"
+                )
+        else:  # tuple
+            platform = result[3]
+            podcast_name = result[2]
+            if platform == 'ntfy':
+                return send_ntfy_notification(
+                    topic=result[5],
+                    server_url=result[6],
+                    title=f"New Episode: {podcast_name}",
+                    message=f"New episode published: {episode_title}"
+                )
+            else:  # gotify
+                return send_gotify_notification(
+                    server_url=result[7],
+                    token=result[8],
+                    title=f"New Episode: {podcast_name}",
+                    message=f"New episode published: {episode_title}"
+                )
+
+    except Exception as e:
+        logging.error(f"Error checking/sending notification: {e}")
+        return False
+    finally:
+        cursor.close()
+
+def toggle_podcast_notifications(cnx, database_type, podcast_id, user_id, enabled):
+    cursor = cnx.cursor()
+    try:
+        # First verify the user owns this podcast
+        if database_type == "postgresql":
+            check_query = """
+                SELECT 1 FROM "Podcasts"
+                WHERE PodcastID = %s AND UserID = %s
+            """
+        else:
+            check_query = """
+                SELECT 1 FROM Podcasts
+                WHERE PodcastID = %s AND UserID = %s
+            """
+
+        cursor.execute(check_query, (podcast_id, user_id))
+        if not cursor.fetchone():
+            logging.warning(f"User {user_id} attempted to modify notifications for podcast {podcast_id} they don't own")
+            return False
+
+        # Update the notification setting
+        if database_type == "postgresql":
+            update_query = """
+                UPDATE "Podcasts"
+                SET NotificationsEnabled = %s
+                WHERE PodcastID = %s AND UserID = %s
+            """
+        else:
+            update_query = """
+                UPDATE Podcasts
+                SET NotificationsEnabled = %s
+                WHERE PodcastID = %s AND UserID = %s
+            """
+
+        cursor.execute(update_query, (enabled, podcast_id, user_id))
+        cnx.commit()
+        return True
+
+    except Exception as e:
+        logging.error(f"Error toggling podcast notifications: {e}")
+        cnx.rollback()
+        return False
+    finally:
+        cursor.close()
+
+def get_podcast_notification_status(cnx, database_type, podcast_id, user_id):
+    cursor = cnx.cursor()
+    try:
+        # Query the notification status
+        if database_type == "postgresql":
+            query = """
+                SELECT NotificationsEnabled
+                FROM "Podcasts"
+                WHERE PodcastID = %s AND UserID = %s
+            """
+        else:
+            query = """
+                SELECT notifications_enabled
+                FROM Podcasts
+                WHERE PodcastID = %s AND UserID = %s
+            """
+
+        cursor.execute(query, (podcast_id, user_id))
+        result = cursor.fetchone()
+
+        if result:
+            if isinstance(result, dict):  # PostgreSQL with RealDictCursor
+                return bool(result['notifications_enabled'])
+            else:  # MySQL or regular PostgreSQL cursor
+                return bool(result[0])
+        return False  # Default to False if no result found
+
+    except Exception as e:
+        logging.error(f"Error getting podcast notification status: {e}")
+        return False
+    finally:
+        cursor.close()

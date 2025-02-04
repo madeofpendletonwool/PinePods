@@ -271,6 +271,7 @@ pub fn settings() -> Html {
                             <AccordionItem title="MFA Settings" content={html!{ <setting_components::mfa_settings::MFAOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Export/Backup Podcasts" content={html!{ <setting_components::export_settings::ExportOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Import Podcasts" content={html!{ <setting_components::import_options::ImportOptions /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title="Notification Settings" content={html!{ <setting_components::notifications::NotificationOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Add Custom Feed" content={html!{ <setting_components::custom_feed::CustomFeed /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Connect Nextcloud/Gpodder Podcast Sync" content={html!{ <setting_components::nextcloud_options::NextcloudOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Enable/Disable RSS Feeds" content={html!{ <setting_components::rss_feeds::RSSFeedSettings /> }} position={AccordionItemPosition::Middle}/>

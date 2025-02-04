@@ -1634,3 +1634,133 @@ pub async fn fetch_import_progress(
         )))
     }
 }
+
+// Notification Calls
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NotificationSettings {
+    pub platform: String,
+    pub enabled: bool,
+    pub ntfy_topic: Option<String>,
+    pub ntfy_server_url: Option<String>,
+    pub gotify_url: Option<String>,
+    pub gotify_token: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NotificationSettingsResponse {
+    pub settings: Vec<NotificationSettings>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NotificationResponse {
+    pub detail: String,
+}
+
+// Fetch user's notification settings
+// In notification_reqs.rs
+pub async fn call_get_notification_settings(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<NotificationSettingsResponse, Error> {
+    let url = format!(
+        "{}/api/data/user/notification_settings?user_id={}",
+        server_name, user_id
+    ); // Added user_id as query param
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response
+            .json::<NotificationSettingsResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        Err(Error::msg(format!(
+            "Error fetching notification settings: {}",
+            error_text
+        )))
+    }
+}
+
+// Update notification settings
+pub async fn call_update_notification_settings(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    settings: NotificationSettings,
+) -> Result<NotificationResponse, Error> {
+    let url = format!("{}/api/data/user/notification_settings", server_name);
+    let body = serde_json::json!({
+        "user_id": user_id,
+        "platform": settings.platform,
+        "enabled": settings.enabled,
+        "ntfy_topic": settings.ntfy_topic,
+        "ntfy_server_url": settings.ntfy_server_url,
+        "gotify_url": settings.gotify_url,
+        "gotify_token": settings.gotify_token,
+    });
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .map_err(|e| Error::msg(format!("Failed to create request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response
+            .json::<NotificationResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        Err(Error::msg(format!(
+            "Error updating notification settings: {}",
+            error_text
+        )))
+    }
+}
+
+pub async fn call_test_notification(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    platform: String,
+) -> Result<DetailResponse, Error> {
+    let url = format!("{}/api/data/user/test_notification", server_name);
+    let body = serde_json::json!({
+        "user_id": user_id,
+        "platform": platform,
+    });
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .map_err(|e| Error::msg(format!("Failed to create request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response
+            .json::<DetailResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        Err(Error::msg(format!(
+            "Error sending test notification: {}",
+            error_text
+        )))
+    }
+}
