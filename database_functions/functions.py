@@ -9200,51 +9200,73 @@ def check_and_send_notification(cnx, database_type, podcast_id, episode_title):
                 JOIN UserNotificationSettings uns ON p.UserID = uns.UserID
                 WHERE p.PodcastID = %s AND p.NotificationsEnabled = 1 AND uns.Enabled = 1
             """
-
         cursor.execute(query, (podcast_id,))
-        result = cursor.fetchone()
-
-        if not result:
+        results = cursor.fetchall()  # Get all enabled notification settings
+        if not results:
             return False
 
-        # Handle dict vs tuple result
-        if isinstance(result, dict):
-            platform = result['platform']
-            podcast_name = result['podcastname']
-            if platform == 'ntfy':
-                return send_ntfy_notification(
-                    topic=result['ntfy_topic'],
-                    server_url=result['ntfy_server_url'],
-                    title=f"New Episode: {podcast_name}",
-                    message=f"New episode published: {episode_title}"
-                )
-            else:  # gotify
-                return send_gotify_notification(
-                    server_url=result['gotify_url'],
-                    token=result['gotify_token'],
-                    title=f"New Episode: {podcast_name}",
-                    message=f"New episode published: {episode_title}"
-                )
-        else:  # tuple
-            platform = result[3]
-            podcast_name = result[2]
-            if platform == 'ntfy':
-                return send_ntfy_notification(
-                    topic=result[5],
-                    server_url=result[6],
-                    title=f"New Episode: {podcast_name}",
-                    message=f"New episode published: {episode_title}"
-                )
-            else:  # gotify
-                return send_gotify_notification(
-                    server_url=result[7],
-                    token=result[8],
-                    title=f"New Episode: {podcast_name}",
-                    message=f"New episode published: {episode_title}"
-                )
+        success = False  # Track if at least one notification was sent
+
+        for result in results:
+            try:
+                if isinstance(result, dict):
+                    platform = result['platform'] if 'platform' in result else result['Platform']
+                    podcast_name = result['podcastname'] if 'podcastname' in result else result['PodcastName']
+
+                    if platform == 'ntfy':
+                        # Try both casings for each field
+                        ntfy_topic = result.get('ntfytopic') or result.get('NtfyTopic')
+                        ntfy_server = result.get('ntfyserverurl') or result.get('NtfyServerUrl')
+
+                        if ntfy_topic and ntfy_server:
+                            if send_ntfy_notification(
+                                topic=ntfy_topic,
+                                server_url=ntfy_server,
+                                title=f"New Episode: {podcast_name}",
+                                message=f"New episode published: {episode_title}"
+                            ):
+                                success = True
+
+                    elif platform == 'gotify':
+                        gotify_url = result.get('gotifyurl') or result.get('GotifyUrl')
+                        gotify_token = result.get('gotifytoken') or result.get('GotifyToken')
+
+                        if gotify_url and gotify_token:
+                            if send_gotify_notification(
+                                server_url=gotify_url,
+                                token=gotify_token,
+                                title=f"New Episode: {podcast_name}",
+                                message=f"New episode published: {episode_title}"
+                            ):
+                                success = True
+                else:
+                    platform = result[3]
+                    podcast_name = result[2]
+                    if platform == 'ntfy':
+                        if send_ntfy_notification(
+                            topic=result[5],
+                            server_url=result[6],
+                            title=f"New Episode: {podcast_name}",
+                            message=f"New episode published: {episode_title}"
+                        ):
+                            success = True
+                    elif platform == 'gotify':
+                        if send_gotify_notification(
+                            server_url=result[7],
+                            token=result[8],
+                            title=f"New Episode: {podcast_name}",
+                            message=f"New episode published: {episode_title}"
+                        ):
+                            success = True
+            except Exception as e:
+                logging.error(f"Error sending {platform} notification: {e}")
+                # Continue trying other platforms even if one fails
+                continue
+
+        return success
 
     except Exception as e:
-        logging.error(f"Error checking/sending notification: {e}")
+        logging.error(f"Error checking/sending notifications: {e}")
         return False
     finally:
         cursor.close()
@@ -9306,23 +9328,24 @@ def get_podcast_notification_status(cnx, database_type, podcast_id, user_id):
             """
         else:
             query = """
-                SELECT notifications_enabled
+                SELECT NotificationsEnabled
                 FROM Podcasts
                 WHERE PodcastID = %s AND UserID = %s
             """
-
         cursor.execute(query, (podcast_id, user_id))
         result = cursor.fetchone()
-
         if result:
             if isinstance(result, dict):  # PostgreSQL with RealDictCursor
-                return bool(result['notifications_enabled'])
+                # Try all possible case variations
+                for key in ['NotificationsEnabled', 'notificationsenabled']:
+                    if key in result:
+                        return bool(result[key])
             else:  # MySQL or regular PostgreSQL cursor
                 return bool(result[0])
         return False  # Default to False if no result found
-
     except Exception as e:
         logging.error(f"Error getting podcast notification status: {e}")
+        logging.error(f"Result content: {result}")  # Add this for debugging
         return False
     finally:
         cursor.close()
