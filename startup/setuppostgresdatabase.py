@@ -367,6 +367,7 @@ try:
                 Username TEXT,
                 Password TEXT,
                 IsYouTubeChannel BOOLEAN DEFAULT FALSE,
+                NotificationsEnabled BOOLEAN DEFAULT FALSE,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
             )
         """)
@@ -636,15 +637,15 @@ try:
         try:
             # First check if the constraint exists
             check_constraint_query = """
-                SELECT constraint_name 
-                FROM information_schema.table_constraints 
-                WHERE table_name = 'EpisodeQueue' 
+                SELECT constraint_name
+                FROM information_schema.table_constraints
+                WHERE table_name = 'EpisodeQueue'
                 AND constraint_name = 'EpisodeQueue_episodeid_fkey'
                 AND constraint_type = 'FOREIGN KEY'
             """
             cursor.execute(check_constraint_query)
             constraint = cursor.fetchone()
-            
+
             if constraint:
                 # If it exists, drop it
                 cursor.execute('ALTER TABLE "EpisodeQueue" DROP CONSTRAINT "EpisodeQueue_episodeid_fkey"')
@@ -652,7 +653,7 @@ try:
                 print("Removed EpisodeQueue foreign key constraint")
             else:
                 print("EpisodeQueue foreign key constraint not found - no action needed")
-                
+
         except Exception as e:
             print(f"Error managing EpisodeQueue constraint: {e}")
             cnx.rollback()
@@ -664,14 +665,14 @@ try:
             # Check if column exists using PostgreSQL's system catalog
             cursor.execute("""
                 SELECT EXISTS (
-                    SELECT 1 
-                    FROM information_schema.columns 
-                    WHERE table_name = 'EpisodeQueue' 
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'EpisodeQueue'
                     AND column_name = 'is_youtube'
                 )
             """)
             column_exists = cursor.fetchone()[0]
-            
+
             if not column_exists:
                 cursor.execute("""
                     ALTER TABLE "EpisodeQueue"
@@ -681,7 +682,7 @@ try:
                 print("Added 'is_youtube' column to 'EpisodeQueue' table.")
             else:
                 print("Column 'is_youtube' already exists in 'EpisodeQueue' table.")
-                
+
         except Exception as e:
             cnx.rollback()
             print(f"Error managing is_youtube column: {e}")
@@ -697,6 +698,57 @@ try:
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                     )""")
     cnx.commit()
+
+    # First let's define our functions to check and add columns/tables
+    def add_notification_column_if_not_exists(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'Podcasts'
+                    AND column_name = 'notificationsenabled'
+                )
+            """)
+            column_exists = cursor.fetchone()[0]
+
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN NotificationsEnabled BOOLEAN DEFAULT FALSE
+                """)
+                cnx.commit()
+                print("Added 'NotificationsEnabled' column to 'Podcasts' table.")
+            else:
+                print("Column 'NotificationsEnabled' already exists in 'Podcasts' table.")
+        except Exception as e:
+            cnx.rollback()
+            print(f"Error managing NotificationsEnabled column: {e}")
+
+    add_notification_column_if_not_exists(cursor, cnx)
+
+    # Now create the notification settings table if it doesn't exist
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "UserNotificationSettings" (
+                SettingID SERIAL PRIMARY KEY,
+                UserID INT,
+                Platform VARCHAR(50) NOT NULL,
+                Enabled BOOLEAN DEFAULT TRUE,
+                NtfyTopic VARCHAR(255),
+                NtfyServerUrl VARCHAR(255) DEFAULT 'https://ntfy.sh',
+                GotifyUrl VARCHAR(255),
+                GotifyToken VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+                UNIQUE(UserID, platform)
+            )
+        """)
+        cnx.commit()
+        print("Checked/Created UserNotificationSettings table")
+    except Exception as e:
+        print(f"Error creating UserNotificationSettings table: {e}")
 
 
 except psycopg.Error as err:

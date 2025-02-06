@@ -526,6 +526,8 @@ pub struct EpisodeInDbResponse {
 }
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 
+use super::setting_reqs::NotificationResponse;
+
 pub async fn call_check_episode_in_db(
     server: &str,
     api_key: &str,
@@ -1243,7 +1245,7 @@ pub async fn call_remove_downloaded_episode(
 
 #[derive(Debug, Deserialize, Default, Serialize, Clone, PartialEq)]
 #[allow(non_snake_case)]
-#[serde(default)] 
+#[serde(default)]
 pub struct EpisodeInfo {
     pub episodetitle: String,
     pub podcastname: String,
@@ -2470,6 +2472,84 @@ pub async fn call_remove_category(
         Err(anyhow::Error::msg(format!(
             "Failed to remove category: {} - {}",
             response.status_text(),
+            error_text
+        )))
+    }
+}
+
+pub async fn call_toggle_podcast_notifications(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    podcast_id: i32,
+    enabled: bool,
+) -> Result<NotificationResponse, Error> {
+    let url = format!("{}/api/data/podcast/toggle_notifications", server_name);
+    let body = serde_json::json!({
+        "user_id": user_id,
+        "podcast_id": podcast_id,
+        "enabled": enabled
+    });
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .map_err(|e| Error::msg(format!("Failed to create request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response
+            .json::<NotificationResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        Err(Error::msg(format!(
+            "Error toggling podcast notifications: {}",
+            error_text
+        )))
+    }
+}
+
+pub async fn call_get_podcast_notifications_status(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    podcast_id: i32,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/podcast/notification_status", server_name);
+    let body = serde_json::json!({
+        "user_id": user_id,
+        "podcast_id": podcast_id,
+    });
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .map_err(|e| Error::msg(format!("Failed to create request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        #[derive(Deserialize)]
+        struct NotificationResponse {
+            enabled: bool,
+        }
+
+        response
+            .json::<NotificationResponse>()
+            .await
+            .map(|res| res.enabled)
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        let error_text = response.text().await.unwrap_or_default();
+        Err(Error::msg(format!(
+            "Error fetching podcast notification status: {}",
             error_text
         )))
     }

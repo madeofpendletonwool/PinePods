@@ -2170,6 +2170,152 @@ async def api_remove_category(data: RemoveCategoryData, cnx=Depends(get_database
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
+class TogglePodcastNotificationData(BaseModel):
+    user_id: int
+    podcast_id: int
+    enabled: bool
+
+@app.put("/api/data/podcast/toggle_notifications")
+async def api_toggle_podcast_notifications(
+    data: TogglePodcastNotificationData,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        success = database_functions.functions.toggle_podcast_notifications(
+            cnx,
+            database_type,
+            data.podcast_id,
+            data.user_id,
+            data.enabled
+        )
+        if success:
+            return {"detail": "Podcast notification settings updated successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Error updating podcast notification settings")
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify your own podcast settings")
+
+class PodcastNotificationStatusData(BaseModel):
+    user_id: int
+    podcast_id: int
+
+@app.post("/api/data/podcast/notification_status")
+async def api_get_podcast_notification_status(
+    data: PodcastNotificationStatusData,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        enabled = database_functions.functions.get_podcast_notification_status(
+            cnx,
+            database_type,
+            data.podcast_id,
+            data.user_id
+        )
+        return {"enabled": enabled}
+    else:
+        raise HTTPException(status_code=403, detail="You can only check your own podcast settings")
+
+class NotificationSettingsData(BaseModel):
+    user_id: int
+    platform: str
+    enabled: bool
+    ntfy_topic: Optional[str]
+    ntfy_server_url: Optional[str]
+    gotify_url: Optional[str]
+    gotify_token: Optional[str]
+
+@app.get("/api/data/user/notification_settings")
+async def api_get_notification_settings(user_id: int, cnx=Depends(get_database_connection),
+                                     api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == user_id or is_web_key:
+        settings = database_functions.functions.get_notification_settings(cnx, database_type, user_id)
+        return {"settings": settings}
+    else:
+        raise HTTPException(status_code=403, detail="You can only access your own notification settings")
+
+@app.put("/api/data/user/notification_settings")
+async def api_update_notification_settings(data: NotificationSettingsData, cnx=Depends(get_database_connection),
+                                        api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        success = database_functions.functions.update_notification_settings(
+            cnx,
+            database_type,
+            data.user_id,
+            data.platform,
+            data.enabled,
+            data.ntfy_topic,
+            data.ntfy_server_url,
+            data.gotify_url,
+            data.gotify_token
+        )
+        if success:
+            return {"detail": "Notification settings updated successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Error updating notification settings")
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify your own notification settings")
+
+class NotificationTestRequest(BaseModel):
+    user_id: int
+    platform: str
+
+@app.post("/api/data/user/test_notification")
+async def api_test_notification(
+    data: NotificationTestRequest,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        success = database_functions.functions.send_test_notification(
+            cnx,
+            database_type,
+            data.user_id,
+            data.platform
+        )
+        if success:
+            return {"detail": "Test notification sent successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Error sending test notification")
+    else:
+        raise HTTPException(status_code=403, detail="You can only send test notifications to your own account")
+
 class RecordListenDurationData(BaseModel):
     episode_id: int
     user_id: int
