@@ -429,6 +429,7 @@ try:
                 Username TEXT,
                 Password TEXT,
                 IsYouTubeChannel BOOLEAN DEFAULT FALSE,
+                NotificationsEnabled BOOLEAN DEFAULT FALSE,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
             )
         """)
@@ -759,6 +760,57 @@ try:
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                     )""")
     cnx.commit()
+
+    # First let's define our functions to check and add columns/tables
+    def add_notification_column_if_not_exists(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'Podcasts'
+                    AND column_name = 'notificationsenabled'
+                )
+            """)
+            column_exists = cursor.fetchone()[0]
+
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN NotificationsEnabled BOOLEAN DEFAULT FALSE
+                """)
+                cnx.commit()
+                print("Added 'NotificationsEnabled' column to 'Podcasts' table.")
+            else:
+                print("Column 'NotificationsEnabled' already exists in 'Podcasts' table.")
+        except Exception as e:
+            cnx.rollback()
+            print(f"Error managing NotificationsEnabled column: {e}")
+
+    add_notification_column_if_not_exists(cursor, cnx)
+
+    # Now create the notification settings table if it doesn't exist
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "UserNotificationSettings" (
+                SettingID SERIAL PRIMARY KEY,
+                UserID INT,
+                Platform VARCHAR(50) NOT NULL,
+                Enabled BOOLEAN DEFAULT TRUE,
+                NtfyTopic VARCHAR(255),
+                NtfyServerUrl VARCHAR(255) DEFAULT 'https://ntfy.sh',
+                GotifyUrl VARCHAR(255),
+                GotifyToken VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+                UNIQUE(UserID, platform)
+            )
+        """)
+        cnx.commit()
+        print("Checked/Created UserNotificationSettings table")
+    except Exception as e:
+        print(f"Error creating UserNotificationSettings table: {e}")
 
 
 except psycopg.Error as err:

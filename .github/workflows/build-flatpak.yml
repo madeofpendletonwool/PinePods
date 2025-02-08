@@ -31,14 +31,58 @@ jobs:
       - name: Install Flatpak SDK
         run: |
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub org.gnome.Platform//46 org.gnome.Sdk//46
+          flatpak install --user -y flathub org.gnome.Platform//47 org.gnome.Sdk//47
+
+      - name: Clone Flathub repo
+        run: |
+          git clone https://github.com/flathub/com.gooseberrydevelopment.pinepods flathub-repo
+          cp flathub-repo/com.gooseberrydevelopment.pinepods.yml .
+
+      - name: Set VERSION variable
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            LATEST_RELEASE=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
+            echo "VERSION=$LATEST_RELEASE" >> $GITHUB_ENV
+          fi
+
+      - name: Download DEBs and calculate checksums
+        run: |
+          # Download both DEBs
+          curl -L "https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_amd64.deb" -o amd64.deb
+          curl -L "https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_arm64.deb" -o arm64.deb
+          
+          # Calculate and display checksums
+          AMD64_SHA256=$(sha256sum amd64.deb | cut -d' ' -f1)
+          ARM64_SHA256=$(sha256sum arm64.deb | cut -d' ' -f1)
+          echo "Calculated AMD64 SHA256: $AMD64_SHA256"
+          echo "Calculated ARM64 SHA256: $ARM64_SHA256"
+          
+          # Export to environment
+          echo "AMD64_SHA256=$AMD64_SHA256" >> $GITHUB_ENV
+          echo "ARM64_SHA256=$ARM64_SHA256" >> $GITHUB_ENV
 
       - name: Update manifest version and URL
         run: |
-          sed -i "s|url: .*|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/pinepods_${VERSION}_amd64.deb|" clients/flatpak/com.gooseberrydevelopment.pinepods.yml
-          DEB_URL=$(grep url clients/flatpak/com.gooseberrydevelopment.pinepods.yml | awk '{print $2}')
-          SHA256=$(curl -sL $DEB_URL | sha256sum | cut -d' ' -f1)
-          sed -i "s|sha256: .*|sha256: $SHA256|" clients/flatpak/com.gooseberrydevelopment.pinepods.yml
+          echo "Updating manifest for version: $VERSION"
+          
+          # Show environment variables
+          echo "Using AMD64 SHA256: $AMD64_SHA256"
+          echo "Using ARM64 SHA256: $ARM64_SHA256"
+          
+          # Update AMD64 entry first
+          sed -i "/.*amd64.deb/,/sha256:/ s|sha256: .*|sha256: $AMD64_SHA256|" com.gooseberrydevelopment.pinepods.yml
+          
+          # Update ARM64 entry second
+          sed -i "/.*arm64.deb/,/sha256:/ s|sha256: .*|sha256: $ARM64_SHA256|" com.gooseberrydevelopment.pinepods.yml
+          
+          # Update URLs
+          sed -i "s|url: .*amd64.deb|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_amd64.deb|" com.gooseberrydevelopment.pinepods.yml
+          sed -i "s|url: .*arm64.deb|url: https://github.com/${{ github.repository }}/releases/download/$VERSION/Pinepods_${VERSION}_arm64.deb|" com.gooseberrydevelopment.pinepods.yml
+          
+          echo "Updated manifest content:"
+          cat com.gooseberrydevelopment.pinepods.yml
 
       - name: Get shared Modules
         run: |
@@ -49,7 +93,7 @@ jobs:
         run: |
           flatpak-builder --force-clean --sandbox --user --install-deps-from=flathub --ccache \
               --mirror-screenshots-url=https://dl.flathub.org/media/ --repo=repo builddir \
-              clients/flatpak/com.gooseberrydevelopment.pinepods.yml
+              com.gooseberrydevelopment.pinepods.yml
 
           flatpak remote-add --user --no-gpg-verify test-repo "$(pwd)/repo"
           flatpak install --user -y test-repo ${{ env.FLATPAK_ID }}
@@ -70,8 +114,7 @@ jobs:
         run: |
           mkdir flatpak_output
           cp ${{ env.FLATPAK_ID }}.flatpak flatpak_output/
-          cp clients/flatpak/com.gooseberrydevelopment.pinepods.yml flatpak_output/
-          cp clients/flatpak/${{ env.FLATPAK_ID }}.metainfo.xml flatpak_output/
+          cp com.gooseberrydevelopment.pinepods.yml flatpak_output/
           tar -czvf flatpak_files.tar.gz flatpak_output
 
       - name: Upload Flatpak archive

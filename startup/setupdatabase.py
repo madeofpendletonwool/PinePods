@@ -397,6 +397,7 @@ try:
         Username TEXT,
         Password TEXT,
         IsYouTubeChannel TINYINT(1) DEFAULT 0,
+        NotificationsEnabled TINYINT(1) DEFAULT 0,
         FOREIGN KEY (UserID) REFERENCES Users(UserID)
         )""")
 
@@ -731,6 +732,57 @@ try:
                     expire DATETIME NOT NULL,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                     )""")
+
+    # First define functions to check and add columns/tables
+    def add_notification_column_if_not_exists(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = Podcasts
+                AND COLUMN_NAME = NotificationsEnabled
+                AND TABLE_SCHEMA = DATABASE()
+            """)
+
+            if not cursor.fetchone():
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN NotificationsEnabled TINYINT(1) DEFAULT 0
+                """)
+                print("Added NotificationsEnabled column to Podcasts table.")
+                cnx.commit()
+            else:
+                print("Column NotificationsEnabled already exists in Podcasts table.")
+        except Exception as e:
+            print(f"Error adding NotificationsEnabled column to Podcasts table: {e}")
+            cnx.rollback()
+
+    # Create the notification settings table
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS UserNotificationSettings (
+                SettingID INT AUTO_INCREMENT PRIMARY KEY,
+                UserID INT,
+                Platform VARCHAR(50) NOT NULL,
+                Enabled TINYINT(1) DEFAULT 1,
+                NtfyTopic VARCHAR(255),
+                NtfyServerUrl VARCHAR(255) DEFAULT 'https://ntfy.sh',
+                GotifyUrl VARCHAR(255),
+                GotifyToken VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (UserID) REFERENCES Users(UserID),
+                UNIQUE(UserID, platform)
+            )
+        """)
+        print("Checked/Created UserNotificationSettings table")
+        cnx.commit()
+    except Exception as e:
+        print(f"Error creating UserNotificationSettings table: {e}")
+        cnx.rollback()
+
+    # Call our function to add the new column
+    add_notification_column_if_not_exist(cursor, cnx)
 
 except mysql.connector.Error as err:
     logging.error(f"Database error: {err}")

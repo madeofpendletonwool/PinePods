@@ -11,10 +11,11 @@ use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_check_podcast,
     call_download_all_podcast, call_enable_auto_download, call_fetch_podcasting_2_pod_data,
     call_get_auto_download_status, call_get_auto_skip_times, call_get_podcast_id_from_ep,
-    call_get_podcast_id_from_ep_name, call_remove_category, call_remove_podcasts_name,
-    call_remove_youtube_channel, AddCategoryRequest, AutoDownloadRequest,
-    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, PodcastValues,
-    RemoveCategoryRequest, RemovePodcastValuesName, RemoveYouTubeChannelValues, SkipTimesRequest,
+    call_get_podcast_id_from_ep_name, call_get_podcast_notifications_status, call_remove_category,
+    call_remove_podcasts_name, call_remove_youtube_channel, call_toggle_podcast_notifications,
+    AddCategoryRequest, AutoDownloadRequest, DownloadAllPodcastRequest,
+    FetchPodcasting2PodDataRequest, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
+    RemoveYouTubeChannelValues, SkipTimesRequest,
 };
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
@@ -213,6 +214,7 @@ pub fn episode_layout() -> Html {
     let episode_sort_direction = use_state(|| Some(EpisodeSortDirection::NewestFirst)); // Default to newest first
     let show_completed = use_state(|| false);
     let show_in_progress = use_state(|| false);
+    let notification_status = use_state(|| false);
 
     let history = BrowserHistory::new();
     // let node_ref = use_node_ref();
@@ -526,6 +528,7 @@ pub fn episode_layout() -> Html {
         let server_name = server_name.clone();
         let podcast_id = podcast_id.clone();
         let download_status = download_status.clone();
+        let notification_effect = notification_status.clone();
         // let episode_name = episode_name_pre.clone();
         // let episode_url = episode_url_pre.clone();
         let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID);
@@ -596,6 +599,28 @@ pub fn episode_layout() -> Html {
                                                 web_sys::console::log_1(
                                                     &format!(
                                                         "Error getting auto-download status: {}",
+                                                        e
+                                                    )
+                                                    .into(),
+                                                );
+                                            }
+                                        }
+                                        // Add notification status check here
+                                        match call_get_podcast_notifications_status(
+                                            server_name.clone(),
+                                            api_key.clone().unwrap(),
+                                            user_id,
+                                            id,
+                                        )
+                                        .await
+                                        {
+                                            Ok(status) => {
+                                                notification_effect.set(status);
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!(
+                                                        "Error getting notification status: {}",
                                                         e
                                                     )
                                                     .into(),
@@ -1039,6 +1064,46 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let toggle_notifications = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let notification_status = notification_status.clone();
+        let podcast_id = podcast_id.clone();
+        let user_id = user_id.clone();
+        Callback::from(move |_| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let notification_status = notification_status.clone();
+            let enabled = !*notification_status;
+            let pod_id_deref = *podcast_id.clone();
+            let user_id = user_id.clone().unwrap();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_toggle_podcast_notifications(
+                        server_name.clone(),
+                        api_key.clone().unwrap(),
+                        user_id,
+                        pod_id_deref,
+                        enabled,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            notification_status.set(enabled);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error toggling notifications: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+    };
+
     let start_skip_call = start_skip.clone();
     let end_skip_call = end_skip.clone();
     let start_skip_call_button = start_skip.clone();
@@ -1308,6 +1373,18 @@ pub fn episode_layout() -> Html {
                                 <label for="download_schedule" class="block mb-2 text-sm font-medium">{"Download Future Episodes Automatically:"}</label>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input type="checkbox" checked={*download_status} class="sr-only peer" onclick={toggle_download} />
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div>
+                                <label for="notification_settings" class="block mb-2 text-sm font-medium">{"Get Notifications For New Episodes:"}</label>
+                                <label class="inline-flex relative items-center cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={*notification_status}
+                                        class="sr-only peer"
+                                        onclick={toggle_notifications}
+                                    />
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                 </label>
                             </div>
