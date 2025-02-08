@@ -9,6 +9,7 @@ pub mod import_options;
 pub mod mfa_settings;
 pub mod nextcloud_options;
 pub mod notifications;
+pub mod oidc;
 pub mod restore_server;
 pub mod rss_feeds;
 pub mod theme_options;

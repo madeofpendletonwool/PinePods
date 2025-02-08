@@ -594,6 +594,125 @@ def add_admin_user(cnx, database_type, user_values):
     finally:
         cursor.close()
 
+def add_oidc_provider(cnx, database_type, provider_values):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            add_provider_query = """
+                INSERT INTO "OIDCProviders"
+                (ProviderName, ClientID, ClientSecret, AuthorizationURL,
+                TokenURL, UserInfoURL, RedirectURL, ButtonText,
+                Scope, ButtonColor, IconSVG)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING ProviderID
+            """
+        else:  # MySQL
+            add_provider_query = """
+                INSERT INTO OIDCProviders
+                (ProviderName, ClientID, ClientSecret, AuthorizationURL,
+                TokenURL, UserInfoURL, RedirectURL, ButtonText,
+                Scope, ButtonColor, IconSVG)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+        cursor.execute(add_provider_query, provider_values)
+
+        if database_type == "postgresql":
+            result = cursor.fetchone()
+            if isinstance(result, dict):
+                provider_id = result.get('providerid') or result.get('ProviderID') or result.get('provider_id')
+            else:
+                provider_id = result[0]
+        else:
+            provider_id = cursor.lastrowid
+
+        cnx.commit()
+        return provider_id
+    except Exception as e:
+        cnx.rollback()
+        logging.error(f"Error in add_oidc_provider: {str(e)}")
+        raise
+    finally:
+        cursor.close()
+
+def remove_oidc_provider(cnx, database_type, provider_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            delete_query = """
+                DELETE FROM "OIDCProviders"
+                WHERE ProviderID = %s
+            """
+        else:
+            delete_query = """
+                DELETE FROM OIDCProviders
+                WHERE ProviderID = %s
+            """
+        cursor.execute(delete_query, (provider_id,))
+        rows_affected = cursor.rowcount
+        cnx.commit()
+        return rows_affected > 0
+    except Exception as e:
+        cnx.rollback()
+        logging.error(f"Error in remove_oidc_provider: {str(e)}")
+        raise
+    finally:
+        cursor.close()
+
+def list_oidc_providers(cnx, database_type):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            list_query = """
+                SELECT ProviderID, ProviderName, ClientID, AuthorizationURL,
+                TokenURL, UserInfoURL, RedirectURL, ButtonText,
+                Scope, ButtonColor, IconSVG, Enabled, Created, Modified
+                FROM "OIDCProviders"
+                ORDER BY ProviderName
+            """
+        else:
+            list_query = """
+                SELECT ProviderID, ProviderName, ClientID, AuthorizationURL,
+                TokenURL, UserInfoURL, RedirectURL, ButtonText,
+                Scope, ButtonColor, IconSVG, Enabled, Created, Modified
+                FROM OIDCProviders
+                ORDER BY ProviderName
+            """
+        cursor.execute(list_query)
+
+        if database_type == "postgresql":
+            results = cursor.fetchall()
+            providers = []
+            for row in results:
+                if isinstance(row, dict):
+                    providers.append(row)
+                else:
+                    providers.append({
+                        'provider_id': row[0],
+                        'provider_name': row[1],
+                        'client_id': row[2],
+                        'authorization_url': row[3],
+                        'token_url': row[4],
+                        'user_info_url': row[5],
+                        'redirect_url': row[6],
+                        'button_text': row[7],
+                        'scope': row[8],
+                        'button_color': row[9],
+                        'icon_svg': row[10],
+                        'enabled': row[11],
+                        'created': row[12],
+                        'modified': row[13]
+                    })
+        else:
+            columns = [col[0] for col in cursor.description]
+            providers = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+        return providers
+    except Exception as e:
+        logging.error(f"Error in list_oidc_providers: {str(e)}")
+        raise
+    finally:
+        cursor.close()
+
 def get_pinepods_version():
     try:
         with open('/pinepods/current_version', 'r') as file:

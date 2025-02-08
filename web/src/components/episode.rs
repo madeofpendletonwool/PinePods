@@ -1775,7 +1775,7 @@ pub fn epsiode() -> Html {
                                                                 }
                                                             } else {
                                                                 html! {
-                                                                    <p class="no-media-warning item_container-text play-button">
+                                                                    <p class="no-media-warning item_container-text">
                                                                         {"Add podcast to enable more actions"}
                                                                     </p>
                                                                 }
