@@ -12,6 +12,25 @@
         <link href="/static/assets/phosphor.css" rel="stylesheet" />
         <link rel="manifest" href="static/manifest.json" />
         <meta name="theme-color" content="#000000" />
+        <script>
+            if ("serviceWorker" in navigator) {
+                window.addEventListener("load", () => {
+                    navigator.serviceWorker
+                        .register("assets/sw.js")
+                        .then((registration) => {
+                            console.log(
+                                "ServiceWorker registration successful",
+                            );
+                        })
+                        .catch((err) => {
+                            console.log(
+                                "ServiceWorker registration failed: ",
+                                err,
+                            );
+                        });
+                });
+            }
+        </script>
 
         <!--    <link data-trunk rel="icon" href="src/yew.svg"/>-->
         <!--    <link data-trunk rel="copy-file" href="src/yew.svg"/>-->

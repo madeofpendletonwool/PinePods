@@ -1634,3 +1634,108 @@ pub async fn fetch_import_progress(
         )))
     }
 }
+
+#[derive(Debug, Serialize)]
+pub struct AddOIDCProviderRequest {
+    pub provider_name: String,
+    pub client_id: String,
+    pub client_secret: String,
+    pub authorization_url: String,
+    pub token_url: String,
+    pub user_info_url: String,
+    pub redirect_url: String,
+    pub button_text: String,
+    pub scope: Option<String>,
+    pub button_color: Option<String>,
+    pub icon_svg: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OIDCProvider {
+    pub provider_id: i32,
+    pub provider_name: String,
+    pub client_id: String,
+    pub authorization_url: String,
+    pub token_url: String,
+    pub user_info_url: String,
+    pub redirect_url: String,
+    pub button_text: String,
+    pub scope: String,
+    pub button_color: String,
+    pub icon_svg: Option<String>,
+    pub enabled: bool,
+}
+
+pub async fn call_add_oidc_provider(
+    server_name: String,
+    api_key: String,
+    provider: AddOIDCProviderRequest,
+) -> Result<i32, Error> {
+    let url = format!("{}/api/data/add_oidc_provider", server_name);
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .json(&provider)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let result: serde_json::Value = response.json().await?;
+        let provider_id = result["provider_id"]
+            .as_i64()
+            .ok_or_else(|| Error::msg("No provider ID in response"))?;
+        Ok(provider_id as i32)
+    } else {
+        Err(Error::msg(format!(
+            "Failed to add OIDC provider: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_remove_oidc_provider(
+    server_name: String,
+    api_key: String,
+    provider_id: i32,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/remove_oidc_provider", server_name);
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .json(&serde_json::json!({ "provider_id": provider_id }))?
+        .send()
+        .await?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(Error::msg(format!(
+            "Failed to remove OIDC provider: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// First, create a struct to match the actual JSON structure
+#[derive(Deserialize)]
+struct OIDCProvidersResponse {
+    providers: Vec<OIDCProvider>,
+}
+
+pub async fn call_list_oidc_providers(
+    server_name: String,
+    api_key: String,
+) -> Result<Vec<OIDCProvider>, Error> {
+    let url = format!("{}/api/data/list_oidc_providers", server_name);
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await?;
+    if response.ok() {
+        let response_data: OIDCProvidersResponse = response.json().await?;
+        Ok(response_data.providers)
+    } else {
+        Err(Error::msg(format!(
+            "Failed to list OIDC providers: {}",
+            response.status_text()
+        )))
+    }
+}

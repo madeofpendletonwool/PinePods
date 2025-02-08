@@ -3098,6 +3098,93 @@ async def api_delete_user(is_admin: bool = Depends(check_if_admin), cnx=Depends(
     return {"status": "User deleted"}
 
 
+class OIDCProviderValues(BaseModel):
+    provider_name: str
+    client_id: str
+    client_secret: str
+    authorization_url: str
+    token_url: str
+    user_info_url: str
+    redirect_url: str
+    button_text: str
+    scope: Optional[str] = "openid email profile"
+    button_color: Optional[str] = "#000000"
+    icon_svg: Optional[str] = None
+
+@app.post("/api/data/add_oidc_provider")
+async def api_add_oidc_provider(
+    is_admin: bool = Depends(check_if_admin),
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header),
+    provider_values: OIDCProviderValues = Body(...)):
+    try:
+        provider_id = database_functions.functions.add_oidc_provider(cnx, database_type, (
+            provider_values.provider_name,
+            provider_values.client_id,
+            provider_values.client_secret,
+            provider_values.authorization_url,
+            provider_values.token_url,
+            provider_values.user_info_url,
+            provider_values.redirect_url,
+            provider_values.button_text,
+            provider_values.scope,
+            provider_values.button_color,
+            provider_values.icon_svg
+        ))
+        if not provider_id:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create provider - no provider ID returned"
+            )
+        return {"detail": "Success", "provider_id": provider_id}
+    except psycopg.errors.UniqueViolation:
+        raise HTTPException(
+            status_code=409,
+            detail="A provider with this name already exists"
+        )
+    except Exception as e:
+        logging.error(f"Unexpected error adding provider: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred while creating the provider: {str(e)}"
+        )
+
+@app.post("/api/data/remove_oidc_provider")
+async def api_remove_oidc_provider(
+    is_admin: bool = Depends(check_if_admin),
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header),
+    provider_id: int = Body(...)):
+    try:
+        result = database_functions.functions.remove_oidc_provider(cnx, database_type, provider_id)
+        if not result:
+            raise HTTPException(
+                status_code=404,
+                detail="Provider not found"
+            )
+        return {"detail": "Success"}
+    except Exception as e:
+        logging.error(f"Unexpected error removing provider: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred while removing the provider: {str(e)}"
+        )
+
+@app.get("/api/data/list_oidc_providers")
+async def api_list_oidc_providers(
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)):
+    try:
+        providers = database_functions.functions.list_oidc_providers(cnx, database_type)
+        return {"providers": providers}
+    except Exception as e:
+        logging.error(f"Unexpected error listing providers: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred while listing providers: {str(e)}"
+        )
+
+
 @app.put("/api/data/user/set_theme")
 async def api_set_theme(user_id: int = Body(...), new_theme: str = Body(...), cnx=Depends(get_database_connection),
                         api_key: str = Depends(get_api_key_from_header)):

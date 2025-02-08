@@ -3023,7 +3023,72 @@ button.item-container-action-button.item-container-action-button {
     border: 1px solid var(--button-border-color);
 }
 
-/* User Settings Styles */
+/* OIDC Provider Styles */
+.oidc-provider-card {
+    margin-bottom: 1rem;
+    background-color: var(--container-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.oidc-provider-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.oidc-provider-info {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+.oidc-info-group {
+    padding: 0.75rem;
+    background-color: var(--background-color);
+    border-radius: 6px;
+}
+
+.oidc-info-label {
+    font-weight: 500;
+    color: var(--text-color);
+    margin-bottom: 0.5rem;
+}
+
+.oidc-info-value {
+    color: var(--text-color);
+    opacity: 0.8;
+    word-break: break-all;
+    font-size: 0.9rem;
+}
+
+.oidc-empty-state {
+    text-align: center;
+    padding: 2rem;
+    background-color: var(--container-background);
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    color: var(--text-color);
+    opacity: 0.7;
+}
+
+.oidc-remove-button {
+    background-color: var(--error-color);
+    color: var(--text-color);
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: opacity 0.2s;
+}
+
+.oidc-remove-button:hover {
+    opacity: 0.9;
+}
+
 /* User Settings Styles */
 .user-settings-container {
     max-width: 800px;
@@ -3576,14 +3641,14 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .no-media-warning {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    padding: 3px 12px;
-    /* Adjust padding to match your buttons */
-    font-weight: bold;
-    margin-bottom: 10px;
-    /* Bottom padding as requested */
+    background-color: var(--background-accent);
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    margin-top: 0.5rem;
+    margin-left: 0.5rem;
+    font-size: 0.875rem;
 }
 
 .context-button-wrapper {

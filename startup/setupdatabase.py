@@ -60,8 +60,25 @@ try:
         cnx.commit()
         cursor.close()
 
+    # Function to check and add columns if they don't exist
+    def add_column_if_not_exists(cursor, table_name, column_name, column_definition):
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_name='{table_name}'
+            AND column_name='{column_name}'
+            AND table_schema=DATABASE();
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(f"""
+                ALTER TABLE {table_name}
+                ADD COLUMN {column_name} {column_definition};
+            """)
+            print(f"Column '{column_name}' added to table '{table_name}'")
+        else:
+            return
 
-    # Execute SQL command to create tables
+    # Create Users table if it doesn't exist (your existing code)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS Users (
             UserID INT AUTO_INCREMENT PRIMARY KEY,
@@ -82,9 +99,55 @@ try:
             GpodderLoginName VARCHAR(255) DEFAULT '',
             GpodderToken VARCHAR(255) DEFAULT '',
             EnableRSSFeeds TINYINT(1) DEFAULT 0,
+            auth_type VARCHAR(50) DEFAULT 'standard',
+            oidc_provider_id INT,
+            oidc_subject VARCHAR(255),
             UNIQUE (Username)
         )
     """)
+
+    # Create OIDCProviders table if it doesn't exist
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS OIDCProviders (
+            ProviderID INT AUTO_INCREMENT PRIMARY KEY,
+            ProviderName VARCHAR(255) NOT NULL,
+            ClientID VARCHAR(255) NOT NULL,
+            ClientSecret VARCHAR(500) NOT NULL,
+            AuthorizationURL VARCHAR(255) NOT NULL,
+            TokenURL VARCHAR(255) NOT NULL,
+            UserInfoURL VARCHAR(255) NOT NULL,
+            RedirectURL VARCHAR(255) NOT NULL,
+            Scope VARCHAR(255) DEFAULT 'openid email profile',
+            ButtonColor VARCHAR(50) DEFAULT '#000000',
+            ButtonText VARCHAR(255) NOT NULL,
+            IconSVG TEXT,
+            Enabled TINYINT(1) DEFAULT 1,
+            Created DATETIME DEFAULT CURRENT_TIMESTAMP,
+            Modified DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Add new columns to Users table if they don't exist
+    add_column_if_not_exists(cursor, 'Users', 'auth_type', 'VARCHAR(50) DEFAULT \'standard\'')
+    add_column_if_not_exists(cursor, 'Users', 'oidc_provider_id', 'INT')
+    add_column_if_not_exists(cursor, 'Users', 'oidc_subject', 'VARCHAR(255)')
+
+    # Check if foreign key exists before adding it
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.table_constraints
+        WHERE constraint_name = 'fk_oidc_provider'
+        AND table_name = 'Users'
+        AND table_schema = DATABASE();
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("""
+            ALTER TABLE Users
+            ADD CONSTRAINT fk_oidc_provider
+            FOREIGN KEY (oidc_provider_id)
+            REFERENCES OIDCProviders(ProviderID);
+        """)
+        print("Foreign key constraint 'fk_oidc_provider' added")
 
     # Add EnableRSSFeeds column if it doesn't exist
     cursor.execute("""

@@ -101,8 +101,23 @@ try:
                     cursor.execute('UPDATE "Users" SET Username = %s WHERE UserID = %s', (username.lower(), user_id))
                     print(f"Updated Username for UserID {user_id} to lowercase")
 
+    def add_column_if_not_exists(cursor, table_name, column_name, column_definition):
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM information_schema.columns
+            WHERE table_name='{table_name}'
+            AND column_name='{column_name}';
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(f"""
+                ALTER TABLE "{table_name}"
+                ADD COLUMN {column_name} {column_definition};
+            """)
+            print(f"Column '{column_name}' added to table '{table_name}'")
+        else:
+            return
 
-    # Execute SQL command to create tables
+    # Create Users table first
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS "Users" (
             UserID SERIAL PRIMARY KEY,
@@ -125,17 +140,64 @@ try:
             EnableRSSFeeds BOOLEAN DEFAULT FALSE
         )
     """)
+    cnx.commit()
 
-    # Add EnableRSSFeeds column if it doesn't exist
+    # Create OIDCProviders next
     cursor.execute("""
-        SELECT column_name
-        FROM information_schema.columns
-        WHERE table_name = 'Users'
-        AND column_name = 'enablerssfeeds'
+        CREATE TABLE IF NOT EXISTS "OIDCProviders" (
+            ProviderID SERIAL PRIMARY KEY,
+            ProviderName VARCHAR(255) NOT NULL,
+            ClientID VARCHAR(255) NOT NULL,
+            ClientSecret VARCHAR(500) NOT NULL,
+            AuthorizationURL VARCHAR(255) NOT NULL,
+            TokenURL VARCHAR(255) NOT NULL,
+            UserInfoURL VARCHAR(255) NOT NULL,
+            RedirectURL VARCHAR(255) NOT NULL,
+            Scope VARCHAR(255) DEFAULT 'openid email profile',
+            ButtonColor VARCHAR(50) DEFAULT '#000000',
+            ButtonText VARCHAR(255) NOT NULL,
+            IconSVG TEXT,
+            Enabled BOOLEAN DEFAULT true,
+            Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            Modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
     """)
-    if cursor.fetchone() is None:
-        cursor.execute('ALTER TABLE "Users" ADD COLUMN EnableRSSFeeds BOOLEAN DEFAULT FALSE')
+    cnx.commit()
 
+    # Now add all columns
+    add_column_if_not_exists(cursor, 'Users', 'auth_type', 'VARCHAR(50) DEFAULT \'standard\'')
+    add_column_if_not_exists(cursor, 'Users', 'oidc_provider_id', 'INT')
+    add_column_if_not_exists(cursor, 'Users', 'oidc_subject', 'VARCHAR(255)')
+    cnx.commit()
+
+    # Now add foreign key
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.table_constraints
+        WHERE constraint_name = 'fk_oidc_provider'
+        AND table_name = 'Users';
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("""
+            ALTER TABLE "Users"
+            ADD CONSTRAINT fk_oidc_provider
+            FOREIGN KEY (oidc_provider_id)
+            REFERENCES "OIDCProviders"(ProviderID);
+        """)
+        print("Foreign key constraint 'fk_oidc_provider' added")
+    cnx.commit()
+
+    # Create API Keys table last
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS "APIKeys" (
+            APIKeyID SERIAL PRIMARY KEY,
+            UserID INT,
+            APIKey TEXT,
+            Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
+        )
+    """)
+    cnx.commit()
 
     ensure_usernames_lowercase(cnx)
 
@@ -636,15 +698,15 @@ try:
         try:
             # First check if the constraint exists
             check_constraint_query = """
-                SELECT constraint_name 
-                FROM information_schema.table_constraints 
-                WHERE table_name = 'EpisodeQueue' 
+                SELECT constraint_name
+                FROM information_schema.table_constraints
+                WHERE table_name = 'EpisodeQueue'
                 AND constraint_name = 'EpisodeQueue_episodeid_fkey'
                 AND constraint_type = 'FOREIGN KEY'
             """
             cursor.execute(check_constraint_query)
             constraint = cursor.fetchone()
-            
+
             if constraint:
                 # If it exists, drop it
                 cursor.execute('ALTER TABLE "EpisodeQueue" DROP CONSTRAINT "EpisodeQueue_episodeid_fkey"')
@@ -652,7 +714,7 @@ try:
                 print("Removed EpisodeQueue foreign key constraint")
             else:
                 print("EpisodeQueue foreign key constraint not found - no action needed")
-                
+
         except Exception as e:
             print(f"Error managing EpisodeQueue constraint: {e}")
             cnx.rollback()
@@ -664,14 +726,14 @@ try:
             # Check if column exists using PostgreSQL's system catalog
             cursor.execute("""
                 SELECT EXISTS (
-                    SELECT 1 
-                    FROM information_schema.columns 
-                    WHERE table_name = 'EpisodeQueue' 
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'EpisodeQueue'
                     AND column_name = 'is_youtube'
                 )
             """)
             column_exists = cursor.fetchone()[0]
-            
+
             if not column_exists:
                 cursor.execute("""
                     ALTER TABLE "EpisodeQueue"
@@ -681,7 +743,7 @@ try:
                 print("Added 'is_youtube' column to 'EpisodeQueue' table.")
             else:
                 print("Column 'is_youtube' already exists in 'EpisodeQueue' table.")
-                
+
         except Exception as e:
             cnx.rollback()
             print(f"Error managing is_youtube column: {e}")
