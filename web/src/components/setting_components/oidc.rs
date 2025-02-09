@@ -32,6 +32,7 @@ pub fn oidc_settings() -> Html {
     let redirect_url = use_state(|| String::new());
     let button_text = use_state(|| String::new());
     let button_color = use_state(|| String::from("#000000"));
+    let button_text_color = use_state(|| String::from("#000000"));
     let icon_svg = use_state(|| String::new());
 
     // Fetch providers on component mount and when update_trigger changes
@@ -212,6 +213,14 @@ pub fn oidc_settings() -> Html {
         })
     };
 
+    let on_button_text_color_change = {
+        let button_text_color = button_text_color.clone();
+        Callback::from(move |e: InputEvent| {
+            let target = e.target_unchecked_into::<HtmlInputElement>();
+            button_text_color.set(target.value());
+        })
+    };
+
     let on_icon_svg_change = {
         let icon_svg = icon_svg.clone();
         Callback::from(move |e: InputEvent| {
@@ -220,6 +229,7 @@ pub fn oidc_settings() -> Html {
         })
     };
 
+    let submit_state = state.clone();
     let on_submit = {
         let provider_name = provider_name.clone();
         let client_id = client_id.clone();
@@ -227,9 +237,9 @@ pub fn oidc_settings() -> Html {
         let auth_url = auth_url.clone();
         let token_url = token_url.clone();
         let user_info_url = user_info_url.clone();
-        let redirect_url = redirect_url.clone();
         let button_text = button_text.clone();
         let button_color = button_color.clone();
+        let button_text_color = button_text_color.clone();
         let icon_svg = icon_svg.clone();
         let page_state = page_state.clone();
         let update_trigger = update_trigger.clone();
@@ -247,15 +257,18 @@ pub fn oidc_settings() -> Html {
                 authorization_url: (*auth_url).clone(),
                 token_url: (*token_url).clone(),
                 user_info_url: (*user_info_url).clone(),
-                redirect_url: (*redirect_url).clone(),
                 button_text: (*button_text).clone(),
                 scope: Some("openid email profile".to_string()),
                 button_color: Some((*button_color).clone()),
+                button_text_color: Some((*button_text_color).clone()),
                 icon_svg: Some((*icon_svg).clone()),
             };
 
-            let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-            let api_key = state
+            let server_name = submit_state
+                .auth_details
+                .as_ref()
+                .map(|ud| ud.server_name.clone());
+            let api_key = submit_state
                 .auth_details
                 .as_ref()
                 .and_then(|ud| ud.api_key.clone());
@@ -283,6 +296,22 @@ pub fn oidc_settings() -> Html {
         })
     };
 
+    let redirect_url = if let Some(auth_details) = &state.auth_details {
+        format!("{}/api/auth/callback", auth_details.server_name)
+    } else {
+        "https://your-pinepods-instance/api/auth/callback".to_string()
+    };
+
+    let onclick_copy = {
+        let url = redirect_url.clone();
+        Callback::from(move |_| {
+            if let Some(window) = web_sys::window() {
+                let clipboard = window.navigator().clipboard();
+                let _ = clipboard.write_text(&url);
+            }
+        })
+    };
+
     let add_provider_modal = html! {
         <div id="add-provider-modal" tabindex="-1" aria-hidden="true"
             class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25"
@@ -303,6 +332,27 @@ pub fn oidc_settings() -> Html {
                         </button>
                     </div>
                     <div class="p-4 md:p-5">
+                        <div class="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg p-4 mb-6">
+                            <div class="flex items-center gap-2 mb-2">
+                                <i class="ph ph-info text-indigo-600 dark:text-indigo-400"></i>
+                                <h3 class="font-medium text-indigo-900 dark:text-indigo-100">{"OIDC Redirect URL"}</h3>
+                            </div>
+                            <div class="flex items-center gap-2 bg-white dark:bg-gray-800 rounded p-2">
+                                <code class="text-sm text-gray-800 dark:text-gray-200 flex-grow">
+                                    {redirect_url.clone()}
+                                </code>
+                                <button
+                                    onclick={onclick_copy.clone()}
+                                    class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 p-1 rounded"
+                                    title="Copy to clipboard"
+                                >
+                                    <i class="ph ph-copy text-lg"></i>
+                                </button>
+                            </div>
+                            <p class="text-sm text-indigo-700 dark:text-indigo-300 mt-2">
+                                {"Use this URL when configuring your OIDC provider's callback/redirect settings."}
+                            </p>
+                        </div>
                         <form class="space-y-4" action="#" onsubmit={on_submit}>
                             <div class="grid grid-cols-2 gap-4">
                                 <div class="form-group">
@@ -370,17 +420,6 @@ pub fn oidc_settings() -> Html {
                                     />
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">{"Redirect URL"}</label>
-                                    <input
-                                        type="url"
-                                        class="form-input"
-                                        value={(*redirect_url).clone()}
-                                        oninput={on_redirect_url_change}
-                                        placeholder="https://your-app.com/callback"
-                                        required=true
-                                    />
-                                </div>
-                                <div class="form-group">
                                     <label class="form-label">{"Button Text"}</label>
                                     <input
                                         type="text"
@@ -398,6 +437,15 @@ pub fn oidc_settings() -> Html {
                                         class="form-input h-[42px]"
                                         value={(*button_color).clone()}
                                         oninput={on_button_color_change}
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">{"Button Text Color"}</label>
+                                    <input
+                                        type="color"
+                                        class="form-input h-[42px]"
+                                        value={(*button_text_color).clone()}
+                                        oninput={on_button_text_color_change}
                                     />
                                 </div>
                                 <div class="form-group col-span-2">
@@ -424,6 +472,29 @@ pub fn oidc_settings() -> Html {
 
     html! {
         <div class="user-settings-container">
+
+            <div class="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg p-4 mb-6">
+                <div class="flex items-center gap-2 mb-2">
+                    <i class="ph ph-info text-indigo-600 dark:text-indigo-400"></i>
+                    <h3 class="font-medium text-indigo-900 dark:text-indigo-100">{"OIDC Redirect URL"}</h3>
+                </div>
+                <div class="flex items-center gap-2 bg-white dark:bg-gray-800 rounded p-2">
+                    <code class="text-sm text-gray-800 dark:text-gray-200 flex-grow">
+                        {redirect_url}
+                    </code>
+                    <button
+                        onclick={onclick_copy}
+                        class="text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 p-1 rounded"
+                        title="Copy to clipboard"
+                    >
+                        <i class="ph ph-copy text-lg"></i>
+                    </button>
+                </div>
+                <p class="text-sm text-indigo-700 dark:text-indigo-300 mt-2">
+                    {"Use this URL when configuring your OIDC provider's callback/redirect settings."}
+                </p>
+            </div>
+
             <div class="settings-header">
                 <div class="flex items-center gap-4">
                     <i class="ph ph-key text-2xl"></i>
@@ -477,10 +548,6 @@ pub fn oidc_settings() -> Html {
                                     <div class="oidc-info-group">
                                         <div class="oidc-info-label">{"User Info URL"}</div>
                                         <div class="oidc-info-value">{&provider.user_info_url}</div>
-                                    </div>
-                                    <div class="oidc-info-group">
-                                        <div class="oidc-info-label">{"Redirect URL"}</div>
-                                        <div class="oidc-info-value">{&provider.redirect_url}</div>
                                     </div>
                                 </div>
                             </div>

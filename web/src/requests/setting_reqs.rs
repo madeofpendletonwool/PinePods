@@ -1761,7 +1761,10 @@ pub async fn call_test_notification(
         Err(Error::msg(format!(
             "Error sending test notification: {}",
             error_text
-          
+        )))
+    }
+}
+
 // OIDC Settings
 
 #[derive(Debug, Serialize)]
@@ -1772,10 +1775,10 @@ pub struct AddOIDCProviderRequest {
     pub authorization_url: String,
     pub token_url: String,
     pub user_info_url: String,
-    pub redirect_url: String,
     pub button_text: String,
     pub scope: Option<String>,
     pub button_color: Option<String>,
+    pub button_text_color: Option<String>,
     pub icon_svg: Option<String>,
 }
 
@@ -1787,10 +1790,10 @@ pub struct OIDCProvider {
     pub authorization_url: String,
     pub token_url: String,
     pub user_info_url: String,
-    pub redirect_url: String,
     pub button_text: String,
     pub scope: String,
     pub button_color: String,
+    pub button_text_color: String,
     pub icon_svg: Option<String>,
     pub enabled: bool,
 }
@@ -1829,10 +1832,9 @@ pub async fn call_remove_oidc_provider(
     let url = format!("{}/api/data/remove_oidc_provider", server_name);
     let response = Request::post(&url)
         .header("Api-Key", &api_key)
-        .json(&serde_json::json!({ "provider_id": provider_id }))?
+        .json(&provider_id)? // Send the provider_id directly
         .send()
         .await?;
-
     if response.ok() {
         Ok(())
     } else {

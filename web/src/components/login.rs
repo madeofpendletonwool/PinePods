@@ -6,9 +6,10 @@ use crate::components::setting_components::theme_options::initialize_default_the
 use crate::requests::login_requests::{self, call_check_mfa_enabled, call_create_first_admin};
 use crate::requests::login_requests::{call_add_login_user, AddUserRequest};
 use crate::requests::login_requests::{
-    call_first_login_done, call_get_time_info, call_reset_password_create_code,
-    call_self_service_login_status, call_setup_timezone_info, call_verify_and_reset_password,
-    call_verify_key, call_verify_mfa, ResetCodePayload, ResetForgotPasswordPayload, TimeZoneInfo,
+    call_first_login_done, call_get_public_oidc_providers, call_get_time_info,
+    call_reset_password_create_code, call_self_service_login_status, call_setup_timezone_info,
+    call_store_oidc_state, call_verify_and_reset_password, call_verify_key, call_verify_mfa,
+    ResetCodePayload, ResetForgotPasswordPayload, TimeZoneInfo,
 };
 use crate::requests::setting_reqs::call_get_theme;
 use chrono_tz::{Tz, TZ_VARIANTS};
@@ -26,7 +27,7 @@ fn calculate_gravatar_hash(email: &String) -> String {
     format!("{:x}", md5::compute(email.to_lowercase()))
 }
 
-fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
+pub fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
     let hash = calculate_gravatar_hash(&email.clone().unwrap());
     format!("https://gravatar.com/avatar/{}?s={}", hash, size)
 }
@@ -62,6 +63,7 @@ pub fn login() -> Html {
     let self_service_enabled = use_state(|| false); // State to store self-service status
     let effect_self_service = self_service_enabled.clone();
     let first_admin_created = use_state(|| true);
+    let oidc_providers = use_state(|| Vec::new());
 
     use_effect_with((), move |_| {
         initialize_default_theme();
@@ -92,6 +94,32 @@ pub fn login() -> Html {
             }
         });
 
+        || ()
+    });
+
+    let effect_providers = oidc_providers.clone();
+    use_effect_with((), move |_| {
+        let providers = effect_providers.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let window = web_sys::window().expect("no global `window` exists");
+            let location = window.location();
+            let server_name = location
+                .href()
+                .expect("should have a href")
+                .trim_end_matches('/')
+                .to_string();
+
+            match call_get_public_oidc_providers(server_name).await {
+                Ok(response) => {
+                    providers.set(response.providers);
+                }
+                Err(e) => {
+                    web_sys::console::log_1(
+                        &format!("Error fetching OIDC providers: {:?}", e).into(),
+                    );
+                }
+            }
+        });
         || ()
     });
 
@@ -1474,6 +1502,106 @@ pub fn login() -> Html {
                     >
                         {"Login"}
                     </button>
+
+
+                    // In your HTML template:
+                    {
+                        if !oidc_providers.is_empty() {
+                            html! {
+                                <>
+                                    <div class="oidc-divider">
+                                        <div class="oidc-divider-line"></div>
+                                        <div class="relative flex justify-center">
+                                            <span class="oidc-divider-text item_container-text">{"Or continue with"}</span>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex flex-col space-y-2">
+                                        {
+                                            oidc_providers.iter().map(|provider| {
+                                                let button_style = format!(
+                                                    "background-color: {}",
+                                                    provider.button_color
+                                                );
+                                                let button_text_style = format!(
+                                                    "color: {}",
+                                                    provider.button_text_color
+                                                );
+
+                                                html! {
+                                                    <button
+                                                        class="oidc-button"
+                                                        style={button_style}
+                                                        onclick={
+                                                            let auth_url = provider.authorization_url.clone();
+                                                            let client_id = provider.client_id.clone();
+                                                            let scope = provider.scope.clone();
+                                                            // let server_name = server_name.clone();
+                                                            let window = web_sys::window().expect("no global `window` exists");
+                                                            let location = window.location();
+                                                            let server_name = location
+                                                                .href()
+                                                                .expect("should have a href")
+                                                                .trim_end_matches('/')
+                                                                .to_string();
+
+                                                            Callback::from(move |_| {
+                                                                let window = web_sys::window().unwrap();
+                                                                let crypto = window.crypto().unwrap();
+                                                                let mut random_bytes = [0u8; 16];
+                                                                crypto.get_random_values_with_u8_array(&mut random_bytes).unwrap();
+                                                                let state = random_bytes.iter()
+                                                                    .map(|b| format!("{:02x}", b))
+                                                                    .collect::<String>();
+
+                                                                let auth_url_clone = auth_url.clone();
+                                                                let client_id_clone = client_id.clone();
+                                                                let scope_clone = scope.clone();
+                                                                let state_clone = state.clone();
+                                                                let server_name_clone = server_name.clone();
+
+                                                                wasm_bindgen_futures::spawn_local(async move {
+                                                                    match call_store_oidc_state(
+                                                                        server_name_clone,
+                                                                        state_clone.clone(),
+                                                                        client_id_clone.clone(),
+                                                                    ).await {
+                                                                        Ok(_) => {
+                                                                            let origin = window.location().origin().unwrap();
+                                                                            let redirect_uri = format!("{}/api/auth/callback", origin);
+                                                                            let auth_url = format!(
+                                                                                "{}?client_id={}&redirect_uri={}&scope={}&response_type=code&state={}",
+                                                                                auth_url_clone, client_id_clone, redirect_uri, scope_clone, state_clone
+                                                                            );
+                                                                            window.location().set_href(&auth_url).unwrap();
+                                                                        },
+                                                                        Err(e) => {
+                                                                            web_sys::console::log_1(&format!("Failed to store state: {:?}", e).into());
+                                                                        }
+                                                                    }
+                                                                });
+                                                            })
+                                                        }
+                                                    >
+                                                        if let Some(icon) = &provider.icon_svg {
+                                                            <div class="oidc-icon">
+                                                                {Html::from_html_unchecked(AttrValue::from(icon.clone()))}
+                                                            </div>
+                                                        }
+                                                        <span style={button_text_style}>{&provider.button_text}</span>
+                                                    </button>
+                                                }
+                                            }).collect::<Html>()
+                                        }
+                                    </div>
+                                </>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
+
+
                 </div>
                 {
                     if app_state.error_message.as_ref().map_or(false, |msg| !msg.is_empty()) {

@@ -4,6 +4,7 @@ pub(crate) mod history;
 pub(crate) mod home;
 pub(crate) mod host_component;
 pub mod misc_func;
+pub(crate) mod oauth_callback;
 pub(crate) mod queue;
 pub(crate) mod routes;
 pub(crate) mod saved;
@@ -23,7 +24,7 @@ pub(crate) mod episodes_layout;
 pub(crate) mod gen_components;
 pub mod gen_funcs;
 #[cfg(feature = "server_build")]
-pub mod login;
+pub(crate) mod login;
 pub(crate) mod people_subs;
 pub(crate) mod person;
 pub(crate) mod podcast_layout;
