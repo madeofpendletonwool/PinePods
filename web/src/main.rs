@@ -14,6 +14,7 @@ use components::episode::Episode;
 use components::episodes_layout::EpisodeLayout;
 use components::history::PodHistory;
 use components::home::Home;
+use components::oauth_callback::OAuthCallback;
 use components::people_subs::SubscribedPeople;
 use components::person::Person;
 use components::podcast_layout::PodLayout;
@@ -76,6 +77,7 @@ fn switch(route: Route) -> Html {
         Route::YoutubeLayout => html! { <YouTubeLayout /> },
         Route::Episode => html! { <Episode /> },
         Route::Person { name } => html! { <Person name={name.clone()} /> },
+        Route::OAuthCallback => html! { <OAuthCallback /> },
         #[cfg(not(feature = "server_build"))]
         Route::LocalDownloads => html! { <LocalDownloads /> },
         #[cfg(feature = "server_build")]

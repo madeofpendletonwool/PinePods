@@ -21,8 +21,10 @@ pub struct LoginRequest {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct LoginServerRequest {
     pub(crate) server_name: String,
-    pub(crate) username: String,
-    pub(crate) password: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) password: Option<String>,
     pub(crate) api_key: Option<String>,
 }
 
@@ -206,9 +208,9 @@ pub async fn login_new_server(
 
             let login_request = LoginServerRequest {
                 server_name: server_name.clone(),
-                username: username.clone(),
-                password: password.clone(),
-                api_key: Some(api_key.clone()), // or None, depending on the context
+                username: Some(username.clone()),
+                password: Some(password.clone()),
+                api_key: Some(api_key.clone()),
             };
 
             // Step 4: Get user details
@@ -672,6 +674,69 @@ pub async fn call_verify_and_reset_password(
     } else {
         Err(Error::msg(format!(
             "Error creating reset code: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct OIDCProvider {
+    pub provider_id: i32,
+    pub provider_name: String,
+    pub client_id: String,
+    pub authorization_url: String,
+    pub scope: String,
+    pub button_color: String,
+    pub button_text: String,
+    pub button_text_color: String,
+    pub icon_svg: Option<String>,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct PublicOIDCProvidersResponse {
+    pub providers: Vec<OIDCProvider>,
+}
+
+pub async fn call_get_public_oidc_providers(
+    server_name: String,
+) -> Result<PublicOIDCProvidersResponse, Error> {
+    let url = format!("{}/api/data/public_oidc_providers", server_name);
+    let response = Request::get(&url).send().await?;
+
+    if response.ok() {
+        let response_body = response.json::<PublicOIDCProvidersResponse>().await?;
+        Ok(response_body)
+    } else {
+        Err(Error::msg(format!(
+            "Error fetching OIDC providers: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// First, create the request struct
+#[derive(Serialize)]
+pub struct StoreStateRequest {
+    pub state: String,
+    pub client_id: String,
+}
+
+// Then create the function to make the request
+pub async fn call_store_oidc_state(
+    server_name: String,
+    state: String,
+    client_id: String,
+) -> Result<(), Error> {
+    let url = format!("{}/api/auth/store_state", server_name);
+    let request_body = StoreStateRequest { state, client_id };
+
+    let response = Request::post(&url).json(&request_body)?.send().await?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(Error::msg(format!(
+            "Failed to store OIDC state: {}",
             response.status_text()
         )))
     }

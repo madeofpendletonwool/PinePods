@@ -47,4 +47,6 @@ pub enum Route {
     YoutubeLayout,
     #[at("/shared_episode/:url_key")]
     SharedEpisode { url_key: String },
+    #[at("/oauth/callback")]
+    OAuthCallback,
 }

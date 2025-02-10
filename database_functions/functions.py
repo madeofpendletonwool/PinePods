@@ -32,6 +32,7 @@ import logging
 from cryptography.fernet import Fernet
 from requests.exceptions import RequestException
 import shutil
+import secrets
 
 # # Get the application root directory from the environment variable
 # app_root = os.environ.get('APP_ROOT')
@@ -601,8 +602,8 @@ def add_oidc_provider(cnx, database_type, provider_values):
             add_provider_query = """
                 INSERT INTO "OIDCProviders"
                 (ProviderName, ClientID, ClientSecret, AuthorizationURL,
-                TokenURL, UserInfoURL, RedirectURL, ButtonText,
-                Scope, ButtonColor, IconSVG)
+                TokenURL, UserInfoURL, ButtonText, Scope,
+                ButtonColor, ButtonTextColor, IconSVG)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING ProviderID
             """
@@ -610,8 +611,8 @@ def add_oidc_provider(cnx, database_type, provider_values):
             add_provider_query = """
                 INSERT INTO OIDCProviders
                 (ProviderName, ClientID, ClientSecret, AuthorizationURL,
-                TokenURL, UserInfoURL, RedirectURL, ButtonText,
-                Scope, ButtonColor, IconSVG)
+                TokenURL, UserInfoURL, ButtonText, Scope,
+                ButtonColor, ButtonTextColor, IconSVG)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
         cursor.execute(add_provider_query, provider_values)
@@ -664,28 +665,54 @@ def list_oidc_providers(cnx, database_type):
         if database_type == "postgresql":
             list_query = """
                 SELECT ProviderID, ProviderName, ClientID, AuthorizationURL,
-                TokenURL, UserInfoURL, RedirectURL, ButtonText,
-                Scope, ButtonColor, IconSVG, Enabled, Created, Modified
+                TokenURL, UserInfoURL, ButtonText,
+                Scope, ButtonColor, ButtonTextColor, IconSVG, Enabled, Created, Modified
                 FROM "OIDCProviders"
                 ORDER BY ProviderName
             """
         else:
             list_query = """
                 SELECT ProviderID, ProviderName, ClientID, AuthorizationURL,
-                TokenURL, UserInfoURL, RedirectURL, ButtonText,
-                Scope, ButtonColor, IconSVG, Enabled, Created, Modified
+                TokenURL, UserInfoURL, ButtonText,
+                Scope, ButtonColor, ButtonTextColor, IconSVG, Enabled, Created, Modified
                 FROM OIDCProviders
                 ORDER BY ProviderName
             """
         cursor.execute(list_query)
-
         if database_type == "postgresql":
             results = cursor.fetchall()
             providers = []
             for row in results:
                 if isinstance(row, dict):
-                    providers.append(row)
+                    # For dict results, normalize the keys
+                    normalized = {}
+                    for key, value in row.items():
+                        normalized_key = key.lower()
+                        if normalized_key == "providerid":
+                            normalized["provider_id"] = value
+                        elif normalized_key == "providername":
+                            normalized["provider_name"] = value
+                        elif normalized_key == "clientid":
+                            normalized["client_id"] = value
+                        elif normalized_key == "authorizationurl":
+                            normalized["authorization_url"] = value
+                        elif normalized_key == "tokenurl":
+                            normalized["token_url"] = value
+                        elif normalized_key == "userinfourl":
+                            normalized["user_info_url"] = value
+                        elif normalized_key == "buttontext":
+                            normalized["button_text"] = value
+                        elif normalized_key == "buttoncolor":
+                            normalized["button_color"] = value
+                        elif normalized_key == "buttontextcolor":
+                            normalized["button_text_color"] = value
+                        elif normalized_key == "iconsvg":
+                            normalized["icon_svg"] = value
+                        else:
+                            normalized[normalized_key] = value
+                    providers.append(normalized)
                 else:
+                    # For tuple results, use the existing mapping
                     providers.append({
                         'provider_id': row[0],
                         'provider_name': row[1],
@@ -693,10 +720,10 @@ def list_oidc_providers(cnx, database_type):
                         'authorization_url': row[3],
                         'token_url': row[4],
                         'user_info_url': row[5],
-                        'redirect_url': row[6],
-                        'button_text': row[7],
-                        'scope': row[8],
-                        'button_color': row[9],
+                        'button_text': row[6],
+                        'scope': row[7],
+                        'button_color': row[8],
+                        'button_text_color': row[9],
                         'icon_svg': row[10],
                         'enabled': row[11],
                         'created': row[12],
@@ -704,11 +731,123 @@ def list_oidc_providers(cnx, database_type):
                     })
         else:
             columns = [col[0] for col in cursor.description]
-            providers = [dict(zip(columns, row)) for row in cursor.fetchall()]
-
+            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+            # Normalize MySQL results the same way
+            providers = []
+            for row in results:
+                normalized = {}
+                for key, value in row.items():
+                    normalized_key = key.lower()
+                    if normalized_key == "providerid":
+                        normalized["provider_id"] = value
+                    elif normalized_key == "providername":
+                        normalized["provider_name"] = value
+                    elif normalized_key == "clientid":
+                        normalized["client_id"] = value
+                    elif normalized_key == "authorizationurl":
+                        normalized["authorization_url"] = value
+                    elif normalized_key == "tokenurl":
+                        normalized["token_url"] = value
+                    elif normalized_key == "userinfourl":
+                        normalized["user_info_url"] = value
+                    elif normalized_key == "buttontext":
+                        normalized["button_text"] = value
+                    elif normalized_key == "buttoncolor":
+                        normalized["button_color"] = value
+                    elif normalized_key == "buttontextcolor":
+                        normalized["button_text_color"] = value
+                    elif normalized_key == "iconsvg":
+                        normalized["icon_svg"] = value
+                    else:
+                        normalized[normalized_key] = value
+                providers.append(normalized)
         return providers
     except Exception as e:
         logging.error(f"Error in list_oidc_providers: {str(e)}")
+        raise
+    finally:
+        cursor.close()
+
+def get_public_oidc_providers(cnx, database_type):
+    """Get minimal provider info needed for login buttons."""
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = '''
+                SELECT
+                    ProviderID,
+                    ProviderName,
+                    ClientID,
+                    AuthorizationURL,
+                    Scope,
+                    ButtonColor,
+                    ButtonText,
+                    ButtonTextColor,
+                    IconSVG
+                FROM "OIDCProviders"
+                WHERE Enabled = TRUE
+            '''
+        else:
+            query = '''
+                SELECT
+                    ProviderID,
+                    ProviderName,
+                    ClientID,
+                    AuthorizationURL,
+                    Scope,
+                    ButtonColor,
+                    ButtonText,
+                    ButtonTextColor,
+                    IconSVG
+                FROM OIDCProviders
+                WHERE Enabled = TRUE
+            '''
+        cursor.execute(query)
+        results = cursor.fetchall()
+        providers = []
+
+        for row in results:
+            if isinstance(row, dict):
+                # For dict results, normalize the keys
+                normalized = {}
+                for key, value in row.items():
+                    normalized_key = key.lower()
+                    if normalized_key == "providerid":
+                        normalized["provider_id"] = value
+                    elif normalized_key == "providername":
+                        normalized["provider_name"] = value
+                    elif normalized_key == "clientid":
+                        normalized["client_id"] = value
+                    elif normalized_key == "authorizationurl":
+                        normalized["authorization_url"] = value
+                    elif normalized_key == "buttoncolor":
+                        normalized["button_color"] = value
+                    elif normalized_key == "buttontext":
+                        normalized["button_text"] = value
+                    elif normalized_key == "buttontextcolor":
+                        normalized["button_text_color"] = value
+                    elif normalized_key == "iconsvg":
+                        normalized["icon_svg"] = value
+                    else:
+                        normalized[normalized_key] = value
+                providers.append(normalized)
+            else:
+                # For tuple results, use index-based mapping
+                providers.append({
+                    "provider_id": row[0],
+                    "provider_name": row[1],
+                    "client_id": row[2],
+                    "authorization_url": row[3],
+                    "scope": row[4],
+                    "button_color": row[5],
+                    "button_text": row[6],
+                    "button_text_color": row[7],
+                    "icon_svg": row[8]
+                })
+
+        return providers
+    except Exception as e:
+        logging.error(f"Error in get_public_oidc_providers: {str(e)}")
         raise
     finally:
         cursor.close()
@@ -4593,6 +4732,33 @@ def create_api_key(cnx, database_type, user_id):
     cursor.close()
 
     return api_key
+
+def get_user_api_key(cnx, database_type, user_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = """
+                SELECT APIKey
+                FROM "APIKeys"
+                WHERE UserID = %s
+                ORDER BY Created DESC
+                LIMIT 1
+            """
+        else:
+            query = """
+                SELECT APIKey
+                FROM APIKeys
+                WHERE UserID = %s
+                ORDER BY Created DESC
+                LIMIT 1
+            """
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+        if result:
+            return result[0] if isinstance(result, tuple) else result['apikey']
+        return None
+    finally:
+        cursor.close()
 
 
 def is_same_api_key(cnx, database_type, api_id, api_key):
@@ -9466,5 +9632,133 @@ def get_podcast_notification_status(cnx, database_type, podcast_id, user_id):
         logging.error(f"Error getting podcast notification status: {e}")
         logging.error(f"Result content: {result}")  # Add this for debugging
         return False
+    finally:
+        cursor.close()
+
+# Functions for OIDC
+
+def get_oidc_provider(cnx, database_type, client_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = """
+                SELECT ProviderID, ClientID, ClientSecret, TokenURL, UserInfoURL
+                FROM "OIDCProviders"
+                WHERE ClientID = %s AND Enabled = true
+            """
+        else:
+            query = """
+                SELECT ProviderID, ClientID, ClientSecret, TokenURL, UserInfoURL
+                FROM OIDCProviders
+                WHERE ClientID = %s AND Enabled = true
+            """
+        cursor.execute(query, (client_id,))
+        result = cursor.fetchone()
+        if result:
+            if isinstance(result, dict):
+                return (
+                    result['providerid'],
+                    result['clientid'],
+                    result['clientsecret'],
+                    result['tokenurl'],
+                    result['userinfourl']
+                )
+            return result
+        return None
+    finally:
+        cursor.close()
+
+def get_user_by_email(cnx, database_type, email):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = """
+                SELECT UserID, Email, Username, Fullname, IsAdmin
+                FROM "Users"
+                WHERE Email = %s
+            """
+        else:
+            query = """
+                SELECT UserID, Email, Username, Fullname, IsAdmin
+                FROM Users
+                WHERE Email = %s
+            """
+        cursor.execute(query, (email,))
+        result = cursor.fetchone()
+        if result:
+            if isinstance(result, dict):
+                return (
+                    result['userid'],
+                    result['email'],
+                    result['username'],
+                    result['fullname'],
+                    result['isadmin']
+                )
+            return result
+        return None
+    finally:
+        cursor.close()
+
+def create_oidc_user(cnx, database_type, email, fullname, username):
+    cursor = cnx.cursor()
+    try:
+        # Create a random salt using base64 (which is what Argon2 expects)
+        salt = base64.b64encode(secrets.token_bytes(16)).decode('utf-8')
+        # Create an impossible-to-match hash that's clearly marked as OIDC
+        # Using proper Argon2id format but with an impossible hash
+        hashed_password = f"$argon2id$v=19$m=65536,t=3,p=4${salt}${'X' * 43}_OIDC_ACCOUNT_NO_PASSWORD"
+
+        # Insert user
+        if database_type == "postgresql":
+            query = """
+                INSERT INTO "Users"
+                (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                VALUES (%s, %s, %s, %s, false)
+                RETURNING UserID
+            """
+        else:
+            query = """
+                INSERT INTO Users
+                (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                VALUES (%s, %s, %s, %s, 0)
+            """
+        cursor.execute(query, (fullname, username, email, hashed_password))
+
+        # Get user ID
+        if database_type == "postgresql":
+            result = cursor.fetchone()
+            user_id = result[0] if isinstance(result, tuple) else result['userid']
+        else:
+            user_id = cursor.lastrowid
+
+        # Add default user settings
+        settings_query = """
+            INSERT INTO "UserSettings"
+            (UserID, Theme)
+            VALUES (%s, %s)
+        """ if database_type == "postgresql" else """
+            INSERT INTO UserSettings
+            (UserID, Theme)
+            VALUES (%s, %s)
+        """
+        cursor.execute(settings_query, (user_id, 'Nordic'))
+
+        # Add default user stats
+        stats_query = """
+            INSERT INTO "UserStats"
+            (UserID)
+            VALUES (%s)
+        """ if database_type == "postgresql" else """
+            INSERT INTO UserStats
+            (UserID)
+            VALUES (%s)
+        """
+        cursor.execute(stats_query, (user_id,))
+
+        cnx.commit()
+        return user_id
+    except Exception as e:
+        cnx.rollback()
+        raise
     finally:
         cursor.close()

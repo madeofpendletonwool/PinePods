@@ -52,4 +52,13 @@ class ValkeyClient:
             print(f"Error deleting key from Valkey: {e}")
             return False
 
+    def expire(self, key: str, seconds: int) -> bool:
+        if not self.client:
+            self.connect()
+        try:
+            return bool(self.client.expire(key, seconds)) if self.client else False
+        except RedisError as e:
+            print(f"Error setting expiry in Valkey: {e}")
+            return False
+
 valkey_client = ValkeyClient()

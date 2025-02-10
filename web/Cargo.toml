@@ -46,6 +46,7 @@ web-sys = { version = "0.3.77", features = [
     "Permissions",
     "MediaPositionState",
     "MediaSessionPlaybackState",
+    "Crypto",
 ] }
 log = "0.4.25"
 wasm-bindgen = "0.2.100"
