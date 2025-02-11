@@ -223,8 +223,13 @@ pub fn downloads() -> Html {
         let dispatch = dispatch.clone();
         Callback::from(move |episode_id: i32| {
             dispatch.reduce_mut(move |state| {
-                // Update the state of the selected episodes for deletion
-                state.selected_episodes_for_deletion.insert(episode_id);
+                // If the episode is already selected, remove it
+                // If it's not selected, add it
+                if state.selected_episodes_for_deletion.contains(&episode_id) {
+                    state.selected_episodes_for_deletion.remove(&episode_id);
+                } else {
+                    state.selected_episodes_for_deletion.insert(episode_id);
+                }
             });
         })
     };
@@ -469,10 +474,50 @@ pub fn render_podcast_with_episodes(
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+    let on_podcast_checkbox_change = {
+        let episodes = episodes.clone();
+        let on_checkbox_change = on_checkbox_change.clone();
+        let dispatch_clone = dispatch.clone();
+        let episode_ids: Vec<i32> = episodes.iter().map(|ep| ep.episodeid).collect();
 
+        Callback::from(move |e: Event| {
+            let is_checked = e
+                .target_dyn_into::<web_sys::HtmlInputElement>()
+                .map(|input| input.checked())
+                .unwrap_or(false);
+
+            // Access current state during callback execution
+            let selected_episodes = &dispatch_clone.get().selected_episodes_for_deletion;
+
+            for episode_id in &episode_ids {
+                let is_episode_selected = selected_episodes.contains(episode_id);
+                if is_checked && !is_episode_selected {
+                    // Select episodes that aren't already selected
+                    on_checkbox_change.emit(*episode_id);
+                } else if !is_checked && is_episode_selected {
+                    // Deselect episodes that are currently selected
+                    on_checkbox_change.emit(*episode_id);
+                }
+            }
+        })
+    };
     html! {
         <div key={podcast.podcastid}>
-            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full" onclick={toggle_pod_expanded}>
+            <div class="item-container border-solid border flex mb-4 shadow-md rounded-lg h-full" onclick={toggle_pod_expanded}>
+                {if is_delete_mode {
+                    html! {
+                        <div class="flex items-center pl-4" onclick={|e: MouseEvent| e.stop_propagation()}>
+                            <input
+                                type="checkbox"
+                                class="h-5 w-5 rounded border-2 border-gray-400 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer appearance-none checked:bg-primary checked:border-primary relative
+                                before:content-[''] before:block before:w-full before:h-full before:checked:bg-[url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PScwIDAgMTYgMTYnIGZpbGw9JyNmZmYnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zyc+PHBhdGggZD0nTTEyLjIwNyA0Ljc5M2ExIDEgMCAwIDEgMCAxLjQxNGwtNSA1YTEgMSAwIDAgMS0xLjQxNCAwbC0yLTJhMSAxIDAgMCAxIDEuNDE0LTEuNDE0TDYuNSA5LjA4NmwzLjc5My0zLjc5M2ExIDEgMCAwIDEgMS40MTQgMHonLz48L3N2Zz4=')] before:checked:bg-no-repeat before:checked:bg-center"
+                                onchange={on_podcast_checkbox_change}
+                            />
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }}
                 <div class="flex flex-col w-auto object-cover pl-4">
                     <img
                         src={podcast.artworkurl.clone()}
@@ -613,6 +658,7 @@ pub fn render_podcast_with_episodes(
                                 on_modal_close.clone(),
                                 is_current_episode,
                                 is_playing,
+                                state.clone()
                             )
                         }) }
                     </div>
