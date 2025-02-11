@@ -25,6 +25,7 @@ use crate::requests::search_pods::{
 };
 use gloo_events::EventListener;
 use std::any::Any;
+use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -373,40 +374,40 @@ pub fn search_bar() -> Html {
                                             if *search_index == "podcast_index" { "active" } else { "" })}
                                         onclick={on_dropdown_select_podcast_index}
                                     >
-                                        <img 
-                                            src="/static/assets/logos/podcastindex.svg" 
+                                        <img
+                                            src="/static/assets/logos/podcastindex.svg"
                                             alt="Podcast Index"
                                             class="w-6 h-6"
                                         />
                                     </button>
-                                    
+
                                     <button
                                         type="button"
                                         class={format!("p-2 rounded-lg search-drop-button flex items-center justify-center w-10 h-10 hover:bg-opacity-20 {}",
                                             if *search_index == "itunes" { "active" } else { "" })}
                                         onclick={on_dropdown_select_itunes}
                                     >
-                                        <img 
-                                            src="/static/assets/logos/itunes.png" 
+                                        <img
+                                            src="/static/assets/logos/itunes.png"
                                             alt="iTunes"
                                             class="w-6 h-6"
                                         />
                                     </button>
-                    
+
                                     <button
                                         type="button"
                                         class={format!("p-2 rounded-lg search-drop-button flex items-center justify-center w-10 h-10 hover:bg-opacity-20 {}",
                                             if *search_index == "youtube" { "active" } else { "" })}
                                         onclick={on_dropdown_select_youtube}
                                     >
-                                        <img 
-                                            src="/static/assets/logos/youtube.png" 
+                                        <img
+                                            src="/static/assets/logos/youtube.png"
                                             alt="YouTube"
                                             class="w-6 h-6"
                                         />
                                     </button>
                                 </div>
-                    
+
                                 <input
                                     type="text"
                                     class="search-input block p-2 w-full text-sm rounded-lg mb-4"
@@ -414,7 +415,7 @@ pub fn search_bar() -> Html {
                                     value={(*podcast_value).clone()}
                                     oninput={on_input_change.clone()}
                                 />
-                    
+
                                 <button
                                     class="search-btn w-full font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
                                     onclick={on_submit_click.clone()}
@@ -1107,31 +1108,33 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             Ok(_) => {}
                             Err(e) => {
                                 post_state.reduce_mut(|state| {
-                                    state.error_message =
-                                        Some(format!("Failed to download episode audio: {:?}", e.clone()))
+                                    state.error_message = Some(format!(
+                                        "Failed to download episode audio: {:?}",
+                                        e.clone()
+                                    ))
                                 });
-                                web_sys::console::log_1(
-                                    &format!("audio fail: {:?}", e).into(),
-                                );
+                                web_sys::console::log_1(&format!("audio fail: {:?}", e).into());
                             }
                         }
 
                         // Download artwork
                         if let Err(e) = download_file(artwork_url, artwork_filename.clone()).await {
                             post_state.reduce_mut(|state| {
-                                state.error_message =
-                                    Some(format!("Failed to download episode artwork: {:?}", e.clone()))
+                                state.error_message = Some(format!(
+                                    "Failed to download episode artwork: {:?}",
+                                    e.clone()
+                                ))
                             });
-                            web_sys::console::log_1(
-                                &format!("art fail: {:?}", e).into(),
-                            );
+                            web_sys::console::log_1(&format!("art fail: {:?}", e).into());
                         }
 
                         // Update local JSON database
                         if let Err(e) = update_local_database(episode_info).await {
                             post_state.reduce_mut(|state| {
-                                state.error_message =
-                                    Some(format!("Failed to update local database: {:?}", e.clone()))
+                                state.error_message = Some(format!(
+                                    "Failed to update local database: {:?}",
+                                    e.clone()
+                                ))
                             });
                             web_sys::console::log_1(
                                 &format!("Unable to parse Podcasts: {:?}", e).into(),
@@ -2254,6 +2257,7 @@ pub fn download_episode_item(
     on_modal_close: Callback<MouseEvent>,
     is_current_episode: bool,
     is_playing: bool,
+    state: Rc<AppState>,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -2285,6 +2289,7 @@ pub fn download_episode_item(
                         <div class="flex items-center pl-4">
                             <input
                                 type="checkbox"
+                                checked={state.selected_episodes_for_deletion.contains(&episode.get_episode_id(Some(0)))}
                                 class="h-5 w-5 rounded border-2 border-gray-400 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer appearance-none checked:bg-primary checked:border-primary relative
                                 before:content-[''] before:block before:w-full before:h-full before:checked:bg-[url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PScwIDAgMTYgMTYnIGZpbGw9JyNmZmYnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zyc+PHBhdGggZD0nTTEyLjIwNyA0Ljc5M2ExIDEgMCAwIDEgMCAxLjQxNGwtNSA1YTEgMSAwIDAgMS0xLjQxNCAwbC0yLTJhMSAxIDAgMCAxIDEuNDE0LTEuNDE0TDYuNSA5LjA4NmwzLjc5My0zLjc5M2ExIDEgMCAwIDEgMS40MTQgMHonLz48L3N2Zz4=')] before:checked:bg-no-repeat before:checked:bg-center"
                                 onchange={on_checkbox_change.reform(move |_| checkbox_ep)}

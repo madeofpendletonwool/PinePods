@@ -110,39 +110,41 @@ pub async fn start_local_file_server(file_path: &str) -> Result<String, JsValue>
 pub async fn update_local_database(episode_info: EpisodeInfo) -> Result<(), JsValue> {
     // Get window object
     let window = web_sys::window().ok_or_else(|| JsValue::from_str("No window object found"))?;
-    
+
     // Debug: Print the episode info before serialization
-    web_sys::console::log_1(&format!("Episode info before serialization: {:?}", episode_info).into());
-    
+    web_sys::console::log_1(
+        &format!("Episode info before serialization: {:?}", episode_info).into(),
+    );
+
     // Check if TAURI exists
     let tauri = match js_sys::Reflect::has(&window, &JsValue::from_str("__TAURI__"))? {
         true => js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"))?,
-        false => return Ok(()), 
+        false => return Ok(()),
     };
-    
+
     let core = js_sys::Reflect::get(&tauri, &JsValue::from_str("core"))?;
     let invoke = js_sys::Reflect::get(&core, &JsValue::from_str("invoke"))?;
     let invoke_fn = invoke
         .dyn_ref::<js_sys::Function>()
         .ok_or_else(|| JsValue::from_str("invoke is not a function"))?;
-        
+
     // Create arguments object with episodeInfo field
     let args = js_sys::Object::new();
     let episode_info_value = serde_wasm_bindgen::to_value(&episode_info)?;
 
     // Debug: Print the serialized value
     web_sys::console::log_1(&format!("Serialized value: {:?}", episode_info_value).into());
-    
+
     js_sys::Reflect::set(
         &args,
         &JsValue::from_str("episodeInfo"),
         &episode_info_value,
     )?;
-    
+
     let command = JsValue::from_str("update_local_db");
     let promise = invoke_fn.call2(&core, &command, &args)?;
     wasm_bindgen_futures::JsFuture::from(promise.dyn_into::<js_sys::Promise>()?).await?;
-    
+
     Ok(())
 }
 
@@ -392,7 +394,6 @@ pub fn downloads() -> Html {
             let dispatch = effect_dispatch.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
-
                 // First ensure we have a valid podcast feed state, even if empty
                 dispatch.reduce_mut(move |state| {
                     state.podcast_feed_return = Some(PodcastResponse {
@@ -403,7 +404,9 @@ pub fn downloads() -> Html {
                 // Then try to fetch and update
                 match fetch_local_podcasts().await {
                     Ok(fetched_podcasts) => {
-                        web_sys::console::log_1(&format!("Fetched podcasts: {:?}", fetched_podcasts).into());
+                        web_sys::console::log_1(
+                            &format!("Fetched podcasts: {:?}", fetched_podcasts).into(),
+                        );
                         dispatch.reduce_mut(move |state| {
                             state.podcast_feed_return = Some(PodcastResponse {
                                 pods: Some(fetched_podcasts),
@@ -479,28 +482,32 @@ pub fn downloads() -> Html {
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
-        
+
         Callback::from(move |_: MouseEvent| {
             let dispatch_cloned = dispatch.clone();
             let page_state_cloned = page_state.clone();
             let server_name_cloned = server_name.clone().unwrap();
             let api_key_cloned = api_key.clone().unwrap();
             let user_id_cloned = user_id.unwrap();
-            
+
             dispatch.reduce_mut(move |state| {
                 let selected_episodes = state.selected_episodes_for_deletion.clone();
                 state.selected_episodes_for_deletion.clear();
-    
+
                 if let Some(downloaded_eps) = &state.downloaded_episodes {
                     for &episode_id in &selected_episodes {
                         // Find the episode to get its is_youtube value
-                        if let Some(episode) = downloaded_eps.episodes.iter().find(|ep| ep.episodeid == episode_id) {
+                        if let Some(episode) = downloaded_eps
+                            .episodes
+                            .iter()
+                            .find(|ep| ep.episodeid == episode_id)
+                        {
                             let request = DownloadEpisodeRequest {
                                 episode_id,
                                 user_id: user_id_cloned,
-                                is_youtube: episode.is_youtube,  // Use the actual is_youtube value from the episode
+                                is_youtube: episode.is_youtube, // Use the actual is_youtube value from the episode
                             };
-                            
+
                             let server_name_cloned = server_name_cloned.clone();
                             let api_key_cloned = api_key_cloned.clone();
                             let future = async move {
@@ -509,17 +516,20 @@ pub fn downloads() -> Html {
                                     &api_key_cloned,
                                     &request,
                                 )
-                                .await {
+                                .await
+                                {
                                     Ok(success_message) => Some((success_message, episode_id)),
                                     Err(_) => None,
                                 }
                             };
-    
+
                             let dispatch_for_future = dispatch_cloned.clone();
                             wasm_bindgen_futures::spawn_local(async move {
                                 if let Some((success_message, episode_id)) = future.await {
                                     dispatch_for_future.reduce_mut(|state| {
-                                        if let Some(downloaded_episodes) = &mut state.downloaded_episodes {
+                                        if let Some(downloaded_episodes) =
+                                            &mut state.downloaded_episodes
+                                        {
                                             downloaded_episodes
                                                 .episodes
                                                 .retain(|ep| ep.episodeid != episode_id);
@@ -779,8 +789,50 @@ pub fn render_podcast_with_episodes(
 ) -> Html {
     let history_clone = BrowserHistory::new();
 
+    let on_podcast_checkbox_change = {
+        let episodes = episodes.clone();
+        let on_checkbox_change = on_checkbox_change.clone();
+        let dispatch_clone = dispatch.clone();
+        let episode_ids: Vec<i32> = episodes.iter().map(|ep| ep.episodeid).collect();
+
+        Callback::from(move |e: Event| {
+            let is_checked = e
+                .target_dyn_into::<web_sys::HtmlInputElement>()
+                .map(|input| input.checked())
+                .unwrap_or(false);
+
+            // Access current state during callback execution
+            let selected_episodes = &dispatch_clone.get().selected_episodes_for_deletion;
+
+            for episode_id in &episode_ids {
+                let is_episode_selected = selected_episodes.contains(episode_id);
+                if is_checked && !is_episode_selected {
+                    // Select episodes that aren't already selected
+                    on_checkbox_change.emit(*episode_id);
+                } else if !is_checked && is_episode_selected {
+                    // Deselect episodes that are currently selected
+                    on_checkbox_change.emit(*episode_id);
+                }
+            }
+        })
+    };
+
     html! {
         <div key={podcast.podcastid}>
+            {if is_delete_mode {
+                html! {
+                    <div class="flex items-center pl-4" onclick={|e: MouseEvent| e.stop_propagation()}>
+                        <input
+                            type="checkbox"
+                            class="h-5 w-5 rounded border-2 border-gray-400 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer appearance-none checked:bg-primary checked:border-primary relative
+                            before:content-[''] before:block before:w-full before:h-full before:checked:bg-[url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PScwIDAgMTYgMTYnIGZpbGw9JyNmZmYnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zyc+PHBhdGggZD0nTTEyLjIwNyA0Ljc5M2ExIDEgMCAwIDEgMCAxLjQxNGwtNSA1YTEgMSAwIDAgMS0xLjQxNCAwbC0yLTJhMSAxIDAgMCAxIDEuNDE0LTEuNDE0TDYuNSA5LjA4NmwzLjc5My0zLjc5M2ExIDEgMCAwIDEgMS40MTQgMHonLz48L3N2Zz4=')] before:checked:bg-no-repeat before:checked:bg-center"
+                            onchange={on_podcast_checkbox_change}
+                        />
+                    </div>
+                }
+            } else {
+                html! {}
+            }}
             <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full" onclick={toggle_expanded}>
                 <div class="flex flex-col w-auto object-cover pl-4">
                     <img
