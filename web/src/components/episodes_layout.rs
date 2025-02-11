@@ -2201,7 +2201,7 @@ pub fn episode_layout() -> Html {
                                                         episode_search_term.set(String::new());
                                                     })
                                                 }
-                                                class="filter-button font-medium py-2 px-2 rounded inline-flex items-center"
+                                                class="filter-button h-14 font-medium px-2 rounded inline-flex items-center"
                                             >
                                                 <i class="ph ph-broom text-2xl"></i>
                                                 <span class="text-lg ml-2 hidden md:inline">{"Clear"}</span>
@@ -2221,8 +2221,8 @@ pub fn episode_layout() -> Html {
                                                 }
                                                 class={classes!(
                                                     "filter-button",
+                                                    "h-14",
                                                     "font-medium",
-                                                    "py-2",
                                                     "px-2",
                                                     "rounded",
                                                     "inline-flex",
@@ -2248,8 +2248,8 @@ pub fn episode_layout() -> Html {
                                                 }
                                                 class={classes!(
                                                     "filter-button",
+                                                    "h-14",
                                                     "font-medium",
-                                                    "py-2",
                                                     "px-2",
                                                     "rounded",
                                                     "inline-flex",
