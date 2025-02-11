@@ -212,7 +212,7 @@ pub fn episode_layout() -> Html {
     let page_state = use_state(|| PageState::Hidden);
     let episode_search_term = use_state(|| String::new());
     let episode_sort_direction = use_state(|| Some(EpisodeSortDirection::NewestFirst)); // Default to newest first
-    let show_completed = use_state(|| false);
+    let completed_filter_state = use_state(|| CompletedFilter::ShowAll);
     let show_in_progress = use_state(|| false);
     let notification_status = use_state(|| false);
 
@@ -1745,12 +1745,19 @@ pub fn episode_layout() -> Html {
         }
     };
 
+    #[derive(Clone, PartialEq)]
+    enum CompletedFilter {
+        ShowAll,
+        ShowOnly,
+        Hide,
+    }
+
     let filtered_episodes = use_memo(
         (
             podcast_feed_results.clone(),
             episode_search_term.clone(),
             episode_sort_direction.clone(),
-            show_completed.clone(),
+            completed_filter_state.clone(), // Changed from show_completed
             show_in_progress.clone(),
         ),
         |(episodes, search, sort_dir, show_completed, show_in_progress)| {
@@ -1771,13 +1778,15 @@ pub fn episode_layout() -> Html {
                         };
 
                         // Status filter
-                        let matches_status = if **show_completed {
-                            episode.completed.unwrap_or(false)
-                        } else if **show_in_progress {
+                        let matches_status = if **show_in_progress {
                             !episode.completed.unwrap_or(false)
                                 && episode.listen_duration.unwrap_or(0) > 0
                         } else {
-                            true // Show all if no status filter is active
+                            match *completed_filter_state {
+                                CompletedFilter::ShowOnly => episode.completed.unwrap_or(false),
+                                CompletedFilter::Hide => !episode.completed.unwrap_or(false),
+                                CompletedFilter::ShowAll => true,
+                            }
                         };
 
                         matches_search && matches_status
@@ -1814,6 +1823,16 @@ pub fn episode_layout() -> Html {
 
     let api_key_rss = api_key.clone();
     let podcast_id_rss = podcast_id.clone();
+
+    let (completed_icon, completed_text, completed_title) = match *completed_filter_state {
+        CompletedFilter::ShowOnly => (
+            "ph-check-circle",
+            "Show Only",
+            "Showing only completed episodes",
+        ),
+        CompletedFilter::Hide => ("ph-x-circle", "Hide", "Hiding completed episodes"),
+        CompletedFilter::ShowAll => ("ph-circle", "All", "Showing all episodes"),
+    };
 
     html! {
         <div class="main-container">
@@ -2192,11 +2211,11 @@ pub fn episode_layout() -> Html {
                                             // Clear filter button
                                             <button
                                                 onclick={
-                                                    let show_completed = show_completed.clone();
                                                     let show_in_progress = show_in_progress.clone();
                                                     let episode_search_term = episode_search_term.clone();
+                                                    let completed_filter_state = completed_filter_state.clone();
                                                     Callback::from(move |_| {
-                                                        show_completed.set(false);
+                                                        completed_filter_state.set(CompletedFilter::ShowAll);
                                                         show_in_progress.set(false);
                                                         episode_search_term.set(String::new());
                                                     })
@@ -2209,16 +2228,17 @@ pub fn episode_layout() -> Html {
 
                                             // Completed filter button
                                             <button
-                                                onclick={let show_completed = show_completed.clone();
-                                                    let show_in_progress = show_in_progress.clone();
+                                                onclick={
+                                                    let completed_filter_state = completed_filter_state.clone();
                                                     Callback::from(move |_| {
-                                                        show_completed.set(!*show_completed);
-                                                        // Ensure only one filter is active at a time
-                                                        if !*show_completed {
-                                                            show_in_progress.set(false);
-                                                        }
+                                                        completed_filter_state.set(match *completed_filter_state {
+                                                            CompletedFilter::ShowAll => CompletedFilter::ShowOnly,
+                                                            CompletedFilter::ShowOnly => CompletedFilter::Hide,
+                                                            CompletedFilter::Hide => CompletedFilter::ShowAll,
+                                                        });
                                                     })
                                                 }
+                                                title={completed_title}
                                                 class={classes!(
                                                     "filter-button",
                                                     "h-14",
@@ -2227,23 +2247,28 @@ pub fn episode_layout() -> Html {
                                                     "rounded",
                                                     "inline-flex",
                                                     "items-center",
-                                                    if *show_completed { "bg-accent-color" } else { "" }
+                                                    match *completed_filter_state {
+                                                        CompletedFilter::ShowOnly => "bg-accent-color",
+                                                        CompletedFilter::Hide => "bg-alert-color",
+                                                        CompletedFilter::ShowAll => ""
+                                                    }
                                                 )}
                                             >
-                                                <i class="ph ph-check-circle text-2xl"></i>
-                                                <span class="text-lg ml-2 hidden md:inline">{"Completed"}</span>
+                                                <i class={classes!("ph", completed_icon, "text-2xl")}></i>
+                                                <span class="text-lg ml-2 hidden md:inline">{completed_text}</span>
                                             </button>
 
                                             // In Progress filter button
                                             <button
-                                                onclick={let show_in_progress = show_in_progress.clone();
-                                                    let show_completed = show_completed.clone();
+                                                onclick={
+                                                    let show_in_progress = show_in_progress.clone();
+                                                    let completed_filter_state = completed_filter_state.clone();
                                                     Callback::from(move |_| {
                                                         show_in_progress.set(!*show_in_progress);
                                                         // Ensure only one filter is active at a time
-                                                        if !*show_in_progress {
-                                                            show_completed.set(false);
-                                                        }
+                                                        // if !*show_in_progress {
+                                                        //     completed_filter_state.set(CompletedFilter::ShowAll);
+                                                        // }
                                                     })
                                                 }
                                                 class={classes!(
