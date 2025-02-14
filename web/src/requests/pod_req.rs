@@ -2217,9 +2217,10 @@ pub async fn connect_to_episode_websocket(
     let clean_server_name = server_name
         .trim_start_matches("http://")
         .trim_start_matches("https://");
+    let ws_protocol = if server_name.starts_with("https://") { "wss://" } else { "ws://" };
     let url = format!(
-        "ws://{}/ws/api/data/episodes/{}?api_key={}&nextcloud_refresh={}",
-        clean_server_name, user_id, api_key, nextcloud_refresh
+        "{}{}/ws/api/data/episodes/{}?api_key={}&nextcloud_refresh={}",
+        ws_protocol, clean_server_name, user_id, api_key, nextcloud_refresh
     );
 
     let ws_result = WebSocket::open(&url);
