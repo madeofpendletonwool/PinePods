@@ -72,43 +72,44 @@ pub fn app_drawer() -> Html {
     let on_refresh_click = {
         let server_name = server_name.clone();
         let user_id = user_id.clone();
+        let api_key = api_key.clone();
+        let dispatch = _dispatch.clone();
 
+        // Use Callback<MouseEvent> instead of just MouseEvent
         Callback::from(move |event: MouseEvent| {
+            event.prevent_default();
             event.stop_propagation();
 
             let server_name_call = server_name.clone();
             let user_id_call = user_id.clone();
-            let api_key = api_key.clone();
-            let dispatch = _dispatch.clone();
-            dispatch.reduce_mut(|state| {
+            let api_key_call = api_key.clone();
+            let dispatch_clone = dispatch.clone();
+
+            // Set refreshing state before starting
+            dispatch_clone.reduce_mut(|state| {
                 state.is_refreshing = Some(true);
-                state.clone() // Return the modified state
+                state.clone()
             });
 
             spawn_local(async move {
+                web_sys::console::log_1(&"Starting refresh...".into());
+
                 if let Err(e) = connect_to_episode_websocket(
                     &server_name_call.unwrap(),
                     &user_id_call.unwrap(),
-                    &api_key.unwrap().unwrap(),
+                    &api_key_call.unwrap().unwrap(),
                     false,
-                    dispatch.clone(),
+                    dispatch_clone.clone(),
                 )
                 .await
                 {
-                    web_sys::console::log_1(
-                        &format!("Failed to connect to WebSocket: {:?}", e).into(),
-                    );
-                } else {
-                    web_sys::console::log_1(
-                        &"WebSocket connection established and refresh initiated.".into(),
-                    );
+                    web_sys::console::log_1(&format!("Refresh failed: {:?}", e).into());
                 }
 
-                // Stop the loading animation after the WebSocket operation is complete
-                // Stop the refresh process
-                dispatch.reduce_mut(|state| {
+                // Always reset the refreshing state
+                dispatch_clone.reduce_mut(|state| {
                     state.is_refreshing = Some(false);
-                    state.clone() // Return the modified state
+                    state.clone()
                 });
             });
         })
@@ -330,24 +331,28 @@ pub fn app_drawer() -> Html {
                 }}
                 { if show_refresh_button {
                     html! {
-                            <button onclick={on_refresh_click} class="rounded-lg cursor-pointer">
-                                <div class="flex flex-col items-center">
-                                    {
-                                        if state.is_refreshing.unwrap_or(false) {
-                                            html! {
-                                                <div class="flex flex-col items-center">
-                                                    <i class="ph ph-hourglass-medium md:text-4xl text-4xl"></i>
-                                                </div>
-                                            }
-                                        } else {
-                                            html! {
-                                                <i class="ph ph-arrows-clockwise md:text-4xl text-4xl"></i>
-                                            }
+                        <button
+                            onclick={on_refresh_click.clone()}
+                            onmouseup={on_refresh_click.clone()}  // Add this for better mobile handling
+                            class="rounded-lg cursor-pointer touch-manipulation"  // Add touch-manipulation
+                        >
+                            <div class="flex flex-col items-center">
+                                {
+                                    if state.is_refreshing.unwrap_or(false) {
+                                        html! {
+                                            <div class="flex flex-col items-center">
+                                                <i class="ph ph-hourglass-medium md:text-4xl text-4xl"></i>
+                                            </div>
+                                        }
+                                    } else {
+                                        html! {
+                                            <i class="ph ph-arrows-clockwise md:text-4xl text-4xl"></i>
                                         }
                                     }
-                                </div>
-                            </button>
-                        }
+                                }
+                            </div>
+                        </button>
+                    }
                 } else {
                     html! {}
                 }}
