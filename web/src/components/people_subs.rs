@@ -47,38 +47,6 @@ pub fn subscribed_people() -> Html {
         active_modal_clone.set(None);
     });
 
-    use_effect_with((), move |_| {
-        // Check if the page reload action has already occurred to prevent redundant execution
-        if session_state.reload_occured.unwrap_or(false) {
-            // Logic for the case where reload has already been processed
-        } else {
-            // Normal effect logic for handling page reload
-            let window = web_sys::window().expect("no global `window` exists");
-            let performance = window.performance().expect("should have performance");
-            let navigation_type = performance.navigation().type_();
-
-            if navigation_type == 1 {
-                // 1 stands for reload
-                let session_storage = window.session_storage().unwrap().unwrap();
-                session_storage
-                    .set_item("isAuthenticated", "false")
-                    .unwrap();
-            }
-
-            // Always check authentication status
-            let current_route = window.location().href().unwrap_or_default();
-            use_check_authentication(session_dispatch.clone(), &current_route);
-
-            // Mark that the page reload handling has occurred
-            session_dispatch.reduce_mut(|state| {
-                state.reload_occured = Some(true);
-                state.clone() // Return the modified state
-            });
-        }
-
-        || ()
-    });
-
     // let error = use_state(|| None);
     let (post_state, post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();

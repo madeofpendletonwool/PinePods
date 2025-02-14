@@ -243,19 +243,31 @@ pub(crate) fn use_check_authentication(_dispatch: Dispatch<AppState>, current_ro
     let window = web_sys::window().expect("no global `window` exists");
     let session_storage = window.session_storage().unwrap().unwrap();
     let is_authenticated = session_storage.get_item("isAuthenticated").unwrap_or(None);
-    session_storage
-        .set_item("requested_route", &current_route)
-        .unwrap();
+
+    // Check if we're at root and user is authenticated
+    if current_route.ends_with("/") && is_authenticated == Some("true".to_string()) {
+        let history = BrowserHistory::new();
+        history.push("/home");
+        return;
+    }
+
+    // Store the requested route (if not root)
+    if !current_route.ends_with("/") {
+        session_storage
+            .set_item("requested_route", &current_route)
+            .unwrap();
+    }
+
     // If not authenticated or no information, redirect to login
     if is_authenticated != Some("true".to_string()) {
         session_storage
             .set_item("isAuthenticated", "false")
             .unwrap();
         let history = BrowserHistory::new();
-        // let last_known_route = session_storage.get_item("requested_route").unwrap_or(Some(current_route.to_string())).unwrap_or_default();
-        history.push("/");
-    } else {
-        // Already authenticated, continue as normal
+        // Redirect to root only if we're not already there
+        if !current_route.ends_with("/") {
+            history.push("/");
+        }
     }
 }
 

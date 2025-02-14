@@ -1,11 +1,31 @@
 use super::routes::Route;
 use crate::components::context::AppState;
+use crate::components::navigation::use_back_button;
 use crate::requests::pod_req::connect_to_episode_websocket;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use yew::prelude::*;
 use yew_router::prelude::Link;
 use yewdux::use_store;
+
+#[function_component(BackButton)]
+pub fn back_button() -> Html {
+    let on_back = use_back_button();
+
+    html! {
+        <button
+            onclick={Callback::from(move |e: MouseEvent| {
+                e.stop_propagation();  // Stop event from bubbling up
+                on_back.emit(e);
+            })}
+            class="back-button flex items-center space-x-2 px-4 py-2 rounded-lg"
+        >
+            <div class="flex flex-col items-center">
+                <i class="ph ph-arrow-bend-up-left md:text-4xl text-4xl"></i>
+            </div>
+        </button>
+    }
+}
 
 #[allow(non_camel_case_types)]
 #[function_component(App_drawer)]
@@ -102,6 +122,23 @@ pub fn app_drawer() -> Html {
 
     let show_home_button = current_path != "/home";
     let show_refresh_button = current_path == "/home";
+    let show_back_button = ![
+        "/login",
+        "/home",
+        "/queue",
+        "/saved",
+        "/downloads",
+        "/people-subs",
+        "/podcasts",
+        "/user_stats",
+        "/settings",
+        "/search",
+        "/local_downloads",
+        "/people_subs",
+        "/feed",
+    ]
+    .iter()
+    .any(|&path| current_path == path);
 
     #[cfg(not(feature = "server_build"))]
     let local_download_link = html! {
@@ -280,6 +317,13 @@ pub fn app_drawer() -> Html {
                                 <i class="ph ph-house md:text-4xl text-4xl"></i>
                             </div>
                         </Link<Route>>
+                    }
+                } else {
+                    html! {}
+                }}
+                { if show_back_button {
+                    html! {
+                        <BackButton />
                     }
                 } else {
                     html! {}
