@@ -2262,54 +2262,6 @@ def delete_episode(database_type, cnx, episode_id, user_id, is_youtube=False):
     finally:
         cursor.close()
 
-def return_selected_episode(database_type, cnx, user_id, title, url):
-    if database_type == "postgresql":
-        cnx.row_factory = dict_row
-        cursor = cnx.cursor()
-    else:  # Assuming MariaDB/MySQL if not PostgreSQL
-        cursor = cnx.cursor(dictionary=True)
-
-    if database_type == "postgresql":
-        query = (
-            'SELECT "Episodes".EpisodeTitle, "Episodes".EpisodeDescription, "Episodes".EpisodeURL, '
-            '"Episodes".EpisodeArtwork, "Episodes".EpisodePubDate, "Episodes".EpisodeDuration, '
-            '"Podcasts".PodcastName, "Podcasts".WebsiteURL, "Podcasts".FeedURL '
-            'FROM "Episodes" '
-            'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-            'WHERE "Episodes".EpisodeTitle = %s AND "Episodes".EpisodeURL = %s'
-        )
-    else:  # MySQL or MariaDB
-        query = (
-            "SELECT Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeURL, "
-            "Episodes.EpisodeArtwork, Episodes.EpisodePubDate, Episodes.EpisodeDuration, "
-            "Podcasts.PodcastName, Podcasts.WebsiteURL, Podcasts.FeedURL "
-            "FROM Episodes "
-            "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-            "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s"
-        )
-
-    cursor.execute(query, (title, url))
-    result = cursor.fetchall()
-
-    cursor.close()
-
-    episodes = []
-    for row in result:
-        episode = {
-            'EpisodeTitle': row['EpisodeTitle'],
-            'EpisodeDescription': row['EpisodeDescription'],
-            'EpisodeURL': row['EpisodeURL'],
-            'EpisodeArtwork': row['EpisodeArtwork'],
-            'EpisodePubDate': row['EpisodePubDate'],
-            'EpisodeDuration': row['EpisodeDuration'],
-            'PodcastName': row['PodcastName'],
-            'WebsiteURL': row['WebsiteURL']
-        }
-        episodes.append(episode)
-
-    return episodes
-
-
 def return_pods(database_type, cnx, user_id):
     if database_type == "postgresql":
         cnx.row_factory = dict_row
@@ -6571,106 +6523,6 @@ def check_youtube_channel(cnx, database_type, user_id, channel_name, channel_url
         if cursor:
             cursor.close()
 
-
-def check_saved_session(cnx, database_type, session_value):
-    cursor = cnx.cursor()
-
-    if database_type == "postgresql":
-        query = 'SELECT UserID, expire FROM "Sessions" WHERE value = %s'
-    else:  # MySQL or MariaDB
-        query = "SELECT UserID, expire FROM Sessions WHERE value = %s"
-
-    cursor.execute(query, (session_value,))
-    result = cursor.fetchone()
-
-    if result:
-        user_id, session_expire = result
-        current_time = datetime.datetime.now()
-        if current_time < session_expire:
-            cursor.close()
-            return user_id
-
-    cursor.close()
-    return False
-
-
-
-# def check_saved_web_session(cnx, session_value):
-#     cursor = cnx.cursor()
-
-#     # Get the session with the matching value and expiration time
-#     cursor.execute("""
-#     SELECT UserID, expire FROM Sessions WHERE value = %s;
-#     """, (session_value,))
-
-#     result = cursor.fetchone()
-
-#     if result:
-#         user_id, session_expire = result
-#         current_time = datetime.datetime.now()
-#         if current_time < session_expire:
-#             return user_id
-
-#     return False
-#     cursor.close()
-#     # cnx.close()
-
-
-def create_session(cnx, database_type, user_id, session_value):
-    expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
-
-    cursor = cnx.cursor()
-    if database_type == "postgresql":
-        query = 'INSERT INTO "Sessions" (UserID, value, expire) VALUES (%s, %s, %s)'
-    else:  # MySQL or MariaDB
-        query = "INSERT INTO Sessions (UserID, value, expire) VALUES (%s, %s, %s)"
-
-    cursor.execute(query, (user_id, session_value, expire_date))
-    cnx.commit()
-    cursor.close()
-
-
-
-# def create_web_session(cnx, user_id, session_value):
-#     # Calculate the expiration date 30 days in the future
-#     expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
-
-#     # Insert the new session into the Sessions table
-#     cursor = cnx.cursor()
-#     cursor.execute("""
-#     INSERT INTO Sessions (UserID, value, expire) VALUES (%s, %s, %s);
-#     """, (user_id, session_value, expire_date))
-
-#     cnx.commit()
-#     cursor.close()
-#     # cnx.close()
-
-
-def clean_expired_sessions(cnx, database_type):
-    current_time = datetime.datetime.now()
-    cursor = cnx.cursor()
-
-    if database_type == "postgresql":
-        query = 'DELETE FROM "Sessions" WHERE "expire" < %s'
-    else:  # MySQL or MariaDB
-        query = "DELETE FROM Sessions WHERE expire < %s"
-
-    cursor.execute(query, (current_time,))
-    cnx.commit()
-    cursor.close()
-
-
-
-# def user_exists(cnx, username):
-#     cursor = cnx.cursor()
-#     query = "SELECT COUNT(*) FROM Users WHERE Username = %s"
-#     cursor.execute(query, (username,))
-#     count = cursor.fetchone()[0]
-#     cursor.close()
-#     # cnx.close()
-#     return count > 0
-
-
 def reset_password_create_code(cnx, database_type, user_email):
     reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     cursor = cnx.cursor()
@@ -6841,46 +6693,6 @@ def reset_password_prompt(cnx, database_type, user_email, hashed_pw):
     # cnx.close()
 
     return "Password Reset Successfully"
-
-
-def clear_guest_data(cnx, database_type):
-    cursor = cnx.cursor()
-
-    # First delete all the episodes associated with the guest user
-    if database_type == "postgresql":
-        delete_episodes_query = """
-            DELETE Episodes
-            FROM "Episodes"
-            INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
-            WHERE Podcasts.UserID = 1
-        """
-    else:
-        delete_episodes_query = """
-            DELETE Episodes
-            FROM Episodes
-            INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
-            WHERE Podcasts.UserID = 1
-        """
-    cursor.execute(delete_episodes_query)
-
-    # Then delete all the podcasts associated with the guest user
-    if database_type == "postgresql":
-        delete_podcasts_query = """
-            DELETE FROM "Podcasts"
-            WHERE UserID = 1
-        """
-    else:
-        delete_podcasts_query = """
-            DELETE FROM Podcasts
-            WHERE UserID = 1
-        """
-    cursor.execute(delete_podcasts_query)
-
-    # Commit the transaction
-    cnx.commit()
-    cursor.close()
-
-    return "Guest user data cleared successfully"
 
 def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode=False, is_youtube=False):
     if database_type == "postgresql":
@@ -7383,66 +7195,6 @@ def delete_mfa_secret(database_type, cnx, user_id):
         print("Error deleting MFA secret:", e)
         return False
 
-
-
-def get_all_episodes(database_type, cnx, pod_feed):
-    if database_type == "postgresql":
-        from psycopg.rows import dict_row
-        cnx.row_factory = dict_row
-        cursor = cnx.cursor()
-        query = (
-            'SELECT * FROM "Episodes" INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID WHERE "Podcasts".FeedURL = %s'
-        )
-    else:  # MySQL or MariaDB
-        cursor = cnx.cursor(dictionary=True)
-        query = (
-            "SELECT * FROM Episodes INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID WHERE Podcasts.FeedURL = %s"
-        )
-
-    try:
-        cursor.execute(query, (pod_feed,))
-        result = cursor.fetchall()
-        cursor.close()
-
-        return result
-    except Exception as e:
-        print("Error retrieving Podcast Episodes:", e)
-        return None
-
-
-
-def remove_episode_history(database_type, cnx, url, title, user_id):
-    if database_type == "postgresql":
-        from psycopg.rows import dict_row
-        cnx.row_factory = dict_row
-        cursor = cnx.cursor()
-        query = (
-            'DELETE FROM "UserEpisodeHistory" '
-            'WHERE UserID = %s AND EpisodeID IN ('
-            'SELECT EpisodeID FROM "Episodes" '
-            'WHERE EpisodeURL = %s AND EpisodeTitle = %s)'
-        )
-    else:  # MySQL or MariaDB
-        cursor = cnx.cursor(dictionary=True)
-        query = (
-            "DELETE FROM UserEpisodeHistory "
-            "WHERE UserID = %s AND EpisodeID IN ("
-            "SELECT EpisodeID FROM Episodes "
-            "WHERE EpisodeURL = %s AND EpisodeTitle = %s)"
-        )
-
-    try:
-        cursor.execute(query, (user_id, url, title))
-        cnx.commit()
-        cursor.close()
-
-        return True
-    except Exception as e:
-        print("Error removing episode from history:", e)
-        return False
-
-
-
 def setup_timezone_info(database_type, cnx, user_id, timezone, hour_pref, date_format):
     if database_type == "postgresql":
         cursor = cnx.cursor()
@@ -7571,58 +7323,6 @@ def delete_selected_episodes(cnx, database_type, selected_episodes, user_id):
     cursor.close()
 
     return "success"
-
-
-
-def delete_selected_podcasts(cnx, database_type, delete_list, user_id):
-    cursor = cnx.cursor()
-    for podcast_id in delete_list:
-        # Get the download IDs and locations from the DownloadedEpisodes table
-        query = (
-            'SELECT "DownloadedEpisodes".DownloadID, "DownloadedEpisodes".DownloadedLocation '
-            'FROM "DownloadedEpisodes" '
-            'INNER JOIN "Episodes" ON "DownloadedEpisodes".EpisodeID = "Episodes".EpisodeID '
-            'WHERE "Episodes".PodcastID = %s AND "DownloadedEpisodes".UserID = %s' if database_type == "postgresql" else
-            "SELECT DownloadedEpisodes.DownloadID, DownloadedEpisodes.DownloadedLocation "
-            "FROM DownloadedEpisodes "
-            "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
-            "WHERE Episodes.PodcastID = %s AND DownloadedEpisodes.UserID = %s"
-        )
-        cursor.execute(query, (podcast_id, user_id))
-
-        results = cursor.fetchall()
-
-        if not results:
-            print(f"No matching downloads found for podcast ID {podcast_id}")
-            continue
-
-        for result in results:
-            download_id, downloaded_location = result
-
-            # Delete the downloaded file
-            os.remove(downloaded_location)
-
-            # Remove the entry from the DownloadedEpisodes table
-            query = (
-                'DELETE FROM "DownloadedEpisodes" WHERE DownloadID = %s' if database_type == "postgresql" else
-                "DELETE FROM DownloadedEpisodes WHERE DownloadID = %s"
-            )
-            cursor.execute(query, (download_id,))
-            cnx.commit()
-            print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
-
-            # Update UserStats table to decrement EpisodesDownloaded count
-            query = (
-                'UPDATE "UserStats" SET EpisodesDownloaded = EpisodesDownloaded - 1 '
-                'WHERE UserID = %s' if database_type == "postgresql" else
-                "UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 WHERE UserID = %s"
-            )
-            cursor.execute(query, (user_id,))
-
-    cursor.close()
-    return "success"
-
-
 
 def search_data(database_type, cnx, search_term, user_id):
     if database_type == "postgresql":
@@ -9029,48 +8729,6 @@ def process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type
     except Exception as e:
         logger.error(f"Error fetching episode actions: {str(e)}")
         raise
-
-
-# database_functions.py
-
-def queue_bump(database_type, cnx, ep_url, title, user_id):
-    cursor = cnx.cursor()
-
-    if database_type == "postgresql":
-        query_check_episode = """
-            SELECT QueueID, QueuePosition FROM "EpisodeQueue"
-            INNER JOIN "Episodes" ON "EpisodeQueue".EpisodeID = "Episodes".EpisodeID
-            WHERE "Episodes".EpisodeURL = %s AND "Episodes".EpisodeTitle = %s AND "EpisodeQueue".UserID = %s
-        """
-        query_delete_episode = 'DELETE FROM "EpisodeQueue" WHERE QueueID = %s'
-        query_update_queue = 'UPDATE "EpisodeQueue" SET QueuePosition = QueuePosition - 1 WHERE UserID = %s'
-    else:
-        query_check_episode = """
-            SELECT QueueID, QueuePosition FROM EpisodeQueue
-            INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
-            WHERE Episodes.EpisodeURL = %s AND Episodes.EpisodeTitle = %s AND EpisodeQueue.UserID = %s
-        """
-        query_delete_episode = "DELETE FROM EpisodeQueue WHERE QueueID = %s"
-        query_update_queue = "UPDATE EpisodeQueue SET QueuePosition = QueuePosition - 1 WHERE UserID = %s"
-
-    cursor.execute(query_check_episode, (ep_url, title, user_id))
-    result = cursor.fetchone()
-    print(result)
-
-    if result is not None:
-        try:
-            cursor.execute(query_delete_episode, (result[0],))
-        except Exception as e:
-            print(f"Error while deleting episode from queue: {e}")
-
-    cursor.execute(query_update_queue, (user_id,))
-
-    queue_pod(database_type, cnx, title, ep_url, user_id)
-
-    cnx.commit()
-    cursor.close()
-
-    return {"detail": f"{title} moved to the front of the queue."}
 
 def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person_name: str, person_img: str, podcast_id: int) -> tuple[bool, int]:
     cursor = cnx.cursor()
