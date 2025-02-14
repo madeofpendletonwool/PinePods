@@ -4,6 +4,7 @@ pub(crate) mod history;
 pub(crate) mod home;
 pub(crate) mod host_component;
 pub mod misc_func;
+pub(crate) mod navigation;
 pub(crate) mod oauth_callback;
 pub(crate) mod queue;
 pub(crate) mod routes;

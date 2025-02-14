@@ -10,6 +10,16 @@ use std::str::FromStr;
 use wasm_bindgen::JsCast;
 use web_sys::{DomParser, SupportedType};
 
+// Gravatar URL generation functions (outside of use_effect_with)
+pub fn calculate_gravatar_hash(email: &String) -> String {
+    format!("{:x}", md5::compute(email.to_lowercase()))
+}
+
+pub fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
+    let hash = calculate_gravatar_hash(&email.clone().unwrap());
+    format!("https://gravatar.com/avatar/{}?s={}", hash, size)
+}
+
 // pub fn format_date(date_str: &str) -> String {
 //     let date =
 //         chrono::NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S").unwrap_or_else(|_| {
