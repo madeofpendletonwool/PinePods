@@ -576,19 +576,19 @@ pub fn theme() -> Html {
 
             case 'Catppuccin Mocha Mauve':
                 root.style.setProperty('--background-color', '#1e1e2e');                
-                root.style.setProperty('--button-color', '#1e1e2e');
+                root.style.setProperty('--button-color', '#313244');
                 root.style.setProperty('--button-text-color', '#a6adc8');
                 root.style.setProperty('--text-color', '#cdd6f4');
                 root.style.setProperty('--text-secondary-color', '#bac2de');
-                root.style.setProperty('--border-color', '#7f849c');
+                root.style.setProperty('--border-color', '#cba6f7');
                 root.style.setProperty('--accent-color', '#cba6f7');
-                root.style.setProperty('--prog-bar-color', '#89b4fa');
+                root.style.setProperty('--prog-bar-color', '#a6e3a1');
                 root.style.setProperty('--error-color', '#f38ba8');
-                root.style.setProperty('--bonus-color', '#cba6f7'); // Assuming black as bonus color
+                root.style.setProperty('--bonus-color', '#45475a');
                 root.style.setProperty('--secondary-background', '#11111b');
-                root.style.setProperty('--container-background', '#181825');
-                root.style.setProperty('--standout-color', '#a6e3a1');
-                root.style.setProperty('--hover-color', '#cba6f7');
+                root.style.setProperty('--container-background', '#313244');
+                root.style.setProperty('--standout-color', '#89b4fa');
+                root.style.setProperty('--hover-color', '#6c7086');
                 root.style.setProperty('--link-color', '#f5c2e7');
                 root.style.setProperty('--thumb-color', '#b4befe');
                 root.style.setProperty('--unfilled-color', '#74c7ec');
