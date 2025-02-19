@@ -18,7 +18,6 @@ use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
-use crate::requests::login_requests::use_check_authentication;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -42,10 +41,7 @@ fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec
 pub fn downloads() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
-    let effect_dispatch = dispatch.clone();
 
-    let session_dispatch = effect_dispatch.clone();
-    let session_state = state.clone();
     let expanded_state = use_state(HashMap::new);
     let show_modal = use_state(|| false);
     let show_clonedal = show_modal.clone();

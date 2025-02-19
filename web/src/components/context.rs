@@ -8,8 +8,9 @@ use crate::requests::login_requests::{GetApiDetails, TimeZoneInfo};
 use crate::requests::pod_req::PodcastResponseExtra;
 use crate::requests::pod_req::{
     Chapter, Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, Funding,
-    HistoryDataResponse, Person, Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
-    RecentEps, RefreshProgress, SavedEpisodesResponse, SharedEpisodeResponse, Transcript, Value,
+    HistoryDataResponse, HomeOverview, Person, Playlist, PlaylistInfo, PlaylistReturnEpisode,
+    Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse, RecentEps, RefreshProgress,
+    SavedEpisodesResponse, SharedEpisodeResponse, Transcript, Value,
 };
 use crate::requests::search_pods::{
     PeopleFeedResult, PodcastFeedResult, PodcastSearchResult, SearchResponse, YouTubeChannel,
@@ -128,6 +129,10 @@ pub struct AppState {
     pub is_youtube_loading: Option<bool>,
     pub show_transcript_modal: Option<bool>,
     pub current_transcripts: Option<Vec<Transcript>>,
+    pub home_overview: Option<HomeOverview>,
+    pub playlists: Option<Vec<Playlist>>,
+    pub current_playlist_episodes: Option<Vec<PlaylistReturnEpisode>>,
+    pub current_playlist_info: Option<PlaylistInfo>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]

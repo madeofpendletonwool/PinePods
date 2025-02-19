@@ -6,22 +6,20 @@ use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg;
+use crate::components::episodes_layout::UIStateMsg;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
 use crate::requests::pod_req;
 use crate::requests::pod_req::SavedEpisodesResponse;
 use gloo_events::EventListener;
+use wasm_bindgen::closure::Closure;
+use wasm_bindgen::JsCast;
+use web_sys::window;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
-// use crate::components::gen_funcs::check_auth;
-use crate::components::episodes_layout::UIStateMsg;
-use crate::requests::login_requests::use_check_authentication;
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
-use web_sys::window;
 
 #[derive(Clone, PartialEq)]
 pub enum SavedSortDirection {
@@ -56,8 +54,6 @@ pub fn saved() -> Html {
         active_modal_clone.set(None);
     });
 
-    let session_dispatch = _post_dispatch.clone();
-    let session_state = post_state.clone();
     let loading = use_state(|| true);
     let episode_search_term = use_state(|| String::new());
     let episode_sort_direction = use_state(|| Some(SavedSortDirection::NewestFirst)); // Default to newest first

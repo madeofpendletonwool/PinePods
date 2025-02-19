@@ -3,7 +3,6 @@ use super::gen_components::{empty_message, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, PodcastState, UIState};
 use crate::components::episodes_layout::SafeHtml;
-use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{
     call_add_podcast, call_check_podcast, call_remove_podcasts_name, PodcastDetails, PodcastValues,
     RemovePodcastValuesName,
@@ -11,7 +10,6 @@ use crate::requests::pod_req::{
 use crate::requests::search_pods::{call_parse_podcast_url, UnifiedPodcast};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
 use web_sys::MouseEvent;
 use yew::prelude::*;
@@ -63,14 +61,9 @@ impl ClickedFeedURL {
 pub fn pod_layout() -> Html {
     // let dispatch = Dispatch::<AppState>::global();
     // let state: Rc<AppState> = dispatch.get();
-    let (state, dispatch) = use_store::<AppState>();
+    let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
-    let (podcast_state, podcast_dispatch) = use_store::<PodcastState>();
-
     let search_results = state.search_results.clone();
-
-    let session_dispatch = dispatch.clone();
-    let session_state = state.clone();
 
     html! {
         <>
@@ -216,7 +209,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         let pod_title_og_clone = pod_title_og.clone();
 
         Callback::from(move |_: MouseEvent| {
-            let pod_state = podcast_state.clone();
             let pod_dis_call = podcast_dispatch.clone();
             let set_loading = set_loading.clone();
             // Create a new set from the current state for modifications.
@@ -355,10 +347,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     let podcast_link_clone = podcast.link.clone();
     let history = history_clone.clone();
     let button_text = {
-        let state_contents = podcast_state_button
-            .added_podcast_urls
-            .iter()
-            .collect::<Vec<_>>();
         if podcast_state_button
             .added_podcast_urls
             .contains(&podcast.url)

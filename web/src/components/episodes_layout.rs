@@ -6,7 +6,6 @@ use crate::components::context::{AppState, UIState};
 use crate::components::host_component::HostDropdown;
 use crate::components::podcast_layout::ClickedFeedURL;
 use crate::components::virtual_list::PodcastEpisodeVirtualList;
-use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_check_podcast,
     call_download_all_podcast, call_enable_auto_download, call_fetch_podcasting_2_pod_data,
@@ -230,9 +229,6 @@ pub fn episode_layout() -> Html {
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
-
-    let session_dispatch = _search_dispatch.clone();
-    let session_state = search_state.clone();
     let podcast_added = search_state.podcast_added.unwrap_or_default();
     let pod_url = use_state(|| String::new());
     let new_category = use_state(|| String::new());
@@ -1732,7 +1728,7 @@ pub fn episode_layout() -> Html {
             completed_filter_state.clone(), // Changed from show_completed
             show_in_progress.clone(),
         ),
-        |(episodes, search, sort_dir, show_completed, show_in_progress)| {
+        |(episodes, search, sort_dir, _show_completed, show_in_progress)| {
             if let Some(results) = episodes {
                 let mut filtered = results
                     .episodes
@@ -2234,7 +2230,6 @@ pub fn episode_layout() -> Html {
                                             <button
                                                 onclick={
                                                     let show_in_progress = show_in_progress.clone();
-                                                    let completed_filter_state = completed_filter_state.clone();
                                                     Callback::from(move |_| {
                                                         show_in_progress.set(!*show_in_progress);
                                                         // Ensure only one filter is active at a time

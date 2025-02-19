@@ -12,12 +12,14 @@ use components::routes::Route;
 use components::downloads::Downloads;
 use components::episode::Episode;
 use components::episodes_layout::EpisodeLayout;
+use components::feed::Feed;
 use components::history::PodHistory;
 use components::home::Home;
 use components::navigation::NavigationHandler;
 use components::oauth_callback::OAuthCallback;
 use components::people_subs::SubscribedPeople;
 use components::person::Person;
+use components::playlist_detail::PlaylistDetail;
 use components::podcast_layout::PodLayout;
 use components::podcasts::Podcasts;
 use components::queue::Queue;
@@ -59,34 +61,34 @@ pub fn not_found() -> Html {
                     <i class="ph ph-warning-circle text-8xl item_container-text opacity-80" />
                     <span class="text-8xl font-bold item_container-text opacity-80">{"404"}</span>
                 </div>
-                
+
                 <h1 class="text-3xl font-bold item_container-text">
                     {"Page Not Found"}
                 </h1>
-                
+
                 <p class="text-lg item_container-text opacity-80">
-                    {"Looks like we've wandered into uncharted territory!"} 
+                    {"Looks like we've wandered into uncharted territory!"}
                 </p>
-                
+
                 <div class="flex items-center gap-2 text-lg item_container-text opacity-70">
                     <i class="ph ph-coffee-bean text-2xl" />
                     <span>{"Grab some coffee and try again"}</span>
                     <i class="ph ph-coffee text-2xl" />
                 </div>
 
-                <button 
+                <button
                     onclick={on_home_click}
-                    class="flex items-center gap-2 px-6 py-3 mt-4 rounded-lg transition-all 
-                        item_container-text border-2 border-current hover:opacity-80 
+                    class="flex items-center gap-2 px-6 py-3 mt-4 rounded-lg transition-all
+                        item_container-text border-2 border-current hover:opacity-80
                         active:scale-95 text-lg font-medium"
                 >
                     <i class="ph ph-house-line text-xl" />
                     {"Head back home"}
                 </button>
-                
-                <img 
-                    src="static/assets/favicon.png" 
-                    alt="Pinepods Logo" 
+
+                <img
+                    src="static/assets/favicon.png"
+                    alt="Pinepods Logo"
                     class="w-16 h-16 mt-8 opacity-60"
                 />
             </div>
@@ -97,6 +99,7 @@ fn switch(route: Route) -> Html {
     match route {
         Route::Login => html! { <Login /> },
         Route::Home => html! { <Home /> },
+        Route::Feed => html! { <Feed /> },
         Route::NotFound => html! { <NotFound /> },
         Route::ChangeServer => html! { <ChangeServer /> },
         Route::Queue => html! { <Queue /> },
@@ -117,6 +120,7 @@ fn switch(route: Route) -> Html {
         Route::Episode => html! { <Episode /> },
         Route::Person { name } => html! { <Person name={name.clone()} /> },
         Route::OAuthCallback => html! { <OAuthCallback /> },
+        Route::PlaylistDetail { id } => html! { <PlaylistDetail {id} /> },
         #[cfg(not(feature = "server_build"))]
         Route::LocalDownloads => html! { <LocalDownloads /> },
         #[cfg(feature = "server_build")]

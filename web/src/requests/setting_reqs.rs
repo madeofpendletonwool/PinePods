@@ -1870,3 +1870,67 @@ pub async fn call_list_oidc_providers(
         )))
     }
 }
+
+// First, create a struct to match the JSON response for getting startpage
+#[derive(Deserialize)]
+struct StartPageResponse {
+    StartPage: String,
+}
+
+// Function to get the user's startpage
+pub async fn call_get_startpage(
+    server_name: &str,
+    api_key: &str,
+    user_id: &i32,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/startpage?user_id={}", server_name, user_id);
+    let response = Request::get(&url).header("Api-Key", api_key).send().await?;
+
+    if response.ok() {
+        let response_data: StartPageResponse = response.json().await?;
+        Ok(response_data.StartPage)
+    } else {
+        Err(Error::msg(format!(
+            "Failed to get startpage: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct SetStartPageRequest {
+    pub user_id: i32,
+    pub new_startpage: String,
+}
+// Struct for the set startpage response
+#[derive(Deserialize)]
+struct SetStartPageResponse {
+    success: bool,
+    message: String,
+}
+
+// Function to set the user's startpage
+pub async fn call_set_startpage(
+    server_name: &str,
+    api_key: &str,
+    user_id: &i32,
+    startpage: &SetStartPageRequest,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/startpage", server_name);
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .json(startpage)? // Send the request struct as JSON in the body
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_data: SetStartPageResponse = response.json().await?;
+        Ok(response_data.success)
+    } else {
+        Err(Error::msg(format!(
+            "Failed to set startpage: {}",
+            response.status_text()
+        )))
+    }
+}

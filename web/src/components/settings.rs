@@ -4,7 +4,6 @@ use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::UIStateMsg;
 use crate::components::setting_components;
-use crate::requests::login_requests::use_check_authentication;
 use crate::requests::setting_reqs::call_user_admin_check;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
@@ -108,9 +107,6 @@ pub fn accordion_item(
 pub fn settings() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let effect_dispatch = dispatch.clone();
-
-    let session_dispatch = effect_dispatch.clone();
-    let session_state = state.clone();
 
     let (_post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
@@ -239,6 +235,7 @@ pub fn settings() -> Html {
                             <AccordionItem title="MFA Settings" content={html!{ <setting_components::mfa_settings::MFAOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Export/Backup Podcasts" content={html!{ <setting_components::export_settings::ExportOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Import Podcasts" content={html!{ <setting_components::import_options::ImportOptions /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title="Default Login Page" content={html!{ <setting_components::start_page_options::StartPageOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Notification Settings" content={html!{ <setting_components::notifications::NotificationOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Add Custom Feed" content={html!{ <setting_components::custom_feed::CustomFeed /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Connect Nextcloud/Gpodder Podcast Sync" content={html!{ <setting_components::nextcloud_options::NextcloudOptions /> }} position={AccordionItemPosition::Middle}/>

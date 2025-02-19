@@ -201,6 +201,16 @@ pub fn app_drawer() -> Html {
                                     </Link<Route>>
                                 </div>
                             </div>
+                            <div class="m-0 p-0 flex items-center space-x-3">
+                                <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
+                                    <Link<Route> to={Route::Feed}>
+                                        <div class="flex items-center">
+                                            <i class="ph ph-bell-ringing text-2xl mr-3"></i>
+                                            <span class="text-lg">{"Feed"}</span>
+                                        </div>
+                                    </Link<Route>>
+                                </div>
+                            </div>
                             <div class="flex items-center space-x-3">
                                 <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
                                     <Link<Route> to={Route::Search}>

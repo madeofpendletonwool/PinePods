@@ -4,7 +4,6 @@ use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, ExpandedDescriptions, FilterState, UIState};
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
-use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
 use crate::requests::pod_req::PodcastExtra;
 use crate::requests::pod_req::{call_remove_podcasts, PodcastResponseExtra, RemovePodcastValues};
@@ -278,9 +277,6 @@ pub fn podcasts() -> Html {
 
     // filter selections
     let selected_category = use_state(|| None as Option<String>);
-
-    let session_dispatch = dispatch.clone();
-    let session_state = state.clone();
 
     let dispatch_layout = dispatch.clone();
     use_effect_with((), move |_| {

@@ -2,12 +2,12 @@
 use crate::components::context::AppState;
 use crate::components::gen_funcs::generate_gravatar_url;
 use crate::requests::login_requests::{
-    self, call_get_time_info, call_verify_key, use_check_authentication,
+    call_get_time_info, call_verify_key, use_check_authentication,
 };
 use crate::requests::setting_reqs::call_get_theme;
 use wasm_bindgen::closure::Closure;
-use wasm_bindgen::{prelude::*, JsCast};
-use web_sys::{console, window};
+use wasm_bindgen::JsCast;
+use web_sys::window;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
@@ -221,9 +221,6 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
                         // Clear the flag and don't do another back
                         session_storage.remove_item("handling_double_back").ok();
                     } else {
-                        // Routes that need double-back
-                        let double_back_routes = vec!["/notreal"];
-                        // ...
                     }
                 }
                 navigation_state.set(*navigation_state + 1);

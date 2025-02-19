@@ -12,7 +12,6 @@ use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
     strip_images_from_html, truncate_description, unix_timestamp_to_datetime_string,
 };
-use crate::requests::login_requests::use_check_authentication;
 use crate::requests::people_req::{
     call_get_person_subscriptions, call_subscribe_to_person, call_unsubscribe_from_person,
 };
@@ -67,8 +66,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let person_ids = use_state(|| HashMap::<String, i32>::new());
-    let session_dispatch = dispatch.clone();
-    let session_state = state.clone();
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = post_state

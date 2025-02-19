@@ -10,7 +10,6 @@ use crate::components::gen_funcs::{
     sanitize_html_with_blank_target,
 };
 use crate::components::host_component::HostDropdown;
-use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
 use crate::requests::pod_req::{
     call_check_podcast, call_create_share_link, call_download_episode,
@@ -237,9 +236,6 @@ pub fn transcript_modal(props: &TranscriptModalProps) -> Html {
 #[function_component(Episode)]
 pub fn epsiode() -> Html {
     let (state, dispatch) = use_store::<AppState>();
-
-    let session_dispatch = dispatch.clone();
-    let session_state = state.clone();
 
     let error = use_state(|| None);
     let shared_url = use_state(|| Option::<String>::None);

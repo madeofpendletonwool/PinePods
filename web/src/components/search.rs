@@ -17,7 +17,6 @@ use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
-use crate::requests::login_requests::use_check_authentication;
 use async_std::task::sleep;
 use std::time::Duration;
 use wasm_bindgen::closure::Closure;
@@ -36,9 +35,6 @@ pub struct SearchProps {
 pub fn search(_props: &SearchProps) -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let search_dispatch = dispatch.clone();
-
-    let session_dispatch = dispatch.clone();
-    let session_state = state.clone();
     let active_modal = use_state(|| None::<i32>);
     let active_modal_clone = active_modal.clone();
     let on_modal_open = Callback::from(move |episode_id: i32| {

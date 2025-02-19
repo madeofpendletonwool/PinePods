@@ -67,6 +67,7 @@ COPY clients/ /pinepods/clients/
 COPY database_functions/ /pinepods/database_functions/
 RUN chmod +x /pinepods/startup/call_refresh_endpoint.sh \
     /pinepods/startup/app_startup.sh \
+    /pinepods/startup/call_nightly_tasks.sh \
     /pinepods/startup/startup.sh
 
 # Clean things up

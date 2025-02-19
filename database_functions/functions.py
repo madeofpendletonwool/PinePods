@@ -7865,6 +7865,438 @@ def cleanup_expired_shared_episodes(cnx, database_type):
     finally:
         cursor.close()
 
+
+def update_all_playlists(cnx, database_type):
+    """
+    Update all playlists based on their rules
+    """
+    cursor = cnx.cursor()
+    try:
+        # Get all playlists (both system and user-defined)
+        cursor.execute('SELECT * FROM "Playlists"')
+        playlists = cursor.fetchall()
+
+        for playlist in playlists:
+            # Convert to dict if tuple (psycopg2 returns either)
+            if isinstance(playlist, tuple):
+                playlist_dict = {
+                    'PlaylistID': playlist[0],
+                    'UserID': playlist[1],
+                    'Name': playlist[2],
+                    'PodcastIDs': playlist[5],
+                    'IncludeUnplayed': playlist[6],
+                    'IncludePartiallyPlayed': playlist[7],
+                    'IncludePlayed': playlist[8],
+                    'MinDuration': playlist[9],
+                    'MaxDuration': playlist[10],
+                    'SortOrder': playlist[11],
+                    'GroupByPodcast': playlist[12],
+                    'MaxEpisodes': playlist[13]
+                }
+            else:
+                playlist_dict = playlist
+
+            update_playlist_contents(cnx, database_type, playlist_dict)
+
+        cnx.commit()
+    except Exception as e:
+        print(f"Error updating playlists: {str(e)}")
+        cnx.rollback()
+    finally:
+        cursor.close()
+
+def build_playlist_query(playlist, database_type):
+    """
+    Build a dynamic query based on playlist rules
+    """
+    conditions = []
+    params = []
+
+    # Base query
+    query = """
+        SELECT e.EpisodeID
+        FROM "Episodes" e
+        LEFT JOIN "UserEpisodeHistory" h ON e.EpisodeID = h.EpisodeID
+        WHERE 1=1
+    """
+
+    # Add podcast filter if specific podcasts are selected
+    if playlist['PodcastIDs']:
+        conditions.append("e.PodcastID = ANY(%s)")
+        params.append(playlist['PodcastIDs'])
+
+    # Duration filters
+    if playlist['MinDuration'] is not None:
+        conditions.append("e.EpisodeDuration >= %s")
+        params.append(playlist['MinDuration'])
+    if playlist['MaxDuration'] is not None:
+        conditions.append("e.EpisodeDuration <= %s")
+        params.append(playlist['MaxDuration'])
+
+    # Play state filters
+    play_state_conditions = []
+    if playlist['IncludeUnplayed']:
+        play_state_conditions.append("h.EpisodeID IS NULL")
+    if playlist['IncludePartiallyPlayed']:
+        play_state_conditions.append("(h.ListenDuration > 0 AND h.ListenDuration < e.EpisodeDuration)")
+    if playlist['IncludePlayed']:
+        play_state_conditions.append("h.ListenDuration >= e.EpisodeDuration")
+
+    if play_state_conditions:
+        conditions.append(f"({' OR '.join(play_state_conditions)})")
+
+    # Add all conditions to query
+    if conditions:
+        query += " AND " + " AND ".join(conditions)
+
+    # Add sorting
+    sort_mapping = {
+        'date_asc': "e.EpisodePubDate ASC",
+        'date_desc': "e.EpisodePubDate DESC",
+        'duration_asc': "e.EpisodeDuration ASC",
+        'duration_desc': "e.EpisodeDuration DESC",
+        'listen_progress': "(COALESCE(h.ListenDuration, 0)::float / e.EpisodeDuration) DESC"
+    }
+
+    order_by = sort_mapping.get(playlist['SortOrder'], 'e.EpisodePubDate DESC')
+    if playlist['GroupByPodcast']:
+        order_by = f"e.PodcastID, {order_by}"
+
+    query += f" ORDER BY {order_by}"
+
+    # Add limit
+    query += " LIMIT %s"
+    params.append(playlist.get('MaxEpisodes', 100))
+
+    return query, params
+
+def update_playlist_contents(cnx, database_type, playlist):
+    """
+    Update contents of a specific playlist based on its rules
+    """
+    cursor = cnx.cursor()
+    try:
+        # Clear existing contents
+        cursor.execute('DELETE FROM "PlaylistContents" WHERE PlaylistID = %s',
+                      (playlist['PlaylistID'],))
+
+        # Build and execute query
+        query, params = build_playlist_query(playlist, database_type)
+        cursor.execute(query, params)
+        episodes = cursor.fetchall()
+
+        # Insert episodes into playlist
+        for position, episode in enumerate(episodes):
+            episode_id = episode[0] if isinstance(episode, tuple) else episode['EpisodeID']
+            cursor.execute("""
+                INSERT INTO "PlaylistContents" (PlaylistID, EpisodeID, Position)
+                VALUES (%s, %s, %s)
+            """, (playlist['PlaylistID'], episode_id, position))
+
+        # Update LastUpdated timestamp
+        cursor.execute("""
+            UPDATE "Playlists"
+            SET LastUpdated = CURRENT_TIMESTAMP
+            WHERE PlaylistID = %s
+        """, (playlist['PlaylistID'],))
+
+        cnx.commit()
+    except Exception as e:
+        print(f"Error updating playlist {playlist['Name']}: {str(e)}")
+        cnx.rollback()
+    finally:
+        cursor.close()
+
+
+def create_playlist(cnx, database_type, playlist_data):
+    """
+    Create a new playlist and return its ID
+    """
+    cursor = cnx.cursor()
+    try:
+        cursor.execute("""
+            INSERT INTO "Playlists" (
+                UserID,
+                Name,
+                Description,
+                IsSystemPlaylist,
+                PodcastIDs,
+                IncludeUnplayed,
+                IncludePartiallyPlayed,
+                IncludePlayed,
+                MinDuration,
+                MaxDuration,
+                SortOrder,
+                GroupByPodcast,
+                MaxEpisodes,
+                IconName
+            ) VALUES (
+                %s, %s, %s, FALSE, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            ) RETURNING PlaylistID
+        """, (
+            playlist_data.user_id,
+            playlist_data.name,
+            playlist_data.description,
+            playlist_data.podcast_ids,
+            playlist_data.include_unplayed,
+            playlist_data.include_partially_played,
+            playlist_data.include_played,
+            playlist_data.min_duration,
+            playlist_data.max_duration,
+            playlist_data.sort_order,
+            playlist_data.group_by_podcast,
+            playlist_data.max_episodes,
+            playlist_data.icon_name
+        ))
+
+        playlist_id = cursor.fetchone()[0]
+        cnx.commit()
+        return playlist_id
+    except Exception as e:
+        cnx.rollback()
+        raise Exception(f"Failed to create playlist: {str(e)}")
+    finally:
+        cursor.close()
+
+def delete_playlist(cnx, database_type, user_id, playlist_id):
+    """
+    Delete a playlist if it belongs to the user and is not a system playlist
+    """
+    cursor = cnx.cursor()
+    try:
+        # Check if playlist exists and belongs to user
+        cursor.execute("""
+            SELECT IsSystemPlaylist, UserID
+            FROM "Playlists"
+            WHERE PlaylistID = %s
+        """, (playlist_id,))
+
+        result = cursor.fetchone()
+        if not result:
+            raise Exception("Playlist not found")
+
+        is_system = result[0] if isinstance(result, tuple) else result['IsSystemPlaylist']
+        playlist_user_id = result[1] if isinstance(result, tuple) else result['UserID']
+
+        if is_system:
+            raise Exception("Cannot delete system playlists")
+        if playlist_user_id != user_id:
+            raise Exception("Unauthorized to delete this playlist")
+
+        # Delete the playlist
+        cursor.execute("""
+            DELETE FROM "Playlists"
+            WHERE PlaylistID = %s
+        """, (playlist_id,))
+
+        cnx.commit()
+    except Exception as e:
+        cnx.rollback()
+        raise Exception(f"Failed to delete playlist: {str(e)}")
+    finally:
+        cursor.close()
+
+def get_playlists(cnx, database_type, user_id):
+    """
+    Get all playlists (system playlists and user's custom playlists)
+    """
+    cursor = cnx.cursor()
+    try:
+        # First get the playlists
+        cursor.execute("""
+            SELECT
+                p.*,
+                COUNT(pc.PlaylistContentID) as episode_count,
+                p.IconName as icon_name  -- Make sure IconName is explicitly selected
+            FROM "Playlists" p
+            LEFT JOIN "PlaylistContents" pc ON p.PlaylistID = pc.PlaylistID
+            WHERE p.IsSystemPlaylist = TRUE
+                OR p.UserID = %s
+            GROUP BY p.PlaylistID
+            ORDER BY p.IsSystemPlaylist DESC, p.Name ASC
+        """, (user_id,))
+
+        playlists = cursor.fetchall()
+
+        # Convert to list of dicts
+        playlist_list = []
+        for playlist in playlists:
+            # Handle both tuple and dict results
+            if isinstance(playlist, tuple):
+                playlist_dict = {
+                    'playlist_id': playlist[0],
+                    'user_id': playlist[1],
+                    'name': playlist[2],
+                    'description': playlist[3],
+                    'is_system_playlist': playlist[4],
+                    'podcast_ids': playlist[5],
+                    'include_unplayed': playlist[6],
+                    'include_partially_played': playlist[7],
+                    'include_played': playlist[8],
+                    'min_duration': playlist[9],
+                    'max_duration': playlist[10],
+                    'sort_order': playlist[11],
+                    'group_by_podcast': playlist[12],
+                    'max_episodes': playlist[13],
+                    'last_updated': playlist[14],
+                    'created': playlist[15],
+                    'episode_count': playlist[17],  # This should be the actual count
+                    'icon_name': playlist[16]  # This should be the icon name
+                }
+            else:
+                playlist_dict = dict(playlist)
+                # Ensure icon_name is properly set when using dict results
+                if 'iconname' in playlist_dict:  # PostgreSQL might lowercase the column
+                    playlist_dict['icon_name'] = playlist_dict.pop('iconname')
+
+            # Get the first few episodes for preview
+            cursor.execute("""
+                SELECT e.EpisodeTitle, e.EpisodeArtwork
+                FROM "PlaylistContents" pc
+                JOIN "Episodes" e ON pc.EpisodeID = e.EpisodeID
+                WHERE pc.PlaylistID = %s
+                ORDER BY pc.Position
+                LIMIT 3
+            """, (playlist_dict['playlist_id'],))
+
+            preview_episodes = cursor.fetchall()
+            playlist_dict['preview_episodes'] = [
+                {
+                    'title': ep[0] if isinstance(ep, tuple) else ep['EpisodeTitle'],
+                    'artwork': ep[1] if isinstance(ep, tuple) else ep['EpisodeArtwork']
+                }
+                for ep in preview_episodes
+            ]
+
+            playlist_list.append(playlist_dict)
+
+        return playlist_list
+    except Exception as e:
+        raise Exception(f"Failed to get playlists: {str(e)}")
+    finally:
+        cursor.close()
+
+def get_playlist_episodes(cnx, database_type, user_id, playlist_id):
+    """
+    Get all episodes in a playlist, applying the playlist's filters
+    """
+    cursor = cnx.cursor()
+    try:
+        # First get the playlist settings
+        cursor.execute("""
+            SELECT
+                IncludeUnplayed,
+                IncludePartiallyPlayed,
+                IncludePlayed,
+                MinDuration,
+                MaxDuration,
+                SortOrder,
+                GroupByPodcast,
+                MaxEpisodes,
+                PodcastIDs
+            FROM "Playlists"
+            WHERE PlaylistID = %s AND (UserID = %s OR IsSystemPlaylist = TRUE)
+        """, (playlist_id, user_id))
+
+        playlist_settings = cursor.fetchone()
+        if not playlist_settings:
+            raise Exception("Playlist not found or access denied")
+
+        (include_unplayed, include_partially_played, include_played,
+         min_duration, max_duration, sort_order, group_by_podcast,
+         max_episodes, podcast_ids) = playlist_settings
+
+        # Build the query dynamically based on settings
+        query = """
+            SELECT DISTINCT
+                e.EpisodeID,
+                e.EpisodeTitle,
+                e.EpisodeDescription,
+                e.EpisodeArtwork,
+                e.EpisodePubDate,
+                e.EpisodeURL,
+                e.EpisodeDuration,
+                el.Duration as ListenDuration,
+                el.Completed,
+                es.Saved,
+                eq.Queued,
+                eq.IsYouTube,
+                ed.Downloaded
+            FROM "Episodes" e
+            LEFT JOIN "EpisodeListenProgress" el ON e.EpisodeID = el.EpisodeID AND el.UserID = %s
+            LEFT JOIN "EpisodeSaved" es ON e.EpisodeID = es.EpisodeID AND es.UserID = %s
+            LEFT JOIN "EpisodeQueue" eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = %s
+            LEFT JOIN "EpisodeDownloads" ed ON e.EpisodeID = ed.EpisodeID AND ed.UserID = %s
+            WHERE 1=1
+        """
+        params = [user_id, user_id, user_id, user_id]
+
+        # Add duration filters if specified
+        if min_duration is not None:
+            query += " AND e.EpisodeDuration >= %s"
+            params.append(min_duration)
+        if max_duration is not None:
+            query += " AND e.EpisodeDuration <= %s"
+            params.append(max_duration)
+
+        # Add play status filters
+        play_status_conditions = []
+        if include_unplayed:
+            play_status_conditions.append("el.Completed IS NULL")
+        if include_partially_played:
+            play_status_conditions.append("(el.Completed = FALSE OR el.Duration < e.EpisodeDuration)")
+        if include_played:
+            play_status_conditions.append("el.Completed = TRUE")
+        if play_status_conditions:
+            query += " AND (" + " OR ".join(play_status_conditions) + ")"
+
+        # Add podcast filter if specified
+        if podcast_ids:
+            query += " AND e.PodcastID = ANY(%s)"
+            params.append(podcast_ids)
+
+        # Add sorting
+        if sort_order == "date_desc":
+            query += " ORDER BY e.EpisodePubDate DESC"
+        elif sort_order == "date_asc":
+            query += " ORDER BY e.EpisodePubDate ASC"
+        elif sort_order == "duration_desc":
+            query += " ORDER BY e.EpisodeDuration DESC"
+        elif sort_order == "duration_asc":
+            query += " ORDER BY e.EpisodeDuration ASC"
+
+        # Add limit if specified
+        if max_episodes:
+            query += " LIMIT %s"
+            params.append(max_episodes)
+
+        cursor.execute(query, tuple(params))
+        episodes = cursor.fetchall()
+
+        # Convert to list of dicts
+        episode_list = []
+        for episode in episodes:
+            episode_dict = {
+                'episodeid': episode[0],
+                'episodetitle': episode[1],
+                'episodedescription': episode[2],
+                'episodeartwork': episode[3],
+                'episodepubdate': episode[4],
+                'episodeurl': episode[5],
+                'episodeduration': episode[6],
+                'listenduration': episode[7],
+                'completed': episode[8] or False,
+                'saved': episode[9] or False,
+                'queued': episode[10] or False,
+                'is_youtube': episode[11],
+                'downloaded': episode[12] or False
+            }
+            episode_list.append(episode_dict)
+
+        return episode_list
+    finally:
+        cursor.close()
+
 def get_episode_id_by_url_key(database_type, cnx, url_key):
     cursor = cnx.cursor()
 
@@ -9420,3 +9852,247 @@ def create_oidc_user(cnx, database_type, email, fullname, username):
         raise
     finally:
         cursor.close()
+
+def get_user_startpage(cnx, database_type, user_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = """
+                SELECT StartPage
+                FROM "UserSettings"
+                WHERE UserID = %s
+            """
+        else:
+            query = """
+                SELECT StartPage
+                FROM UserSettings
+                WHERE UserID = %s
+            """
+
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+
+        # Return 'home' as default if no setting is found
+        if result:
+            return result[0] if isinstance(result, tuple) else result['startpage']
+        return 'home'
+
+    except Exception as e:
+        raise
+    finally:
+        cursor.close()
+
+def set_user_startpage(cnx, database_type, user_id, startpage):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = """
+                UPDATE "UserSettings"
+                SET StartPage = %s
+                WHERE UserID = %s
+            """
+        else:
+            query = """
+                UPDATE UserSettings
+                SET StartPage = %s
+                WHERE UserID = %s
+            """
+
+        cursor.execute(query, (startpage, user_id))
+        cnx.commit()
+        return True
+
+    except Exception as e:
+        cnx.rollback()
+        raise
+    finally:
+        cursor.close()
+
+def get_home_overview(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cnx.row_factory = dict_row
+        cursor = cnx.cursor()
+    else:
+        cursor = cnx.cursor(dictionary=True)
+
+    home_data = {
+        "recent_episodes": [],
+        "in_progress_episodes": [],
+        "top_podcasts": [],
+        "saved_count": 0,
+        "downloaded_count": 0,
+        "queue_count": 0
+    }
+
+    # Recent Episodes query with is_youtube field
+    if database_type == "postgresql":
+        recent_query = """
+            SELECT DISTINCT ON ("Episodes".EpisodeID)
+                "Episodes".EpisodeID,
+                "Episodes".EpisodeTitle,
+                "Episodes".EpisodePubDate,
+                "Episodes".EpisodeDescription,
+                "Episodes".EpisodeArtwork,
+                "Episodes".EpisodeURL,
+                "Episodes".EpisodeDuration,
+                "Episodes".Completed,
+                "Podcasts".PodcastName,
+                "Podcasts".PodcastID,
+                "Podcasts".IsYouTubeChannel as is_youtube,
+                "UserEpisodeHistory".ListenDuration
+            FROM "Episodes"
+            INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+            LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID
+                AND "UserEpisodeHistory".UserID = %s
+            WHERE "Podcasts".UserID = %s
+                AND "Episodes".EpisodePubDate >= NOW() - INTERVAL '7 days'
+            ORDER BY "Episodes".EpisodeID, "Episodes".EpisodePubDate DESC
+            LIMIT 10
+        """
+    else:
+        recent_query = """
+            SELECT DISTINCT
+                Episodes.EpisodeID,
+                Episodes.EpisodeTitle,
+                Episodes.EpisodePubDate,
+                Episodes.EpisodeDescription,
+                Episodes.EpisodeArtwork,
+                Episodes.EpisodeURL,
+                Episodes.EpisodeDuration,
+                Episodes.Completed,
+                Podcasts.PodcastName,
+                Podcasts.PodcastID,
+                Podcasts.IsYouTubeChannel as is_youtube,
+                UserEpisodeHistory.ListenDuration
+            FROM Episodes
+            INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+            LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+                AND UserEpisodeHistory.UserID = %s
+            WHERE Podcasts.UserID = %s
+                AND Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            ORDER BY Episodes.EpisodePubDate DESC
+            LIMIT 10
+        """
+
+    # In Progress Episodes query with is_youtube field
+    in_progress_query = """
+        SELECT
+            "Episodes".*,
+            "Podcasts".PodcastName,
+            "Podcasts".IsYouTubeChannel as is_youtube,
+            "UserEpisodeHistory".ListenDuration
+        FROM "UserEpisodeHistory"
+        JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID
+        JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+        WHERE "UserEpisodeHistory".UserID = %s
+        AND "UserEpisodeHistory".ListenDuration > 0
+        AND "Episodes".Completed = FALSE
+        ORDER BY "UserEpisodeHistory".ListenDate DESC
+        LIMIT 10
+    """ if database_type == "postgresql" else """
+        SELECT
+            Episodes.*,
+            Podcasts.PodcastName,
+            Podcasts.IsYouTubeChannel as is_youtube,
+            UserEpisodeHistory.ListenDuration
+        FROM UserEpisodeHistory
+        JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID
+        JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+        WHERE UserEpisodeHistory.UserID = %s
+        AND UserEpisodeHistory.ListenDuration > 0
+        AND Episodes.Completed = FALSE
+        ORDER BY UserEpisodeHistory.ListenDate DESC
+        LIMIT 10
+    """
+
+    # Top Podcasts query with all needed fields
+    top_podcasts_query = """
+        SELECT
+            "Podcasts".PodcastID,
+            "Podcasts".PodcastName,
+            "Podcasts".PodcastIndexID,
+            "Podcasts".ArtworkURL,
+            "Podcasts".Author,
+            "Podcasts".Categories,
+            "Podcasts".Description,
+            "Podcasts".EpisodeCount,
+            "Podcasts".FeedURL,
+            "Podcasts".WebsiteURL,
+            "Podcasts".Explicit,
+            "Podcasts".IsYouTubeChannel as is_youtube,
+            COUNT(DISTINCT "UserEpisodeHistory".EpisodeID) as play_count,
+            SUM("UserEpisodeHistory".ListenDuration) as total_listen_time
+        FROM "Podcasts"
+        LEFT JOIN "Episodes" ON "Podcasts".PodcastID = "Episodes".PodcastID
+        LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID
+        WHERE "Podcasts".UserID = %s
+        GROUP BY "Podcasts".PodcastID
+        ORDER BY total_listen_time DESC NULLS LAST
+        LIMIT 5
+    """ if database_type == "postgresql" else """
+        SELECT
+            Podcasts.PodcastID,
+            Podcasts.PodcastName,
+            Podcasts.PodcastIndexID,
+            Podcasts.ArtworkURL,
+            Podcasts.Author,
+            Podcasts.Categories,
+            Podcasts.Description,
+            Podcasts.EpisodeCount,
+            Podcasts.FeedURL,
+            Podcasts.WebsiteURL,
+            Podcasts.Explicit,
+            Podcasts.IsYouTubeChannel as is_youtube,
+            COUNT(DISTINCT UserEpisodeHistory.EpisodeID) as play_count,
+            SUM(UserEpisodeHistory.ListenDuration) as total_listen_time
+        FROM Podcasts
+        LEFT JOIN Episodes ON Podcasts.PodcastID = Episodes.PodcastID
+        LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+        WHERE Podcasts.UserID = %s
+        GROUP BY Podcasts.PodcastID
+        ORDER BY total_listen_time DESC
+        LIMIT 5
+    """
+
+    try:
+        # Get recent episodes
+        cursor.execute(recent_query, (user_id, user_id))
+        recent_results = cursor.fetchall()
+        if recent_results is not None:
+            home_data["recent_episodes"] = lowercase_keys(recent_results)
+
+        # Get in progress episodes
+        cursor.execute(in_progress_query, (user_id,))
+        in_progress_results = cursor.fetchall()
+        if in_progress_results is not None:
+            home_data["in_progress_episodes"] = lowercase_keys(in_progress_results)
+
+        # Get top podcasts
+        cursor.execute(top_podcasts_query, (user_id,))
+        top_podcasts_results = cursor.fetchall()
+        if top_podcasts_results is not None:
+            home_data["top_podcasts"] = lowercase_keys(top_podcasts_results)
+
+        # Get counts
+        if database_type == "postgresql":
+            for table, key in [
+                ("SavedEpisodes", "saved_count"),
+                ("DownloadedEpisodes", "downloaded_count"),
+                ("EpisodeQueue", "queue_count")
+            ]:
+                count_query = f'SELECT COUNT(*) FROM "{table}" WHERE userid = %s'
+                cursor.execute(count_query, (user_id,))
+                count_result = cursor.fetchone()
+                if count_result is not None:
+                    home_data[key] = count_result[0] if isinstance(count_result, tuple) else count_result.get('count', 0)
+
+    except Exception as e:
+        print(f"Error fetching home overview: {e}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
+    finally:
+        cursor.close()
+
+    return lowercase_keys(home_data)

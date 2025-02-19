@@ -12,6 +12,7 @@ pub mod notifications;
 pub mod oidc;
 pub mod restore_server;
 pub mod rss_feeds;
+pub mod start_page_options;
 pub mod theme_options;
 pub mod user_self_service;
 pub mod user_self_settings;

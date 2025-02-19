@@ -1794,7 +1794,7 @@ pub fn on_shownotes_click(
     shownotes_episode_url: Option<String>,
     episode_audio_url: Option<String>,
     podcast_title: Option<String>,
-    db_added: bool,
+    _db_added: bool,
     person_episode: Option<bool>,
     is_youtube: Option<bool>,
 ) -> Callback<MouseEvent> {

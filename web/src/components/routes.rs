@@ -6,6 +6,8 @@ pub enum Route {
     Login,
     #[at("/home")]
     Home,
+    #[at("/feed")]
+    Feed,
     #[not_found]
     #[at("/404")]
     NotFound,
@@ -49,4 +51,6 @@ pub enum Route {
     SharedEpisode { url_key: String },
     #[at("/oauth/callback")]
     OAuthCallback,
+    #[at("/playlist/:id")]
+    PlaylistDetail { id: i32 },
 }

@@ -1,11 +1,13 @@
 // In components/mod.rs
 pub(crate) mod app_drawer;
+pub(crate) mod feed;
 pub(crate) mod history;
 pub(crate) mod home;
 pub(crate) mod host_component;
 pub mod misc_func;
 pub(crate) mod navigation;
 pub(crate) mod oauth_callback;
+pub(crate) mod playlist_detail;
 pub(crate) mod queue;
 pub(crate) mod routes;
 pub(crate) mod saved;
