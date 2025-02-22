@@ -72,6 +72,7 @@ To find your user's UID and GID, run:
 ```bash
 id -u   # Your UID
 id -g   # Your GID
+```
 
 #### Compose File - PostgreSQL (Recommended)
 ```yaml
