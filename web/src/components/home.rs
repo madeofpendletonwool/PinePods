@@ -6,6 +6,8 @@ use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_components::on_shownotes_click;
+use crate::components::gen_components::ContextButton;
+use crate::components::gen_components::EpisodeTrait;
 use crate::components::gen_funcs::{format_datetime, match_date_format, parse_date};
 use crate::requests::pod_req;
 use crate::requests::pod_req::{HomeEpisode, Playlist};
@@ -47,7 +49,9 @@ fn playlist_card(props: &PlaylistCardProps) -> Html {
                     <i class={classes!("ph", props.playlist.icon_name.clone(), "playlist-icon")}></i>
                     <div class="playlist-info">
                         <h3 class="playlist-title">{&props.playlist.name}</h3>
-                        <span class="playlist-count">{format!("{} episodes", props.playlist.episode_count)}</span>
+                        <span class="playlist-count">
+                            {format!("{} episodes", props.playlist.episode_count.unwrap_or(0))}
+                        </span>
                         if let Some(description) = &props.playlist.description {
                             <p class="playlist-description">{description}</p>
                         }
@@ -341,6 +345,8 @@ pub fn home_episode_item(props: &HomeEpisodeItemProps) -> Html {
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let history = BrowserHistory::new();
+    let should_show_buttons = !props.episode.episodeurl.is_empty();
+    let episode: Box<dyn EpisodeTrait> = Box::new(props.episode.clone());
 
     // Check if this episode is currently playing
     let is_current_episode = audio_state
@@ -424,18 +430,23 @@ pub fn home_episode_item(props: &HomeEpisodeItemProps) -> Html {
                 </span>
             </div>
             <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;">
-                <button
-                    class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-                    onclick={on_play_pause}
-                >
-                    {
-                        if is_current_episode && is_playing {
-                            html! { <i class="ph ph-pause-circle md:text-6xl text-4xl"></i> }
-                        } else {
-                            html! { <i class="ph ph-play-circle md:text-6xl text-4xl"></i> }
+                if should_show_buttons {
+                    <button
+                        class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                        onclick={on_play_pause}
+                    >
+                        {
+                            if is_current_episode && is_playing {
+                                html! { <i class="ph ph-pause-circle md:text-6xl text-4xl"></i> }
+                            } else {
+                                html! { <i class="ph ph-play-circle md:text-6xl text-4xl"></i> }
+                            }
                         }
-                    }
-                </button>
+                    </button>
+                    <div class="hidden sm:block"> // This will hide the context button below 640px
+                        <ContextButton episode={episode.clone()} page_type={"home".to_string()} />
+                    </div>
+                }
             </div>
         </div>
     }

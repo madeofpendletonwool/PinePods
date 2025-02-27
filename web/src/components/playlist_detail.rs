@@ -96,17 +96,30 @@ pub fn playlist_detail(props: &Props) -> Html {
                                                 <p class="text-gray-600 dark:text-gray-400">{desc}</p>
                                             }
                                             <p class="text-sm item_container-text mt-1">
-                                                {format!("{} episodes", playlist_info.episode_count)}
+                                                {format!("{} episodes", playlist_info.episode_count.unwrap_or(0))}
                                             </p>
                                         </div>
                                     </div>
                                 </div>
                             }
 
-                            // Episodes list
                             if let Some(episodes) = &state.current_playlist_episodes {
                                 if episodes.is_empty() {
-                                    <p class="item_container-text text-center">{"No episodes in this playlist"}</p>
+                                    <div class="flex flex-col items-center justify-center p-8 mt-4 item-container rounded-lg shadow-md">
+                                        <i class="ph ph-playlist-x text-6xl mb-4"></i>
+                                        <h3 class="text-xl font-semibold mb-2 item_container-text">{"No Episodes Found"}</h3>
+                                        <p class="text-center item_container-text text-sm max-w-md">
+                                            {match &state.current_playlist_info {
+                                                Some(playlist_info) => match playlist_info.name.as_str() {
+                                                    "Fresh Releases" => "No new episodes have been released in the last 24 hours. Check back later for fresh content!",
+                                                    "Currently Listening" => "Start listening to some episodes and they'll appear here for easy access.",
+                                                    "Almost Done" => "You don't have any episodes that are near completion. Keep listening!",
+                                                    _ => "No episodes match the current playlist criteria. Try adjusting the filters or add more podcasts."
+                                                },
+                                                None => "No episodes match the current playlist criteria. Try adjusting the filters or add more podcasts."
+                                            }}
+                                        </p>
+                                    </div>
                                 } else {
                                     <VirtualList
                                         episodes={episodes.clone()}
@@ -118,7 +131,6 @@ pub fn playlist_detail(props: &Props) -> Html {
                     }
                 }
 
-                // Audio player
                 if let Some(audio_props) = &audio_state.currently_playing {
                     <AudioPlayer
                         src={audio_props.src.clone()}

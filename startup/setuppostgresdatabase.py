@@ -841,6 +841,46 @@ try:
 
 
     try:
+        # Create Playlists table with the unique constraint
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "Playlists" (
+                PlaylistID SERIAL PRIMARY KEY,
+                UserID INT NOT NULL,
+                Name VARCHAR(255) NOT NULL,
+                Description TEXT,
+                IsSystemPlaylist BOOLEAN NOT NULL DEFAULT FALSE,
+                PodcastIDs INTEGER[], -- Can be NULL to mean "all podcasts"
+                IncludeUnplayed BOOLEAN NOT NULL DEFAULT TRUE,
+                IncludePartiallyPlayed BOOLEAN NOT NULL DEFAULT TRUE,
+                IncludePlayed BOOLEAN NOT NULL DEFAULT FALSE,
+                MinDuration INTEGER, -- NULL means no minimum
+                MaxDuration INTEGER, -- NULL means no maximum
+                SortOrder VARCHAR(50) NOT NULL DEFAULT 'date_desc'
+                    CHECK (SortOrder IN ('date_asc', 'date_desc',
+                                       'duration_asc', 'duration_desc',
+                                       'listen_progress', 'completion')),
+                GroupByPodcast BOOLEAN NOT NULL DEFAULT FALSE,
+                MaxEpisodes INTEGER, -- NULL means no limit
+                PlayProgressMin FLOAT, -- NULL means no minimum progress requirement
+                PlayProgressMax FLOAT, -- NULL means no maximum progress limit
+                TimeFilterHours INTEGER, -- NULL means no time filter
+                LastUpdated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                Created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                IconName VARCHAR(50) NOT NULL DEFAULT 'ph-playlist',
+                FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                UNIQUE(UserID, Name),
+                CHECK (PlayProgressMin IS NULL OR (PlayProgressMin >= 0 AND PlayProgressMin <= 100)),
+                CHECK (PlayProgressMax IS NULL OR (PlayProgressMax >= 0 AND PlayProgressMax <= 100)),
+                CHECK (PlayProgressMin IS NULL OR PlayProgressMax IS NULL OR PlayProgressMin <= PlayProgressMax),
+                CHECK (MinDuration IS NULL OR MinDuration >= 0),
+                CHECK (MaxDuration IS NULL OR MaxDuration >= 0),
+                CHECK (MinDuration IS NULL OR MaxDuration IS NULL OR MinDuration <= MaxDuration),
+                CHECK (TimeFilterHours IS NULL OR TimeFilterHours > 0),
+                CHECK (MaxEpisodes IS NULL OR MaxEpisodes > 0)
+            )
+        """)
+        cnx.commit()
+
         # First add the unique constraint if it doesn't exist
         cursor.execute("""
             DO $$
@@ -854,32 +894,6 @@ try:
                     ADD CONSTRAINT playlists_userid_name_key UNIQUE(UserID, Name);
                 END IF;
             END $$;
-        """)
-        cnx.commit()
-
-        # Create Playlists table with the unique constraint
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS "Playlists" (
-                PlaylistID SERIAL PRIMARY KEY,
-                UserID INT,
-                Name VARCHAR(255) NOT NULL,
-                Description TEXT,
-                IsSystemPlaylist BOOLEAN DEFAULT FALSE,
-                PodcastIDs TEXT[], -- Array of podcast IDs to include, NULL means all
-                IncludeUnplayed BOOLEAN DEFAULT TRUE,
-                IncludePartiallyPlayed BOOLEAN DEFAULT TRUE,
-                IncludePlayed BOOLEAN DEFAULT FALSE,
-                MinDuration INT,
-                MaxDuration INT,
-                SortOrder VARCHAR(50) DEFAULT 'date_asc',
-                GroupByPodcast BOOLEAN DEFAULT FALSE,
-                MaxEpisodes INT,
-                LastUpdated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                IconName VARCHAR(50) DEFAULT 'ph-playlist',
-                FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
-                UNIQUE(UserID, Name)
-            )
         """)
         cnx.commit()
 
@@ -947,6 +961,7 @@ try:
                 'include_unplayed': True,
                 'include_partially_played': False,
                 'include_played': False,
+                'time_filter_hours': 24,
                 'icon_name': 'ph-sparkle'
             },
             {
@@ -975,6 +990,8 @@ try:
                 'include_unplayed': False,
                 'include_partially_played': True,
                 'include_played': False,
+                'play_progress_min': 75.0,  # Add this
+                'play_progress_max': None,  # Can add this too
                 'icon_name': 'ph-hourglass'
             }
         ]

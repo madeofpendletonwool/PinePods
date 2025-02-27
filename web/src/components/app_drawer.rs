@@ -137,6 +137,7 @@ pub fn app_drawer() -> Html {
         "/local_downloads",
         "/people_subs",
         "/feed",
+        "/playlists",
     ]
     .iter()
     .any(|&path| current_path == path);
@@ -237,6 +238,16 @@ pub fn app_drawer() -> Html {
                                         <div class="flex items-center">
                                             <i class="ph ph-star text-2xl mr-3"></i>
                                             <span class="text-lg">{"Saved"}</span>
+                                        </div>
+                                    </Link<Route>>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <div onclick={toggle_drawer.clone()} class="drawer-text flex items-center space-x-3 cursor-pointer">
+                                    <Link<Route> to={Route::Playlists}>
+                                        <div class="flex items-center">
+                                            <i class="ph ph-list-checks text-2xl mr-3"></i>
+                                            <span class="text-lg">{"Playlists"}</span>
                                         </div>
                                     </Link<Route>>
                                 </div>

@@ -2802,37 +2802,14 @@ pub struct Playlist {
     pub max_episodes: Option<i32>,
     pub last_updated: String,
     pub created: String,
-    pub episode_count: i32,
+    pub episode_count: Option<i32>,
     pub preview_episodes: Vec<PlaylistEpisode>,
-    pub icon_name: String,
+    pub icon_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PlaylistResponse {
     pub playlists: Vec<Playlist>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct CreatePlaylistRequest {
-    pub user_id: i32,
-    pub name: String,
-    pub description: Option<String>,
-    pub podcast_ids: Option<Vec<i32>>,
-    pub include_unplayed: bool,
-    pub include_partially_played: bool,
-    pub include_played: bool,
-    pub min_duration: Option<i32>,
-    pub max_duration: Option<i32>,
-    pub sort_order: String,
-    pub group_by_podcast: bool,
-    pub max_episodes: Option<i32>,
-    pub icon_name: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct CreatePlaylistResponse {
-    pub detail: String,
-    pub playlist_id: i32,
 }
 
 pub async fn call_get_playlists(
@@ -2873,6 +2850,32 @@ pub async fn call_get_playlists(
             response.status()
         ))
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CreatePlaylistRequest {
+    pub user_id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub podcast_ids: Option<Vec<i32>>,
+    pub include_unplayed: bool,
+    pub include_partially_played: bool,
+    pub include_played: bool,
+    pub min_duration: Option<i32>,
+    pub max_duration: Option<i32>,
+    pub sort_order: String,
+    pub group_by_podcast: bool,
+    pub max_episodes: Option<i32>,
+    pub icon_name: String,
+    pub play_progress_min: Option<f32>,
+    pub play_progress_max: Option<f32>,
+    pub time_filter_hours: Option<i32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreatePlaylistResponse {
+    pub detail: String,
+    pub playlist_id: i32,
 }
 
 pub async fn call_create_playlist(
@@ -2945,35 +2948,18 @@ pub async fn call_delete_playlist(
     }
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-pub struct PlaylistReturnEpisode {
-    pub episodeid: i32,
-    pub episodetitle: String,
-    pub episodedescription: String,
-    pub episodeartwork: String,
-    pub episodepubdate: String,
-    pub episodeurl: String,
-    pub episodeduration: i32,
-    pub listenduration: Option<i32>,
-    pub completed: bool,
-    pub saved: bool,
-    pub queued: bool,
-    pub is_youtube: Option<bool>,
-    pub downloaded: bool,
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlaylistEpisodesResponse {
+    pub episodes: Vec<Episode>,
+    pub playlist_info: PlaylistInfo,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct PlaylistInfo {
     pub name: String,
     pub description: Option<String>,
-    pub episode_count: i32,
-    pub icon_name: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct PlaylistEpisodesResponse {
-    pub episodes: Vec<PlaylistReturnEpisode>,
-    pub playlist_info: PlaylistInfo,
+    pub episode_count: Option<i32>, // Changed from i32 to Option<i32>
+    pub icon_name: Option<String>,  // Changed from String to Option<String>
 }
 
 pub async fn call_get_playlist_episodes(
@@ -2996,21 +2982,32 @@ pub async fn call_get_playlist_episodes(
     if response.ok() {
         let text = response.text().await?;
         if text.is_empty() {
-            return Err(anyhow::anyhow!("Empty response from server"));
+            return Ok(PlaylistEpisodesResponse {
+                playlist_info: PlaylistInfo {
+                    name: "Unknown".to_string(),
+                    description: None,
+                    episode_count: None,
+                    icon_name: None,
+                },
+                episodes: vec![],
+            });
         }
 
         match serde_json::from_str::<PlaylistEpisodesResponse>(&text) {
             Ok(parsed) => Ok(parsed),
-            Err(e) => {
-                let context_start = e.column().saturating_sub(100);
-                let context_end = (e.column() + 100).min(text.len());
-                let context = &text[context_start..context_end];
-                Err(anyhow::anyhow!(
-                    "JSON parse error: {} \nContext around position {}: '...{}...'",
-                    e,
-                    e.column(),
-                    context
-                ))
+            Err(_) => {
+                // If parse fails, try parsing as a more basic structure
+                #[derive(Deserialize)]
+                struct BasicResponse {
+                    playlist_info: PlaylistInfo,
+                    episodes: Vec<Episode>,
+                }
+
+                let basic = serde_json::from_str::<BasicResponse>(&text)?;
+                Ok(PlaylistEpisodesResponse {
+                    playlist_info: basic.playlist_info,
+                    episodes: basic.episodes,
+                })
             }
         }
     } else {

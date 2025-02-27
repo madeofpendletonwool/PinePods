@@ -20,6 +20,7 @@ use components::oauth_callback::OAuthCallback;
 use components::people_subs::SubscribedPeople;
 use components::person::Person;
 use components::playlist_detail::PlaylistDetail;
+use components::playlists::Playlists;
 use components::podcast_layout::PodLayout;
 use components::podcasts::Podcasts;
 use components::queue::Queue;
@@ -117,6 +118,7 @@ fn switch(route: Route) -> Html {
         Route::EpisodeLayout => html! { <EpisodeLayout /> },
         Route::Podcasts => html! { <Podcasts /> },
         Route::YoutubeLayout => html! { <YouTubeLayout /> },
+        Route::Playlists => html! { <Playlists /> },
         Route::Episode => html! { <Episode /> },
         Route::Person { name } => html! { <Person name={name.clone()} /> },
         Route::OAuthCallback => html! { <OAuthCallback /> },

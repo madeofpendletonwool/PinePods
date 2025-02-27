@@ -10,7 +10,7 @@ use crate::requests::pod_req::{
     call_download_episode, call_mark_episode_completed, call_mark_episode_uncompleted,
     call_queue_episode, call_remove_downloaded_episode, call_remove_queued_episode,
     call_remove_saved_episode, call_save_episode, DownloadEpisodeRequest, Episode, EpisodeDownload,
-    HistoryEpisode, MarkEpisodeCompletedRequest, QueuePodcastRequest, QueuedEpisode,
+    HistoryEpisode, HomeEpisode, MarkEpisodeCompletedRequest, QueuePodcastRequest, QueuedEpisode,
     SavePodcastRequest, SavedEpisode,
 };
 #[cfg(not(feature = "server_build"))]
@@ -1772,6 +1772,32 @@ impl EpisodeTrait for PersonEpisode {
 
     fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
         self.episodeid // Just return it directly since it's already an i32
+    }
+
+    fn clone_box(&self) -> Box<dyn EpisodeTrait> {
+        Box::new(self.clone())
+    }
+
+    fn get_is_youtube(&self) -> bool {
+        self.is_youtube
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl EpisodeTrait for HomeEpisode {
+    fn get_episode_artwork(&self) -> String {
+        self.episodeartwork.clone()
+    }
+
+    fn get_episode_title(&self) -> String {
+        self.episodetitle.clone()
+    }
+
+    fn get_episode_id(&self, _fallback_id: Option<i32>) -> i32 {
+        self.episodeid
     }
 
     fn clone_box(&self) -> Box<dyn EpisodeTrait> {

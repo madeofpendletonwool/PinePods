@@ -4182,16 +4182,27 @@ def update_playlists_task():
     """
     Background task to update all playlists
     """
-    cnx = create_database_connection()
+    print("Starting background playlist update task")
     try:
-        database_functions.functions.update_all_playlists(cnx, database_type)
+        cnx = create_database_connection()
+        try:
+            database_functions.functions.update_all_playlists(cnx, database_type)
+            print("Background playlist update task completed successfully")
+        except Exception as e:
+            print(f"Error in update_all_playlists: {str(e)}")
+            if hasattr(e, '__traceback__'):
+                import traceback
+                print(traceback.format_exc())
+        finally:
+            if database_type == "postgresql":
+                connection_pool.putconn(cnx)
+            else:
+                cnx.close()
     except Exception as e:
-        print(f"Error during playlist update: {str(e)}")
-    finally:
-        if database_type == "postgresql":
-            connection_pool.putconn(cnx)
-        else:
-            cnx.close()
+        print(f"Critical error in update_playlists_task: {str(e)}")
+        if hasattr(e, '__traceback__'):
+            import traceback
+            print(traceback.format_exc())
 
 
 class PlaylistCreate(BaseModel):
@@ -4201,6 +4212,9 @@ class PlaylistCreate(BaseModel):
     include_unplayed: bool = True
     include_partially_played: bool = True
     include_played: bool = False
+    play_progress_min: Optional[float] = None  # Made optional
+    play_progress_max: Optional[float] = None  # Made optional
+    time_filter_hours: Optional[int] = None    # Made optional
     min_duration: Optional[int]
     max_duration: Optional[int]
     sort_order: str = "date_desc"
@@ -4341,13 +4355,12 @@ async def api_get_playlist_episodes(
         )
 
     try:
-        episodes = database_functions.functions.get_playlist_episodes(
+        return database_functions.functions.get_playlist_episodes(
             cnx,
             database_type,
             user_id,
             playlist_id
         )
-        return {"episodes": episodes}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

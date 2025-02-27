@@ -8,6 +8,7 @@ pub mod misc_func;
 pub(crate) mod navigation;
 pub(crate) mod oauth_callback;
 pub(crate) mod playlist_detail;
+pub(crate) mod playlists;
 pub(crate) mod queue;
 pub(crate) mod routes;
 pub(crate) mod saved;

@@ -6,6 +6,35 @@ Major Version:
 
 - [] iOS App
 
+Pre 0.7.4
+
+- Implement specific podcasts to pass to playlist creation. So you can choose specific ones
+- Make the create playlist function work
+- On deletion of a podcast delete any references to it in the playlist content func
+- Make sure youtube entirely works on playlists
+- Make sure youtube entirely works on homepage
+- Run a playlist refresh after adding a podcast, deleting a podcast, and any other time that makes sense. Maybe even on a standard refresh of podcasts?
+- Fix Virtual Line Spacing on Playlist Page
+- Make states work on homepage. Saved or not, current progress, completed etc.
+
+- Ensure user creation works with mysql
+- Ensure configured start page is navigated to
+- Ensure OIDC Logins work
+- Ensure Github logins work
+- Ensure Google Logins work
+
+
+- [] OIDC Logins
+- [] Smart Playlists
+- [] New Homepage Component
+- [] Configurable start page
+- [] Image Caching
+- [] Fixed filter button size consistency on Podcast Page
+- [] Additional filtering on Podcast page for incomplete and/or complete episodes
+
+
+
+
 Next Minor Version:
 
 - [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
