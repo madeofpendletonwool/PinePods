@@ -2014,9 +2014,9 @@ input[type="range"]::-moz-range-thumb {
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: var(--background-color); /* Solid background instead of transparent */
     padding: 1rem;
-    overflow-y: auto; /* Enable scrolling on the overlay */
+    overflow-y: auto;
 }
 
 .modal-content {

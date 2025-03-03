@@ -5667,7 +5667,13 @@ async def oidc_callback(
 ):
     try:
         base_url = str(request.base_url)[:-1]
-        frontend_base = base_url.replace('/api', '')  # Remove /api for frontend URLs
+        # Force HTTPS if running in production
+        if not base_url.startswith('http://localhost'):
+            if base_url.startswith('http:'):
+                base_url = 'https:' + base_url[5:]
+
+        print(f"Base URL: {base_url}")
+        frontend_base = base_url.replace('/api', '')
 
         # Get client_id from query parameters
         client_id = database_functions.oidc_state_manager.oidc_state_manager.get_client_id(state)
@@ -5675,6 +5681,9 @@ async def oidc_callback(
             return RedirectResponse(
                 url=f"{frontend_base}/oauth/callback?error=invalid_state"
             )
+
+        registered_redirect_uri = f"{base_url}/api/auth/callback"
+        print(f"Using redirect_uri: {registered_redirect_uri}")
 
         # Get OIDC provider details
         provider = database_functions.functions.get_oidc_provider(cnx, database_type, client_id)
@@ -5694,9 +5703,12 @@ async def oidc_callback(
                     data={
                         "grant_type": "authorization_code",
                         "code": code,
-                        "redirect_uri": f"{base_url}/api/auth/callback",
+                        "redirect_uri": registered_redirect_uri,
                         "client_id": client_id,
                         "client_secret": client_secret,
+                    },
+                    headers={
+                        "Accept": "application/json"
                     }
                 )
 
@@ -5706,19 +5718,50 @@ async def oidc_callback(
                     )
 
                 token_data = token_response.json()
+                print(f"Token response: {token_data}")
                 access_token = token_data.get("access_token")
 
                 # Get user info from OIDC provider
-                headers = {"Authorization": f"Bearer {access_token}"}
+                headers = {
+                    "Authorization": f"Bearer {access_token}",
+                    "User-Agent": "PinePods/1.0",  # Add a meaningful user agent
+                    "Accept": "application/json"
+                }
                 userinfo_response = await client.get(userinfo_url, headers=headers)
 
                 if userinfo_response.status_code != 200:
+                    error_content = userinfo_response.text
+                    print(f"GitHub API error: {error_content}")
                     return RedirectResponse(
                         url=f"{frontend_base}/oauth/callback?error=userinfo_failed"
                     )
 
                 user_info = userinfo_response.json()
+                print(f"User info response: {user_info}")
                 email = user_info.get("email")
+
+                if not email and userinfo_url.startswith('https://api.github.com'):
+                    # For GitHub, we may need to make a separate request for emails
+                    # because GitHub doesn't include email in user info if it's private
+                    emails_response = await client.get(
+                        'https://api.github.com/user/emails',
+                        headers=headers
+                    )
+
+                    if emails_response.status_code == 200:
+                        emails = emails_response.json()
+                        # Find the primary email
+                        for email_obj in emails:
+                            if email_obj.get('primary') and email_obj.get('verified'):
+                                email = email_obj.get('email')
+                                break
+
+                        # If no primary found, take the first verified one
+                        if not email:
+                            for email_obj in emails:
+                                if email_obj.get('verified'):
+                                    email = email_obj.get('email')
+                                    break
 
                 if not email:
                     return RedirectResponse(

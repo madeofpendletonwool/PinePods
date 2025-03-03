@@ -8040,7 +8040,15 @@ def update_playlist_contents(cnx, database_type, playlist):
             WHERE p.UserID = {playlist['userid']}
         """
         cursor.execute(basic_check_query)
-        total_episodes = cursor.fetchone()[0]
+        # Handle both dictionary and tuple result formats
+        result = cursor.fetchone()
+        if isinstance(result, dict):
+            # Dictionary format - use first key in the dict
+            total_episodes = result[list(result.keys())[0]]
+        else:
+            # Tuple format - use first element
+            total_episodes = result[0]
+
         print(f"Total episodes available for user {playlist['userid']}: {total_episodes}")
 
         # Now execute the actual filtered query
@@ -8051,12 +8059,23 @@ def update_playlist_contents(cnx, database_type, playlist):
 
         # If we found episodes, show some details
         if episode_count > 0:
-            episode_ids = [e[0] if isinstance(e, tuple) else e['episodeid'] for e in episodes[:5]]
+            # Handle both tuple and dict format episodes
+            episode_ids = []
+            for ep in episodes[:5]:
+                if isinstance(ep, dict):
+                    episode_ids.append(ep.get('episodeid'))
+                else:
+                    episode_ids.append(ep[0])
+
             print(f"First few episode IDs: {episode_ids}")
 
             # Get details for the first episode
             if episode_count > 0:
-                first_ep_id = episodes[0][0] if isinstance(episodes[0], tuple) else episodes[0]['episodeid']
+                if isinstance(episodes[0], dict):
+                    first_ep_id = episodes[0].get('episodeid')
+                else:
+                    first_ep_id = episodes[0][0]
+
                 cursor.execute("""
                     SELECT e.episodeid, e.episodetitle, e.episodeduration,
                            h.listenduration, p.podcastid, p.podcastname, p.userid
@@ -8065,12 +8084,17 @@ def update_playlist_contents(cnx, database_type, playlist):
                     LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = %s
                     WHERE e.episodeid = %s
                 """, (playlist['userid'], first_ep_id))
+
                 ep_details = cursor.fetchone()
                 print(f"First episode details: {ep_details}")
 
         # Insert episodes into playlist
         for position, episode in enumerate(episodes):
-            episode_id = episode[0] if isinstance(episode, tuple) else episode['episodeid']
+            if isinstance(episode, dict):
+                episode_id = episode.get('episodeid')
+            else:
+                episode_id = episode[0]
+
             cursor.execute("""
                 INSERT INTO "PlaylistContents" (playlistid, episodeid, position)
                 VALUES (%s, %s, %s)
@@ -10239,9 +10263,29 @@ def get_user_by_email(cnx, database_type, email):
     finally:
         cursor.close()
 
-def create_oidc_user(cnx, database_type, email, fullname, username):
+def create_oidc_user(cnx, database_type, email, fullname, base_username):
     cursor = cnx.cursor()
     try:
+        # Check if username exists and find a unique one
+        username = base_username
+        counter = 1
+        while True:
+            # Check if username exists
+            check_query = """
+                SELECT COUNT(*) FROM "Users" WHERE Username = %s
+            """ if database_type == "postgresql" else """
+                SELECT COUNT(*) FROM Users WHERE Username = %s
+            """
+            cursor.execute(check_query, (username,))
+            if cursor.fetchone()[0] == 0:
+                break  # Username is unique
+
+            # Try with incremented counter
+            username = f"{base_username}{counter}"
+            counter += 1
+            if counter > 10:  # Limit attempts
+                raise Exception("Could not find a unique username")
+
         # Create a random salt using base64 (which is what Argon2 expects)
         salt = base64.b64encode(secrets.token_bytes(16)).decode('utf-8')
         # Create an impossible-to-match hash that's clearly marked as OIDC

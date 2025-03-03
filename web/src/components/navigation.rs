@@ -187,7 +187,13 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
                         }
                     }
 
-                    use_check_authentication(dispatch.clone(), &current_route);
+                    // Add this check to skip authentication for the OAuth callback route
+                    let pathname = window.location().pathname().unwrap_or_default();
+                    if pathname != "/oauth/callback" {
+                        use_check_authentication(dispatch.clone(), &current_route);
+                    } else {
+                        web_sys::console::log_1(&"Skipping auth check for OAuth callback".into());
+                    }
 
                     dispatch.reduce_mut(|state| {
                         state.reload_occured = Some(true);
