@@ -5776,8 +5776,11 @@ async def oidc_callback(
             # Check if user exists
             user = database_functions.functions.get_user_by_email(cnx, database_type, email)
 
+            # In your OIDC callback function, replace the user creation section with:
+
             if not user:
                 # Create new user
+                print(f"User with email {email} not found, creating new user")
                 fullname = user_info.get("name", "")
                 username = email.split("@")[0].lower()
                 base_username = username
@@ -5786,36 +5789,43 @@ async def oidc_callback(
 
                 while counter <= max_attempts:
                     try:
+                        print(f"Attempt {counter} to create user with base username: {base_username}")
                         user_id = database_functions.functions.create_oidc_user(
                             cnx, database_type, email, fullname, username
                         )
+                        print(f"User created successfully with ID: {user_id}")
+
+                        if not user_id:
+                            print(f"ERROR: Invalid user_id returned: {user_id}")
+                            return RedirectResponse(
+                                url=f"{frontend_base}/oauth/callback?error=invalid_user_id"
+                            )
+
+                        print(f"Creating API key for user_id: {user_id}")
                         api_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
+                        print(f"API key created: {api_key[:5]}... (truncated for security)")
                         break
                     except UniqueViolation:
+                        print(f"Username conflict with {username}, trying next variation")
                         username = f"{base_username}{counter}"
                         counter += 1
                         if counter > max_attempts:
+                            print(f"Failed to create user after {max_attempts} attempts due to username conflicts")
                             return RedirectResponse(
                                 url=f"{frontend_base}/oauth/callback?error=username_conflict"
                             )
+                    except Exception as e:
+                        print(f"Error during user creation: {str(e)}")
+                        import traceback
+                        print(f"Traceback: {traceback.format_exc()}")
+                        return RedirectResponse(
+                            url=f"{frontend_base}/oauth/callback?error=user_creation_failed&details={str(e)[:50]}"
+                        )
                 else:
+                    print("Failed to create user after maximum attempts")
                     return RedirectResponse(
                         url=f"{frontend_base}/oauth/callback?error=user_creation_failed"
                     )
-            else:
-                # Handle existing user
-                user_id = user[0] if isinstance(user, tuple) else user['userid']
-                existing_api_key = database_functions.functions.get_user_api_key(cnx, database_type, user_id)
-
-                if existing_api_key:
-                    api_key = existing_api_key
-                else:
-                    try:
-                        api_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
-                    except Exception:
-                        return RedirectResponse(
-                            url=f"{frontend_base}/oauth/callback?error=api_key_creation_failed"
-                        )
 
             # Success case - redirect with API key
             return RedirectResponse(url=f"{frontend_base}/oauth/callback?api_key={api_key}")

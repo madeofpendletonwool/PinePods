@@ -1010,6 +1010,7 @@ input[type="range"]::-moz-range-thumb {
     top: 50%;
     transform: translateY(-50%);
     z-index: 1;
+    color: var(--text-color);
 }
 
 .slider {
@@ -1138,7 +1139,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .audio-image-container img {
-    border-radius: 12px;
+    border-radius: 8px;  /* Adding rounded corners */
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     transition:
         transform 0.2s ease,
@@ -1445,7 +1446,7 @@ input[type="range"]::-moz-range-thumb {
     /* Ensure the image doesn't exceed its container */
     height: auto;
     /* Maintain aspect ratio */
-    border-radius: 0;
+    border-radius: 1;
     /* Remove the rounded effect */
 }
 
@@ -1904,9 +1905,10 @@ input[type="range"]::-moz-range-thumb {
 
 .podcast-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 1rem;
     padding: 1rem;
+    max-width: 100%;
 }
 
 .podcast-grid-item {
@@ -1974,18 +1976,41 @@ input[type="range"]::-moz-range-thumb {
     text-overflow: ellipsis;
 }
 
-/* Ensure the grid stays at 3 columns even on smaller screens */
+/* Mobile screens (3 columns) */
 @media (max-width: 768px) {
     .podcast-grid {
         grid-template-columns: repeat(3, 1fr);
         gap: 0.5rem;
         padding: 0.5rem;
     }
-
     .podcast-title-grid {
         font-size: 0.75rem;
     }
 }
+
+/* Medium screens (4 columns) */
+@media (min-width: 769px) and (max-width: 1200px) {
+    .podcast-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* Large screens (5 columns) */
+@media (min-width: 1201px) and (max-width: 1600px) {
+    .podcast-grid {
+        grid-template-columns: repeat(5, 1fr);
+    }
+}
+
+/* Extra-large screens (6 columns max) */
+@media (min-width: 1601px) {
+    .podcast-grid {
+        grid-template-columns: repeat(6, 1fr);
+        max-width: 1800px;
+        margin: 0 auto;
+    }
+}
+
 .import-box {
     background-color: var(--container-background);
     border-color: var(--border-color);

@@ -1902,6 +1902,7 @@ pub struct SetStartPageRequest {
     pub user_id: i32,
     pub new_startpage: String,
 }
+
 // Struct for the set startpage response
 #[derive(Deserialize)]
 struct SetStartPageResponse {
@@ -1914,13 +1915,16 @@ pub async fn call_set_startpage(
     server_name: &str,
     api_key: &str,
     user_id: &i32,
-    startpage: &SetStartPageRequest,
+    startpage: &str,
 ) -> Result<bool, Error> {
-    let url = format!("{}/api/data/startpage", server_name);
+    // Build the URL with query parameters
+    let url = format!(
+        "{}/api/data/startpage?user_id={}&startpage={}",
+        server_name, user_id, startpage
+    );
 
     let response = Request::post(&url)
         .header("Api-Key", api_key)
-        .json(startpage)? // Send the request struct as JSON in the body
         .send()
         .await?;
 

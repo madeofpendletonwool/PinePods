@@ -8,29 +8,33 @@ Major Version:
 
 Pre 0.7.4
 
-- Implement specific podcasts to pass to playlist creation. So you can choose specific ones
-- Make the create playlist function work
-- On deletion of a podcast delete any references to it in the playlist content func
+- [x] Implement specific podcasts to pass to playlist creation. So you can choose specific ones
+- [x] Make the create playlist function work
+- [x] On deletion of a podcast delete any references to it in the playlist content func
 - Make sure youtube entirely works on playlists
 - Make sure youtube entirely works on homepage
-- Run a playlist refresh after adding a podcast, deleting a podcast, and any other time that makes sense. Maybe even on a standard refresh of podcasts?
+- [x] Run a playlist refresh after adding a podcast, deleting a podcast, and any other time that makes sense. Maybe even on a standard refresh of podcasts?
 - Fix Virtual Line Spacing on Playlist Page
 - Make states work on homepage. Saved or not, current progress, completed etc.
+- [x] Make Podcast tiles Adapt better to large screens
+- RSS feed refresh issues
+- Add user doesn't work on MYSQL
+- Recent Episodes on homepage is not correct
 
 - Ensure user creation works with mysql
-- Ensure configured start page is navigated to
-- Ensure OIDC Logins work
-- Ensure Github logins work
-- Ensure Google Logins work
+- [x] Ensure configured start page is navigated to
+- [x] Ensure OIDC Logins work
+- [x] Ensure Github logins work
+- [x] Ensure Google Logins work
 
 
-- [] OIDC Logins
+- [x] OIDC Logins
 - [] Smart Playlists
 - [] New Homepage Component
-- [] Configurable start page
-- [] Image Caching
-- [] Fixed filter button size consistency on Podcast Page
-- [] Additional filtering on Podcast page for incomplete and/or complete episodes
+- [x] Configurable start page
+- [x] Image Caching
+- [x] Fixed filter button size consistency on Podcast Page
+- [x] Additional filtering on Podcast page for incomplete and/or complete episodes
 
 
 

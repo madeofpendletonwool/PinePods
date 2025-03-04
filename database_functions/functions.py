@@ -10266,6 +10266,7 @@ def get_user_by_email(cnx, database_type, email):
 def create_oidc_user(cnx, database_type, email, fullname, base_username):
     cursor = cnx.cursor()
     try:
+        print(f"Starting create_oidc_user for email: {email}, fullname: {fullname}, base_username: {base_username}")
         # Check if username exists and find a unique one
         username = base_username
         counter = 1
@@ -10276,11 +10277,31 @@ def create_oidc_user(cnx, database_type, email, fullname, base_username):
             """ if database_type == "postgresql" else """
                 SELECT COUNT(*) FROM Users WHERE Username = %s
             """
+            print(f"Checking if username '{username}' exists")
             cursor.execute(check_query, (username,))
-            if cursor.fetchone()[0] == 0:
+            result = cursor.fetchone()
+            print(f"Username check result: {result}, type: {type(result)}")
+
+            count = 0
+            if isinstance(result, tuple):
+                count = result[0]
+            elif isinstance(result, dict):
+                count = result.get('count', 0)
+            else:
+                # Try to extract the count value safely
+                try:
+                    count = int(result)
+                except (TypeError, ValueError):
+                    print(f"Unable to extract count from result: {result}")
+                    count = 1  # Assume username exists to be safe
+
+            print(f"Username count: {count}")
+            if count == 0:
+                print(f"Username '{username}' is unique, proceeding")
                 break  # Username is unique
 
             # Try with incremented counter
+            print(f"Username '{username}' already exists, trying next")
             username = f"{base_username}{counter}"
             counter += 1
             if counter > 10:  # Limit attempts
@@ -10292,6 +10313,7 @@ def create_oidc_user(cnx, database_type, email, fullname, base_username):
         # Using proper Argon2id format but with an impossible hash
         hashed_password = f"$argon2id$v=19$m=65536,t=3,p=4${salt}${'X' * 43}_OIDC_ACCOUNT_NO_PASSWORD"
 
+        print(f"Inserting new user with username: {username}, email: {email}")
         # Insert user
         if database_type == "postgresql":
             query = """
@@ -10311,11 +10333,46 @@ def create_oidc_user(cnx, database_type, email, fullname, base_username):
         # Get user ID
         if database_type == "postgresql":
             result = cursor.fetchone()
-            user_id = result[0] if isinstance(result, tuple) else result['userid']
+            print(f"PostgreSQL INSERT result: {result}, type: {type(result)}")
+
+            if result is None:
+                print("ERROR: No result returned from INSERT RETURNING")
+                raise Exception("No user ID returned from database after insertion")
+
+            # Handle different result types
+            if isinstance(result, tuple):
+                print(f"Result is tuple: {result}")
+                user_id = result[0]
+            elif isinstance(result, dict):
+                print(f"Result is dict: {result}")
+                # Note: PostgreSQL column names are lowercase by default
+                user_id = result.get('userid')
+                if user_id is None:
+                    # Try other possible key variations
+                    user_id = result.get('UserID') or result.get('userID') or result.get('user_id')
+            else:
+                print(f"Unexpected result type: {type(result)}, value: {result}")
+                # Try to extract user_id safely
+                try:
+                    # Try accessing as a number
+                    user_id = int(result)
+                except (TypeError, ValueError):
+                    # If that fails, convert to string and raise exception
+                    result_str = str(result)
+                    print(f"Result as string: {result_str}")
+                    raise Exception(f"Unable to extract user_id from result: {result_str}")
         else:
             user_id = cursor.lastrowid
+            print(f"MySQL lastrowid: {user_id}")
+
+        print(f"Extracted user_id: {user_id}, type: {type(user_id)}")
+
+        if not user_id:
+            print("ERROR: user_id is empty or zero")
+            raise Exception("Invalid user_id after user creation")
 
         # Add default user settings
+        print(f"Inserting default user settings for user_id: {user_id}")
         settings_query = """
             INSERT INTO "UserSettings"
             (UserID, Theme)
@@ -10328,6 +10385,7 @@ def create_oidc_user(cnx, database_type, email, fullname, base_username):
         cursor.execute(settings_query, (user_id, 'Nordic'))
 
         # Add default user stats
+        print(f"Inserting default user stats for user_id: {user_id}")
         stats_query = """
             INSERT INTO "UserStats"
             (UserID)
@@ -10339,9 +10397,14 @@ def create_oidc_user(cnx, database_type, email, fullname, base_username):
         """
         cursor.execute(stats_query, (user_id,))
 
+        print(f"Committing transaction")
         cnx.commit()
+        print(f"User creation complete, returning user_id: {user_id}")
         return user_id
     except Exception as e:
+        print(f"Error in create_oidc_user: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         cnx.rollback()
         raise
     finally:

@@ -80,13 +80,11 @@ pub fn startpage() -> Html {
                 state.user_details.as_ref().map(|d| d.UserID),
                 state.auth_details.as_ref().map(|d| d.server_name.clone()),
             ) {
-                let request = SetStartPageRequest {
-                    user_id,
-                    new_startpage: startpage.clone(),
-                };
-
+                let startpage_value = startpage.clone();
                 spawn_local(async move {
-                    match call_set_startpage(&server_name, &api_key, &user_id, &request).await {
+                    match call_set_startpage(&server_name, &api_key, &user_id, &startpage_value)
+                        .await
+                    {
                         Ok(_) => {
                             audio_dispatch.reduce_mut(|state| {
                                 state.info_message =

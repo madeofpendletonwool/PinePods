@@ -11,7 +11,7 @@ use crate::requests::login_requests::{
     call_store_oidc_state, call_verify_and_reset_password, call_verify_key, call_verify_mfa,
     ResetCodePayload, ResetForgotPasswordPayload, TimeZoneInfo,
 };
-use crate::requests::setting_reqs::call_get_theme;
+use crate::requests::setting_reqs::{call_get_startpage, call_get_theme};
 use chrono_tz::{Tz, TZ_VARIANTS};
 use md5;
 use rand::Rng;
@@ -266,8 +266,12 @@ pub fn login() -> Html {
                                                                                 }
                                                                             }
                                                                         });
+                                                                            let time_server =
+                                                                                server_name.clone();
+                                                                            let time_api =
+                                                                                api_key.clone();
                                                                             wasm_bindgen_futures::spawn_local(async move {
-                                                                            match call_get_time_info(server_name, api_key, &wasm_user_id).await{
+                                                                            match call_get_time_info(time_server, time_api, &wasm_user_id).await{
                                                                                 Ok(tz_response) => {
                                                                                     effect_displatch.reduce_mut(move |state| {
                                                                                         state.user_tz = Some(tz_response.timezone);
@@ -280,12 +284,57 @@ pub fn login() -> Html {
                                                                                 }
                                                                             }
                                                                         });
-                                                                            let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
-                                                                            effect_loading
-                                                                                .set(false);
-                                                                            history.push(
-                                                                                &redirect_route,
-                                                                            ); // Redirect to the requested or home page
+                                                                            // let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
+                                                                            // effect_loading
+                                                                            //     .set(false);
+                                                                            // history.push(
+                                                                            //     &redirect_route,
+                                                                            // ); // Redirect to the requested or home page
+                                                                            //
+                                                                            // Add start page retrieval
+                                                                            let startpage_api =
+                                                                                api_key.clone();
+                                                                            let startpage_server =
+                                                                                server_name.clone();
+                                                                            let startpage_user_id =
+                                                                                wasm_user_id.clone();
+                                                                            let startpage_history =
+                                                                                history.clone();
+                                                                            let startpage_loading =
+                                                                                effect_loading
+                                                                                    .clone();
+                                                                            let startpage_requested_route =
+                                                                                requested_route
+                                                                                    .clone();
+
+                                                                            wasm_bindgen_futures::spawn_local(async move {
+                                                                                // First try to use the requested route if it exists
+                                                                                if let Some(route) = startpage_requested_route {
+                                                                                    startpage_loading.set(false);
+                                                                                    startpage_history.push(&route);
+                                                                                    return; // Early return if we have a requested route
+                                                                                }
+
+                                                                                // Otherwise try to get the user's configured start page
+                                                                                match call_get_startpage(&startpage_server, &startpage_api, &startpage_user_id).await {
+                                                                                    Ok(start_page) => {
+                                                                                        if !start_page.is_empty() {
+                                                                                            // Use user's configured start page
+                                                                                            startpage_loading.set(false);
+                                                                                            startpage_history.push(&start_page);
+                                                                                        } else {
+                                                                                            // Empty start page, use default
+                                                                                            startpage_loading.set(false);
+                                                                                            startpage_history.push("/home");
+                                                                                        }
+                                                                                    }
+                                                                                    Err(_) => {
+                                                                                        // Failed to get start page, use default
+                                                                                        startpage_loading.set(false);
+                                                                                        startpage_history.push("/home");
+                                                                                    }
+                                                                                }
+                                                                            });
                                                                         }
                                                                         Err(_) => {
                                                                             effect_loading
@@ -465,10 +514,12 @@ pub fn login() -> Html {
                                                         }
                                                     }
                                                 });
+                                                let time_server = server_name.clone();
+                                                let time_api = api_key.clone();
                                                 wasm_bindgen_futures::spawn_local(async move {
                                                     match call_get_time_info(
-                                                        server_name,
-                                                        api_key.unwrap(),
+                                                        time_server,
+                                                        time_api.unwrap(),
                                                         &user_id,
                                                     )
                                                     .await
@@ -488,7 +539,36 @@ pub fn login() -> Html {
                                                         }
                                                     }
                                                 });
-                                                history.push("/home"); // Use the route path
+                                                // Add start page retrieval before redirecting
+                                                let startpage_api = api_key.clone().unwrap();
+                                                let startpage_server = server_name.clone();
+                                                let startpage_user_id = user_id.clone();
+                                                let startpage_history = history.clone();
+
+                                                wasm_bindgen_futures::spawn_local(async move {
+                                                    // Try to get the user's configured start page
+                                                    match call_get_startpage(
+                                                        &startpage_server,
+                                                        &startpage_api,
+                                                        &startpage_user_id,
+                                                    )
+                                                    .await
+                                                    {
+                                                        Ok(start_page) => {
+                                                            if !start_page.is_empty() {
+                                                                // Use user's configured start page
+                                                                startpage_history.push(&start_page);
+                                                            } else {
+                                                                // Empty start page, use default
+                                                                startpage_history.push("/home");
+                                                            }
+                                                        }
+                                                        Err(_) => {
+                                                            // Failed to get start page, use default
+                                                            startpage_history.push("/home");
+                                                        }
+                                                    }
+                                                });
                                             }
                                         }
                                         Err(_) => {
@@ -1100,7 +1180,36 @@ pub fn login() -> Html {
                                     if response.mfa_enabled {
                                         page_state.set(PageState::MFAPrompt);
                                     } else {
-                                        history.push("/home"); // Use the route path
+                                        // Add start page retrieval before redirecting
+                                        let startpage_api = api_key.clone();
+                                        let startpage_server = server_name.clone();
+                                        let startpage_user_id = user_id.clone();
+                                        let startpage_history = history.clone();
+
+                                        wasm_bindgen_futures::spawn_local(async move {
+                                            // Try to get the user's configured start page
+                                            match call_get_startpage(
+                                                &startpage_server,
+                                                &startpage_api,
+                                                &startpage_user_id,
+                                            )
+                                            .await
+                                            {
+                                                Ok(start_page) => {
+                                                    if !start_page.is_empty() {
+                                                        // Use user's configured start page
+                                                        startpage_history.push(&start_page);
+                                                    } else {
+                                                        // Empty start page, use default
+                                                        startpage_history.push("/home");
+                                                    }
+                                                }
+                                                Err(_) => {
+                                                    // Failed to get start page, use default
+                                                    startpage_history.push("/home");
+                                                }
+                                            }
+                                        });
                                     }
                                 }
                                 Err(_) => {
@@ -1291,10 +1400,12 @@ pub fn login() -> Html {
                                     }
                                 }
                             });
+                            let time_server = server_name.clone();
+                            let api_server = api_key.clone();
                             wasm_bindgen_futures::spawn_local(async move {
                                 match call_get_time_info(
-                                    server_name.unwrap(),
-                                    api_key.unwrap().unwrap(),
+                                    time_server.unwrap(),
+                                    api_server.unwrap().unwrap(),
                                     &user_id.unwrap(),
                                 )
                                 .await
@@ -1313,7 +1424,36 @@ pub fn login() -> Html {
                                     }
                                 }
                             });
-                            history.push("/home"); // Use the route path
+                            // Add start page retrieval before redirecting
+                            let startpage_api = api_key.clone();
+                            let startpage_server = server_name.clone();
+                            let startpage_user_id = user_id.clone();
+                            let startpage_history = history.clone();
+
+                            wasm_bindgen_futures::spawn_local(async move {
+                                // Try to get the user's configured start page
+                                match call_get_startpage(
+                                    &startpage_server.unwrap(),
+                                    &startpage_api.unwrap().unwrap(),
+                                    &startpage_user_id.unwrap(),
+                                )
+                                .await
+                                {
+                                    Ok(start_page) => {
+                                        if !start_page.is_empty() {
+                                            // Use user's configured start page
+                                            startpage_history.push(&start_page);
+                                        } else {
+                                            // Empty start page, use default
+                                            startpage_history.push("/home");
+                                        }
+                                    }
+                                    Err(_) => {
+                                        // Failed to get start page, use default
+                                        startpage_history.push("/home");
+                                    }
+                                }
+                            });
                         } else {
                             page_state.set(PageState::Default);
                             dispatch.reduce_mut(|state| {
@@ -1831,10 +1971,12 @@ pub fn login() -> Html {
                                                         }
                                                     }
                                                 });
+                                                let time_server = server_name.clone();
+                                                let time_api = api_key.clone();
                                                 wasm_bindgen_futures::spawn_local(async move {
                                                     match call_get_time_info(
-                                                        server_name,
-                                                        api_key.unwrap(),
+                                                        time_server,
+                                                        time_api.unwrap(),
                                                         &user_id,
                                                     )
                                                     .await
@@ -1854,7 +1996,36 @@ pub fn login() -> Html {
                                                         }
                                                     }
                                                 });
-                                                history.push("/home"); // Use the route path
+                                                // Add start page retrieval before redirecting
+                                                let startpage_api = api_key.clone();
+                                                let startpage_server = server_name.clone();
+                                                let startpage_user_id = user_id.clone();
+                                                let startpage_history = history.clone();
+
+                                                wasm_bindgen_futures::spawn_local(async move {
+                                                    // Try to get the user's configured start page
+                                                    match call_get_startpage(
+                                                        &startpage_server,
+                                                        &startpage_api.unwrap(),
+                                                        &startpage_user_id,
+                                                    )
+                                                    .await
+                                                    {
+                                                        Ok(start_page) => {
+                                                            if !start_page.is_empty() {
+                                                                // Use user's configured start page
+                                                                startpage_history.push(&start_page);
+                                                            } else {
+                                                                // Empty start page, use default
+                                                                startpage_history.push("/home");
+                                                            }
+                                                        }
+                                                        Err(_) => {
+                                                            // Failed to get start page, use default
+                                                            startpage_history.push("/home");
+                                                        }
+                                                    }
+                                                });
                                             }
                                         }
                                         Err(_) => {
@@ -2025,7 +2196,36 @@ pub fn login() -> Html {
                                     if response.mfa_enabled {
                                         page_state.set(PageState::MFAPrompt);
                                     } else {
-                                        history.push("/home"); // Use the route path
+                                        // Add start page retrieval before redirecting
+                                        let startpage_api = api_key.clone();
+                                        let startpage_server = server_name.clone();
+                                        let startpage_user_id = user_id.clone();
+                                        let startpage_history = history.clone();
+
+                                        wasm_bindgen_futures::spawn_local(async move {
+                                            // Try to get the user's configured start page
+                                            match call_get_startpage(
+                                                &startpage_server,
+                                                &startpage_api,
+                                                &startpage_user_id,
+                                            )
+                                            .await
+                                            {
+                                                Ok(start_page) => {
+                                                    if !start_page.is_empty() {
+                                                        // Use user's configured start page
+                                                        startpage_history.push(&start_page);
+                                                    } else {
+                                                        // Empty start page, use default
+                                                        startpage_history.push("/home");
+                                                    }
+                                                }
+                                                Err(_) => {
+                                                    // Failed to get start page, use default
+                                                    startpage_history.push("/home");
+                                                }
+                                            }
+                                        });
                                     }
                                 }
                                 Err(_) => {
@@ -2219,10 +2419,12 @@ pub fn login() -> Html {
                                     }
                                 }
                             });
+                            let time_server = server_name.clone();
+                            let time_api = api_key.clone();
                             wasm_bindgen_futures::spawn_local(async move {
                                 match call_get_time_info(
-                                    server_name.unwrap(),
-                                    api_key.unwrap().unwrap(),
+                                    time_server.unwrap(),
+                                    time_api.unwrap().unwrap(),
                                     &user_id.unwrap(),
                                 )
                                 .await
@@ -2239,7 +2441,36 @@ pub fn login() -> Html {
                                     }
                                 }
                             });
-                            history.push("/home"); // Use the route path
+                            // Add start page retrieval before redirecting
+                            let startpage_api = api_key.clone();
+                            let startpage_server = server_name.clone();
+                            let startpage_user_id = user_id.clone();
+                            let startpage_history = history.clone();
+
+                            wasm_bindgen_futures::spawn_local(async move {
+                                // Try to get the user's configured start page
+                                match call_get_startpage(
+                                    &startpage_server.unwrap(),
+                                    &startpage_api.unwrap().unwrap(),
+                                    &startpage_user_id.unwrap(),
+                                )
+                                .await
+                                {
+                                    Ok(start_page) => {
+                                        if !start_page.is_empty() {
+                                            // Use user's configured start page
+                                            startpage_history.push(&start_page);
+                                        } else {
+                                            // Empty start page, use default
+                                            startpage_history.push("/home");
+                                        }
+                                    }
+                                    Err(_) => {
+                                        // Failed to get start page, use default
+                                        startpage_history.push("/home");
+                                    }
+                                }
+                            });
                         } else {
                             page_state.set(PageState::Default);
                             post_state.reduce_mut(|state| {
