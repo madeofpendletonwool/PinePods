@@ -5746,7 +5746,8 @@ async def oidc_callback(
                 print(f"User info response: {user_info}")
                 email = user_info.get("email")
 
-                if not email and userinfo_url.startswith('https://api.github.com'):
+                parsed_url = urlparse(userinfo_url)
+                if not email and parsed_url.hostname == 'api.github.com':
                     # For GitHub, we may need to make a separate request for emails
                     # because GitHub doesn't include email in user info if it's private
                     emails_response = await client.get(
