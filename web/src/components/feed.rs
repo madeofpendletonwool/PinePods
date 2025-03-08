@@ -1,6 +1,7 @@
 use super::app_drawer::App_drawer;
 use super::gen_components::{
-    empty_message, on_shownotes_click, virtual_episode_item, Search_nav, UseScrollToTop,
+    empty_message, on_shownotes_click, use_long_press, virtual_episode_item, Search_nav,
+    UseScrollToTop,
 };
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
@@ -331,7 +332,50 @@ pub fn episode(props: &EpisodeProps) -> Html {
     let show_clonedal = show_modal.clone();
     let show_clonedal2 = show_modal.clone();
     let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
-    let container_height = use_state(|| "221px".to_string()); // Add this state
+    let container_height = use_state(|| "221px".to_string());
+
+    // This will track if we're showing the context menu from a long press
+    let show_context_menu = use_state(|| false);
+    let context_menu_position = use_state(|| (0, 0));
+
+    // Long press handler - simulate clicking the context button
+    let context_button_ref = use_node_ref();
+    let on_long_press = {
+        let context_button_ref = context_button_ref.clone();
+        let show_context_menu = show_context_menu.clone();
+        let context_menu_position = context_menu_position.clone();
+
+        Callback::from(move |event: TouchEvent| {
+            if let Some(touch) = event.touches().get(0) {
+                // Record position for the context menu
+                context_menu_position.set((touch.client_x(), touch.client_y()));
+
+                // Find and click the context button (if it exists)
+                if let Some(button) = context_button_ref.cast::<web_sys::HtmlElement>() {
+                    button.click();
+                } else {
+                    // If the button doesn't exist (maybe on mobile where it's hidden)
+                    // we'll just set our state to show the menu
+                    show_context_menu.set(true);
+                }
+            }
+        })
+    };
+
+    // Setup long press detection
+    let (on_touch_start, on_touch_end, on_touch_move, is_long_press) =
+        use_long_press(on_long_press, Some(600)); // 600ms for long press
+
+    // When long press is detected through the hook, update our state
+    {
+        let show_context_menu = show_context_menu.clone();
+        use_effect_with(is_long_press, move |is_pressed| {
+            if *is_pressed {
+                show_context_menu.set(true);
+            }
+            || ()
+        });
+    }
 
     let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
 
@@ -444,6 +488,14 @@ pub fn episode(props: &EpisodeProps) -> Html {
         .unwrap_or(&vec![])
         .contains(&props.episode.episodeid);
 
+    // Close context menu callback
+    let close_context_menu = {
+        let show_context_menu = show_context_menu.clone();
+        Callback::from(move |_| {
+            show_context_menu.set(false);
+        })
+    };
+
     let item = virtual_episode_item(
         Box::new(props.episode.clone()),
         sanitize_html_with_blank_target(&props.episode.episodedescription),
@@ -465,6 +517,14 @@ pub fn episode(props: &EpisodeProps) -> Html {
         (*container_height).clone(),
         is_current_episode,
         is_playing,
+        // Add new params for touch events
+        on_touch_start,
+        on_touch_end,
+        on_touch_move,
+        *show_context_menu,
+        *context_menu_position,
+        close_context_menu,
+        context_button_ref,
     );
 
     item

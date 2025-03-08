@@ -1,5 +1,5 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::{empty_message, Search_nav, UseScrollToTop};
+use super::gen_components::{empty_message, Search_nav, FallbackImage, UseScrollToTop};
 use super::routes::Route;
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
@@ -8,12 +8,11 @@ use crate::components::context::{AppState, UIState};
 use crate::components::gen_components::on_shownotes_click;
 use crate::components::gen_components::ContextButton;
 use crate::components::gen_components::EpisodeTrait;
-use crate::components::gen_funcs::{format_datetime, match_date_format, parse_date};
+use crate::components::gen_funcs::{format_datetime, format_time, match_date_format, parse_date};
 use crate::requests::pod_req;
 use crate::requests::pod_req::{HomeEpisode, Playlist};
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
-use yew_router::prelude::use_navigator;
 use yew_router::prelude::Link;
 use yewdux::prelude::*;
 
@@ -81,7 +80,6 @@ pub fn home() -> Html {
         let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-
         use_effect_with(
             (api_key.clone(), user_id.clone(), server_name.clone()),
             move |_| {
@@ -97,8 +95,45 @@ pub fn home() -> Html {
                         .await
                         {
                             Ok(home_data) => {
+                                // Collect all episodes from the various sections
+                                let all_episodes = home_data
+                                    .recent_episodes
+                                    .iter()
+                                    .chain(home_data.in_progress_episodes.iter());
+
+                                // Extract episode state information
+                                let completed_episode_ids: Vec<i32> = all_episodes
+                                    .clone()
+                                    .filter(|ep| ep.completed)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
+
+                                let saved_episode_ids: Vec<i32> = all_episodes
+                                    .clone()
+                                    .filter(|ep| ep.saved)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
+
+                                let queued_episode_ids: Vec<i32> = all_episodes
+                                    .clone()
+                                    .filter(|ep| ep.queued)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
+
+                                let downloaded_episode_ids: Vec<i32> = all_episodes
+                                    .clone()
+                                    .filter(|ep| ep.downloaded)
+                                    .map(|ep| ep.episodeid)
+                                    .collect();
+
                                 effect_dispatch.reduce_mut(move |state| {
                                     state.home_overview = Some(home_data);
+
+                                    // Update state collections with merged data
+                                    state.completed_episodes = Some(completed_episode_ids);
+                                    state.saved_episode_ids = Some(saved_episode_ids);
+                                    state.queued_episode_ids = Some(queued_episode_ids);
+                                    state.downloaded_episode_ids = Some(downloaded_episode_ids);
                                 });
                                 loading.set(false);
                             }
@@ -181,24 +216,27 @@ pub fn home() -> Html {
                             </div>
                         </div>
 
-                        // Continue Listening Section
-                        <div class="section-container">
-                            <h2 class="text-2xl font-bold mb-4 item_container-text">{"Continue Listening"}</h2>
-                            if home_data.in_progress_episodes.is_empty() {
-                                <p class="item_container-text">{"No episodes in progress"}</p>
+                        {
+                            if !home_data.in_progress_episodes.is_empty() {
+                                html! {
+                                    <div class="section-container">
+                                        <h2 class="text-2xl font-bold mb-4 item_container-text">{"Continue Listening"}</h2>
+                                        <div class="space-y-4">
+                                            { for home_data.in_progress_episodes.iter().take(3).map(|episode| {
+                                                html! {
+                                                    <HomeEpisodeItem
+                                                        episode={episode.clone()}
+                                                        page_type="home"
+                                                    />
+                                                }
+                                            })}
+                                        </div>
+                                    </div>
+                                }
                             } else {
-                                <div class="space-y-4">
-                                    { for home_data.in_progress_episodes.iter().take(3).map(|episode| {
-                                        html! {
-                                            <HomeEpisodeItem
-                                                episode={episode.clone()}
-                                                page_type="home"
-                                            />
-                                        }
-                                    })}
-                                </div>
+                                html! {}
                             }
-                        </div>
+                        }
 
                         // Top Podcasts Section
                         // In your top podcasts section, replace the existing podcast grid items with:
@@ -232,7 +270,7 @@ pub fn home() -> Html {
                                 html! {
                                     <div class="podcast-grid-item" onclick={on_title_click}>
                                         <div class="podcast-image-container">
-                                            <img
+                                            <FallbackImage
                                                 src={podcast.artworkurl.clone().unwrap_or_default()}
                                                 alt={format!("Cover for {}", podcast.podcastname)}
                                                 class="podcast-image"
@@ -291,6 +329,7 @@ pub fn home() -> Html {
                                 </div>
                             }
                         </div>
+                        <div class="h-30"></div>
                     </div>
                 } else {
                     { empty_message(
@@ -347,6 +386,33 @@ pub fn home_episode_item(props: &HomeEpisodeItemProps) -> Html {
     let history = BrowserHistory::new();
     let should_show_buttons = !props.episode.episodeurl.is_empty();
     let episode: Box<dyn EpisodeTrait> = Box::new(props.episode.clone());
+    let listen_duration = props.episode.listenduration.unwrap_or(0);
+    let total_duration = props.episode.episodeduration;
+
+    let completed = props.episode.completed
+        || state
+            .completed_episodes
+            .as_ref()
+            .unwrap_or(&vec![])
+            .contains(&props.episode.episodeid);
+
+    let progress_percentage = if total_duration > 0 {
+        (listen_duration as f64 / total_duration as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    // Format durations for display
+    let formatted_duration = format_time(total_duration as f64);
+    let duration_clone = formatted_duration.clone();
+    let duration_again = formatted_duration.clone();
+
+    // Format listen duration if it exists
+    let formatted_listen_duration = if listen_duration > 0 {
+        Some(format_time(listen_duration as f64))
+    } else {
+        None
+    };
 
     // Check if this episode is currently playing
     let is_current_episode = audio_state
@@ -409,7 +475,7 @@ pub fn home_episode_item(props: &HomeEpisodeItemProps) -> Html {
     html! {
         <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg">
             <div class="flex flex-col w-auto object-cover pl-4">
-                <img
+                <FallbackImage
                     src={props.episode.episodeartwork.clone()}
                     alt={format!("Cover for {}", props.episode.episodetitle)}
                     class="episode-image"
@@ -420,6 +486,15 @@ pub fn home_episode_item(props: &HomeEpisodeItemProps) -> Html {
                     <p class="item_container-text episode-title font-semibold line-clamp-2">
                         { &props.episode.episodetitle }
                     </p>
+                    {
+                        if completed.clone() {
+                            html! {
+                                <i class="ph ph-check-circle text-2xl text-green-500"></i>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
                 </div>
                 <p class="item_container-text text-sm">{ &props.episode.podcastname }</p>
                 <span class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2">
@@ -428,6 +503,32 @@ pub fn home_episode_item(props: &HomeEpisodeItemProps) -> Html {
                     </svg>
                     { formatted_date }
                 </span>
+                {
+                    if completed {
+                        html! {
+                            <div class="flex items-center space-x-2">
+                                <span class="item_container-text">{ duration_clone }</span>
+                                <span class="item_container-text">{ "-  Completed" }</span>
+                            </div>
+                        }
+                    } else {
+                        if formatted_listen_duration.is_some() {
+                            html! {
+                                <div class="flex items-center space-x-2">
+                                    <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                    <div class="progress-bar-container">
+                                        <div class="progress-bar" style={ format!("width: {}%;", progress_percentage) }></div>
+                                    </div>
+                                    <span class="item_container-text">{ duration_again }</span>
+                                </div>
+                            }
+                        } else {
+                            html! {
+                                <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
+                            }
+                        }
+                    }
+                }
             </div>
             <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;">
                 if should_show_buttons {

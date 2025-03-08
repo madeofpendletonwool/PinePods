@@ -1,7 +1,7 @@
 use crate::components::context::{AppState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::downloads_tauri::start_local_file_server;
-use crate::components::gen_components::EpisodeModal;
+use crate::components::gen_components::{EpisodeModal, FallbackImage};
 use crate::components::gen_funcs::format_time_rm_hour;
 #[cfg(not(feature = "server_build"))]
 use crate::requests::pod_req::EpisodeDownload;
@@ -1429,7 +1429,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 </div>
                 <div class="left-group">
                     <div onclick={title_click.clone()} class="artwork-container">
-                        <img class={artwork_class} src={audio_props.artwork_url.clone()} />
+                        <FallbackImage
+                            src={audio_props.artwork_url.clone()}
+                            alt={format!("Cover for audio")}
+                            class={Some(artwork_class.to_string())}  // Convert Classes to String and wrap in Some
+                        />
                     </div>
                     <div class="title" onclick={title_click.clone()}>
                         <span>{ &audio_props.title }</span>

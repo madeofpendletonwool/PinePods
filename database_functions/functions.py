@@ -10484,7 +10484,7 @@ def get_home_overview(database_type, cnx, user_id):
     # Recent Episodes query with is_youtube field
     if database_type == "postgresql":
         recent_query = """
-            SELECT DISTINCT ON ("Episodes".EpisodeID)
+            SELECT
                 "Episodes".EpisodeID,
                 "Episodes".EpisodeTitle,
                 "Episodes".EpisodePubDate,
@@ -10496,19 +10496,32 @@ def get_home_overview(database_type, cnx, user_id):
                 "Podcasts".PodcastName,
                 "Podcasts".PodcastID,
                 "Podcasts".IsYouTubeChannel as is_youtube,
-                "UserEpisodeHistory".ListenDuration
+                "UserEpisodeHistory".ListenDuration,
+                CASE WHEN "SavedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                CASE WHEN "EpisodeQueue".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                CASE WHEN "DownloadedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
             FROM "Episodes"
             INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
-            LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID
+            LEFT JOIN "UserEpisodeHistory" ON
+                "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID
                 AND "UserEpisodeHistory".UserID = %s
+            LEFT JOIN "SavedEpisodes" ON
+                "Episodes".EpisodeID = "SavedEpisodes".EpisodeID
+                AND "SavedEpisodes".UserID = %s
+            LEFT JOIN "EpisodeQueue" ON
+                "Episodes".EpisodeID = "EpisodeQueue".EpisodeID
+                AND "EpisodeQueue".UserID = %s
+            LEFT JOIN "DownloadedEpisodes" ON
+                "Episodes".EpisodeID = "DownloadedEpisodes".EpisodeID
+                AND "DownloadedEpisodes".UserID = %s
             WHERE "Podcasts".UserID = %s
                 AND "Episodes".EpisodePubDate >= NOW() - INTERVAL '7 days'
-            ORDER BY "Episodes".EpisodeID, "Episodes".EpisodePubDate DESC
+            ORDER BY "Episodes".EpisodePubDate DESC
             LIMIT 10
         """
-    else:
+    else:  # MySQL or MariaDB
         recent_query = """
-            SELECT DISTINCT
+            SELECT
                 Episodes.EpisodeID,
                 Episodes.EpisodeTitle,
                 Episodes.EpisodePubDate,
@@ -10520,11 +10533,24 @@ def get_home_overview(database_type, cnx, user_id):
                 Podcasts.PodcastName,
                 Podcasts.PodcastID,
                 Podcasts.IsYouTubeChannel as is_youtube,
-                UserEpisodeHistory.ListenDuration
+                UserEpisodeHistory.ListenDuration,
+                CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
             FROM Episodes
             INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
-            LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+            LEFT JOIN UserEpisodeHistory ON
+                Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
                 AND UserEpisodeHistory.UserID = %s
+            LEFT JOIN SavedEpisodes ON
+                Episodes.EpisodeID = SavedEpisodes.EpisodeID
+                AND SavedEpisodes.UserID = %s
+            LEFT JOIN EpisodeQueue ON
+                Episodes.EpisodeID = EpisodeQueue.EpisodeID
+                AND EpisodeQueue.UserID = %s
+            LEFT JOIN DownloadedEpisodes ON
+                Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
+                AND DownloadedEpisodes.UserID = %s
             WHERE Podcasts.UserID = %s
                 AND Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 7 DAY)
             ORDER BY Episodes.EpisodePubDate DESC
@@ -10537,10 +10563,22 @@ def get_home_overview(database_type, cnx, user_id):
             "Episodes".*,
             "Podcasts".PodcastName,
             "Podcasts".IsYouTubeChannel as is_youtube,
-            "UserEpisodeHistory".ListenDuration
+            "UserEpisodeHistory".ListenDuration,
+            CASE WHEN "SavedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+            CASE WHEN "EpisodeQueue".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+            CASE WHEN "DownloadedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
         FROM "UserEpisodeHistory"
         JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID
         JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+        LEFT JOIN "SavedEpisodes" ON
+            "Episodes".EpisodeID = "SavedEpisodes".EpisodeID
+            AND "SavedEpisodes".UserID = %s
+        LEFT JOIN "EpisodeQueue" ON
+            "Episodes".EpisodeID = "EpisodeQueue".EpisodeID
+            AND "EpisodeQueue".UserID = %s
+        LEFT JOIN "DownloadedEpisodes" ON
+            "Episodes".EpisodeID = "DownloadedEpisodes".EpisodeID
+            AND "DownloadedEpisodes".UserID = %s
         WHERE "UserEpisodeHistory".UserID = %s
         AND "UserEpisodeHistory".ListenDuration > 0
         AND "Episodes".Completed = FALSE
@@ -10551,10 +10589,22 @@ def get_home_overview(database_type, cnx, user_id):
             Episodes.*,
             Podcasts.PodcastName,
             Podcasts.IsYouTubeChannel as is_youtube,
-            UserEpisodeHistory.ListenDuration
+            UserEpisodeHistory.ListenDuration,
+            CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+            CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+            CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
         FROM UserEpisodeHistory
         JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID
         JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+        LEFT JOIN SavedEpisodes ON
+            Episodes.EpisodeID = SavedEpisodes.EpisodeID
+            AND SavedEpisodes.UserID = %s
+        LEFT JOIN EpisodeQueue ON
+            Episodes.EpisodeID = EpisodeQueue.EpisodeID
+            AND EpisodeQueue.UserID = %s
+        LEFT JOIN DownloadedEpisodes ON
+            Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
+            AND DownloadedEpisodes.UserID = %s
         WHERE UserEpisodeHistory.UserID = %s
         AND UserEpisodeHistory.ListenDuration > 0
         AND Episodes.Completed = FALSE
@@ -10612,14 +10662,14 @@ def get_home_overview(database_type, cnx, user_id):
     """
 
     try:
-        # Get recent episodes
-        cursor.execute(recent_query, (user_id, user_id))
+        # Get recent episodes - need to pass 5 parameters as we have 5 placeholders
+        cursor.execute(recent_query, (user_id, user_id, user_id, user_id, user_id))
         recent_results = cursor.fetchall()
         if recent_results is not None:
             home_data["recent_episodes"] = lowercase_keys(recent_results)
 
-        # Get in progress episodes
-        cursor.execute(in_progress_query, (user_id,))
+        # Get in progress episodes - need to pass 4 parameters as we have 4 placeholders
+        cursor.execute(in_progress_query, (user_id, user_id, user_id, user_id))
         in_progress_results = cursor.fetchall()
         if in_progress_results is not None:
             home_data["in_progress_episodes"] = lowercase_keys(in_progress_results)

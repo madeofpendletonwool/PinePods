@@ -7,7 +7,7 @@ use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg as EpisodeMsg;
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_components::on_shownotes_click;
-use crate::components::gen_components::{Search_nav, UseScrollToTop};
+use crate::components::gen_components::{Search_nav, FallbackImage, UseScrollToTop};
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
     strip_images_from_html, truncate_description, unix_timestamp_to_datetime_string,
@@ -696,8 +696,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             <div>
                                             <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
                                                     <div class="flex flex-col w-auto object-cover pl-4">
-                                                        <img
-                                                            src={podcast.artworkurl.clone()}
+                                                        <FallbackImage
+                                                            src={podcast.artworkurl.clone().unwrap()}
                                                             onclick={on_title_click.clone()}
                                                             alt={format!("Cover for {}", podcast.podcastname.clone())}
                                                             class="episode-image"

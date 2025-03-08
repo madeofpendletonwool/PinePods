@@ -2502,10 +2502,6 @@ input[type="range"]::-moz-range-thumb {
     background-color: transparent;
 }
 
-.audio-top-button.selector-button:hover {
-    background-color: var(--hover-color);
-}
-
 @media (max-width: 768px) {
     .pronounce-mobile {
         width: 54px !important;
@@ -2636,6 +2632,7 @@ input[type="range"]::-moz-range-thumb {
         /* Center horizontally */
         align-items: center;
         /* Center vertically */
+        border-radius: 1.25rem;
     }
 
     .episode-title .material-icons {
@@ -3831,6 +3828,10 @@ button.item-container-action-button.item-container-action-button {
     margin-bottom: 20px;
 }
 
+.rounded-corners {
+    border-radius: 1rem;
+}
+
 .episode-artwork {
     /* Adjust to scale with page size */
     max-width: 45%;
@@ -4117,13 +4118,6 @@ button.item-container-action-button.item-container-action-button {
     /* Adjust this value as needed */
     margin-right: 5px;
     /* Add some space to the right of the icon */
-}
-
-.episode-action-buttons button:hover {
-    background-color: var(--hover-color);
-    color: var(--text-color);
-    border-color: var(--hover-color);
-    /* Change border color on hover */
 }
 
 .episode-action-buttons button:focus {

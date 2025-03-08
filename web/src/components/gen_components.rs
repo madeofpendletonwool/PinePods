@@ -24,6 +24,7 @@ use crate::requests::search_pods::{
     YouTubeSearchResults,
 };
 use gloo_events::EventListener;
+use gloo_timers::callback::Timeout;
 use std::any::Any;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -35,6 +36,70 @@ use yew::prelude::*;
 use yew::Callback;
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
+
+#[derive(Properties, PartialEq, Clone)]
+pub struct FallbackImageProps {
+    pub src: String,
+    pub alt: String,
+    pub class: Option<String>,
+    #[prop_or_default]
+    pub onclick: Option<Callback<MouseEvent>>,
+    #[prop_or_default]
+    pub style: Option<String>,
+}
+
+#[function_component(FallbackImage)]
+pub fn fallback_image(props: &FallbackImageProps) -> Html {
+    let image_ref = use_node_ref();
+    let src_state = use_state(|| props.src.clone());
+    let has_error = use_state(|| false);
+
+    let (state, dispatch) = use_store::<AppState>();
+    let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+    let server_name_str = server_name.unwrap();
+    // Create a proxied URL from the original source
+    let proxied_url = {
+        let original_url = props.src.clone();
+        format!(
+            "{}/api/proxy/image?url={}",
+            server_name_str,
+            urlencoding::encode(&original_url)
+        )
+    };
+
+    // Handle image load error
+    let on_error = {
+        let has_error = has_error.clone();
+        let src_state = src_state.clone();
+        let proxied_url = proxied_url.clone();
+
+        Callback::from(move |_: Event| {
+            if !*has_error {
+                // First error - switch to proxied URL
+                has_error.set(true);
+                src_state.set(proxied_url.clone());
+                web_sys::console::log_1(
+                    &format!("Image load failed, switching to proxy: {}", proxied_url).into(),
+                );
+            }
+        })
+    };
+
+    // If we have a click handler, pass it through
+    let onclick = props.onclick.clone();
+
+    html! {
+        <img
+            ref={image_ref}
+            src={(*src_state).clone()}
+            alt={props.alt.clone()}
+            class={props.class.clone().unwrap_or_default()}
+            style={props.style.clone().unwrap_or_default()}
+            onerror={on_error}
+            onclick={onclick}
+        />
+    }
+}
 
 #[derive(Properties, PartialEq, Clone)]
 pub struct ErrorMessageProps {
@@ -597,6 +662,12 @@ pub fn first_admin_modal(props: &FirstAdminModalProps) -> Html {
 pub struct ContextButtonProps {
     pub episode: Box<dyn EpisodeTrait>,
     pub page_type: String,
+    #[prop_or(false)]
+    pub show_menu_only: bool,
+    #[prop_or(None)]
+    pub position: Option<(i32, i32)>,
+    #[prop_or(None)]
+    pub on_close: Option<Callback<()>>,
 }
 
 #[function_component(ContextButton)]
@@ -616,6 +687,17 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     let dropdown_ref = use_node_ref();
     let button_ref = use_node_ref();
 
+    // Update dropdown_open if show_menu_only prop changes
+    {
+        let dropdown_open = dropdown_open.clone();
+        use_effect_with(props.show_menu_only, move |show_menu_only| {
+            if *show_menu_only {
+                dropdown_open.set(true);
+            }
+            || ()
+        });
+    }
+
     let toggle_dropdown = {
         let dropdown_open = dropdown_open.clone();
         Callback::from(move |e: MouseEvent| {
@@ -629,12 +711,15 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         let dropdown_open = dropdown_open.clone();
         let dropdown_ref = dropdown_ref.clone();
         let button_ref = button_ref.clone();
+        let on_close = props.on_close.clone();
+        let show_menu_only = props.show_menu_only;
 
         use_effect_with((*dropdown_open, ()), move |_| {
             let document = window().unwrap().document().unwrap();
             let dropdown_open = dropdown_open.clone();
             let dropdown_ref = dropdown_ref.clone();
             let button_ref = button_ref.clone();
+            let on_close = on_close.clone();
 
             let listener = EventListener::new(&document, "click", move |event| {
                 if *dropdown_open {
@@ -645,6 +730,13 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                                 && !button_element.contains(Some(&target))
                             {
                                 dropdown_open.set(false);
+                                // If this is a long press menu (show_menu_only is true),
+                                // call the on_close callback when clicked outside
+                                if show_menu_only {
+                                    if let Some(on_close) = &on_close {
+                                        on_close.emit(());
+                                    }
+                                }
                             }
                         }
                     }
@@ -658,15 +750,15 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     }
 
     {
-        let dropdown_open = dropdown_open.clone(); // Clone for use in the effect hook
-        let dropdown_ref = dropdown_ref.clone(); // Clone for use in the effect hook
-
-        // Use this cloned state specifically for checking within the closure
+        let dropdown_open = dropdown_open.clone();
+        let dropdown_ref = dropdown_ref.clone();
         let dropdown_state_for_closure = dropdown_open.clone();
+        let on_close = props.on_close.clone();
+        let show_menu_only = props.show_menu_only;
 
         use_effect_with(dropdown_open.clone(), move |_| {
             let document = web_sys::window().unwrap().document().unwrap();
-            let dropdown_ref_clone = dropdown_ref.clone(); // Clone again to move into the closure
+            let dropdown_ref_clone = dropdown_ref.clone();
 
             let click_handler_closure = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
                 if let Some(target) = event.target() {
@@ -676,13 +768,19 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         if let Ok(node) = target.dyn_into::<web_sys::Node>() {
                             if !dropdown_element.contains(Some(&node)) {
                                 dropdown_state_for_closure.set(false);
+
+                                // If this is a long press menu, call the on_close callback
+                                if show_menu_only {
+                                    if let Some(on_close) = &on_close {
+                                        on_close.emit(());
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }) as Box<dyn FnMut(_)>);
 
-            // Only add the event listener if the dropdown is open to avoid unnecessary listeners
             if *dropdown_open {
                 document
                     .add_event_listener_with_callback(
@@ -692,9 +790,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     .unwrap();
             }
 
-            // Cleanup function
             move || {
-                // Always remove the event listener to avoid memory leaks
                 document
                     .remove_event_listener_with_callback(
                         "click",
@@ -1357,8 +1453,18 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     let close_dropdown = {
         let dropdown_open = dropdown_open.clone();
+        let on_close = props.on_close.clone();
+        let show_menu_only = props.show_menu_only;
+
         Callback::from(move |_| {
             dropdown_open.set(false);
+
+            // If this is a long press menu, also call the on_close callback
+            if show_menu_only {
+                if let Some(on_close) = &on_close {
+                    on_close.emit(());
+                }
+            }
         })
     };
 
@@ -1475,13 +1581,15 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     html! {
         <div class="context-button-wrapper">
-            <button
-                ref={button_ref.clone()}
-                onclick={toggle_dropdown.clone()}
-                class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
-            >
-                <i class="ph ph-dots-three-circle md:text-6xl text-4xl"></i>
-            </button>
+            if !props.show_menu_only {
+                <button
+                    ref={button_ref.clone()}
+                    onclick={toggle_dropdown.clone()}
+                    class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                >
+                    <i class="ph ph-dots-three-circle md:text-6xl text-4xl"></i>
+                </button>
+            }
             if *dropdown_open {
                 <div
                     ref={dropdown_ref.clone()}
@@ -1885,9 +1993,11 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
             <div class="bg-custom-light dark:bg-custom-dark w-11/12 max-w-2xl rounded-lg shadow-xl max-h-[90vh] flex flex-col">
                 // Header with artwork and title - fixed at top
                 <div class="flex items-start space-x-4 p-6 border-b border-custom-border">
-                    <img src={props.episode_artwork.clone()}
-                         alt="Episode artwork"
-                         class="w-32 h-32 rounded-lg object-cover flex-shrink-0" />
+                    <FallbackImage
+                        src={props.episode_artwork.clone()}
+                        alt="Episode artwork"
+                        class="w-32 h-32 rounded-lg object-cover flex-shrink-0"
+                    />
                     <div class="flex-1 min-w-0"> // min-w-0 helps with text truncation
                         <h2 class="text-xl font-bold mb-2 item_container-text truncate">
                             {props.episode_title.clone()}
@@ -1927,6 +2037,90 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
             </div>
         </div>
     }
+}
+
+#[hook]
+pub fn use_long_press(
+    on_long_press: Callback<TouchEvent>,
+    delay_ms: Option<u32>,
+) -> (
+    Callback<TouchEvent>,
+    Callback<TouchEvent>,
+    Callback<TouchEvent>,
+    bool,
+) {
+    let timeout_handle = use_state(|| None::<Timeout>);
+    let is_long_press = use_state(|| false);
+    let start_position = use_state(|| None::<(i32, i32)>);
+
+    // Configure the threshold for movement that cancels a long press
+    let movement_threshold = 10; // pixels
+    let delay = delay_ms.unwrap_or(500); // Default to 500ms
+
+    let on_touch_start = {
+        let timeout_handle = timeout_handle.clone();
+        let is_long_press = is_long_press.clone();
+        let start_position = start_position.clone();
+        let on_long_press = on_long_press.clone();
+
+        Callback::from(move |event: TouchEvent| {
+            event.prevent_default();
+
+            // Store the initial touch position
+            if let Some(touch) = event.touches().get(0) {
+                start_position.set(Some((touch.client_x(), touch.client_y())));
+            }
+
+            // Reset long press state
+            is_long_press.set(false);
+
+            // Create a timeout that will trigger the long press
+            let on_long_press_clone = on_long_press.clone();
+            let event_clone = event.clone();
+            let is_long_press_clone = is_long_press.clone();
+
+            let timeout = Timeout::new(delay, move || {
+                is_long_press_clone.set(true);
+                on_long_press_clone.emit(event_clone);
+            });
+
+            timeout_handle.set(Some(timeout));
+        })
+    };
+
+    let on_touch_end = {
+        let timeout_handle = timeout_handle.clone();
+
+        Callback::from(move |_event: TouchEvent| {
+            // Clear the timeout if the touch ends before the long press is triggered
+            timeout_handle.set(None);
+        })
+    };
+
+    let on_touch_move = {
+        let timeout_handle = timeout_handle.clone();
+        let start_position = start_position.clone();
+
+        Callback::from(move |event: TouchEvent| {
+            // If the touch moves too much, cancel the long press
+            if let Some((start_x, start_y)) = *start_position {
+                if let Some(touch) = event.touches().get(0) {
+                    let current_x = touch.client_x();
+                    let current_y = touch.client_y();
+
+                    let distance_x = (current_x - start_x).abs();
+                    let distance_y = (current_y - start_y).abs();
+
+                    if distance_x > movement_threshold || distance_y > movement_threshold {
+                        // Movement exceeded threshold, cancel the long press
+                        timeout_handle.set(None);
+                    }
+                }
+            }
+        })
+    };
+
+    (on_touch_start, on_touch_end, on_touch_move, *is_long_press)
 }
 
 pub fn episode_item(
@@ -1987,7 +2181,7 @@ pub fn episode_item(
                     html! {}
                 }}
                 <div class="flex flex-col w-auto object-cover pl-4">
-                    <img
+                    <FallbackImage
                         src={episode.get_episode_artwork()}
                         alt={format!("Cover for {}", episode.get_episode_title())}
                         class="episode-image"
@@ -1998,7 +2192,7 @@ pub fn episode_item(
                     <p class="item_container-text episode-title font-semibold line-clamp-2">
                         { episode.get_episode_title() }
                     </p>
-                    {
+                        {
                             if completed.clone() {
                                 html! {
                                     <i class="ph ph-check-circle text-2xl text-green-500"></i>
@@ -2110,7 +2304,7 @@ pub fn virtual_episode_item(
     listen_duration: Option<i32>,
     page_type: &str,
     on_checkbox_change: Callback<i32>,
-    is_delete_mode: bool, // Add this line
+    is_delete_mode: bool,
     ep_url: String,
     completed: bool,
     show_modal: bool,
@@ -2119,6 +2313,14 @@ pub fn virtual_episode_item(
     container_height: String,
     is_current_episode: bool,
     is_playing: bool,
+    // New parameters for long press functionality
+    on_touch_start: Callback<TouchEvent>,
+    on_touch_end: Callback<TouchEvent>,
+    on_touch_move: Callback<TouchEvent>,
+    show_context_menu: bool,
+    context_menu_position: (i32, i32),
+    close_context_menu: Callback<()>,
+    context_button_ref: NodeRef,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -2139,24 +2341,41 @@ pub fn virtual_episode_item(
     let should_show_buttons = !ep_url.is_empty();
     let preview_description = strip_images_from_html(&description);
 
+    // Handle context menu position
+    let context_menu_style = if show_context_menu {
+        format!(
+            "position: fixed; top: {}px; left: {}px; z-index: 1000;",
+            context_menu_position.1, context_menu_position.0
+        )
+    } else {
+        String::new()
+    };
+
     #[wasm_bindgen]
     extern "C" {
         #[wasm_bindgen(js_namespace = window)]
         fn toggleDescription(guid: &str, expanded: bool);
     }
+
     html! {
         <div>
-            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg" style={format!("height: {}; overflow: hidden;", container_height)}>
+            <div
+                class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg touch-manipulation"
+                style={format!("height: {}; overflow: hidden;", container_height)}
+                ontouchstart={on_touch_start}
+                ontouchend={on_touch_end}
+                ontouchmove={on_touch_move}
+            >
                 {if is_delete_mode {
                     html! {
                         <input type="checkbox" class="form-checkbox h-5 w-5 text-blue-600"
-                            onchange={on_checkbox_change.reform(move |_| checkbox_ep)} /> // Modify this line
+                            onchange={on_checkbox_change.reform(move |_| checkbox_ep)} />
                     }
                 } else {
                     html! {}
                 }}
                 <div class="flex flex-col w-auto object-cover pl-4">
-                    <img
+                    <FallbackImage
                         src={episode.get_episode_artwork()}
                         alt={format!("Cover for {}", episode.get_episode_title())}
                         class="episode-image"
@@ -2238,14 +2457,39 @@ pub fn virtual_episode_item(
                                         }
                                     }
                                 </button>
-                                <div class="hidden sm:block"> // This will hide the context button below 640px
-                                    <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
+                                <div class="hidden sm:block"> // Standard desktop context button
+                                    <div ref={context_button_ref.clone()}>
+                                        <ContextButton episode={episode.clone()} page_type={page_type.to_string()} />
+                                    </div>
                                 </div>
                             }
                         </div>
                     }
                 }
             </div>
+
+            // This shows the context menu via long press
+            {
+                if show_context_menu {
+                    html! {
+                        <div
+                            class="dropdown-content-class border border-solid absolute z-50 divide-y rounded-lg shadow w-48"
+                            style={context_menu_style}
+                        >
+                            <ContextButton
+                                episode={episode.clone()}
+                                page_type={page_type.to_string()}
+                                show_menu_only={true}
+                                position={Some(context_menu_position)}
+                                on_close={close_context_menu}
+                            />
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
+
             if show_modal {
                 <EpisodeModal
                     episode_id={episode.get_episode_id(None)}
@@ -2326,7 +2570,7 @@ pub fn download_episode_item(
                     html! {}
                 }}
                 <div class="flex flex-col w-auto object-cover pl-4 self-start">
-                    <img
+                    <FallbackImage
                         src={episode.get_episode_artwork()}
                         alt={format!("Cover for {}", episode.get_episode_title())}
                         class="episode-image"
@@ -2510,7 +2754,7 @@ pub fn queue_episode_item(
                     html! {}
                 }}
                 <div class="flex flex-col w-auto object-cover pl-4">
-                    <img
+                    <FallbackImage
                         src={episode.get_episode_artwork()}
                         alt={format!("Cover for {}", episode.get_episode_title())}
                         class="episode-image"
@@ -2676,7 +2920,7 @@ pub fn person_episode_item(
                     html! {}
                 }}
                 <div class="flex flex-col w-auto object-cover pl-4">
-                    <img
+                    <FallbackImage
                         src={episode.get_episode_artwork()}
                         alt={format!("Cover for {}", episode.get_episode_title())}
                         class="episode-image"

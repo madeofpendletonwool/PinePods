@@ -1,5 +1,5 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, UseScrollToTop};
+use super::gen_components::{Search_nav, UseScrollToTop, FallbackImage};
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
@@ -1948,7 +1948,12 @@ pub fn episode_layout() -> Html {
                                                     }
                                                 </div>
                                                 <div class="item-header-mobile-cover-container">
-                                                    <img src={podcast_info.artworkurl.clone()} alt={format!("Cover for {}", &podcast_info.podcastname)} class="item-header-mobile-cover"/>
+                                                    <FallbackImage
+                                                        src={podcast_info.artworkurl.clone()}
+                                                        // onclick={on_title_click.clone()}
+                                                        alt={format!("Cover for {}", &podcast_info.podcastname)}
+                                                        class={"item-header-mobile-cover"}
+                                                    />
                                                 </div>
 
                                                 <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
@@ -2008,7 +2013,12 @@ pub fn episode_layout() -> Html {
                                         let pod_link = podcast_info.feedurl.clone();
                                         html! {
                                             <div class="item-header">
-                                                <img src={podcast_info.artworkurl.clone()} alt={format!("Cover for {}", &podcast_info.podcastname)} class="item-header-cover"/>
+                                                <FallbackImage
+                                                    src={podcast_info.artworkurl.clone()}
+                                                    // onclick={on_title_click.clone()}
+                                                    alt={format!("Cover for {}", &podcast_info.podcastname)}
+                                                    class={"item-header-cover"}
+                                                />
                                                 <div class="item-header-info">
                                                     <div class="title-button-container">
                                                         <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>

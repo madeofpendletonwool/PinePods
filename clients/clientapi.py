@@ -1110,9 +1110,15 @@ async def fetch_podcasting_2_data(
                 async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
                     # Use same auth for chapters if it's from the same domain
                     chapters_auth = auth if chapters_url.startswith(podcast_feed_url) else None
+                    chapters_headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'application/json, text/javascript, */*; q=0.01',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Referer': podcast_feed_url
+                    }
                     response = await client.get(
                         chapters_url,
-                        headers=headers,
+                        headers=chapters_headers,
                         auth=chapters_auth
                     )
                     response.raise_for_status()

@@ -2708,9 +2708,15 @@ pub struct HomeEpisode {
     pub episodeduration: i32,
     pub completed: bool,
     pub podcastname: String,
-    pub is_youtube: bool, // We'll need to join with Podcasts to get this
+    pub is_youtube: bool,
     #[serde(default)]
     pub listenduration: Option<i32>,
+    #[serde(default)]
+    pub saved: bool,
+    #[serde(default)]
+    pub queued: bool, 
+    #[serde(default)]
+    pub downloaded: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]

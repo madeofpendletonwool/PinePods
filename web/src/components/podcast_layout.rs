@@ -1,5 +1,5 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::{empty_message, Search_nav, UseScrollToTop};
+use super::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, PodcastState, UIState};
 use crate::components::episodes_layout::SafeHtml;
@@ -456,7 +456,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 html! {
                     <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
                         <div class="flex flex-col w-auto object-cover pl-4">
-                            <img
+                            <FallbackImage
                                 src={podcast.image.clone()}
                                 onclick={on_title_click.clone()}
                                 alt={format!("Cover for {}", podcast.title.clone())}

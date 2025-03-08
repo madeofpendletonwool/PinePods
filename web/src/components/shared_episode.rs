@@ -1,4 +1,4 @@
-use super::gen_components::{empty_message, UseScrollToTop};
+use super::gen_components::{empty_message, FallbackImage, UseScrollToTop};
 use crate::components::audio::on_play_click_shared;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
@@ -220,7 +220,11 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                 <div class="mobile-layout">
                                 <div class="episode-layout-container">
                                         <div class="item-header-mobile-cover-container">
-                                        <img src={episode.episode.episodeartwork.clone()} class="episode-artwork" />
+                                        <FallbackImage
+                                            src={episode.episode.episodeartwork.clone()} 
+                                            alt="episode artwork"
+                                            class="episode-artwork"
+                                        />
                                         </div>
                                             <div class="episode-details">
                                             <p class="item-header-pod justify-center items-center">{ &episode.episode.podcastname }</p>
@@ -258,7 +262,11 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                             html! {
                                 <div class="episode-layout-container-shared" style="padding-top: 20px;">
                                     <div class="episode-top-info">
-                                        <img src={episode.episode.episodeartwork.clone()} class="episode-artwork" />
+                                        <FallbackImage
+                                            src={episode.episode.episodeartwork.clone()} 
+                                            alt="episode artwork"
+                                            class="episode-artwork"
+                                        />
                                         <div class="episode-details">
                                             <h1 class="podcast-title">{ &episode.episode.podcastname }</h1>
                                             <div class="flex items-center space-x-2 cursor-pointer">
@@ -297,21 +305,6 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                                     html! {}
                                                 }
                                             }
-                                            // {
-                                            //     if let Some(people) = &audio_state.episode_page_people {
-                                            //         if !people.is_empty() {
-                                            //             html! {
-                                            //                 <div class="header-info">
-                                            //                     <HostDropdown title="In This Episode" hosts={people.clone()} podcast_feed_url={episode.episode.episodeurl} />
-                                            //                 </div>
-                                            //             }
-                                            //         } else {
-                                            //             html! {}
-                                            //         }
-                                            //     } else {
-                                            //         html! {}
-                                            //     }
-                                            // }
                                         </div>
                                     </div>
                                     <div class="episode-action-buttons">

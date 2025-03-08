@@ -11,17 +11,19 @@ Pre 0.7.4
 - [x] Implement specific podcasts to pass to playlist creation. So you can choose specific ones
 - [x] Make the create playlist function work
 - [x] On deletion of a podcast delete any references to it in the playlist content func
-- Make sure youtube entirely works on playlists
-- Make sure youtube entirely works on homepage
+- [ ] Make sure youtube entirely works on playlists
+- [ ] Make sure youtube entirely works on homepage
 - [x] Run a playlist refresh after adding a podcast, deleting a podcast, and any other time that makes sense. Maybe even on a standard refresh of podcasts?
 - Fix Virtual Line Spacing on Playlist Page
-- Make states work on homepage. Saved or not, current progress, completed etc.
+- [x] Make states work on homepage. Saved or not, current progress, completed etc.
 - [x] Make Podcast tiles Adapt better to large screens
-- RSS feed refresh issues
-- Add user doesn't work on MYSQL
-- Recent Episodes on homepage is not correct
+- [ ] Add user doesn't work on MYSQL
+- [ ] Recent Episodes on homepage is not correct
+- [ ] Make podcast downloading not stop the server from functioning
+- [ ] All of mysql
+- [x] Fixed an issue where sometimes chapters didn't load due to incorrect headers
 
-- Ensure user creation works with mysql
+- [ ] Ensure user creation works with mysql
 - [x] Ensure configured start page is navigated to
 - [x] Ensure OIDC Logins work
 - [x] Ensure Github logins work
@@ -29,10 +31,12 @@ Pre 0.7.4
 
 
 - [x] OIDC Logins
-- [] Smart Playlists
-- [] New Homepage Component
+- [x] Smart Playlists
+- [x] New Homepage Component
 - [x] Configurable start page
+- [x] Fixed issue where sometimes it was possible for images to not load for episodes and podcasts
 - [x] Image Caching
+- [x] Added fallback options for when podcast images fail to load. They will now route through the server if needed
 - [x] Fixed filter button size consistency on Podcast Page
 - [x] Additional filtering on Podcast page for incomplete and/or complete episodes
 

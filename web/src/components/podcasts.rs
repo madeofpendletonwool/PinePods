@@ -3,7 +3,7 @@ use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, ExpandedDescriptions, FilterState, UIState};
 use crate::components::episodes_layout::SafeHtml;
-use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
+use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::requests::pod_req;
 use crate::requests::pod_req::PodcastExtra;
 use crate::requests::pod_req::{call_remove_podcasts, PodcastResponseExtra, RemovePodcastValues};
@@ -165,11 +165,11 @@ fn render_podcasts(
                         html! {
                             <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
                                 <div class="flex flex-col w-auto object-cover pl-4">
-                                    <img
-                                        src={podcast.artworkurl.clone()}
+                                    <FallbackImage
+                                        src={podcast.artworkurl.clone().unwrap_or_else(|| String::from("/static/assets/favicon.png"))}
                                         onclick={on_title_click.clone()}
                                         alt={format!("Cover for {}", podcast.podcastname.clone())}
-                                        class="episode-image"
+                                        class={"episode-image"}
                                     />
                                 </div>
                                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
@@ -229,10 +229,11 @@ fn render_podcasts(
                                 onclick={on_click}
                             >
                                 <div class="podcast-image-container">
-                                    <img
-                                        src={podcast.artworkurl.clone().unwrap_or_default()}
-                                        alt={format!("Cover for {}", podcast.podcastname)}
-                                        class="podcast-image"
+                                    <FallbackImage
+                                        src={podcast.artworkurl.clone().unwrap_or_else(|| String::from("/static/assets/favicon.png"))}
+                                        // onclick={on_title_click.clone()}
+                                        alt={format!("Cover for {}", podcast.podcastname.clone())}
+                                        class={"podcast-image"}
                                     />
                                 </div>
                                 <div class="podcast-info">
