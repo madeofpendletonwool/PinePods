@@ -1,6 +1,7 @@
 use super::app_drawer::App_drawer;
 use super::gen_components::{
-    download_episode_item, empty_message, on_shownotes_click, Search_nav, UseScrollToTop,
+    download_episode_item, empty_message, on_shownotes_click, FallbackImage, Search_nav,
+    UseScrollToTop,
 };
 use crate::components::audio::_AudioPlayerProps::is_youtube;
 use crate::components::audio::on_play_pause_offline;
@@ -801,8 +802,9 @@ pub fn render_podcast_with_episodes(
             }}
             <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full" onclick={toggle_expanded}>
                 <div class="flex flex-col w-auto object-cover pl-4">
-                    <img
-                        src={podcast.artworkurl.clone()}
+                    <FallbackImage
+                        src={podcast.artworkurl.clone().unwrap()}
+                        // onclick={on_title_click.clone()}
                         alt={format!("Cover for {}", podcast.podcastname.clone())}
                         class="object-cover align-top-cover w-full item-container img"
                     />

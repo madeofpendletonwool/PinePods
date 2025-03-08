@@ -1,6 +1,7 @@
 use super::app_drawer::App_drawer;
 use super::gen_components::{
-    download_episode_item, empty_message, on_shownotes_click, Search_nav, UseScrollToTop,
+    download_episode_item, empty_message, on_shownotes_click, FallbackImage, Search_nav,
+    UseScrollToTop,
 };
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
@@ -18,7 +19,6 @@ use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
-use crate::requests::login_requests::use_check_authentication;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -42,10 +42,7 @@ fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec
 pub fn downloads() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
-    let effect_dispatch = dispatch.clone();
 
-    let session_dispatch = effect_dispatch.clone();
-    let session_state = state.clone();
     let expanded_state = use_state(HashMap::new);
     let show_modal = use_state(|| false);
     let show_clonedal = show_modal.clone();
@@ -487,8 +484,9 @@ pub fn render_podcast_with_episodes(
                     html! {}
                 }}
                 <div class="flex flex-col w-auto object-cover pl-4">
-                    <img
-                        src={podcast.artworkurl.clone()}
+                    <FallbackImage
+                    src={podcast.artworkurl.clone().unwrap()}
+                        // onclick={on_title_click.clone()}
                         alt={format!("Cover for {}", podcast.podcastname.clone())}
                         class="episode-image"
                     />

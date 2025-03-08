@@ -8,8 +8,9 @@ use crate::requests::login_requests::{GetApiDetails, TimeZoneInfo};
 use crate::requests::pod_req::PodcastResponseExtra;
 use crate::requests::pod_req::{
     Chapter, Episode, EpisodeDownloadResponse, EpisodeMetadataResponse, Funding,
-    HistoryDataResponse, Person, Podcast, PodcastResponse, PodrollItem, QueuedEpisodesResponse,
-    RecentEps, RefreshProgress, SavedEpisodesResponse, SharedEpisodeResponse, Transcript, Value,
+    HistoryDataResponse, HomeOverview, Person, Playlist, PlaylistInfo, Podcast, PodcastResponse,
+    PodrollItem, QueuedEpisodesResponse, RecentEps, RefreshProgress, SavedEpisodesResponse,
+    SharedEpisodeResponse, Transcript, Value,
 };
 use crate::requests::search_pods::{
     PeopleFeedResult, PodcastFeedResult, PodcastSearchResult, SearchResponse, YouTubeChannel,
@@ -70,6 +71,24 @@ pub struct ExpandedDescriptions {
     pub expanded_descriptions: HashSet<String>,
 }
 
+#[derive(Default, Clone, PartialEq, Store)]
+pub struct PlaylistState {
+    pub include_unplayed: bool,
+    pub include_partially_played: bool,
+    pub include_played: bool,
+    pub name: String,
+    pub description: String,
+    pub min_duration: String,
+    pub max_duration: String,
+    pub sort_order: String,
+    pub group_by_podcast: bool,
+    pub max_episodes: String,
+    pub icon_name: String,
+    pub play_progress_min: String,
+    pub play_progress_max: String,
+    pub time_filter_hours: String,
+}
+
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
 pub struct AppState {
     pub user_details: Option<GetUserDetails>,
@@ -128,6 +147,10 @@ pub struct AppState {
     pub is_youtube_loading: Option<bool>,
     pub show_transcript_modal: Option<bool>,
     pub current_transcripts: Option<Vec<Transcript>>,
+    pub home_overview: Option<HomeOverview>,
+    pub playlists: Option<Vec<Playlist>>,
+    pub current_playlist_info: Option<PlaylistInfo>,
+    pub current_playlist_episodes: Option<Vec<Episode>>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]

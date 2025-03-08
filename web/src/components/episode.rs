@@ -1,5 +1,5 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::{empty_message, Search_nav, UseScrollToTop};
+use super::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
@@ -10,7 +10,6 @@ use crate::components::gen_funcs::{
     sanitize_html_with_blank_target,
 };
 use crate::components::host_component::HostDropdown;
-use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req;
 use crate::requests::pod_req::{
     call_check_podcast, call_create_share_link, call_download_episode,
@@ -237,9 +236,6 @@ pub fn transcript_modal(props: &TranscriptModalProps) -> Html {
 #[function_component(Episode)]
 pub fn epsiode() -> Html {
     let (state, dispatch) = use_store::<AppState>();
-
-    let session_dispatch = dispatch.clone();
-    let session_state = state.clone();
 
     let error = use_state(|| None);
     let shared_url = use_state(|| Option::<String>::None);
@@ -1597,7 +1593,12 @@ pub fn epsiode() -> Html {
                                 <div class="mobile-layout">
                                 <div class="episode-layout-container">
                                         <div class="item-header-mobile-cover-container">
-                                        <img src={episode.episode.episodeartwork.clone()} class="episode-artwork" />
+                                            <FallbackImage
+                                                src={episode.episode.episodeartwork.clone()}
+                                                // onclick={on_title_click.clone()}
+                                                alt={format!("Cover for {}", episode.episode.episodeartwork.clone())}
+                                                class="episode-artwork rounded-corners"
+                                            />
                                         </div>
                                             <div class="episode-details">
                                             <p class="item-header-pod mt-2 justify-center items-center" onclick={on_title_click.clone()}>{ &episode.episode.podcastname }</p>
@@ -1803,7 +1804,12 @@ pub fn epsiode() -> Html {
                             html! {
                                 <div class="episode-layout-container">
                                     <div class="episode-top-info">
-                                        <img src={episode.episode.episodeartwork.clone()} class="episode-artwork" />
+                                    <FallbackImage
+                                        src={episode.episode.episodeartwork.clone()}
+                                        alt={format!("Cover for {}", episode.episode.episodeartwork.clone())}
+                                        class="episode-artwork rounded-corners"
+                                        style="max-width: 375px; width: 25%; height: auto;"
+                                    />
                                         // Add overflow-hidden to episode-details to prevent children from expanding it
                                         <div class="episode-details overflow-hidden">
                                             <h1 class="podcast-title hover-pointer-podcast-name" onclick={on_title_click.clone()}>{ &episode.episode.podcastname }</h1>

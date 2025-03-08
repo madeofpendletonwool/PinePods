@@ -95,12 +95,7 @@ pub fn theme() -> Html {
 
                 spawn_local(async move {
                     match call_set_theme(&Some(server_name), &Some(api_key), &request).await {
-                        Ok(_) => {
-                            audio_dispatch.reduce_mut(|state| {
-                                state.info_message =
-                                    Some("Theme updated successfully!".to_string());
-                            });
-                        }
+                        Ok(_) => {}
                         Err(e) => {
                             audio_dispatch.reduce_mut(|state| {
                                 state.error_message =

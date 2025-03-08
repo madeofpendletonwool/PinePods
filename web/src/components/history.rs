@@ -9,7 +9,6 @@ use crate::components::episodes_layout::AppStateMsg;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
-use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{self, HistoryDataResponse};
 use gloo_events::EventListener;
 use web_sys::window;
@@ -40,8 +39,6 @@ pub fn history() -> Html {
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let dropdown_open = use_state(|| false);
-    let session_dispatch = _post_dispatch.clone();
-    let session_state = post_state.clone();
     let loading = use_state(|| true);
     let active_modal = use_state(|| None::<i32>);
     let active_modal_clone = active_modal.clone();

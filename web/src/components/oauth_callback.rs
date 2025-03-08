@@ -42,6 +42,7 @@ pub fn oauth_callback() -> Html {
     let date_format = use_state(|| "ISO".to_string());
     // Store as i32 to match TimeZoneInfo's requirements
     let time_pref = use_state(|| 24_i32);
+    web_sys::console::log_1(&"part of oauth".into());
 
     // Timezone change handler
     let on_tz_change = {
@@ -176,12 +177,17 @@ pub fn oauth_callback() -> Html {
                 if let Some(api_key) = params.get("api_key") {
                     let location = window.location();
                     let server_name = location.origin().expect("should have origin");
+                    web_sys::console::log_1(
+                        &format!("Starting verification process with API key: {}", api_key).into(),
+                    );
 
                     // Standard login flow...
                     match call_verify_key(&server_name, &api_key).await {
                         Ok(_) => {
+                            web_sys::console::log_1(&format!("Verified key successfully").into());
                             match call_get_user_id(&server_name, &api_key).await {
                                 Ok(user_id_response) => {
+                                    web_sys::console::log_1(&"got user".into());
                                     if let Some(user_id) = user_id_response.retrieved_id {
                                         match call_get_user_details(
                                             &server_name,

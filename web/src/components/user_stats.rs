@@ -3,21 +3,16 @@ use super::gen_components::Search_nav;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState, UserStatsStore};
 use crate::components::gen_funcs::{format_date, format_time_mins};
-use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::call_get_pinepods_version;
 use crate::requests::stat_reqs;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yewdux::prelude::*;
-// use crate::requests::login_requests::use_check_authentication;
 
 #[function_component(UserStats)]
 pub fn user_stats() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
+    let (_state, dispatch) = use_store::<AppState>();
     let (stat_state, stat_dispatch) = use_store::<UserStatsStore>();
-    let effect_dispatch = dispatch.clone();
-    let session_dispatch = effect_dispatch.clone();
-    let session_state = state.clone();
     let user_stats = stat_state.stats.as_ref();
     let pinepods_version = stat_state.pinepods_version.as_ref();
 

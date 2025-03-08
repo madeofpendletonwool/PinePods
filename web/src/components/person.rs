@@ -7,12 +7,11 @@ use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg as EpisodeMsg;
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_components::on_shownotes_click;
-use crate::components::gen_components::{Search_nav, UseScrollToTop};
+use crate::components::gen_components::{Search_nav, FallbackImage, UseScrollToTop};
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
     strip_images_from_html, truncate_description, unix_timestamp_to_datetime_string,
 };
-use crate::requests::login_requests::use_check_authentication;
 use crate::requests::people_req::{
     call_get_person_subscriptions, call_subscribe_to_person, call_unsubscribe_from_person,
 };
@@ -67,8 +66,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let person_ids = use_state(|| HashMap::<String, i32>::new());
-    let session_dispatch = dispatch.clone();
-    let session_state = state.clone();
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = post_state
@@ -699,8 +696,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             <div>
                                             <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
                                                     <div class="flex flex-col w-auto object-cover pl-4">
-                                                        <img
-                                                            src={podcast.artworkurl.clone()}
+                                                        <FallbackImage
+                                                            src={podcast.artworkurl.clone().unwrap()}
                                                             onclick={on_title_click.clone()}
                                                             alt={format!("Cover for {}", podcast.podcastname.clone())}
                                                             class="episode-image"

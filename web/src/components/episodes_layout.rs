@@ -1,12 +1,11 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, UseScrollToTop};
+use super::gen_components::{Search_nav, UseScrollToTop, FallbackImage};
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
 use crate::components::host_component::HostDropdown;
 use crate::components::podcast_layout::ClickedFeedURL;
 use crate::components::virtual_list::PodcastEpisodeVirtualList;
-use crate::requests::login_requests::use_check_authentication;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_check_podcast,
     call_download_all_podcast, call_enable_auto_download, call_fetch_podcasting_2_pod_data,
@@ -230,9 +229,6 @@ pub fn episode_layout() -> Html {
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
-
-    let session_dispatch = _search_dispatch.clone();
-    let session_state = search_state.clone();
     let podcast_added = search_state.podcast_added.unwrap_or_default();
     let pod_url = use_state(|| String::new());
     let new_category = use_state(|| String::new());
@@ -1732,7 +1728,7 @@ pub fn episode_layout() -> Html {
             completed_filter_state.clone(), // Changed from show_completed
             show_in_progress.clone(),
         ),
-        |(episodes, search, sort_dir, show_completed, show_in_progress)| {
+        |(episodes, search, sort_dir, _show_completed, show_in_progress)| {
             if let Some(results) = episodes {
                 let mut filtered = results
                     .episodes
@@ -1952,7 +1948,12 @@ pub fn episode_layout() -> Html {
                                                     }
                                                 </div>
                                                 <div class="item-header-mobile-cover-container">
-                                                    <img src={podcast_info.artworkurl.clone()} alt={format!("Cover for {}", &podcast_info.podcastname)} class="item-header-mobile-cover"/>
+                                                    <FallbackImage
+                                                        src={podcast_info.artworkurl.clone()}
+                                                        // onclick={on_title_click.clone()}
+                                                        alt={format!("Cover for {}", &podcast_info.podcastname)}
+                                                        class={"item-header-mobile-cover"}
+                                                    />
                                                 </div>
 
                                                 <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
@@ -2012,7 +2013,12 @@ pub fn episode_layout() -> Html {
                                         let pod_link = podcast_info.feedurl.clone();
                                         html! {
                                             <div class="item-header">
-                                                <img src={podcast_info.artworkurl.clone()} alt={format!("Cover for {}", &podcast_info.podcastname)} class="item-header-cover"/>
+                                                <FallbackImage
+                                                    src={podcast_info.artworkurl.clone()}
+                                                    // onclick={on_title_click.clone()}
+                                                    alt={format!("Cover for {}", &podcast_info.podcastname)}
+                                                    class={"item-header-cover"}
+                                                />
                                                 <div class="item-header-info">
                                                     <div class="title-button-container">
                                                         <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
@@ -2234,7 +2240,6 @@ pub fn episode_layout() -> Html {
                                             <button
                                                 onclick={
                                                     let show_in_progress = show_in_progress.clone();
-                                                    let completed_filter_state = completed_filter_state.clone();
                                                     Callback::from(move |_| {
                                                         show_in_progress.set(!*show_in_progress);
                                                         // Ensure only one filter is active at a time

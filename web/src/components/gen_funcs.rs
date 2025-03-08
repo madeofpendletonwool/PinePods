@@ -5,10 +5,13 @@ use argon2::{
 };
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
+use gloo::events::EventListener;
+use gloo_timers::callback::Timeout;
 use std::collections::HashMap;
 use std::str::FromStr;
 use wasm_bindgen::JsCast;
-use web_sys::{DomParser, SupportedType};
+use web_sys::{DomParser, HtmlElement, SupportedType, TouchEvent};
+use yew::prelude::*;
 
 // Gravatar URL generation functions (outside of use_effect_with)
 pub fn calculate_gravatar_hash(email: &String) -> String {
@@ -312,4 +315,174 @@ pub fn strip_images_from_html(html: &str) -> String {
     }
 
     temp_div.inner_html()
+}
+
+#[hook]
+pub fn use_long_press(
+    on_long_press: Callback<TouchEvent>,
+    delay_ms: Option<u32>,
+) -> (
+    Callback<TouchEvent>,
+    Callback<TouchEvent>,
+    Callback<TouchEvent>,
+    UseStateHandle<bool>,
+) {
+    let timeout_handle = use_state(|| None::<Timeout>);
+    let is_long_press = use_state(|| false);
+    let start_position = use_state(|| None::<(i32, i32)>);
+
+    // Configure the threshold for movement that cancels a long press
+    let movement_threshold = 10; // pixels
+    let delay = delay_ms.unwrap_or(500); // Default to 500ms
+
+    let on_touch_start = {
+        let timeout_handle = timeout_handle.clone();
+        let is_long_press = is_long_press.clone();
+        let start_position = start_position.clone();
+        let on_long_press = on_long_press.clone();
+
+        Callback::from(move |event: TouchEvent| {
+            event.prevent_default();
+
+            // Store the initial touch position
+            if let Some(touch) = event.touches().get(0) {
+                start_position.set(Some((touch.client_x(), touch.client_y())));
+            }
+
+            // Reset long press state
+            is_long_press.set(false);
+
+            // Clear any existing timeout
+            timeout_handle.set(None);
+
+            // Create a timeout that will trigger the long press
+            let on_long_press_clone = on_long_press.clone();
+            let event_clone = event.clone();
+            let is_long_press_clone = is_long_press.clone();
+
+            let timeout = Timeout::new(delay, move || {
+                is_long_press_clone.set(true);
+                on_long_press_clone.emit(event_clone);
+            });
+
+            timeout_handle.set(Some(timeout));
+        })
+    };
+
+    let on_touch_end = {
+        let timeout_handle = timeout_handle.clone();
+
+        Callback::from(move |_event: TouchEvent| {
+            // Clear the timeout if the touch ends before the long press is triggered
+            timeout_handle.set(None);
+        })
+    };
+
+    let on_touch_move = {
+        let timeout_handle = timeout_handle.clone();
+        let start_position = start_position.clone();
+
+        Callback::from(move |event: TouchEvent| {
+            // If the touch moves too much, cancel the long press
+            if let Some((start_x, start_y)) = *start_position {
+                if let Some(touch) = event.touches().get(0) {
+                    let current_x = touch.client_x();
+                    let current_y = touch.client_y();
+
+                    let distance_x = (current_x - start_x).abs();
+                    let distance_y = (current_y - start_y).abs();
+
+                    if distance_x > movement_threshold || distance_y > movement_threshold {
+                        // Movement exceeded threshold, cancel the long press
+                        timeout_handle.set(None);
+                    }
+                }
+            }
+        })
+    };
+
+    (on_touch_start, on_touch_end, on_touch_move, is_long_press)
+}
+
+/// A hook for setting up a context menu triggered by long press.
+///
+/// # Returns
+/// - State tracking if the context menu is open
+/// - State tracking the position of the context menu
+/// - A reference to attach to the context button
+/// - A callback to handle touchstart events
+/// - A callback to handle touchend events
+/// - A callback to handle touchmove events
+/// - A callback to close the context menu
+#[hook]
+pub fn use_context_menu_long_press(
+    delay_ms: Option<u32>,
+) -> (
+    UseStateHandle<bool>,
+    UseStateHandle<(i32, i32)>,
+    NodeRef,
+    Callback<TouchEvent>,
+    Callback<TouchEvent>,
+    Callback<TouchEvent>,
+    Callback<()>,
+) {
+    let show_context_menu = use_state(|| false);
+    let context_menu_position = use_state(|| (0, 0));
+    let context_button_ref = use_node_ref();
+
+    // Long press handler - simulate clicking the context button or show menu
+    let on_long_press = {
+        let context_button_ref = context_button_ref.clone();
+        let show_context_menu = show_context_menu.clone();
+        let context_menu_position = context_menu_position.clone();
+
+        Callback::from(move |event: TouchEvent| {
+            if let Some(touch) = event.touches().get(0) {
+                // Record position for the context menu
+                context_menu_position.set((touch.client_x(), touch.client_y()));
+
+                // Find and click the context button (if it exists)
+                if let Some(button) = context_button_ref.cast::<HtmlElement>() {
+                    button.click();
+                } else {
+                    // If the button doesn't exist (maybe on mobile where it's hidden)
+                    // we'll just set our state to show the menu
+                    show_context_menu.set(true);
+                }
+            }
+        })
+    };
+
+    // Setup long press detection
+    let (on_touch_start, on_touch_end, on_touch_move, is_long_press) =
+        use_long_press(on_long_press, delay_ms); // default to 600ms for long press
+
+    // When long press is detected through the hook, update our state
+    {
+        let show_context_menu = show_context_menu.clone();
+        use_effect_with(*is_long_press, move |is_pressed| {
+            if *is_pressed {
+                show_context_menu.set(true);
+            }
+            || ()
+        });
+    }
+
+    // Close context menu callback
+    let close_context_menu = {
+        let show_context_menu = show_context_menu.clone();
+        Callback::from(move |_| {
+            show_context_menu.set(false);
+        })
+    };
+
+    (
+        show_context_menu,
+        context_menu_position,
+        context_button_ref,
+        on_touch_start,
+        on_touch_end,
+        on_touch_move,
+        close_context_menu,
+    )
 }

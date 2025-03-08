@@ -112,9 +112,12 @@ def get_web_key(cnx, database_type):
     cursor.close()
 
     if result:
-        return result[0]
-    else:
-        return None
+        # Handle both tuple and dictionary return types
+        if isinstance(result, dict):
+            return result['apikey']
+        else:
+            return result[0]
+    return None
 
 def add_custom_podcast(database_type, cnx, feed_url, user_id, username=None, password=None):
     # Proceed to extract and use podcast details if the feed is valid
@@ -1493,6 +1496,8 @@ def remove_podcast(cnx, database_type, podcast_name, podcast_url, user_id):
             # First, delete all related entries manually to avoid foreign key issues
             if database_type == "postgresql":
                 queries = [
+                    # DELETE FROM PLAYLIST CONTENTS - Add this first!
+                    'DELETE FROM "PlaylistContents" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)',
                     'DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)',
                     'DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)',
                     'DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)',
@@ -1503,6 +1508,8 @@ def remove_podcast(cnx, database_type, podcast_name, podcast_url, user_id):
                 ]
             else:  # MySQL or MariaDB
                 queries = [
+                    # DELETE FROM PLAYLIST CONTENTS - Add this first!
+                    "DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)",
                     "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)",
                     "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)",
                     "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)",
@@ -1526,6 +1533,8 @@ def remove_podcast(cnx, database_type, podcast_name, podcast_url, user_id):
             # Normal podcast deletion process
             if database_type == "postgresql":
                 delete_queries = [
+                    # DELETE FROM PLAYLIST CONTENTS - Add this first!
+                    ('DELETE FROM "PlaylistContents" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)', (podcast_id,)),
                     ('DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)', (podcast_id,)),
                     ('DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)', (podcast_id,)),
                     ('DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)', (podcast_id,)),
@@ -1535,6 +1544,8 @@ def remove_podcast(cnx, database_type, podcast_name, podcast_url, user_id):
                 ]
             else:  # MySQL or MariaDB
                 delete_queries = [
+                    # DELETE FROM PLAYLIST CONTENTS - Add this first!
+                    ("DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)", (podcast_id,)),
                     ("DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)", (podcast_id,)),
                     ("DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)", (podcast_id,)),
                     ("DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)", (podcast_id,)),
@@ -1577,6 +1588,8 @@ def remove_podcast_id(cnx, database_type, podcast_id, user_id):
 
         # Delete user episode history entries associated with the podcast
         if database_type == "postgresql":
+            # DELETE FROM PLAYLIST CONTENTS - Add this first!
+            delete_playlist_contents = 'DELETE FROM "PlaylistContents" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)'
             delete_history = 'DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)'
             delete_downloaded = 'DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)'
             delete_saved = 'DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s)'
@@ -1585,6 +1598,8 @@ def remove_podcast_id(cnx, database_type, podcast_id, user_id):
             delete_podcast = 'DELETE FROM "Podcasts" WHERE PodcastID = %s'
             update_user_stats = 'UPDATE "UserStats" SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = %s'
         else:  # MySQL or MariaDB
+            # DELETE FROM PLAYLIST CONTENTS - Add this first!
+            delete_playlist_contents = "DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
             delete_history = "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
             delete_downloaded = "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
             delete_saved = "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
@@ -1593,6 +1608,8 @@ def remove_podcast_id(cnx, database_type, podcast_id, user_id):
             delete_podcast = "DELETE FROM Podcasts WHERE PodcastID = %s"
             update_user_stats = "UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = %s"
 
+        # Execute the deletion statements in order
+        cursor.execute(delete_playlist_contents, (podcast_id,))
         cursor.execute(delete_history, (podcast_id,))
         cursor.execute(delete_downloaded, (podcast_id,))
         cursor.execute(delete_saved, (podcast_id,))
@@ -2261,54 +2278,6 @@ def delete_episode(database_type, cnx, episode_id, user_id, is_youtube=False):
         cnx.rollback()
     finally:
         cursor.close()
-
-def return_selected_episode(database_type, cnx, user_id, title, url):
-    if database_type == "postgresql":
-        cnx.row_factory = dict_row
-        cursor = cnx.cursor()
-    else:  # Assuming MariaDB/MySQL if not PostgreSQL
-        cursor = cnx.cursor(dictionary=True)
-
-    if database_type == "postgresql":
-        query = (
-            'SELECT "Episodes".EpisodeTitle, "Episodes".EpisodeDescription, "Episodes".EpisodeURL, '
-            '"Episodes".EpisodeArtwork, "Episodes".EpisodePubDate, "Episodes".EpisodeDuration, '
-            '"Podcasts".PodcastName, "Podcasts".WebsiteURL, "Podcasts".FeedURL '
-            'FROM "Episodes" '
-            'INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID '
-            'WHERE "Episodes".EpisodeTitle = %s AND "Episodes".EpisodeURL = %s'
-        )
-    else:  # MySQL or MariaDB
-        query = (
-            "SELECT Episodes.EpisodeTitle, Episodes.EpisodeDescription, Episodes.EpisodeURL, "
-            "Episodes.EpisodeArtwork, Episodes.EpisodePubDate, Episodes.EpisodeDuration, "
-            "Podcasts.PodcastName, Podcasts.WebsiteURL, Podcasts.FeedURL "
-            "FROM Episodes "
-            "INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID "
-            "WHERE Episodes.EpisodeTitle = %s AND Episodes.EpisodeURL = %s"
-        )
-
-    cursor.execute(query, (title, url))
-    result = cursor.fetchall()
-
-    cursor.close()
-
-    episodes = []
-    for row in result:
-        episode = {
-            'EpisodeTitle': row['EpisodeTitle'],
-            'EpisodeDescription': row['EpisodeDescription'],
-            'EpisodeURL': row['EpisodeURL'],
-            'EpisodeArtwork': row['EpisodeArtwork'],
-            'EpisodePubDate': row['EpisodePubDate'],
-            'EpisodeDuration': row['EpisodeDuration'],
-            'PodcastName': row['PodcastName'],
-            'WebsiteURL': row['WebsiteURL']
-        }
-        episodes.append(episode)
-
-    return episodes
-
 
 def return_pods(database_type, cnx, user_id):
     if database_type == "postgresql":
@@ -5161,18 +5130,16 @@ def verify_api_key(cnx, database_type, passed_key):
         query = 'SELECT * FROM "APIKeys" WHERE APIKey = %s'
     else:
         query = "SELECT * FROM APIKeys WHERE APIKey = %s"
-
     try:
         cursor.execute(query, (passed_key,))
         result = cursor.fetchone()
-        print(f'Query executed. result: {result}')
+        logging.info(f'verify_api_key result type: {type(result)}, value: {result}')
+        return True if result else False
     except Exception as e:
-        print(f'Error during query execution: {str(e)}')
-        result = None
+        logging.error(f'verify_api_key error: {str(e)}')
+        return False
     finally:
         cursor.close()
-
-    return True if result else False
 
 
 def get_rss_feed_status(cnx, database_type: str, user_id: int) -> bool:
@@ -5623,25 +5590,33 @@ def get_value_from_result(result, key_name: str, default=None):
 
 
 def id_from_api_key(cnx, database_type, passed_key):
-    logging.info(f"Fetching user ID for API key: {passed_key}")
     cursor = cnx.cursor()
-
     try:
         if database_type == "postgresql":
             query = 'SELECT userid FROM "APIKeys" WHERE apikey = %s'
         else:
             query = "SELECT UserID FROM APIKeys WHERE APIKey = %s"
-
         cursor.execute(query, (passed_key,))
         result = cursor.fetchone()
-        logging.info(f"API key lookup raw result: {result}")
+        logging.info(f"id_from_api_key result type: {type(result)}, value: {result}")
 
-        user_id = get_value_from_result(result, 'userid')
-        logging.info(f"API key lookup processed value: {user_id}")
+        if result is None:
+            logging.error("No result found for API key")
+            return None
 
-        return user_id
+        try:
+            user_id = get_value_from_result(result, 'userid')
+            logging.info(f"Successfully extracted user_id: {user_id}")
+            return user_id
+        except Exception as e:
+            logging.error(f"Error extracting user_id from result: {e}")
+            # If we failed to get from dict, try tuple
+            if isinstance(result, tuple) and len(result) > 0:
+                return result[0]
+            raise
+
     except Exception as e:
-        logging.error(f"Error fetching user ID for API key: {e}")
+        logging.error(f"Error in id_from_api_key: {e}")
         return None
     finally:
         cursor.close()
@@ -6571,106 +6546,6 @@ def check_youtube_channel(cnx, database_type, user_id, channel_name, channel_url
         if cursor:
             cursor.close()
 
-
-def check_saved_session(cnx, database_type, session_value):
-    cursor = cnx.cursor()
-
-    if database_type == "postgresql":
-        query = 'SELECT UserID, expire FROM "Sessions" WHERE value = %s'
-    else:  # MySQL or MariaDB
-        query = "SELECT UserID, expire FROM Sessions WHERE value = %s"
-
-    cursor.execute(query, (session_value,))
-    result = cursor.fetchone()
-
-    if result:
-        user_id, session_expire = result
-        current_time = datetime.datetime.now()
-        if current_time < session_expire:
-            cursor.close()
-            return user_id
-
-    cursor.close()
-    return False
-
-
-
-# def check_saved_web_session(cnx, session_value):
-#     cursor = cnx.cursor()
-
-#     # Get the session with the matching value and expiration time
-#     cursor.execute("""
-#     SELECT UserID, expire FROM Sessions WHERE value = %s;
-#     """, (session_value,))
-
-#     result = cursor.fetchone()
-
-#     if result:
-#         user_id, session_expire = result
-#         current_time = datetime.datetime.now()
-#         if current_time < session_expire:
-#             return user_id
-
-#     return False
-#     cursor.close()
-#     # cnx.close()
-
-
-def create_session(cnx, database_type, user_id, session_value):
-    expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
-
-    cursor = cnx.cursor()
-    if database_type == "postgresql":
-        query = 'INSERT INTO "Sessions" (UserID, value, expire) VALUES (%s, %s, %s)'
-    else:  # MySQL or MariaDB
-        query = "INSERT INTO Sessions (UserID, value, expire) VALUES (%s, %s, %s)"
-
-    cursor.execute(query, (user_id, session_value, expire_date))
-    cnx.commit()
-    cursor.close()
-
-
-
-# def create_web_session(cnx, user_id, session_value):
-#     # Calculate the expiration date 30 days in the future
-#     expire_date = datetime.datetime.now() + datetime.timedelta(days=30)
-
-#     # Insert the new session into the Sessions table
-#     cursor = cnx.cursor()
-#     cursor.execute("""
-#     INSERT INTO Sessions (UserID, value, expire) VALUES (%s, %s, %s);
-#     """, (user_id, session_value, expire_date))
-
-#     cnx.commit()
-#     cursor.close()
-#     # cnx.close()
-
-
-def clean_expired_sessions(cnx, database_type):
-    current_time = datetime.datetime.now()
-    cursor = cnx.cursor()
-
-    if database_type == "postgresql":
-        query = 'DELETE FROM "Sessions" WHERE "expire" < %s'
-    else:  # MySQL or MariaDB
-        query = "DELETE FROM Sessions WHERE expire < %s"
-
-    cursor.execute(query, (current_time,))
-    cnx.commit()
-    cursor.close()
-
-
-
-# def user_exists(cnx, username):
-#     cursor = cnx.cursor()
-#     query = "SELECT COUNT(*) FROM Users WHERE Username = %s"
-#     cursor.execute(query, (username,))
-#     count = cursor.fetchone()[0]
-#     cursor.close()
-#     # cnx.close()
-#     return count > 0
-
-
 def reset_password_create_code(cnx, database_type, user_email):
     reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     cursor = cnx.cursor()
@@ -6841,46 +6716,6 @@ def reset_password_prompt(cnx, database_type, user_email, hashed_pw):
     # cnx.close()
 
     return "Password Reset Successfully"
-
-
-def clear_guest_data(cnx, database_type):
-    cursor = cnx.cursor()
-
-    # First delete all the episodes associated with the guest user
-    if database_type == "postgresql":
-        delete_episodes_query = """
-            DELETE Episodes
-            FROM "Episodes"
-            INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
-            WHERE Podcasts.UserID = 1
-        """
-    else:
-        delete_episodes_query = """
-            DELETE Episodes
-            FROM Episodes
-            INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
-            WHERE Podcasts.UserID = 1
-        """
-    cursor.execute(delete_episodes_query)
-
-    # Then delete all the podcasts associated with the guest user
-    if database_type == "postgresql":
-        delete_podcasts_query = """
-            DELETE FROM "Podcasts"
-            WHERE UserID = 1
-        """
-    else:
-        delete_podcasts_query = """
-            DELETE FROM Podcasts
-            WHERE UserID = 1
-        """
-    cursor.execute(delete_podcasts_query)
-
-    # Commit the transaction
-    cnx.commit()
-    cursor.close()
-
-    return "Guest user data cleared successfully"
 
 def get_episode_metadata(database_type, cnx, episode_id, user_id, person_episode=False, is_youtube=False):
     if database_type == "postgresql":
@@ -7383,66 +7218,6 @@ def delete_mfa_secret(database_type, cnx, user_id):
         print("Error deleting MFA secret:", e)
         return False
 
-
-
-def get_all_episodes(database_type, cnx, pod_feed):
-    if database_type == "postgresql":
-        from psycopg.rows import dict_row
-        cnx.row_factory = dict_row
-        cursor = cnx.cursor()
-        query = (
-            'SELECT * FROM "Episodes" INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID WHERE "Podcasts".FeedURL = %s'
-        )
-    else:  # MySQL or MariaDB
-        cursor = cnx.cursor(dictionary=True)
-        query = (
-            "SELECT * FROM Episodes INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID WHERE Podcasts.FeedURL = %s"
-        )
-
-    try:
-        cursor.execute(query, (pod_feed,))
-        result = cursor.fetchall()
-        cursor.close()
-
-        return result
-    except Exception as e:
-        print("Error retrieving Podcast Episodes:", e)
-        return None
-
-
-
-def remove_episode_history(database_type, cnx, url, title, user_id):
-    if database_type == "postgresql":
-        from psycopg.rows import dict_row
-        cnx.row_factory = dict_row
-        cursor = cnx.cursor()
-        query = (
-            'DELETE FROM "UserEpisodeHistory" '
-            'WHERE UserID = %s AND EpisodeID IN ('
-            'SELECT EpisodeID FROM "Episodes" '
-            'WHERE EpisodeURL = %s AND EpisodeTitle = %s)'
-        )
-    else:  # MySQL or MariaDB
-        cursor = cnx.cursor(dictionary=True)
-        query = (
-            "DELETE FROM UserEpisodeHistory "
-            "WHERE UserID = %s AND EpisodeID IN ("
-            "SELECT EpisodeID FROM Episodes "
-            "WHERE EpisodeURL = %s AND EpisodeTitle = %s)"
-        )
-
-    try:
-        cursor.execute(query, (user_id, url, title))
-        cnx.commit()
-        cursor.close()
-
-        return True
-    except Exception as e:
-        print("Error removing episode from history:", e)
-        return False
-
-
-
 def setup_timezone_info(database_type, cnx, user_id, timezone, hour_pref, date_format):
     if database_type == "postgresql":
         cursor = cnx.cursor()
@@ -7571,58 +7346,6 @@ def delete_selected_episodes(cnx, database_type, selected_episodes, user_id):
     cursor.close()
 
     return "success"
-
-
-
-def delete_selected_podcasts(cnx, database_type, delete_list, user_id):
-    cursor = cnx.cursor()
-    for podcast_id in delete_list:
-        # Get the download IDs and locations from the DownloadedEpisodes table
-        query = (
-            'SELECT "DownloadedEpisodes".DownloadID, "DownloadedEpisodes".DownloadedLocation '
-            'FROM "DownloadedEpisodes" '
-            'INNER JOIN "Episodes" ON "DownloadedEpisodes".EpisodeID = "Episodes".EpisodeID '
-            'WHERE "Episodes".PodcastID = %s AND "DownloadedEpisodes".UserID = %s' if database_type == "postgresql" else
-            "SELECT DownloadedEpisodes.DownloadID, DownloadedEpisodes.DownloadedLocation "
-            "FROM DownloadedEpisodes "
-            "INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID "
-            "WHERE Episodes.PodcastID = %s AND DownloadedEpisodes.UserID = %s"
-        )
-        cursor.execute(query, (podcast_id, user_id))
-
-        results = cursor.fetchall()
-
-        if not results:
-            print(f"No matching downloads found for podcast ID {podcast_id}")
-            continue
-
-        for result in results:
-            download_id, downloaded_location = result
-
-            # Delete the downloaded file
-            os.remove(downloaded_location)
-
-            # Remove the entry from the DownloadedEpisodes table
-            query = (
-                'DELETE FROM "DownloadedEpisodes" WHERE DownloadID = %s' if database_type == "postgresql" else
-                "DELETE FROM DownloadedEpisodes WHERE DownloadID = %s"
-            )
-            cursor.execute(query, (download_id,))
-            cnx.commit()
-            print(f"Removed {cursor.rowcount} entry from the DownloadedEpisodes table.")
-
-            # Update UserStats table to decrement EpisodesDownloaded count
-            query = (
-                'UPDATE "UserStats" SET EpisodesDownloaded = EpisodesDownloaded - 1 '
-                'WHERE UserID = %s' if database_type == "postgresql" else
-                "UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 WHERE UserID = %s"
-            )
-            cursor.execute(query, (user_id,))
-
-    cursor.close()
-    return "success"
-
-
 
 def search_data(database_type, cnx, search_term, user_id):
     if database_type == "postgresql":
@@ -8162,6 +7885,889 @@ def cleanup_expired_shared_episodes(cnx, database_type):
     except Exception as e:
         print(f"Error during SharedEpisodes cleanup: {str(e)}")
         cnx.rollback()
+    finally:
+        cursor.close()
+
+
+def build_playlist_query(playlist, database_type):
+    conditions = []
+    params = []
+
+    # Check if this is a system playlist (owned by user 1)
+    is_system_playlist = playlist['userid'] == 1 and playlist['issystemplaylist']
+
+    # For system playlists, we want to show episodes from ALL users' podcasts
+    # For user playlists, we only show episodes from that specific user's podcasts
+    if is_system_playlist:
+        query = """
+                SELECT e.episodeid
+                FROM "Episodes" e
+                JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = %s
+                JOIN "Users" u ON u.UserID = %s
+                WHERE 1=1
+            """
+        # Only include history/timezone params - no user filtering on podcasts
+        params.extend([playlist['userid'], playlist['userid']])
+        print(f"System playlist detected - showing podcasts for all users")
+    else:
+        # Normal user playlist - only show their own podcasts
+        query = """
+                SELECT e.episodeid
+                FROM "Episodes" e
+                JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = %s
+                JOIN "Users" u ON u.UserID = %s
+                WHERE p.UserID = %s
+            """
+        # Add all params including user filtering
+        params.extend([playlist['userid'], playlist['userid'], playlist['userid']])
+        print(f"User playlist detected - only showing podcasts for user {playlist['userid']}")
+
+    # Rest of your existing code remains the same
+    # Podcast filter
+    if playlist['podcastids']:
+        conditions.append('e.podcastid = ANY(%s)')
+        params.append(playlist['podcastids'])
+
+    # Duration filters
+    if playlist['minduration'] is not None:
+        conditions.append('e.episodeduration >= %s')
+        params.append(playlist['minduration'])
+    if playlist['maxduration'] is not None:
+        conditions.append('e.episodeduration <= %s')
+        params.append(playlist['maxduration'])
+
+    # Play state filters with progress
+    play_state_conditions = []
+
+    if playlist['includeunplayed']:
+        play_state_conditions.append('h.listenduration IS NULL')
+
+    if playlist['includepartiallyplayed']:
+        partial_condition = '(h.listenduration > 0 AND h.listenduration < e.episodeduration)'
+        if playlist.get('playprogressmin') is not None:
+            min_decimal = float(playlist["playprogressmin"]) / 100.0
+            partial_condition += f' AND (h.listenduration::float / e.episodeduration) >= {min_decimal}'
+        if playlist.get('playprogressmax') is not None:
+            max_decimal = float(playlist["playprogressmax"]) / 100.0
+            partial_condition += f' AND (h.listenduration::float / e.episodeduration) <= {max_decimal}'
+        play_state_conditions.append(partial_condition)
+
+    if playlist['includeplayed']:
+        play_state_conditions.append('h.listenduration >= e.episodeduration')
+
+    if play_state_conditions:
+        conditions.append(f"({' OR '.join(play_state_conditions)})")
+
+    # Time filter
+    if playlist.get('timefilterhours') is not None:
+            conditions.append('''
+                e.episodepubdate AT TIME ZONE 'UTC'
+                AT TIME ZONE u.TimeZone >=
+                (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+                 AT TIME ZONE u.TimeZone - INTERVAL '%s hours')
+            ''')
+            params.append(playlist['timefilterhours'])
+
+    # Add all conditions
+    if conditions:
+        query += " AND " + " AND ".join(conditions)
+
+    # Sorting
+    sort_mapping = {
+        'date_asc': 'e.episodepubdate ASC',
+        'date_desc': 'e.episodepubdate DESC',
+        'duration_asc': 'e.episodeduration ASC',
+        'duration_desc': 'e.episodeduration DESC',
+        'listen_progress': '(COALESCE(h.listenduration, 0)::float / e.episodeduration) DESC',
+        'completion': 'h.listenduration::float / e.episodeduration DESC'
+    }
+
+    order_by = sort_mapping.get(playlist['sortorder'], 'e.episodepubdate DESC')
+    if playlist['groupbypodcast']:
+        order_by = f'e.podcastid, {order_by}'
+
+    query += f" ORDER BY {order_by}"
+
+    # Add limit
+    if playlist['maxepisodes']:
+        query += " LIMIT %s"
+        params.append(playlist['maxepisodes'])
+
+    return query, params
+
+
+def update_playlist_contents(cnx, database_type, playlist):
+    cursor = cnx.cursor()
+    try:
+        print(f"\n======= UPDATE PLAYLIST: {playlist['name']} (ID: {playlist['playlistid']}) =======")
+
+        # Clear existing contents
+        cursor.execute('DELETE FROM "PlaylistContents" WHERE playlistid = %s',
+                      (playlist['playlistid'],))
+        print(f"Cleared existing contents for playlist {playlist['playlistid']}")
+
+        # Build and execute query
+        query, params = build_playlist_query(playlist, database_type)
+
+        # Try to create a debug query with params substituted
+        debug_query = query
+        debug_params = list(params)  # Make a copy
+
+        try:
+            for i, param in enumerate(debug_params):
+                placeholder = "%s"
+                if param is None:
+                    replacement = "NULL"
+                elif isinstance(param, list):
+                    replacement = f"ARRAY[{','.join(map(str, param))}]"
+                elif isinstance(param, str):
+                    replacement = f"'{param}'"
+                else:
+                    replacement = str(param)
+
+                debug_query = debug_query.replace(placeholder, replacement, 1)
+
+            print(f"DEBUG QUERY: {debug_query}")
+        except Exception as e:
+            print(f"Error creating debug query: {e}")
+
+        # First, let's check if there are any episodes at all for this user
+        basic_check_query = f"""
+            SELECT COUNT(*) FROM "Episodes" e
+            JOIN "Podcasts" p ON e.podcastid = p.podcastid
+            WHERE p.UserID = {playlist['userid']}
+        """
+        cursor.execute(basic_check_query)
+        # Handle both dictionary and tuple result formats
+        result = cursor.fetchone()
+        if isinstance(result, dict):
+            # Dictionary format - use first key in the dict
+            total_episodes = result[list(result.keys())[0]]
+        else:
+            # Tuple format - use first element
+            total_episodes = result[0]
+
+        print(f"Total episodes available for user {playlist['userid']}: {total_episodes}")
+
+        # Now execute the actual filtered query
+        cursor.execute(query, params)
+        episodes = cursor.fetchall()
+        episode_count = len(episodes)
+        print(f"Found {episode_count} episodes matching criteria for playlist {playlist['playlistid']}")
+
+        # If we found episodes, show some details
+        if episode_count > 0:
+            # Handle both tuple and dict format episodes
+            episode_ids = []
+            for ep in episodes[:5]:
+                if isinstance(ep, dict):
+                    episode_ids.append(ep.get('episodeid'))
+                else:
+                    episode_ids.append(ep[0])
+
+            print(f"First few episode IDs: {episode_ids}")
+
+            # Get details for the first episode
+            if episode_count > 0:
+                if isinstance(episodes[0], dict):
+                    first_ep_id = episodes[0].get('episodeid')
+                else:
+                    first_ep_id = episodes[0][0]
+
+                cursor.execute("""
+                    SELECT e.episodeid, e.episodetitle, e.episodeduration,
+                           h.listenduration, p.podcastid, p.podcastname, p.userid
+                    FROM "Episodes" e
+                    JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = %s
+                    WHERE e.episodeid = %s
+                """, (playlist['userid'], first_ep_id))
+
+                ep_details = cursor.fetchone()
+                print(f"First episode details: {ep_details}")
+
+        # Insert episodes into playlist
+        for position, episode in enumerate(episodes):
+            if isinstance(episode, dict):
+                episode_id = episode.get('episodeid')
+            else:
+                episode_id = episode[0]
+
+            cursor.execute("""
+                INSERT INTO "PlaylistContents" (playlistid, episodeid, position)
+                VALUES (%s, %s, %s)
+            """, (playlist['playlistid'], episode_id, position))
+
+        # Update LastUpdated timestamp
+        cursor.execute("""
+            UPDATE "Playlists"
+            SET lastupdated = CURRENT_TIMESTAMP
+            WHERE playlistid = %s
+        """, (playlist['playlistid'],))
+
+        cnx.commit()
+        print(f"Successfully updated playlist {playlist['playlistid']} with {episode_count} episodes")
+
+    except Exception as e:
+        print(f"ERROR updating playlist {playlist['name']}: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        cnx.rollback()
+        raise
+    finally:
+        cursor.close()
+
+
+def update_all_playlists(cnx, database_type):
+    """
+    Update all playlists based on their rules
+    """
+    cursor = cnx.cursor()
+    try:
+        print("\n=================== PLAYLIST UPDATE STARTING ===================")
+        print("Starting to fetch all playlists")
+        cursor.execute('''
+            SELECT
+                playlistid, userid, name, description, issystemplaylist,
+                podcastids, includeunplayed, includepartiallyplayed,
+                includeplayed, minduration, maxduration, sortorder,
+                groupbypodcast, maxepisodes, playprogressmin,
+                playprogressmax, timefilterhours
+            FROM "Playlists"
+        ''')
+
+        columns = [desc[0] for desc in cursor.description]
+        print(f"Playlist columns: {columns}")
+
+        playlists = cursor.fetchall()
+        total_playlists = len(playlists)
+        print(f"Found {total_playlists} playlists to update")
+
+        # Let's print info about users and their podcasts
+        cursor.execute("""
+            SELECT userid, COUNT(DISTINCT podcastid) as podcast_count
+            FROM "Podcasts"
+            GROUP BY userid
+        """)
+        user_podcast_counts = cursor.fetchall()
+        print(f"User podcast counts: {user_podcast_counts}")
+
+        cursor.execute("""
+            SELECT p.userid, p.podcastid, COUNT(e.episodeid) as episode_count
+            FROM "Podcasts" p
+            JOIN "Episodes" e ON p.podcastid = e.podcastid
+            GROUP BY p.userid, p.podcastid
+            ORDER BY p.userid, p.podcastid
+        """)
+        podcast_episode_counts = cursor.fetchall()
+        print(f"First few podcast episode counts: {podcast_episode_counts[:5]}")
+
+        for idx, playlist in enumerate(playlists, 1):
+            if isinstance(playlist, tuple):
+                playlist_dict = dict(zip(columns, playlist))
+            else:
+                playlist_dict = playlist
+
+            print(f"\nProcessing playlist {idx}/{total_playlists}: {playlist_dict.get('name')} (ID: {playlist_dict.get('playlistid')})")
+            print(f"UserID: {playlist_dict.get('userid')}")
+
+            try:
+                update_playlist_contents(cnx, database_type, playlist_dict)
+                print(f"Successfully completed playlist {idx}/{total_playlists}")
+            except Exception as e:
+                print(f"Error updating playlist {idx}/{total_playlists} ID {playlist_dict.get('playlistid')}: {str(e)}")
+                continue
+
+        print(f"Finished processing all {total_playlists} playlists")
+        print("=============== PLAYLIST UPDATE COMPLETE ===============\n")
+        cnx.commit()
+    except Exception as e:
+        print(f"Error in update_all_playlists: {str(e)}")
+        if hasattr(e, '__traceback__'):
+            import traceback
+            print(traceback.format_exc())
+        cnx.rollback()
+    finally:
+        cursor.close()
+
+def create_playlist(cnx, database_type, playlist_data):
+    """
+    Create a new playlist and return its ID
+    """
+    cursor = cnx.cursor()
+    try:
+        logging.info(f"Attempting to create playlist with data: {playlist_data}")
+        min_duration = playlist_data.min_duration * 60 if playlist_data.min_duration is not None else None
+        max_duration = playlist_data.max_duration * 60 if playlist_data.max_duration is not None else None
+
+        # Create tuple of values for insert and log them
+        insert_values = (
+            playlist_data.user_id,
+            playlist_data.name,
+            playlist_data.description,
+            playlist_data.podcast_ids,
+            playlist_data.include_unplayed,
+            playlist_data.include_partially_played,
+            playlist_data.include_played,
+            min_duration,
+            max_duration,
+            playlist_data.sort_order,
+            playlist_data.group_by_podcast,
+            playlist_data.max_episodes,
+            playlist_data.icon_name,
+            playlist_data.play_progress_min,
+            playlist_data.play_progress_max,
+            playlist_data.time_filter_hours
+        )
+
+        logging.info(f"Insert values: {insert_values}")
+
+        try:
+            cursor.execute("""
+                INSERT INTO "Playlists" (
+                    UserID,
+                    Name,
+                    Description,
+                    IsSystemPlaylist,
+                    PodcastIDs,
+                    IncludeUnplayed,
+                    IncludePartiallyPlayed,
+                    IncludePlayed,
+                    MinDuration,
+                    MaxDuration,
+                    SortOrder,
+                    GroupByPodcast,
+                    MaxEpisodes,
+                    IconName,
+                    PlayProgressMin,
+                    PlayProgressMax,
+                    TimeFilterHours
+                ) VALUES (
+                    %s, %s, %s, FALSE, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                ) RETURNING PlaylistID;
+            """, insert_values)
+
+        except Exception as sql_e:
+            logging.error(f"SQL execution error: {sql_e}")
+            if hasattr(sql_e, 'pgerror'):
+                logging.error(f"PG Error: {sql_e.pgerror}")
+            if hasattr(sql_e, 'diag'):
+                logging.error(f"Diagnostics: {sql_e.diag.message_detail}")
+            raise
+
+        try:
+            result = cursor.fetchone()
+            logging.info(f"Insert result: {result}")
+            if result is None:
+                raise Exception("No playlist ID returned from insert")
+
+            # Handle both dict and tuple results
+            if isinstance(result, dict):
+                playlist_id = result['playlistid']
+            else:
+                playlist_id = result[0]
+
+            cnx.commit()
+            return playlist_id
+
+        except Exception as fetch_e:
+            logging.error(f"Error fetching result: {fetch_e}")
+            raise
+
+    except Exception as e:
+        cnx.rollback()
+        logging.error(f"Detailed error creating playlist: {str(e)}")
+        logging.error(f"Error type: {type(e)}")
+        logging.error(f"Error args: {getattr(e, 'args', None)}")
+
+        raise Exception(f"Failed to create playlist: {str(e)}\nPlaylist data: {playlist_data}")
+    finally:
+        cursor.close()
+
+def delete_playlist(cnx, database_type, user_id, playlist_id):
+    """
+    Delete a playlist if it belongs to the user and is not a system playlist
+    """
+    cursor = cnx.cursor()
+    try:
+        # Check if playlist exists and belongs to user
+        cursor.execute("""
+            SELECT IsSystemPlaylist, UserID
+            FROM "Playlists"
+            WHERE PlaylistID = %s
+        """, (playlist_id,))
+
+        result = cursor.fetchone()
+        if not result:
+            raise Exception("Playlist not found")
+
+        is_system = result[0] if isinstance(result, tuple) else result['IsSystemPlaylist']
+        playlist_user_id = result[1] if isinstance(result, tuple) else result['UserID']
+
+        if is_system:
+            raise Exception("Cannot delete system playlists")
+        if playlist_user_id != user_id:
+            raise Exception("Unauthorized to delete this playlist")
+
+        # Delete the playlist
+        cursor.execute("""
+            DELETE FROM "Playlists"
+            WHERE PlaylistID = %s
+        """, (playlist_id,))
+
+        cnx.commit()
+    except Exception as e:
+        cnx.rollback()
+        raise Exception(f"Failed to delete playlist: {str(e)}")
+    finally:
+        cursor.close()
+
+def normalize_playlist_data(playlist_record):
+    """Normalize playlist data regardless of whether it's a tuple or dict."""
+    if isinstance(playlist_record, tuple):
+        result = {
+            'playlist_id': playlist_record[0],
+            'user_id': playlist_record[1],
+            'name': playlist_record[2],
+            'description': playlist_record[3],
+            'is_system_playlist': playlist_record[4],
+            'podcast_ids': playlist_record[5],
+            'include_unplayed': playlist_record[6],
+            'include_partially_played': playlist_record[7],
+            'include_played': playlist_record[8],
+            'min_duration': playlist_record[9],
+            'max_duration': playlist_record[10],
+            'sort_order': playlist_record[11],
+            'group_by_podcast': playlist_record[12],
+            'max_episodes': playlist_record[13],
+            'last_updated': playlist_record[14],
+            'created': playlist_record[15],
+            'icon_name': playlist_record[16],
+            'episode_count': playlist_record[17]
+        }
+    else:
+        result = {
+            'playlist_id': playlist_record['playlistid'],
+            'user_id': playlist_record['userid'],
+            'name': playlist_record['name'],
+            'description': playlist_record['description'],
+            'is_system_playlist': playlist_record['issystemplaylist'],
+            'podcast_ids': playlist_record['podcastids'],
+            'include_unplayed': playlist_record['includeunplayed'],
+            'include_partially_played': playlist_record['includepartiallyplayed'],
+            'include_played': playlist_record['includeplayed'],
+            'min_duration': playlist_record['minduration'],
+            'max_duration': playlist_record['maxduration'],
+            'sort_order': playlist_record['sortorder'],
+            'group_by_podcast': playlist_record['groupbypodcast'],
+            'max_episodes': playlist_record['maxepisodes'],
+            'last_updated': playlist_record['lastupdated'],
+            'created': playlist_record['created'],
+            'icon_name': playlist_record['iconname'],
+            'episode_count': playlist_record['episode_count']
+        }
+
+    # Convert null values to appropriate string representations or default values
+    if result['last_updated'] is None:
+        result['last_updated'] = ""
+
+    if result['created'] is None:
+        result['created'] = ""
+
+    if result['icon_name'] is None:
+        result['icon_name'] = ""  # Or a default icon name like "ph-playlist"
+
+    # Handle episode_count - ensure it's an integer
+    if isinstance(result['episode_count'], str):  # It's coming back as a timestamp string
+        result['episode_count'] = 0
+
+    return result
+
+def normalize_preview_episode(episode_record):
+    """Normalize episode preview data regardless of whether it's a tuple or dict."""
+    if isinstance(episode_record, tuple):
+        return {
+            'title': episode_record[0],
+            'artwork': episode_record[1]
+        }
+    return {
+        'title': episode_record.get('episodetitle', episode_record.get('EpisodeTitle')),
+        'artwork': episode_record.get('episodeartwork', episode_record.get('EpisodeArtwork'))
+    }
+
+def get_playlists(cnx, database_type, user_id):
+    """
+    Get all playlists (system playlists and user's custom playlists)
+    Returns consistently formatted dict results regardless of database response format
+    """
+    # Create a cursor that returns dictionaries
+    cursor = cnx.cursor(row_factory=psycopg.rows.dict_row)
+    try:
+        # First, let's count episodes correctly by joining with podcasts to filter by user
+        cursor.execute("""
+            WITH filtered_episodes AS (
+                SELECT pc.PlaylistID, pc.EpisodeID
+                FROM "PlaylistContents" pc
+                JOIN "Episodes" e ON pc.EpisodeID = e.EpisodeID
+                JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
+                WHERE p.UserID = %s
+            )
+            SELECT
+                p.*,
+                COUNT(fe.EpisodeID)::INTEGER as episode_count,
+                p.IconName as icon_name
+            FROM "Playlists" p
+            LEFT JOIN filtered_episodes fe ON p.PlaylistID = fe.PlaylistID
+            WHERE p.IsSystemPlaylist = TRUE
+                OR p.UserID = %s
+            GROUP BY p.PlaylistID
+            ORDER BY p.IsSystemPlaylist DESC, p.Name ASC
+        """, (user_id, user_id))
+
+        playlists = cursor.fetchall()
+        playlist_list = []
+        for playlist_record in playlists:
+            # Now we just need to normalize the field names to match the expected format
+            playlist_dict = {
+                'playlist_id': playlist_record['playlistid'],
+                'user_id': playlist_record['userid'],
+                'name': playlist_record['name'],
+                'description': playlist_record['description'],
+                'is_system_playlist': playlist_record['issystemplaylist'],
+                'podcast_ids': playlist_record['podcastids'],
+                'include_unplayed': playlist_record['includeunplayed'],
+                'include_partially_played': playlist_record['includepartiallyplayed'],
+                'include_played': playlist_record['includeplayed'],
+                'min_duration': playlist_record['minduration'],
+                'max_duration': playlist_record['maxduration'],
+                'sort_order': playlist_record['sortorder'],
+                'group_by_podcast': playlist_record['groupbypodcast'],
+                'max_episodes': playlist_record['maxepisodes'],
+                'last_updated': playlist_record['lastupdated'] or "",
+                'created': playlist_record['created'] or "",
+                'icon_name': playlist_record['iconname'] or "",
+                'episode_count': int(playlist_record['episode_count'] or 0)
+            }
+
+            # Get preview episodes with error handling
+            try:
+                # Use dict cursor here too
+                preview_cursor = cnx.cursor(row_factory=psycopg.rows.dict_row)
+                # THIS IS THE KEY CHANGE: Join with Podcasts and filter by user_id
+                preview_cursor.execute("""
+                    SELECT e.EpisodeTitle as episodetitle, e.EpisodeArtwork as episodeartwork
+                    FROM "PlaylistContents" pc
+                    JOIN "Episodes" e ON pc.EpisodeID = e.EpisodeID
+                    JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
+                    WHERE pc.PlaylistID = %s
+                    AND p.UserID = %s
+                    ORDER BY pc.Position
+                    LIMIT 3
+                """, (playlist_dict['playlist_id'], user_id))
+
+                preview_episodes = preview_cursor.fetchall()
+                playlist_dict['preview_episodes'] = [
+                    {
+                        'title': ep['episodetitle'],
+                        'artwork': ep['episodeartwork']
+                    } for ep in preview_episodes
+                ]
+                preview_cursor.close()
+            except Exception as e:
+                print(f"Error fetching preview episodes for playlist {playlist_dict['playlist_id']}: {e}")
+                playlist_dict['preview_episodes'] = []
+
+            playlist_list.append(playlist_dict)
+
+        return playlist_list
+    except Exception as e:
+        raise Exception(f"Failed to get playlists: {str(e)}")
+    finally:
+        cursor.close()
+
+def normalize_episode(episode):
+    """Normalize episode data regardless of tuple or dict format"""
+    if isinstance(episode, tuple):
+        return {
+            'episodeid': episode[0],
+            'episodetitle': episode[1],
+            'episodedescription': episode[2],
+            'episodeartwork': episode[3],
+            'episodepubdate': episode[4],
+            'episodeurl': episode[5],
+            'episodeduration': episode[6],
+            'listenduration': episode[7],
+            'completed': bool(episode[8]) if episode[8] is not None else False,
+            'saved': bool(episode[9]) if episode[9] is not None else False,
+            'queued': bool(episode[10]) if episode[10] is not None else False,
+            'is_youtube': bool(episode[11]) if episode[11] is not None else False,
+            'downloaded': bool(episode[12]) if episode[12] is not None else False,
+            'podcastname': episode[13]
+        }
+
+    # For dict case, map field names explicitly
+    field_mappings = {
+        'episodeid': ['episodeid', 'EpisodeID'],
+        'episodetitle': ['episodetitle', 'EpisodeTitle'],
+        'episodedescription': ['episodedescription', 'EpisodeDescription'],
+        'episodeartwork': ['episodeartwork', 'EpisodeArtwork'],
+        'episodepubdate': ['episodepubdate', 'EpisodePubDate'],
+        'episodeurl': ['episodeurl', 'EpisodeURL'],
+        'episodeduration': ['episodeduration', 'EpisodeDuration'],
+        'listenduration': ['listenduration', 'ListenDuration'],
+        'completed': bool(episode['completed']) if episode['completed'] is not None else False,
+        'saved': bool(episode['saved']) if episode['saved'] is not None else False,
+        'queued': bool(episode['queued']) if episode['queued'] is not None else False,
+        'is_youtube': bool(episode.get('isyoutube', False)),  # Use get() with default False
+        'downloaded': bool(episode['downloaded']) if episode['downloaded'] is not None else False,
+        'podcastname': ['podcastname', 'PodcastName']
+    }
+
+    result = {}
+    for field, possible_keys in field_mappings.items():
+        # Try all possible keys for each field
+        value = None
+        for key in possible_keys:
+            value = episode.get(key)
+            if value is not None:
+                break
+
+        # Handle booleans
+        if field in ['completed', 'saved', 'queued', 'is_youtube', 'downloaded']:
+            value = value or False
+
+        result[field] = value
+
+    return result
+
+def normalize_playlist_info(playlist_info):
+    """Normalize playlist info data regardless of tuple or dict format"""
+    if isinstance(playlist_info, tuple):
+        return {
+            'name': playlist_info[0],
+            'description': playlist_info[1],
+            'episode_count': playlist_info[2],
+            'icon_name': playlist_info[3]
+        }
+    # For dict case, first try lowercase keys (most common)
+    name = playlist_info.get('name')
+    description = playlist_info.get('description')
+    episode_count = playlist_info.get('episode_count')
+    icon_name = playlist_info.get('iconname')  # Note: this comes back as 'iconname' not 'icon_name'
+
+    # If any are None, try uppercase keys as fallback
+    if name is None:
+        name = playlist_info.get('Name')
+    if description is None:
+        description = playlist_info.get('Description')
+    if episode_count is None:
+        episode_count = playlist_info.get('EpisodeCount')
+    if icon_name is None:
+        icon_name = playlist_info.get('IconName')
+
+    return {
+        'name': name,
+        'description': description,
+        'episode_count': episode_count,
+        'icon_name': icon_name
+    }
+
+def get_playlist_episodes(cnx, database_type, user_id, playlist_id):
+    """
+    Get all episodes in a playlist, applying the playlist's filters
+    Returns both playlist info and episodes in format matching Rust structs
+    """
+    print(f"Starting playlist episodes fetch for playlist_id={playlist_id}")
+    cursor = cnx.cursor()
+    try:
+        cursor.execute("""
+            SELECT
+                p.Name,
+                p.Description,
+                COUNT(pc.PlaylistContentID) as episode_count,
+                p.IconName,
+                p.IsSystemPlaylist
+            FROM "Playlists" p
+            LEFT JOIN "PlaylistContents" pc ON p.PlaylistID = pc.PlaylistID
+            WHERE p.PlaylistID = %s AND (p.UserID = %s OR p.IsSystemPlaylist = TRUE)
+            GROUP BY p.PlaylistID, p.Name, p.Description, p.IconName, p.IsSystemPlaylist
+        """, (playlist_id, user_id))
+
+        playlist_info = cursor.fetchone()
+
+        if not playlist_info:
+            raise Exception(f"Playlist {playlist_id} not found or access denied")
+
+        # Handle both tuple and dict formats for playlist info
+        is_system_playlist = False
+        if isinstance(playlist_info, tuple):
+            normalized_info = {
+                'name': playlist_info[0],
+                'description': playlist_info[1],
+                'episode_count': playlist_info[2],
+                'icon_name': playlist_info[3]
+            }
+            is_system_playlist = playlist_info[4]
+        else:
+            # Handle both upper and lower case keys
+            normalized_info = {
+                'name': playlist_info.get('name') or playlist_info.get('Name'),
+                'description': playlist_info.get('description') or playlist_info.get('Description'),
+                'episode_count': playlist_info.get('episode_count') or playlist_info.get('EpisodeCount'),
+                'icon_name': playlist_info.get('iconname') or playlist_info.get('IconName')
+            }
+            is_system_playlist = playlist_info.get('issystemplaylist') or playlist_info.get('IsSystemPlaylist')
+
+        print(f"Debug - playlist_info type: {type(playlist_info)}")
+        print(f"Debug - playlist_info content: {playlist_info}")
+        print(f"Debug - normalized playlist info: {normalized_info}")
+        print(f"Debug - is_system_playlist: {is_system_playlist}")
+
+        # Get playlist settings
+        cursor.execute("""
+            SELECT
+                IncludeUnplayed,
+                IncludePartiallyPlayed,
+                IncludePlayed,
+                MinDuration,
+                MaxDuration,
+                SortOrder,
+                GroupByPodcast,
+                MaxEpisodes,
+                PodcastIDs
+            FROM "Playlists"
+            WHERE PlaylistID = %s AND (UserID = %s OR IsSystemPlaylist = TRUE)
+        """, (playlist_id, user_id))
+
+        playlist_settings = cursor.fetchone()
+        if isinstance(playlist_settings, dict):
+            settings = [
+                playlist_settings['includeunplayed'],
+                playlist_settings['includepartiallyplayed'],
+                playlist_settings['includeplayed'],
+                playlist_settings['minduration'],
+                playlist_settings['maxduration'],
+                playlist_settings['sortorder'],
+                playlist_settings['groupbypodcast'],
+                playlist_settings['maxepisodes'],
+                playlist_settings['podcastids']
+            ]
+        else:  # tuple
+            settings = playlist_settings
+        print(f"Debug - playlist_settings type: {type(playlist_settings)}")
+        print(f"Debug - playlist_settings content: {playlist_settings}")
+
+        (include_unplayed, include_partially_played, include_played,
+         min_duration, max_duration, sort_order, group_by_podcast,
+         max_episodes, podcast_ids) = settings
+
+        # THIS IS THE KEY CHANGE: Added filtering by podcast owner for system playlists
+        query = """
+            SELECT DISTINCT
+                e.EpisodeID,
+                e.EpisodeTitle,
+                e.EpisodeDescription,
+                e.EpisodeArtwork,
+                e.EpisodePubDate,
+                e.EpisodeURL,
+                e.EpisodeDuration,
+                el.ListenDuration as ListenDuration,
+                CASE
+                    WHEN el.ListenDuration >= e.EpisodeDuration THEN TRUE
+                    ELSE FALSE
+                END as Completed,
+                es.SaveID IS NOT NULL as Saved,
+                eq.QueueID IS NOT NULL as Queued,
+                eq.is_youtube as IsYouTube,
+                ed.DownloadID IS NOT NULL as Downloaded,
+                p.PodcastName
+            FROM "PlaylistContents" pc
+            JOIN "Episodes" e ON pc.EpisodeID = e.EpisodeID
+            JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
+            LEFT JOIN "UserEpisodeHistory" el ON e.EpisodeID = el.EpisodeID AND el.UserID = %s
+            LEFT JOIN "SavedEpisodes" es ON e.EpisodeID = es.EpisodeID AND es.UserID = %s
+            LEFT JOIN "EpisodeQueue" eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = %s
+            LEFT JOIN "DownloadedEpisodes" ed ON e.EpisodeID = ed.EpisodeID AND ed.UserID = %s
+            WHERE pc.PlaylistID = %s
+            AND (p.UserID = %s OR NOT %s)
+        """
+        params = [user_id, user_id, user_id, user_id, playlist_id, user_id, is_system_playlist]
+
+        # Remove the duration and play status filters since those are handled by the nightly update
+        # Keep the sorting logic
+        if sort_order == "date_desc":
+            query += " ORDER BY e.EpisodePubDate DESC"
+        elif sort_order == "date_asc":
+            query += " ORDER BY e.EpisodePubDate ASC"
+        elif sort_order == "duration_desc":
+            query += " ORDER BY e.EpisodeDuration DESC"
+        elif sort_order == "duration_asc":
+            query += " ORDER BY e.EpisodeDuration ASC"
+
+        # Add limit if specified
+        if max_episodes:
+            query += " LIMIT %s"
+            params.append(max_episodes)
+
+        print(f"Debug - final query: {query}")
+        print(f"Debug - final params: {params}")
+
+        cursor.execute(query, tuple(params))
+        episodes = cursor.fetchall()
+        print(f"Debug - episodes type: {type(episodes)}")
+        print(f"Debug - first episode content: {episodes[0] if episodes else None}")
+        print(f"Debug - number of episodes: {len(episodes)}")
+
+        # Normalize all episodes
+        episode_list = []
+        for episode in episodes:
+            if isinstance(episode, tuple):
+                episode_dict = {
+                    'episodeid': episode[0],
+                    'episodetitle': episode[1],
+                    'episodedescription': episode[2],
+                    'episodeartwork': episode[3],
+                    'episodepubdate': episode[4],
+                    'episodeurl': episode[5],
+                    'episodeduration': episode[6],
+                    'listenduration': episode[7],
+                    'completed': bool(episode[8]) if episode[8] is not None else False,
+                    'saved': bool(episode[9]) if episode[9] is not None else False,
+                    'queued': bool(episode[10]) if episode[10] is not None else False,
+                    'is_youtube': bool(episode[11]) if episode[11] is not None else False,
+                    'downloaded': bool(episode[12]) if episode[12] is not None else False,
+                    'podcastname': episode[13]
+                }
+            else:
+                episode_dict = {
+                    'episodeid': episode['episodeid'],
+                    'episodetitle': episode['episodetitle'],
+                    'episodedescription': episode['episodedescription'],
+                    'episodeartwork': episode['episodeartwork'],
+                    'episodepubdate': episode['episodepubdate'],
+                    'episodeurl': episode['episodeurl'],
+                    'episodeduration': episode['episodeduration'],
+                    'listenduration': episode['listenduration'],
+                    'completed': bool(episode['completed']) if episode['completed'] is not None else False,
+                    'saved': bool(episode['saved']) if episode['saved'] is not None else False,
+                    'queued': bool(episode['queued']) if episode['queued'] is not None else False,
+                    'is_youtube': bool(episode.get('isyoutube')) if episode.get('isyoutube') is not None else False,
+                    'downloaded': bool(episode['downloaded']) if episode['downloaded'] is not None else False,
+                    'podcastname': episode['podcastname']
+                }
+            episode_list.append(episode_dict)
+
+        # Return directly matching Rust struct - no extra nesting
+        print(f"Debug - final response structure: {dict(playlist_info=normalized_info, episodes=episode_list)}")
+        return {
+            "playlist_info": normalized_info,
+            "episodes": episode_list
+        }
+
+    except Exception as e:
+        raise Exception(f"Failed to get playlist episodes: {str(e)}")
     finally:
         cursor.close()
 
@@ -9030,48 +9636,6 @@ def process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type
         logger.error(f"Error fetching episode actions: {str(e)}")
         raise
 
-
-# database_functions.py
-
-def queue_bump(database_type, cnx, ep_url, title, user_id):
-    cursor = cnx.cursor()
-
-    if database_type == "postgresql":
-        query_check_episode = """
-            SELECT QueueID, QueuePosition FROM "EpisodeQueue"
-            INNER JOIN "Episodes" ON "EpisodeQueue".EpisodeID = "Episodes".EpisodeID
-            WHERE "Episodes".EpisodeURL = %s AND "Episodes".EpisodeTitle = %s AND "EpisodeQueue".UserID = %s
-        """
-        query_delete_episode = 'DELETE FROM "EpisodeQueue" WHERE QueueID = %s'
-        query_update_queue = 'UPDATE "EpisodeQueue" SET QueuePosition = QueuePosition - 1 WHERE UserID = %s'
-    else:
-        query_check_episode = """
-            SELECT QueueID, QueuePosition FROM EpisodeQueue
-            INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
-            WHERE Episodes.EpisodeURL = %s AND Episodes.EpisodeTitle = %s AND EpisodeQueue.UserID = %s
-        """
-        query_delete_episode = "DELETE FROM EpisodeQueue WHERE QueueID = %s"
-        query_update_queue = "UPDATE EpisodeQueue SET QueuePosition = QueuePosition - 1 WHERE UserID = %s"
-
-    cursor.execute(query_check_episode, (ep_url, title, user_id))
-    result = cursor.fetchone()
-    print(result)
-
-    if result is not None:
-        try:
-            cursor.execute(query_delete_episode, (result[0],))
-        except Exception as e:
-            print(f"Error while deleting episode from queue: {e}")
-
-    cursor.execute(query_update_queue, (user_id,))
-
-    queue_pod(database_type, cnx, title, ep_url, user_id)
-
-    cnx.commit()
-    cursor.close()
-
-    return {"detail": f"{title} moved to the front of the queue."}
-
 def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person_name: str, person_img: str, podcast_id: int) -> tuple[bool, int]:
     cursor = cnx.cursor()
     try:
@@ -9699,15 +10263,57 @@ def get_user_by_email(cnx, database_type, email):
     finally:
         cursor.close()
 
-def create_oidc_user(cnx, database_type, email, fullname, username):
+def create_oidc_user(cnx, database_type, email, fullname, base_username):
     cursor = cnx.cursor()
     try:
+        print(f"Starting create_oidc_user for email: {email}, fullname: {fullname}, base_username: {base_username}")
+        # Check if username exists and find a unique one
+        username = base_username
+        counter = 1
+        while True:
+            # Check if username exists
+            check_query = """
+                SELECT COUNT(*) FROM "Users" WHERE Username = %s
+            """ if database_type == "postgresql" else """
+                SELECT COUNT(*) FROM Users WHERE Username = %s
+            """
+            print(f"Checking if username '{username}' exists")
+            cursor.execute(check_query, (username,))
+            result = cursor.fetchone()
+            print(f"Username check result: {result}, type: {type(result)}")
+
+            count = 0
+            if isinstance(result, tuple):
+                count = result[0]
+            elif isinstance(result, dict):
+                count = result.get('count', 0)
+            else:
+                # Try to extract the count value safely
+                try:
+                    count = int(result)
+                except (TypeError, ValueError):
+                    print(f"Unable to extract count from result: {result}")
+                    count = 1  # Assume username exists to be safe
+
+            print(f"Username count: {count}")
+            if count == 0:
+                print(f"Username '{username}' is unique, proceeding")
+                break  # Username is unique
+
+            # Try with incremented counter
+            print(f"Username '{username}' already exists, trying next")
+            username = f"{base_username}{counter}"
+            counter += 1
+            if counter > 10:  # Limit attempts
+                raise Exception("Could not find a unique username")
+
         # Create a random salt using base64 (which is what Argon2 expects)
         salt = base64.b64encode(secrets.token_bytes(16)).decode('utf-8')
         # Create an impossible-to-match hash that's clearly marked as OIDC
         # Using proper Argon2id format but with an impossible hash
         hashed_password = f"$argon2id$v=19$m=65536,t=3,p=4${salt}${'X' * 43}_OIDC_ACCOUNT_NO_PASSWORD"
 
+        print(f"Inserting new user with username: {username}, email: {email}")
         # Insert user
         if database_type == "postgresql":
             query = """
@@ -9727,11 +10333,46 @@ def create_oidc_user(cnx, database_type, email, fullname, username):
         # Get user ID
         if database_type == "postgresql":
             result = cursor.fetchone()
-            user_id = result[0] if isinstance(result, tuple) else result['userid']
+            print(f"PostgreSQL INSERT result: {result}, type: {type(result)}")
+
+            if result is None:
+                print("ERROR: No result returned from INSERT RETURNING")
+                raise Exception("No user ID returned from database after insertion")
+
+            # Handle different result types
+            if isinstance(result, tuple):
+                print(f"Result is tuple: {result}")
+                user_id = result[0]
+            elif isinstance(result, dict):
+                print(f"Result is dict: {result}")
+                # Note: PostgreSQL column names are lowercase by default
+                user_id = result.get('userid')
+                if user_id is None:
+                    # Try other possible key variations
+                    user_id = result.get('UserID') or result.get('userID') or result.get('user_id')
+            else:
+                print(f"Unexpected result type: {type(result)}, value: {result}")
+                # Try to extract user_id safely
+                try:
+                    # Try accessing as a number
+                    user_id = int(result)
+                except (TypeError, ValueError):
+                    # If that fails, convert to string and raise exception
+                    result_str = str(result)
+                    print(f"Result as string: {result_str}")
+                    raise Exception(f"Unable to extract user_id from result: {result_str}")
         else:
             user_id = cursor.lastrowid
+            print(f"MySQL lastrowid: {user_id}")
+
+        print(f"Extracted user_id: {user_id}, type: {type(user_id)}")
+
+        if not user_id:
+            print("ERROR: user_id is empty or zero")
+            raise Exception("Invalid user_id after user creation")
 
         # Add default user settings
+        print(f"Inserting default user settings for user_id: {user_id}")
         settings_query = """
             INSERT INTO "UserSettings"
             (UserID, Theme)
@@ -9744,6 +10385,7 @@ def create_oidc_user(cnx, database_type, email, fullname, username):
         cursor.execute(settings_query, (user_id, 'Nordic'))
 
         # Add default user stats
+        print(f"Inserting default user stats for user_id: {user_id}")
         stats_query = """
             INSERT INTO "UserStats"
             (UserID)
@@ -9755,10 +10397,309 @@ def create_oidc_user(cnx, database_type, email, fullname, username):
         """
         cursor.execute(stats_query, (user_id,))
 
+        print(f"Committing transaction")
         cnx.commit()
+        print(f"User creation complete, returning user_id: {user_id}")
         return user_id
+    except Exception as e:
+        print(f"Error in create_oidc_user: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        cnx.rollback()
+        raise
+    finally:
+        cursor.close()
+
+def get_user_startpage(cnx, database_type, user_id):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = """
+                SELECT StartPage
+                FROM "UserSettings"
+                WHERE UserID = %s
+            """
+        else:
+            query = """
+                SELECT StartPage
+                FROM UserSettings
+                WHERE UserID = %s
+            """
+
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+
+        # Return 'home' as default if no setting is found
+        if result:
+            return result[0] if isinstance(result, tuple) else result['startpage']
+        return 'home'
+
+    except Exception as e:
+        raise
+    finally:
+        cursor.close()
+
+def set_user_startpage(cnx, database_type, user_id, startpage):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = """
+                UPDATE "UserSettings"
+                SET StartPage = %s
+                WHERE UserID = %s
+            """
+        else:
+            query = """
+                UPDATE UserSettings
+                SET StartPage = %s
+                WHERE UserID = %s
+            """
+
+        cursor.execute(query, (startpage, user_id))
+        cnx.commit()
+        return True
+
     except Exception as e:
         cnx.rollback()
         raise
     finally:
         cursor.close()
+
+def get_home_overview(database_type, cnx, user_id):
+    if database_type == "postgresql":
+        cnx.row_factory = dict_row
+        cursor = cnx.cursor()
+    else:
+        cursor = cnx.cursor(dictionary=True)
+
+    home_data = {
+        "recent_episodes": [],
+        "in_progress_episodes": [],
+        "top_podcasts": [],
+        "saved_count": 0,
+        "downloaded_count": 0,
+        "queue_count": 0
+    }
+
+    # Recent Episodes query with is_youtube field
+    if database_type == "postgresql":
+        recent_query = """
+            SELECT
+                "Episodes".EpisodeID,
+                "Episodes".EpisodeTitle,
+                "Episodes".EpisodePubDate,
+                "Episodes".EpisodeDescription,
+                "Episodes".EpisodeArtwork,
+                "Episodes".EpisodeURL,
+                "Episodes".EpisodeDuration,
+                "Episodes".Completed,
+                "Podcasts".PodcastName,
+                "Podcasts".PodcastID,
+                "Podcasts".IsYouTubeChannel as is_youtube,
+                "UserEpisodeHistory".ListenDuration,
+                CASE WHEN "SavedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                CASE WHEN "EpisodeQueue".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                CASE WHEN "DownloadedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
+            FROM "Episodes"
+            INNER JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+            LEFT JOIN "UserEpisodeHistory" ON
+                "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID
+                AND "UserEpisodeHistory".UserID = %s
+            LEFT JOIN "SavedEpisodes" ON
+                "Episodes".EpisodeID = "SavedEpisodes".EpisodeID
+                AND "SavedEpisodes".UserID = %s
+            LEFT JOIN "EpisodeQueue" ON
+                "Episodes".EpisodeID = "EpisodeQueue".EpisodeID
+                AND "EpisodeQueue".UserID = %s
+            LEFT JOIN "DownloadedEpisodes" ON
+                "Episodes".EpisodeID = "DownloadedEpisodes".EpisodeID
+                AND "DownloadedEpisodes".UserID = %s
+            WHERE "Podcasts".UserID = %s
+                AND "Episodes".EpisodePubDate >= NOW() - INTERVAL '7 days'
+            ORDER BY "Episodes".EpisodePubDate DESC
+            LIMIT 10
+        """
+    else:  # MySQL or MariaDB
+        recent_query = """
+            SELECT
+                Episodes.EpisodeID,
+                Episodes.EpisodeTitle,
+                Episodes.EpisodePubDate,
+                Episodes.EpisodeDescription,
+                Episodes.EpisodeArtwork,
+                Episodes.EpisodeURL,
+                Episodes.EpisodeDuration,
+                Episodes.Completed,
+                Podcasts.PodcastName,
+                Podcasts.PodcastID,
+                Podcasts.IsYouTubeChannel as is_youtube,
+                UserEpisodeHistory.ListenDuration,
+                CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
+            FROM Episodes
+            INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+            LEFT JOIN UserEpisodeHistory ON
+                Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+                AND UserEpisodeHistory.UserID = %s
+            LEFT JOIN SavedEpisodes ON
+                Episodes.EpisodeID = SavedEpisodes.EpisodeID
+                AND SavedEpisodes.UserID = %s
+            LEFT JOIN EpisodeQueue ON
+                Episodes.EpisodeID = EpisodeQueue.EpisodeID
+                AND EpisodeQueue.UserID = %s
+            LEFT JOIN DownloadedEpisodes ON
+                Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
+                AND DownloadedEpisodes.UserID = %s
+            WHERE Podcasts.UserID = %s
+                AND Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+            ORDER BY Episodes.EpisodePubDate DESC
+            LIMIT 10
+        """
+
+    # In Progress Episodes query with is_youtube field
+    in_progress_query = """
+        SELECT
+            "Episodes".*,
+            "Podcasts".PodcastName,
+            "Podcasts".IsYouTubeChannel as is_youtube,
+            "UserEpisodeHistory".ListenDuration,
+            CASE WHEN "SavedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+            CASE WHEN "EpisodeQueue".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+            CASE WHEN "DownloadedEpisodes".EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
+        FROM "UserEpisodeHistory"
+        JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID
+        JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
+        LEFT JOIN "SavedEpisodes" ON
+            "Episodes".EpisodeID = "SavedEpisodes".EpisodeID
+            AND "SavedEpisodes".UserID = %s
+        LEFT JOIN "EpisodeQueue" ON
+            "Episodes".EpisodeID = "EpisodeQueue".EpisodeID
+            AND "EpisodeQueue".UserID = %s
+        LEFT JOIN "DownloadedEpisodes" ON
+            "Episodes".EpisodeID = "DownloadedEpisodes".EpisodeID
+            AND "DownloadedEpisodes".UserID = %s
+        WHERE "UserEpisodeHistory".UserID = %s
+        AND "UserEpisodeHistory".ListenDuration > 0
+        AND "Episodes".Completed = FALSE
+        ORDER BY "UserEpisodeHistory".ListenDate DESC
+        LIMIT 10
+    """ if database_type == "postgresql" else """
+        SELECT
+            Episodes.*,
+            Podcasts.PodcastName,
+            Podcasts.IsYouTubeChannel as is_youtube,
+            UserEpisodeHistory.ListenDuration,
+            CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+            CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+            CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
+        FROM UserEpisodeHistory
+        JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID
+        JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+        LEFT JOIN SavedEpisodes ON
+            Episodes.EpisodeID = SavedEpisodes.EpisodeID
+            AND SavedEpisodes.UserID = %s
+        LEFT JOIN EpisodeQueue ON
+            Episodes.EpisodeID = EpisodeQueue.EpisodeID
+            AND EpisodeQueue.UserID = %s
+        LEFT JOIN DownloadedEpisodes ON
+            Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
+            AND DownloadedEpisodes.UserID = %s
+        WHERE UserEpisodeHistory.UserID = %s
+        AND UserEpisodeHistory.ListenDuration > 0
+        AND Episodes.Completed = FALSE
+        ORDER BY UserEpisodeHistory.ListenDate DESC
+        LIMIT 10
+    """
+
+    # Top Podcasts query with all needed fields
+    top_podcasts_query = """
+        SELECT
+            "Podcasts".PodcastID,
+            "Podcasts".PodcastName,
+            "Podcasts".PodcastIndexID,
+            "Podcasts".ArtworkURL,
+            "Podcasts".Author,
+            "Podcasts".Categories,
+            "Podcasts".Description,
+            "Podcasts".EpisodeCount,
+            "Podcasts".FeedURL,
+            "Podcasts".WebsiteURL,
+            "Podcasts".Explicit,
+            "Podcasts".IsYouTubeChannel as is_youtube,
+            COUNT(DISTINCT "UserEpisodeHistory".EpisodeID) as play_count,
+            SUM("UserEpisodeHistory".ListenDuration) as total_listen_time
+        FROM "Podcasts"
+        LEFT JOIN "Episodes" ON "Podcasts".PodcastID = "Episodes".PodcastID
+        LEFT JOIN "UserEpisodeHistory" ON "Episodes".EpisodeID = "UserEpisodeHistory".EpisodeID
+        WHERE "Podcasts".UserID = %s
+        GROUP BY "Podcasts".PodcastID
+        ORDER BY total_listen_time DESC NULLS LAST
+        LIMIT 6
+    """ if database_type == "postgresql" else """
+        SELECT
+            Podcasts.PodcastID,
+            Podcasts.PodcastName,
+            Podcasts.PodcastIndexID,
+            Podcasts.ArtworkURL,
+            Podcasts.Author,
+            Podcasts.Categories,
+            Podcasts.Description,
+            Podcasts.EpisodeCount,
+            Podcasts.FeedURL,
+            Podcasts.WebsiteURL,
+            Podcasts.Explicit,
+            Podcasts.IsYouTubeChannel as is_youtube,
+            COUNT(DISTINCT UserEpisodeHistory.EpisodeID) as play_count,
+            SUM(UserEpisodeHistory.ListenDuration) as total_listen_time
+        FROM Podcasts
+        LEFT JOIN Episodes ON Podcasts.PodcastID = Episodes.PodcastID
+        LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+        WHERE Podcasts.UserID = %s
+        GROUP BY Podcasts.PodcastID
+        ORDER BY total_listen_time DESC
+        LIMIT 5
+    """
+
+    try:
+        # Get recent episodes - need to pass 5 parameters as we have 5 placeholders
+        cursor.execute(recent_query, (user_id, user_id, user_id, user_id, user_id))
+        recent_results = cursor.fetchall()
+        if recent_results is not None:
+            home_data["recent_episodes"] = lowercase_keys(recent_results)
+
+        # Get in progress episodes - need to pass 4 parameters as we have 4 placeholders
+        cursor.execute(in_progress_query, (user_id, user_id, user_id, user_id))
+        in_progress_results = cursor.fetchall()
+        if in_progress_results is not None:
+            home_data["in_progress_episodes"] = lowercase_keys(in_progress_results)
+
+        # Get top podcasts
+        cursor.execute(top_podcasts_query, (user_id,))
+        top_podcasts_results = cursor.fetchall()
+        if top_podcasts_results is not None:
+            home_data["top_podcasts"] = lowercase_keys(top_podcasts_results)
+
+        # Get counts
+        if database_type == "postgresql":
+            for table, key in [
+                ("SavedEpisodes", "saved_count"),
+                ("DownloadedEpisodes", "downloaded_count"),
+                ("EpisodeQueue", "queue_count")
+            ]:
+                count_query = f'SELECT COUNT(*) FROM "{table}" WHERE userid = %s'
+                cursor.execute(count_query, (user_id,))
+                count_result = cursor.fetchone()
+                if count_result is not None:
+                    home_data[key] = count_result[0] if isinstance(count_result, tuple) else count_result.get('count', 0)
+
+    except Exception as e:
+        print(f"Error fetching home overview: {e}")
+        print(f"Error type: {type(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
+    finally:
+        cursor.close()
+
+    return lowercase_keys(home_data)

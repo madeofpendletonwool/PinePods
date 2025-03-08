@@ -2217,7 +2217,11 @@ pub async fn connect_to_episode_websocket(
     let clean_server_name = server_name
         .trim_start_matches("http://")
         .trim_start_matches("https://");
-    let ws_protocol = if server_name.starts_with("https://") { "wss://" } else { "ws://" };
+    let ws_protocol = if server_name.starts_with("https://") {
+        "wss://"
+    } else {
+        "ws://"
+    };
     let url = format!(
         "{}{}/ws/api/data/episodes/{}?api_key={}&nextcloud_refresh={}",
         ws_protocol, clean_server_name, user_id, api_key, nextcloud_refresh
@@ -2670,6 +2674,352 @@ pub async fn call_check_youtube_channel(
         Err(anyhow::anyhow!(
             "Error checking YouTube channel. Server Response: {}",
             resp.status_text()
+        ))
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct HomePodcast {
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub podcastindexid: i64,
+    pub artworkurl: Option<String>,
+    pub author: Option<String>,
+    pub categories: String,
+    pub description: Option<String>,
+    pub episodecount: Option<i32>,
+    pub feedurl: Option<String>,
+    pub websiteurl: Option<String>,
+    pub explicit: bool,
+    pub is_youtube: bool, // This maps to isyoutubechannel in the DB
+    pub play_count: i32,
+    pub total_listen_time: Option<i32>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct HomeEpisode {
+    pub episodeid: i32,
+    pub podcastid: i32,
+    pub episodetitle: String,
+    pub episodedescription: String,
+    pub episodeurl: String,
+    pub episodeartwork: String,
+    pub episodepubdate: String,
+    pub episodeduration: i32,
+    pub completed: bool,
+    pub podcastname: String,
+    pub is_youtube: bool,
+    #[serde(default)]
+    pub listenduration: Option<i32>,
+    #[serde(default)]
+    pub saved: bool,
+    #[serde(default)]
+    pub queued: bool, 
+    #[serde(default)]
+    pub downloaded: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct HomeOverview {
+    pub recent_episodes: Vec<HomeEpisode>,
+    pub in_progress_episodes: Vec<HomeEpisode>,
+    pub top_podcasts: Vec<HomePodcast>,
+    pub saved_count: i32,
+    pub downloaded_count: i32,
+    pub queue_count: i32,
+}
+
+pub async fn call_get_home_overview(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<HomeOverview, Error> {
+    let endpoint = format!("{}/api/data/home_overview?user_id={}", server, user_id);
+    let response = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+
+    if response.ok() {
+        let text = response.text().await?;
+
+        // Validation steps
+        if text.is_empty() {
+            return Err(anyhow::anyhow!("Empty response from server"));
+        }
+
+        // Check if response is valid JSON
+        if !text.starts_with('{') || !text.ends_with('}') {
+            return Err(anyhow::anyhow!(
+                "Invalid JSON response - does not start with {{ and end with }}. \
+                Response starts with: {:?} \
+                Response ends with: {:?}",
+                &text.chars().take(50).collect::<String>(),
+                &text.chars().rev().take(50).collect::<String>()
+            ));
+        }
+
+        // Try parsing with detailed error
+        match serde_json::from_str::<HomeOverview>(&text) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => {
+                let context_start = e.column().saturating_sub(100);
+                let context_end = (e.column() + 100).min(text.len());
+                let context = &text[context_start..context_end];
+
+                Err(anyhow::anyhow!(
+                    "JSON parse error: {} \nContext around position {}: '...{}...'",
+                    e,
+                    e.column(),
+                    context
+                ))
+            }
+        }
+    } else {
+        Err(anyhow::anyhow!(
+            "Server returned error: {}",
+            response.status_text()
+        ))
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct PlaylistEpisode {
+    pub title: String,
+    pub artwork: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct Playlist {
+    pub playlist_id: i32,
+    pub user_id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub is_system_playlist: bool,
+    pub podcast_ids: Option<Vec<i32>>,
+    pub include_unplayed: bool,
+    pub include_partially_played: bool,
+    pub include_played: bool,
+    pub min_duration: Option<i32>,
+    pub max_duration: Option<i32>,
+    pub sort_order: String,
+    pub group_by_podcast: bool,
+    pub max_episodes: Option<i32>,
+    pub last_updated: String,
+    pub created: String,
+    pub episode_count: Option<i32>,
+    pub preview_episodes: Vec<PlaylistEpisode>,
+    pub icon_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlaylistResponse {
+    pub playlists: Vec<Playlist>,
+}
+
+pub async fn call_get_playlists(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<PlaylistResponse, Error> {
+    let endpoint = format!("{}/api/data/get_playlists?user_id={}", server, user_id);
+    let response = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+
+    if response.ok() {
+        let text = response.text().await?;
+        if text.is_empty() {
+            return Err(anyhow::anyhow!("Empty response from server"));
+        }
+
+        match serde_json::from_str::<PlaylistResponse>(&text) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => {
+                let context_start = e.column().saturating_sub(100);
+                let context_end = (e.column() + 100).min(text.len());
+                let context = &text[context_start..context_end];
+                Err(anyhow::anyhow!(
+                    "JSON parse error: {} \nContext around position {}: '...{}...'",
+                    e,
+                    e.column(),
+                    context
+                ))
+            }
+        }
+    } else {
+        Err(anyhow::anyhow!(
+            "Server returned error: {}",
+            response.status()
+        ))
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CreatePlaylistRequest {
+    pub user_id: i32,
+    pub name: String,
+    pub description: Option<String>,
+    pub podcast_ids: Option<Vec<i32>>,
+    pub include_unplayed: bool,
+    pub include_partially_played: bool,
+    pub include_played: bool,
+    pub min_duration: Option<i32>,
+    pub max_duration: Option<i32>,
+    pub sort_order: String,
+    pub group_by_podcast: bool,
+    pub max_episodes: Option<i32>,
+    pub icon_name: String,
+    pub play_progress_min: Option<f32>,
+    pub play_progress_max: Option<f32>,
+    pub time_filter_hours: Option<i32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreatePlaylistResponse {
+    pub detail: String,
+    pub playlist_id: i32,
+}
+
+pub async fn call_create_playlist(
+    server: &str,
+    api_key: &str,
+    playlist_data: CreatePlaylistRequest,
+) -> Result<CreatePlaylistResponse, Error> {
+    let endpoint = format!("{}/api/data/create_playlist", server);
+    let response = Request::post(&endpoint)
+        .header("Api-Key", api_key)
+        .json(&playlist_data)?
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+
+    if response.ok() {
+        let text = response.text().await?;
+        if text.is_empty() {
+            return Err(anyhow::anyhow!("Empty response from server"));
+        }
+
+        match serde_json::from_str::<CreatePlaylistResponse>(&text) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => {
+                let context_start = e.column().saturating_sub(100);
+                let context_end = (e.column() + 100).min(text.len());
+                let context = &text[context_start..context_end];
+                Err(anyhow::anyhow!(
+                    "JSON parse error: {} \nContext around position {}: '...{}...'",
+                    e,
+                    e.column(),
+                    context
+                ))
+            }
+        }
+    } else {
+        Err(anyhow::anyhow!(
+            "Server returned error: {}",
+            response.status()
+        ))
+    }
+}
+
+pub async fn call_delete_playlist(
+    server: &str,
+    api_key: &str,
+    user_id: i32,
+    playlist_id: i32,
+) -> Result<(), Error> {
+    let endpoint = format!("{}/api/data/delete_playlist", server);
+    let data = serde_json::json!({
+        "user_id": user_id,
+        "playlist_id": playlist_id
+    });
+
+    let response = Request::delete(&endpoint)
+        .header("Api-Key", api_key)
+        .json(&data)?
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "Server returned error: {}",
+            response.status()
+        ))
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PlaylistEpisodesResponse {
+    pub episodes: Vec<Episode>,
+    pub playlist_info: PlaylistInfo,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct PlaylistInfo {
+    pub name: String,
+    pub description: Option<String>,
+    pub episode_count: Option<i32>, // Changed from i32 to Option<i32>
+    pub icon_name: Option<String>,  // Changed from String to Option<String>
+}
+
+pub async fn call_get_playlist_episodes(
+    server: &str,
+    api_key: &str,
+    user_id: &i32,
+    playlist_id: i32,
+) -> Result<PlaylistEpisodesResponse, Error> {
+    let endpoint = format!(
+        "{}/api/data/get_playlist_episodes?user_id={}&playlist_id={}",
+        server, user_id, playlist_id
+    );
+
+    let response = Request::get(&endpoint)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Network request failed: {}", e))?;
+
+    if response.ok() {
+        let text = response.text().await?;
+        if text.is_empty() {
+            return Ok(PlaylistEpisodesResponse {
+                playlist_info: PlaylistInfo {
+                    name: "Unknown".to_string(),
+                    description: None,
+                    episode_count: None,
+                    icon_name: None,
+                },
+                episodes: vec![],
+            });
+        }
+
+        match serde_json::from_str::<PlaylistEpisodesResponse>(&text) {
+            Ok(parsed) => Ok(parsed),
+            Err(_) => {
+                // If parse fails, try parsing as a more basic structure
+                #[derive(Deserialize)]
+                struct BasicResponse {
+                    playlist_info: PlaylistInfo,
+                    episodes: Vec<Episode>,
+                }
+
+                let basic = serde_json::from_str::<BasicResponse>(&text)?;
+                Ok(PlaylistEpisodesResponse {
+                    playlist_info: basic.playlist_info,
+                    episodes: basic.episodes,
+                })
+            }
+        }
+    } else {
+        Err(anyhow::anyhow!(
+            "Server returned error: {}",
+            response.status()
         ))
     }
 }

@@ -17,3 +17,7 @@ curl -X GET -H "Api-Key: $API_KEY" http://localhost:8032/api/data/refresh_nextcl
 # Run cleanup tasks
 echo "Running cleanup tasks..."
 curl -X GET "http://localhost:8032/api/data/cleanup_tasks" -H "Api-Key: $API_KEY" >> /cron.log 2>&1
+
+# Refresh Playlists
+echo "Refreshing Playlists..."
+curl -X GET "http://localhost:8032/api/data/update_playlists" -H "Api-Key: $API_KEY" >> /cron.log 2>&1

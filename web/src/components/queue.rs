@@ -18,7 +18,6 @@ use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
 use crate::components::episodes_layout::UIStateMsg;
-use crate::requests::login_requests::use_check_authentication;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::Element;
@@ -50,8 +49,6 @@ pub fn queue() -> Html {
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
 
-    let session_dispatch = _post_dispatch.clone();
-    let session_state = post_state.clone();
     let loading = use_state(|| true);
     let dragging = use_state(|| None);
     let touch_start_y = use_state(|| 0.0);

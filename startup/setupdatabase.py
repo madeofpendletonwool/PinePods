@@ -582,12 +582,43 @@ try:
 
 
 
-    cursor.execute("""CREATE TABLE IF NOT EXISTS UserSettings (
-                        UserSettingID INT AUTO_INCREMENT PRIMARY KEY,
-                        UserID INT UNIQUE,
-                        Theme VARCHAR(255) DEFAULT 'Nordic',
-                        FOREIGN KEY (UserID) REFERENCES Users(UserID)
-                    )""")
+    try:
+        cursor.execute("""CREATE TABLE IF NOT EXISTS UserSettings (
+                            UserSettingID INT AUTO_INCREMENT PRIMARY KEY,
+                            UserID INT UNIQUE,
+                            Theme VARCHAR(255) DEFAULT 'Nordic',
+                            StartPage VARCHAR(255) DEFAULT 'home',
+                            FOREIGN KEY (UserID) REFERENCES Users(UserID)
+                        )""")
+    except Exception as e:
+        print(f"Error adding UserSettings table: {e}")
+
+    def add_startpage_column():
+        try:
+            # Check if the column exists
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME='UserSettings'
+                AND COLUMN_NAME='StartPage'
+                AND TABLE_SCHEMA=DATABASE();
+            """)
+
+            # If the column doesn't exist (no rows returned), add it
+            if not cursor.fetchone():
+                cursor.execute("""
+                    ALTER TABLE UserSettings
+                    ADD COLUMN StartPage VARCHAR(255) DEFAULT 'home';
+                """)
+                print("Successfully added StartPage column to UserSettings table")
+            else:
+                print("StartPage column already exists in UserSettings table")
+
+        except Exception as e:
+            print(f"Error adding StartPage column: {e}")
+
+    # Call the function to ensure the column exists
+    add_startpage_column()
 
     cursor.execute("""INSERT IGNORE INTO UserSettings (UserID, Theme) VALUES ('1', 'Nordic')""")
     cursor.execute("""INSERT IGNORE INTO UserSettings (UserID, Theme) VALUES ('2', 'Nordic')""")

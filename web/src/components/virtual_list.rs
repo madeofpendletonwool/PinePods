@@ -1,4 +1,4 @@
-use super::gen_components::{on_shownotes_click, ContextButton, EpisodeModal, EpisodeTrait};
+use super::gen_components::{on_shownotes_click, FallbackImage, ContextButton, EpisodeModal, EpisodeTrait};
 use super::gen_funcs::{format_datetime, match_date_format, parse_date};
 use crate::components::audio::on_play_pause;
 use crate::components::context::{AppState, UIState};
@@ -222,10 +222,11 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                     style={format!("height: {}px; overflow: hidden;", *container_item_height)}
                 >
                     <div class="flex flex-col w-auto object-cover pl-4">
-                        <img
+                        <FallbackImage
                             src={episode.artwork.clone().unwrap_or_default()}
                             alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())}
-                            class="episode-image"/>
+                            class="episode-image"
+                        />
                     </div>
                     <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                         <div class="flex items-center space-x-2 cursor-pointer" onclick={make_shownotes_callback.clone()}>

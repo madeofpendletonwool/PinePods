@@ -16,7 +16,6 @@ use yewdux::prelude::*;
 use crate::components::gen_funcs::format_datetime;
 use crate::components::gen_funcs::match_date_format;
 use crate::components::gen_funcs::parse_date;
-use crate::requests::login_requests::use_check_authentication;
 use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
@@ -30,11 +29,7 @@ struct PersonWithEpisodes {
 
 #[function_component(SubscribedPeople)]
 pub fn subscribed_people() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
-    let session_dispatch = effect_dispatch.clone();
-    let session_state = state.clone();
     let active_modal = use_state(|| None::<i32>);
     let show_modal = use_state(|| false);
     let active_clonedal = active_modal.clone();
