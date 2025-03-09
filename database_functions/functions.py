@@ -32,6 +32,7 @@ import logging
 from cryptography.fernet import Fernet
 from requests.exceptions import RequestException
 import shutil
+import tempfile
 import secrets
 
 # # Get the application root directory from the environment variable
@@ -3014,122 +3015,247 @@ def user_history(cnx, database_type, user_id):
     finally:
         cursor.close()
 
-def download_podcast(cnx, database_type, episode_id, user_id):  # Fixed parameter name
-    cursor = cnx.cursor()
-    # First, get all the episode details we need
-    if database_type == "postgresql":
-        query = '''
-            SELECT
-                e.EpisodeID,
-                e.PodcastID,
-                e.EpisodeTitle,
-                e.EpisodePubDate,
-                e.EpisodeURL,
-                e.EpisodeDescription,
-                e.EpisodeArtwork,
-                p.PodcastName,
-                p.Author,
-                p.ArtworkURL
-            FROM "Episodes" e
-            JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
-            WHERE e.EpisodeID = %s
-        '''
-    else:
-        query = '''
-            SELECT
-                e.EpisodeID,
-                e.PodcastID,
-                e.EpisodeTitle,
-                e.EpisodePubDate,
-                e.EpisodeURL,
-                e.EpisodeDescription,
-                e.EpisodeArtwork,
-                p.PodcastName,
-                p.Author,
-                p.ArtworkURL
-            FROM Episodes e
-            JOIN Podcasts p ON e.PodcastID = p.PodcastID
-            WHERE e.EpisodeID = %s
-        '''
+def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    print('download podcast is running')
+    """
+    Download a podcast episode with progress tracking.
 
-    cursor.execute(query, (episode_id,))
-    result = cursor.fetchone()
+    Args:
+        cnx: Database connection
+        database_type: Type of database (postgresql or mysql)
+        episode_id: ID of the episode to download
+        user_id: ID of the user requesting the download
+        task_id: Optional Celery task ID for progress tracking
 
-    if result is None:
-        cursor.close()
-        return False
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    cursor = None
+    temp_file = None
 
-    # Get values based on result type
-    if isinstance(result, dict):
-        episode_url = result.get('episodeurl') or result.get('EpisodeURL')
-        podcast_name = result.get('podcastname') or result.get('PodcastName')
-        episode_title = result.get('episodetitle') or result.get('EpisodeTitle')
-        pub_date = result.get('episodepubdate') or result.get('EpisodePubDate')
-        author = result.get('author') or result.get('Author')
-        episode_artwork = result.get('episodeartwork') or result.get('EpisodeArtwork')
-        artwork_url = result.get('artworkurl') or result.get('ArtworkURL')
-    else:
-        # Match positions from SELECT query
-        episode_url = result[4]      # EpisodeURL
-        podcast_name = result[7]     # PodcastName
-        episode_title = result[2]    # EpisodeTitle
-        pub_date = result[3]         # EpisodePubDate
-        author = result[8]           # Author
-        episode_artwork = result[6]   # EpisodeArtwork
-        artwork_url = result[9]      # ArtworkURL
+    try:
+        # Import task-specific modules inside function to avoid circular imports
+        if task_id:
+            from database_functions.tasks import download_manager
 
-    # Get user's time and date preferences
-    timezone, time_format, date_format = get_time_info(database_type, cnx, user_id)
+        cursor = cnx.cursor()
 
-    # Use default format if user preferences aren't set
-    if not date_format:
-        date_format = "ISO"
+        # First, check if already downloaded to avoid duplicate work
+        if database_type == "postgresql":
+            query = 'SELECT 1 FROM "DownloadedEpisodes" WHERE EpisodeID = %s AND UserID = %s'
+        else:
+            query = "SELECT 1 FROM DownloadedEpisodes WHERE EpisodeID = %s AND UserID = %s"
 
-    # Format the publication date based on user preference
-    date_format_map = {
-        "ISO": "%Y-%m-%d",
-        "USA": "%m/%d/%Y",
-        "EUR": "%d.%m.%Y",
-        "JIS": "%Y-%m-%d",
-        "MDY": "%m-%d-%Y",
-        "DMY": "%d-%m-%Y",
-        "YMD": "%Y-%m-%d",
-    }
+        cursor.execute(query, (episode_id, user_id))
+        if cursor.fetchone():
+            logger.info(f"Episode {episode_id} already downloaded for user {user_id}")
+            # Update task progress to 100% if task_id is provided
+            if task_id:
+                download_manager.update_progress(task_id, 100.0, "SUCCESS")
+            return True
 
-    date_format_str = date_format_map.get(date_format, "%Y-%m-%d")  # Default to ISO if format not found
-    pub_date_str = pub_date.strftime(date_format_str)
+        # Get episode details
+        if database_type == "postgresql":
+            query = '''
+                SELECT
+                    e.EpisodeID,
+                    e.PodcastID,
+                    e.EpisodeTitle,
+                    e.EpisodePubDate,
+                    e.EpisodeURL,
+                    e.EpisodeDescription,
+                    e.EpisodeArtwork,
+                    p.PodcastName,
+                    p.Author,
+                    p.ArtworkURL
+                FROM "Episodes" e
+                JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
+                WHERE e.EpisodeID = %s
+            '''
+        else:
+            query = '''
+                SELECT
+                    e.EpisodeID,
+                    e.PodcastID,
+                    e.EpisodeTitle,
+                    e.EpisodePubDate,
+                    e.EpisodeURL,
+                    e.EpisodeDescription,
+                    e.EpisodeArtwork,
+                    p.PodcastName,
+                    p.Author,
+                    p.ArtworkURL
+                FROM Episodes e
+                JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                WHERE e.EpisodeID = %s
+            '''
 
-    # Clean filenames of invalid characters
-    podcast_name = "".join(c for c in podcast_name if c.isalnum() or c in (' ', '-', '_')).strip()
-    episode_title = "".join(c for c in episode_title if c.isalnum() or c in (' ', '-', '_')).strip()
+        cursor.execute(query, (episode_id,))
+        result = cursor.fetchone()
 
-    # Create the download directory
-    download_dir = os.path.join("/opt/pinepods/downloads", podcast_name)
-    os.makedirs(download_dir, exist_ok=True)
-    uid = int(os.environ.get('PUID', 1000))
-    gid = int(os.environ.get('PGID', 1000))
-    os.chown(download_dir, uid, gid)
+        if result is None:
+            logger.error(f"Episode {episode_id} not found")
+            if task_id:
+                download_manager.update_progress(task_id, 0.0, "FAILED")
+            return False
 
-    # Generate filename with enhanced details
-    filename = f"{pub_date_str}_{episode_title}_{user_id}-{episode_id}.mp3"
-    file_path = os.path.join(download_dir, filename)
+        # Extract episode details
+        if isinstance(result, dict):
+            episode_url = result.get('episodeurl') or result.get('EpisodeURL')
+            podcast_name = result.get('podcastname') or result.get('PodcastName')
+            episode_title = result.get('episodetitle') or result.get('EpisodeTitle')
+            pub_date = result.get('episodepubdate') or result.get('EpisodePubDate')
+            author = result.get('author') or result.get('Author')
+            episode_artwork = result.get('episodeartwork') or result.get('EpisodeArtwork')
+            artwork_url = result.get('artworkurl') or result.get('ArtworkURL')
+        else:
+            # Match positions from SELECT query
+            episode_url = result[4]      # EpisodeURL
+            podcast_name = result[7]     # PodcastName
+            episode_title = result[2]    # EpisodeTitle
+            pub_date = result[3]         # EpisodePubDate
+            author = result[8]           # Author
+            episode_artwork = result[6]  # EpisodeArtwork
+            artwork_url = result[9]      # ArtworkURL
 
-    # Check if already downloaded
-    if database_type == "postgresql":
-        query = 'SELECT 1 FROM "DownloadedEpisodes" WHERE EpisodeID = %s AND UserID = %s'
-    else:
-        query = "SELECT 1 FROM DownloadedEpisodes WHERE EpisodeID = %s AND UserID = %s"
+        # Update task progress if task_id is provided
+        if task_id:
+            download_manager.update_progress(task_id, 5.0, "STARTED")
 
-    cursor.execute(query, (episode_id, user_id))
-    if cursor.fetchone():
-        cursor.close()
-        return True
+        # Get user's time and date preferences
+        timezone, time_format, date_format = get_time_info(database_type, cnx, user_id)
 
-    if os.path.exists(file_path):
-        # File exists but not in database, let's add the database entry
-        downloaded_date = datetime.datetime.fromtimestamp(os.path.getctime(file_path))
-        file_size = os.path.getsize(file_path)
+        # Use default format if user preferences aren't set
+        if not date_format:
+            date_format = "ISO"
 
+        # Format the publication date based on user preference
+        date_format_map = {
+            "ISO": "%Y-%m-%d",
+            "USA": "%m/%d/%Y",
+            "EUR": "%d.%m.%Y",
+            "JIS": "%Y-%m-%d",
+            "MDY": "%m-%d-%Y",
+            "DMY": "%d-%m-%Y",
+            "YMD": "%Y-%m-%d",
+        }
+
+        date_format_str = date_format_map.get(date_format, "%Y-%m-%d")
+        pub_date_str = pub_date.strftime(date_format_str)
+
+        # Clean filenames of invalid characters
+        podcast_name = "".join(c for c in podcast_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        episode_title = "".join(c for c in episode_title if c.isalnum() or c in (' ', '-', '_')).strip()
+
+        # Create the download directory
+        download_dir = os.path.join("/opt/pinepods/downloads", podcast_name)
+        os.makedirs(download_dir, exist_ok=True)
+        uid = int(os.environ.get('PUID', 1000))
+        gid = int(os.environ.get('PGID', 1000))
+        os.chown(download_dir, uid, gid)
+
+        # Generate filename with enhanced details
+        filename = f"{pub_date_str}_{episode_title}_{user_id}-{episode_id}.mp3"
+        file_path = os.path.join(download_dir, filename)
+
+        # Check if file already exists
+        if os.path.exists(file_path):
+            # File exists but not in database, add the database entry
+            downloaded_date = datetime.datetime.fromtimestamp(os.path.getctime(file_path))
+            file_size = os.path.getsize(file_path)
+
+            if database_type == "postgresql":
+                query = '''
+                    INSERT INTO "DownloadedEpisodes"
+                    (UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation)
+                    VALUES (%s, %s, %s, %s, %s)
+                '''
+            else:
+                query = '''
+                    INSERT INTO DownloadedEpisodes
+                    (UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation)
+                    VALUES (%s, %s, %s, %s, %s)
+                '''
+
+            cursor.execute(query, (user_id, episode_id, downloaded_date, file_size, file_path))
+            cnx.commit()
+
+            if task_id:
+                download_manager.update_progress(task_id, 100.0, "SUCCESS")
+
+            logger.info(f"File already exists, added to database: {file_path}")
+            return True
+
+        # Create a temporary file for download
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
+        temp_path = temp_file.name
+        temp_file.close()
+
+        if task_id:
+            download_manager.update_progress(task_id, 10.0, "DOWNLOADING")
+
+        # Download the file with progress tracking
+        logger.info(f"Starting download of episode {episode_id} from {episode_url}")
+
+        try:
+            with requests.get(episode_url, stream=True) as response:
+                response.raise_for_status()
+                downloaded_date = datetime.datetime.now()
+                file_size = int(response.headers.get("Content-Length", 0))
+
+                # Stream the download to temporary file with progress tracking
+                downloaded_bytes = 0
+                with open(temp_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            downloaded_bytes += len(chunk)
+
+                            # Update progress every ~5% if file size is known
+                            if file_size > 0 and task_id:
+                                progress = (downloaded_bytes / file_size) * 100
+                                # Only update at certain intervals to reduce overhead
+                                if downloaded_bytes % (file_size // 20 + 1) < 8192:  # ~5% intervals
+                                    download_progress = 10.0 + (progress * 0.8)  # Scale to 10-90%
+                                    download_manager.update_progress(task_id, download_progress, "DOWNLOADING")
+        except Exception as e:
+            logger.error(f"Failed to download episode {episode_id}: {str(e)}")
+            if task_id:
+                download_manager.update_progress(task_id, 0.0, "FAILED")
+
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+            raise
+
+        if task_id:
+            download_manager.update_progress(task_id, 90.0, "FINALIZING")
+
+        # Move the temporary file to the final location
+        shutil.move(temp_path, file_path)
+
+        # Set permissions
+        os.chown(file_path, uid, gid)
+
+        # Add metadata to the file
+        metadata = {
+            'title': episode_title,
+            'artist': author,
+            'album': podcast_name,
+            'date': pub_date_str,
+            'artwork_url': episode_artwork or artwork_url
+        }
+
+        try:
+            from database_functions import mp3_metadata
+            mp3_metadata.add_podcast_metadata(file_path, metadata)
+        except Exception as e:
+            logger.warning(f"Failed to add metadata to {file_path}: {e}")
+
+        # Update database
         if database_type == "postgresql":
             query = '''
                 INSERT INTO "DownloadedEpisodes"
@@ -3144,64 +3270,45 @@ def download_podcast(cnx, database_type, episode_id, user_id):  # Fixed paramete
             '''
 
         cursor.execute(query, (user_id, episode_id, downloaded_date, file_size, file_path))
+
+        # Update download count
+        if database_type == "postgresql":
+            query = 'UPDATE "UserStats" SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s'
+        else:
+            query = "UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s"
+
+        cursor.execute(query, (user_id,))
         cnx.commit()
-        cursor.close()
+
+        if task_id:
+            download_manager.update_progress(task_id, 100.0, "SUCCESS")
+
+        logger.info(f"Successfully downloaded episode {episode_id} to {file_path}")
         return True
 
-    # Download the file
-    response = requests.get(episode_url, stream=True)
-    response.raise_for_status()
-    downloaded_date = datetime.datetime.now()
-    file_size = int(response.headers.get("Content-Length", 0))
-
-    with open(file_path, "wb") as f:
-        for chunk in response.iter_content(chunk_size=1024):
-            f.write(chunk)
-
-    uid = int(os.environ.get('PUID', 1000))
-    gid = int(os.environ.get('PGID', 1000))
-    os.chown(file_path, uid, gid)
-    os.chown(download_dir, uid, gid)
-
-    # After successful download, add metadata
-    metadata = {
-        'title': episode_title,
-        'artist': get_value(result, "Author"),
-        'album': podcast_name,
-        'date': pub_date_str,
-        'artwork_url': (get_value(result, "EpisodeArtwork") or
-                        get_value(result, "ArtworkURL"))
-    }
-
-    mp3_metadata.add_podcast_metadata(file_path, metadata)
-
-    # Update database
-    if database_type == "postgresql":
-        query = '''
-            INSERT INTO "DownloadedEpisodes"
-            (UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation)
-            VALUES (%s, %s, %s, %s, %s)
-        '''
-    else:
-        query = '''
-            INSERT INTO DownloadedEpisodes
-            (UserID, EpisodeID, DownloadedDate, DownloadedSize, DownloadedLocation)
-            VALUES (%s, %s, %s, %s, %s)
-        '''
-
-    cursor.execute(query, (user_id, episode_id, downloaded_date, file_size, file_path))
-
-    # Update download count
-    if database_type == "postgresql":
-        query = 'UPDATE "UserStats" SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s'
-    else:
-        query = "UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s"
-
-    cursor.execute(query, (user_id,))
-    cnx.commit()
-    cursor.close()
-
-    return True
+    except requests.RequestException as e:
+        logger.error(f"Network error downloading episode {episode_id}: {e}")
+        if cursor:
+            cnx.rollback()
+        if task_id:
+            download_manager.update_progress(task_id, 0.0, "FAILED")
+        return False
+    except Exception as e:
+        logger.error(f"Error downloading episode {episode_id}: {e}", exc_info=True)
+        if cursor:
+            cnx.rollback()
+        if task_id:
+            download_manager.update_progress(task_id, 0.0, "FAILED")
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+        # Clean up temporary file if it exists and wasn't moved
+        if temp_file and os.path.exists(temp_file.name):
+            try:
+                os.unlink(temp_file.name)
+            except:
+                pass
 
 def get_episode_ids_for_podcast(cnx, database_type, podcast_id):
     cursor = cnx.cursor()
@@ -3263,149 +3370,255 @@ def get_podcast_index_id(cnx, database_type, podcast_id):
         cursor.close()
 
 
-def download_youtube_video(cnx, database_type, video_id, user_id):
-    cursor = cnx.cursor()
+def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
+    """
+    Download a YouTube video with progress tracking.
 
-    # Get video details
-    if database_type == "postgresql":
-        query = '''
-            SELECT
-                v.VideoID,
-                v.PodcastID,
-                v.VideoTitle,
-                v.PublishedAt,
-                v.VideoURL,
-                v.VideoDescription,
-                v.ThumbnailURL,
-                v.YouTubeVideoID,
-                p.PodcastName,
-                p.Author
-            FROM "YouTubeVideos" v
-            JOIN "Podcasts" p ON v.PodcastID = p.PodcastID
-            WHERE v.VideoID = %s
-        '''
-    else:
-        query = '''
-            SELECT
-                v.VideoID,
-                v.PodcastID,
-                v.VideoTitle,
-                v.PublishedAt,
-                v.VideoURL,
-                v.VideoDescription,
-                v.ThumbnailURL,
-                v.YouTubeVideoID,
-                p.PodcastName,
-                p.Author
-            FROM YouTubeVideos v
-            JOIN Podcasts p ON v.PodcastID = p.PodcastID
-            WHERE v.VideoID = %s
-        '''
+    Args:
+        cnx: Database connection
+        database_type: Type of database (postgresql or mysql)
+        video_id: ID of the video to download
+        user_id: ID of the user requesting the download
+        task_id: Optional Celery task ID for progress tracking
 
-    cursor.execute(query, (video_id,))
-    result = cursor.fetchone()
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    cursor = None
 
-    if result is None:
-        cursor.close()
-        return False
+    try:
+        # Import task-specific modules inside function to avoid circular imports
+        if task_id:
+            from tasks import download_manager
 
-    # Extract values
-    if isinstance(result, dict):
-        youtube_video_id = result.get('youtubevideoid') or result.get('YouTubeVideoID')
-        video_title = result.get('videotitle') or result.get('VideoTitle')
-        pub_date = result.get('publishedat') or result.get('PublishedAt')
-        channel_name = result.get('podcastname') or result.get('PodcastName')
-        author = result.get('author') or result.get('Author')
-    else:
-        youtube_video_id = result[7]  # YouTubeVideoID
-        video_title = result[2]      # VideoTitle
-        pub_date = result[3]         # PublishedAt
-        channel_name = result[8]     # PodcastName
-        author = result[9]           # Author
+        cursor = cnx.cursor()
 
-    # Get user's time/date preferences and format date
-    timezone, time_format, date_format = get_time_info(database_type, cnx, user_id)
-    date_format = date_format or "ISO"
-    date_format_map = {
-        "ISO": "%Y-%m-%d",
-        "USA": "%m/%d/%Y",
-        "EUR": "%d.%m.%Y",
-        "JIS": "%Y-%m-%d",
-        "MDY": "%m-%d-%Y",
-        "DMY": "%d-%m-%Y",
-        "YMD": "%Y-%m-%d",
-    }
-    date_format_str = date_format_map.get(date_format, "%Y-%m-%d")
-    pub_date_str = pub_date.strftime(date_format_str)
+        # Check if already downloaded
+        if database_type == "postgresql":
+            query = 'SELECT 1 FROM "DownloadedVideos" WHERE VideoID = %s AND UserID = %s'
+        else:
+            query = "SELECT 1 FROM DownloadedVideos WHERE VideoID = %s AND UserID = %s"
 
-    # Clean filenames
-    channel_name = "".join(c for c in channel_name if c.isalnum() or c in (' ', '-', '_')).strip()
-    video_title = "".join(c for c in video_title if c.isalnum() or c in (' ', '-', '_')).strip()
+        cursor.execute(query, (video_id, user_id))
+        if cursor.fetchone():
+            logger.info(f"Video {video_id} already downloaded for user {user_id}")
+            # Update task progress to 100% if task_id is provided
+            if task_id:
+                download_manager.update_progress(task_id, 100.0, "SUCCESS")
+            return True
 
-    # Source and destination paths
-    source_path = f"/opt/pinepods/downloads/youtube/{youtube_video_id}.mp3"
-    if not os.path.exists(source_path):
-        source_path = f"{source_path}.mp3"  # Try with double extension
-        if not os.path.exists(source_path):
-            cursor.close()
+        # Update progress if task_id is provided
+        if task_id:
+            download_manager.update_progress(task_id, 5.0, "STARTED")
+
+        # Get video details
+        if database_type == "postgresql":
+            query = '''
+                SELECT
+                    v.VideoID,
+                    v.PodcastID,
+                    v.VideoTitle,
+                    v.PublishedAt,
+                    v.VideoURL,
+                    v.VideoDescription,
+                    v.ThumbnailURL,
+                    v.YouTubeVideoID,
+                    p.PodcastName,
+                    p.Author
+                FROM "YouTubeVideos" v
+                JOIN "Podcasts" p ON v.PodcastID = p.PodcastID
+                WHERE v.VideoID = %s
+            '''
+        else:
+            query = '''
+                SELECT
+                    v.VideoID,
+                    v.PodcastID,
+                    v.VideoTitle,
+                    v.PublishedAt,
+                    v.VideoURL,
+                    v.VideoDescription,
+                    v.ThumbnailURL,
+                    v.YouTubeVideoID,
+                    p.PodcastName,
+                    p.Author
+                FROM YouTubeVideos v
+                JOIN Podcasts p ON v.PodcastID = p.PodcastID
+                WHERE v.VideoID = %s
+            '''
+
+        cursor.execute(query, (video_id,))
+        result = cursor.fetchone()
+
+        if result is None:
+            logger.error(f"Video {video_id} not found")
+            if task_id:
+                download_manager.update_progress(task_id, 0.0, "FAILED")
             return False
 
-    # Create destination directory
-    download_dir = os.path.join("/opt/pinepods/downloads", channel_name)
-    os.makedirs(download_dir, exist_ok=True)
+        # Extract values
+        if isinstance(result, dict):
+            youtube_video_id = result.get('youtubevideoid') or result.get('YouTubeVideoID')
+            video_title = result.get('videotitle') or result.get('VideoTitle')
+            pub_date = result.get('publishedat') or result.get('PublishedAt')
+            channel_name = result.get('podcastname') or result.get('PodcastName')
+            author = result.get('author') or result.get('Author')
+        else:
+            youtube_video_id = result[7]  # YouTubeVideoID
+            video_title = result[2]      # VideoTitle
+            pub_date = result[3]         # PublishedAt
+            channel_name = result[8]     # PodcastName
+            author = result[9]           # Author
 
-    # Set proper file permissions
-    uid = int(os.environ.get('PUID', 1000))
-    gid = int(os.environ.get('PGID', 1000))
-    os.chown(download_dir, uid, gid)
+        if task_id:
+            download_manager.update_progress(task_id, 10.0, "PROCESSING")
 
-    # Generate destination filename
-    filename = f"{pub_date_str}_{video_title}_{user_id}-{video_id}.mp3"
-    dest_path = os.path.join(download_dir, filename)
+        # Get user's time/date preferences and format date
+        timezone, time_format, date_format = get_time_info(database_type, cnx, user_id)
+        date_format = date_format or "ISO"
+        date_format_map = {
+            "ISO": "%Y-%m-%d",
+            "USA": "%m/%d/%Y",
+            "EUR": "%d.%m.%Y",
+            "JIS": "%Y-%m-%d",
+            "MDY": "%m-%d-%Y",
+            "DMY": "%d-%m-%Y",
+            "YMD": "%Y-%m-%d",
+        }
+        date_format_str = date_format_map.get(date_format, "%Y-%m-%d")
+        pub_date_str = pub_date.strftime(date_format_str)
 
-    # Copy file and update metadata
-    shutil.copy2(source_path, dest_path)
-    os.chown(dest_path, uid, gid)
+        # Clean filenames
+        channel_name = "".join(c for c in channel_name if c.isalnum() or c in (' ', '-', '_')).strip()
+        video_title = "".join(c for c in video_title if c.isalnum() or c in (' ', '-', '_')).strip()
 
-    # Update metadata
-    metadata = {
-        'title': video_title,
-        'artist': author,
-        'album': channel_name,
-        'date': pub_date_str
-    }
-    mp3_metadata.add_podcast_metadata(dest_path, metadata)
+        # Source and destination paths
+        source_path = f"/opt/pinepods/downloads/youtube/{youtube_video_id}.mp3"
+        if not os.path.exists(source_path):
+            source_path = f"{source_path}.mp3"  # Try with double extension
+            if not os.path.exists(source_path):
+                logger.error(f"Source file not found for YouTube video {youtube_video_id}")
+                if task_id:
+                    download_manager.update_progress(task_id, 0.0, "FAILED")
+                return False
 
-    # Record in database
-    file_size = os.path.getsize(dest_path)
-    downloaded_date = datetime.datetime.now()
+        if task_id:
+            download_manager.update_progress(task_id, 30.0, "PREPARING_DESTINATION")
 
-    if database_type == "postgresql":
-        query = '''
-            INSERT INTO "DownloadedVideos"
-            (UserID, VideoID, DownloadedDate, DownloadedSize, DownloadedLocation)
-            VALUES (%s, %s, %s, %s, %s)
-        '''
-    else:
-        query = '''
-            INSERT INTO DownloadedVideos
-            (UserID, VideoID, DownloadedDate, DownloadedSize, DownloadedLocation)
-            VALUES (%s, %s, %s, %s, %s)
-        '''
+        # Create destination directory
+        download_dir = os.path.join("/opt/pinepods/downloads", channel_name)
+        os.makedirs(download_dir, exist_ok=True)
 
-    cursor.execute(query, (user_id, video_id, downloaded_date, file_size, dest_path))
+        # Set proper file permissions
+        uid = int(os.environ.get('PUID', 1000))
+        gid = int(os.environ.get('PGID', 1000))
+        os.chown(download_dir, uid, gid)
 
-    # Update download count
-    if database_type == "postgresql":
-        query = 'UPDATE "UserStats" SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s'
-    else:
-        query = "UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s"
+        # Generate destination filename
+        filename = f"{pub_date_str}_{video_title}_{user_id}-{video_id}.mp3"
+        dest_path = os.path.join(download_dir, filename)
 
-    cursor.execute(query, (user_id,))
-    cnx.commit()
-    cursor.close()
+        if task_id:
+            download_manager.update_progress(task_id, 50.0, "COPYING")
 
-    return True
+        # Copy file with progress tracking
+        try:
+            # Get source file size for progress tracking
+            source_size = os.path.getsize(source_path)
+
+            # Use buffer-based copying to enable progress tracking
+            with open(source_path, 'rb') as src_file, open(dest_path, 'wb') as dest_file:
+                copied = 0
+                buffer_size = 8192  # 8KB buffer
+
+                while True:
+                    buffer = src_file.read(buffer_size)
+                    if not buffer:
+                        break
+
+                    dest_file.write(buffer)
+                    copied += len(buffer)
+
+                    if task_id and source_size > 0:
+                        # Calculate progress (50-80% range for copying)
+                        copy_progress = (copied / source_size) * 30.0
+                        download_manager.update_progress(task_id, 50.0 + copy_progress, "COPYING")
+
+        except Exception as e:
+            logger.error(f"Error copying file for video {video_id}: {str(e)}")
+            if os.path.exists(dest_path):
+                os.unlink(dest_path)  # Clean up incomplete file
+            if task_id:
+                download_manager.update_progress(task_id, 0.0, "FAILED")
+            raise
+
+        # Set proper permissions on destination file
+        os.chown(dest_path, uid, gid)
+
+        if task_id:
+            download_manager.update_progress(task_id, 80.0, "ADDING_METADATA")
+
+        # Update metadata
+        try:
+            metadata = {
+                'title': video_title,
+                'artist': author,
+                'album': channel_name,
+                'date': pub_date_str
+            }
+            import mp3_metadata
+            mp3_metadata.add_podcast_metadata(dest_path, metadata)
+        except Exception as e:
+            logger.warning(f"Failed to add metadata to {dest_path}: {e}")
+            # Continue despite metadata failure
+
+        if task_id:
+            download_manager.update_progress(task_id, 90.0, "UPDATING_DATABASE")
+
+        # Record in database
+        file_size = os.path.getsize(dest_path)
+        downloaded_date = datetime.datetime.now()
+
+        if database_type == "postgresql":
+            query = '''
+                INSERT INTO "DownloadedVideos"
+                (UserID, VideoID, DownloadedDate, DownloadedSize, DownloadedLocation)
+                VALUES (%s, %s, %s, %s, %s)
+            '''
+        else:
+            query = '''
+                INSERT INTO DownloadedVideos
+                (UserID, VideoID, DownloadedDate, DownloadedSize, DownloadedLocation)
+                VALUES (%s, %s, %s, %s, %s)
+            '''
+
+        cursor.execute(query, (user_id, video_id, downloaded_date, file_size, dest_path))
+
+        # Update download count
+        if database_type == "postgresql":
+            query = 'UPDATE "UserStats" SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s'
+        else:
+            query = "UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded + 1 WHERE UserID = %s"
+
+        cursor.execute(query, (user_id,))
+        cnx.commit()
+
+        if task_id:
+            download_manager.update_progress(task_id, 100.0, "SUCCESS")
+
+        logger.info(f"Successfully downloaded YouTube video {video_id} to {dest_path}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error downloading YouTube video {video_id}: {str(e)}", exc_info=True)
+        if cursor:
+            cnx.rollback()
+        if task_id:
+            download_manager.update_progress(task_id, 0.0, "FAILED")
+        return False
+    finally:
+        if cursor:
+            cursor.close()
 
 
 
