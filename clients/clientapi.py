@@ -11,6 +11,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from functools import lru_cache, wraps
 from yt_dlp import YoutubeDL
+import subprocess
+import threading
 
 # Needed Modules
 from passlib.context import CryptContext
@@ -71,6 +73,24 @@ import database_functions.import_progress
 import database_functions.oidc_state_manager
 import database_functions.valkey_client
 import database_functions.youtube
+from database_functions.db_client import create_database_connection, close_database_connection
+
+# Use a try-except to handle potential import errors
+try:
+    from database_functions.tasks import (
+        download_podcast_task,
+        download_youtube_video_task,
+        queue_podcast_downloads,
+        download_manager,
+        debug_task
+    )
+    CELERY_AVAILABLE = True
+    print('celery tasks imported')
+except ImportError as e:
+    logger.error(f"Failed to import Celery tasks: {e}")
+    CELERY_AVAILABLE = False
+    # Define fallback functions if needed
+
 
 database_type = str(os.getenv('DB_TYPE', 'mariadb'))
 if database_type == "postgresql":
@@ -130,11 +150,9 @@ logger = logging.getLogger(__name__)
 
 
 def get_database_connection():
+    """FastAPI dependency for getting a database connection"""
     try:
-        if database_type == "postgresql":
-            db = connection_pool.getconn()
-        else:
-            db = connection_pool.get_connection()
+        db = create_database_connection()
         yield db
     except HTTPException:
         raise  # Re-raise the HTTPException to let FastAPI handle it properly
@@ -143,48 +161,10 @@ def get_database_connection():
         logger.error(traceback.format_exc())
         raise HTTPException(500, "Unable to connect to the database")
     finally:
-        if database_type == "postgresql":
-            connection_pool.putconn(db)
-        else:
-            db.close()
-
-def create_database_connection():
-    try:
-        if database_type == "postgresql":
-            return connection_pool.getconn()
-        else:
-            return connection_pool.get_connection()
-    except Exception as e:
-        logger.error(f"Database connection error of type {type(e).__name__} with arguments: {e.args}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(500, "Unable to connect to the database")
-
-
-def setup_connection_pool():
-    db_host = os.environ.get("DB_HOST", "127.0.0.1")
-    db_port = os.environ.get("DB_PORT", "3306")
-    db_user = os.environ.get("DB_USER", "root")
-    db_password = os.environ.get("DB_PASSWORD", "password")
-    db_name = os.environ.get("DB_NAME", "pypods_database")
-
-    if database_type == "postgresql":
-        conninfo = f"host={db_host} port={db_port} user={db_user} password={db_password} dbname={db_name}"
-        return ConnectionPool(conninfo=conninfo, min_size=1, max_size=32, open=True)
-    else:  # Default to MariaDB/MySQL
-        return pooling.MySQLConnectionPool(
-            pool_name="pinepods_api_pool",
-            pool_size=32,
-            pool_reset_session=True,
-            collation="utf8mb4_general_ci",
-            host=db_host,
-            port=db_port,
-            user=db_user,
-            password=db_password,
-            database=db_name,
-        )
-
-
-connection_pool = setup_connection_pool()
+        try:
+            close_database_connection(db)
+        except Exception as e:
+            logger.error(f"Error in connection cleanup: {str(e)}")
 
 
 def get_api_keys(cnx):
@@ -243,30 +223,16 @@ class Web_Key:
 
 base_webkey = Web_Key()
 
-# Add this function to initialize the web key
 async def initialize_web_key():
     cnx = create_database_connection()
     try:
         base_webkey.get_web_key(cnx)
     finally:
-        if database_type == "postgresql":
-            connection_pool.putconn(cnx)
-        else:
-            cnx.close()
+        close_database_connection(cnx)
 
-
-# Get a direct database connection
 def direct_database_connection():
-    try:
-        if database_type == "postgresql":
-            return connection_pool.getconn()
-        else:
-            return connection_pool.get_connection()
-    except Exception as e:
-        logger.error(f"Database connection error of type {type(e).__name__} with arguments: {e.args}")
-        logger.error(traceback.format_exc())
-        raise RuntimeError("Unable to connect to the database")
-
+    """Get a direct database connection - alias for create_database_connection"""
+    return create_database_connection()
 
 async def get_current_user(credentials: HTTPBasicCredentials = Depends(security)):
     # Use credentials.username and credentials.password where needed
@@ -308,7 +274,6 @@ def check_if_admin_inner(api_key: str, cnx):
         return False
     return database_functions.functions.user_admin_check(cnx, database_type, user_id)
 
-
 async def has_elevated_access(api_key: str, cnx):
     # Check if it's an admin
     is_admin = await run_in_threadpool(check_if_admin_inner, api_key, cnx)
@@ -317,8 +282,6 @@ async def has_elevated_access(api_key: str, cnx):
     is_web_key = api_key == web_key
 
     return is_admin or is_web_key
-
-
 
 @app.get('/api/pinepods_check')
 async def pinepods_check():
@@ -819,10 +782,7 @@ def get_db_connection():
         yield connection
     finally:
         if connection:
-            if database_type == "postgresql":
-                connection_pool.putconn(connection)
-            else:
-                connection.close()
+            close_database_connection(connection)
 
 def process_opml_import(import_request: OPMLImportRequest, database_type):
     total_podcasts = len(import_request.podcasts)
@@ -1660,10 +1620,7 @@ def run_startup_tasks_background():
     except Exception as e:
         logger.error(f"Background startup tasks failed: {e}")
     finally:
-        if database_type == "postgresql":
-            connection_pool.putconn(cnx)
-        else:
-            cnx.close()
+        close_database_connection(cnx)
 
 @app.put("/api/data/increment_listen_time/{user_id}")
 async def api_increment_listen_time(user_id: int, cnx=Depends(get_database_connection),
@@ -1774,32 +1731,57 @@ class DownloadPodcastData(BaseModel):
     is_youtube: bool = False  # Default to False for backward compatibility
 
 @app.post("/api/data/download_podcast")
-async def api_download_podcast(data: DownloadPodcastData, background_tasks: BackgroundTasks,
-                             cnx=Depends(get_database_connection),
-                             api_key: str = Depends(get_api_key_from_header)):
+async def api_download_podcast(
+    data: DownloadPodcastData,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """
+    Queue a single episode or YouTube video for download.
+    This uses the Celery task queue to handle the download asynchronously.
+    """
+    # Validate API key
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
-        raise HTTPException(status_code=403,
-                          detail="Your API key is either invalid or does not have correct permission")
-
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+    # Check permissions
     is_web_key = api_key == base_webkey.web_key
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-
-    if key_id == data.user_id or is_web_key:
+    if key_id != data.user_id and not is_web_key:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only download content for yourself!"
+        )
+    try:
         # Check if already downloaded
-        table = "DownloadedVideos" if data.is_youtube else "DownloadedEpisodes"
-        id_field = "VideoID" if data.is_youtube else "EpisodeID"
-        ep_status = database_functions.functions.check_downloaded(cnx, database_type, data.user_id,
-                                                               data.episode_id, data.is_youtube)
-
-        if ep_status:
+        is_downloaded = database_functions.functions.check_downloaded(
+            cnx,
+            database_type,
+            data.user_id,
+            data.episode_id,
+            data.is_youtube
+        )
+        if is_downloaded:
             return {"detail": "Content already downloaded."}
+        # Queue the appropriate download task
+        if data.is_youtube:
+            task = download_youtube_video_task.delay(data.episode_id, data.user_id, database_type)
+            content_type = "YouTube video"
         else:
-            background_tasks.add_task(download_content_fun, data.episode_id, data.user_id, data.is_youtube)
-            return {"detail": "Download started."}
-    else:
-        raise HTTPException(status_code=403,
-                          detail="You can only download content for yourself!")
+            task = download_podcast_task.delay(data.episode_id, data.user_id, database_type)
+            content_type = "Podcast episode"
+        return {
+            "detail": f"{content_type} download has been queued and will process in the background.",
+            "task_id": task.id
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error queueing download: {str(e)}"
+        )
 
 def download_content_fun(episode_id: int, user_id: int, is_youtube: bool):
     cnx = create_database_connection()
@@ -1817,49 +1799,114 @@ class DownloadAllPodcastData(BaseModel):
     user_id: int
     is_youtube: bool = False
 
+# Updated API endpoint using Celery for mass downloads
 @app.post("/api/data/download_all_podcast")
-async def api_download_all_podcast(data: DownloadAllPodcastData, background_tasks: BackgroundTasks,
-                                 cnx=Depends(get_database_connection),
-                                 api_key: str = Depends(get_api_key_from_header)):
+async def api_download_all_podcast(
+    data: DownloadAllPodcastData,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """
+    Queue all episodes of a podcast or videos of a YouTube channel for download.
+    Uses a Celery task queue to process downloads in the background without blocking the server.
+    """
+    # Validate API key
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
-        raise HTTPException(status_code=403,
-                          detail="Your API key is either invalid or does not have correct permission")
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+    # Check permissions
     is_web_key = api_key == base_webkey.web_key
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-    if key_id == data.user_id or is_web_key:
-        if data.is_youtube:
-            video_ids = database_functions.functions.get_video_ids_for_podcast(cnx, database_type, data.podcast_id)
-            if not video_ids:
-                return {"detail": "No videos found for the given YouTube channel."}
-            for video_id in video_ids:
-                # Changed this line to use check_downloaded with is_youtube=True
-                if not database_functions.functions.check_downloaded(cnx, database_type, data.user_id, video_id, True):
-                    background_tasks.add_task(download_all_podcast_fun, video_id, data.user_id, True)
-            return {"detail": "Video download started for all videos."}
-        else:
-            episode_ids = database_functions.functions.get_episode_ids_for_podcast(cnx, database_type, data.podcast_id)
-            if not episode_ids:
-                return {"detail": "No episodes found for the given podcast."}
-            for episode_id in episode_ids:
-                if not database_functions.functions.check_downloaded(cnx, database_type, data.user_id, episode_id):
-                    background_tasks.add_task(download_all_podcast_fun, episode_id, data.user_id, False)
-            return {"detail": "Podcast download started for all episodes."}
-    else:
-        raise HTTPException(status_code=403,
-                          detail="You can only download content for yourself!")
 
-def download_all_podcast_fun(episode_id: int, user_id: int, is_youtube: bool = False):
-    cnx = create_database_connection()
-    logger.error('Starting download for %s: %d', 'video' if is_youtube else 'episode', episode_id)
+    if key_id != data.user_id and not is_web_key:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only download content for yourself!"
+        )
+
     try:
-        if is_youtube:
-            database_functions.functions.download_youtube_video(cnx, database_type, episode_id, user_id)
+        # Verify the podcast/channel exists
+        if data.is_youtube:
+            # Check if channel exists
+            videos = database_functions.functions.get_video_ids_for_podcast(
+                cnx, database_type, data.podcast_id
+            )
+            if not videos:
+                return {"detail": "No videos found for the given YouTube channel."}
         else:
-            database_functions.functions.download_podcast(cnx, database_type, episode_id, user_id)
-    finally:
-        cnx.close()  # make sure to close the connection when you're done
+            # Check if podcast exists
+            episodes = database_functions.functions.get_episode_ids_for_podcast(
+                cnx, database_type, data.podcast_id
+            )
+            if not episodes:
+                return {"detail": "No episodes found for the given podcast."}
 
+        # Queue the download task using Celery
+        task = queue_podcast_downloads.delay(
+            data.podcast_id,
+            data.user_id,
+            database_type,
+            data.is_youtube
+        )
+
+        return {
+            "detail": f"{'YouTube channel' if data.is_youtube else 'Podcast'} download has been queued. "
+                    "Episodes will be downloaded in the background.",
+            "task_id": task.id
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error queueing downloads: {str(e)}"
+        )
+
+@app.get("/api/data/download_status/{user_id}")
+async def api_download_status(
+    user_id: int,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """
+    Get the status of all active downloads for a user.
+    """
+    # Validate API key
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+    # Check permissions
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id != user_id and not is_web_key:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only view your own downloads!"
+        )
+
+    try:
+        # Get all active downloads for the user
+        downloads = download_manager.get_user_downloads(user_id)
+
+        # Return the downloads
+        return {
+            "downloads": downloads,
+            "count": len(downloads)
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving download status: {str(e)}"
+        )
 
 class DeletePodcastData(BaseModel):
     episode_id: int
@@ -2337,11 +2384,7 @@ def refresh_pods_task():
     try:
         database_functions.functions.refresh_pods(cnx, database_type)
     finally:
-        if database_type == "postgresql":
-            connection_pool.putconn(cnx)
-        else:
-            cnx.close()
-
+        close_database_connection(cnx)
 
 # Store locks per user to prevent concurrent refresh jobs
 user_locks = {}
@@ -2352,7 +2395,6 @@ active_websockets = {}
 @app.websocket("/ws/api/data/episodes/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: int, cnx=Depends(get_database_connection), nextcloud_refresh: bool = Query(False), api_key: str = Query(None)):
     await websocket.accept()
-
     try:
         print(f"User {user_id} connected to WebSocket")
         # Validate the API key
@@ -2369,17 +2411,14 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, cnx=Depends(get
             await websocket.send_json({"detail": "You can only refresh your own podcasts"})
             await websocket.close()
             return
-
         if user_id in user_locks:
             await websocket.send_json({"detail": "Refresh job already running for this user."})
             await websocket.close()
             return
-
         if user_id not in active_websockets:
             active_websockets[user_id] = []
         print(f"Active WebSockets: {active_websockets}")
         active_websockets[user_id].append(websocket)
-
         # Create a lock for the user and start the refresh task
         user_locks[user_id] = Lock()
         try:
@@ -2400,26 +2439,19 @@ async def websocket_endpoint(websocket: WebSocket, user_id: int, cnx=Depends(get
                     print(f"WebSocket disconnected: {str(e)}. Cancelling task.")
                     task.cancel()
                     break
-
         except Exception as e:
             await websocket.send_json({"detail": f"Error: {str(e)}"})
         finally:
             # Always release the lock and clean up
             user_locks[user_id].release()
             del user_locks[user_id]
-
             if user_id in active_websockets:
                 active_websockets[user_id].remove(websocket)
                 if not active_websockets[user_id]:
                     del active_websockets[user_id]
-
-            if database_type == "postgresql":
-                connection_pool.putconn(cnx)
-            else:
-                cnx.close()
-
+            # For the WebSocket dependency, use the proper function
+            close_database_connection(cnx)
             await websocket.close()
-
     except Exception as e:
         # Handle any unexpected errors
         await websocket.send_json({"detail": f"Unexpected error: {str(e)}"})
@@ -4168,10 +4200,7 @@ def cleanup_tasks():
     except Exception as e:
         print(f"Error during cleanup tasks: {str(e)}")
     finally:
-        if database_type == "postgresql":
-            connection_pool.putconn(cnx)
-        else:
-            cnx.close()
+        close_database_connection(cnx)
 
 @app.get("/api/data/update_playlists")
 async def api_update_playlists(
@@ -4200,10 +4229,7 @@ def update_playlists_task():
                 import traceback
                 print(traceback.format_exc())
         finally:
-            if database_type == "postgresql":
-                connection_pool.putconn(cnx)
-            else:
-                cnx.close()
+            close_database_connection(cnx)
     except Exception as e:
         print(f"Critical error in update_playlists_task: {str(e)}")
         if hasattr(e, '__traceback__'):
@@ -4697,15 +4723,11 @@ async def poll_for_auth_completion(endpoint: HttpUrl, token: str):
 
 @app.get("/api/data/refresh_nextcloud_subscriptions")
 async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_admin: bool = Depends(check_if_admin), api_key: str = Depends(get_api_key_from_header)):
-
     cnx = create_database_connection()
     try:
         users = database_functions.functions.get_nextcloud_users(database_type, cnx)
     finally:
-        if database_type == "postgresql":
-            connection_pool.putconn(cnx)
-        else:
-            cnx.close()
+        close_database_connection(cnx)
 
     for user in users:
         # Handle both dictionary and tuple cases
@@ -4722,9 +4744,7 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
                 gpodder_login = user["GpodderLoginName"]
         else:  # assuming tuple
             user_id, gpodder_url, gpodder_token, gpodder_login = user
-
         background_tasks.add_task(refresh_nextcloud_subscription_for_user, database_type, user_id, gpodder_url, gpodder_token, gpodder_login)
-
     return {"status": "success", "message": "Nextcloud subscriptions refresh initiated."}
 
 def refresh_nextcloud_subscription_for_user(c, user_id, gpodder_url, gpodder_token, gpodder_login):
@@ -4736,10 +4756,7 @@ def refresh_nextcloud_subscription_for_user(c, user_id, gpodder_url, gpodder_tok
         else:  # Assume gPodder
             database_functions.functions.refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
     finally:
-        if database_type == "postgresql":
-            connection_pool.putconn(cnx)
-        else:
-            cnx.close()
+        close_database_connection(cnx)
 
 def check_valid_feed(feed_url: str, username: Optional[str] = None, password: Optional[str] = None):
     """
@@ -5035,7 +5052,6 @@ def process_person_subscription_task(
             process_person_subscription(user_id, person_id, person_name, cnx)
         )
         loop.close()
-
         # After successful person subscription processing, trigger a server refresh
         print("Person subscription processed, initiating server refresh...")
         try:
@@ -5046,15 +5062,11 @@ def process_person_subscription_task(
             # Don't raise the error here - we don't want to fail the whole operation
             # if just the refresh fails
             pass
-
     except Exception as e:
         print(f"Error in process_person_subscription_task: {e}")
         raise
     finally:
-        if database_type == "postgresql":
-            connection_pool.putconn(cnx)
-        else:
-            cnx.close()
+        close_database_connection(cnx)
 
 async def process_person_subscription(
     user_id: int,
@@ -5592,10 +5604,7 @@ def process_youtube_channel(podcast_id: int, channel_id: str):
     try:
         database_functions.youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx)
     finally:
-        if database_type == "postgresql":
-            connection_pool.putconn(cnx)
-        else:
-            cnx.close()
+        close_database_connection(cnx)
 
 @app.post("/api/data/youtube/subscribe")
 async def subscribe_to_youtube_channel(
@@ -5849,6 +5858,7 @@ class InitRequest(BaseModel):
 @app.post("/api/init/startup_tasks")
 async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_connection)):
     try:
+        print('start of startup')
         # Verify if the API key is valid
         is_valid = database_functions.functions.verify_api_key(cnx, database_type, request.api_key)
         is_web_key = database_functions.functions.get_web_key(cnx, database_type)
@@ -5860,6 +5870,8 @@ async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_conne
 
         # Execute the startup tasks
         database_functions.functions.add_news_feed_if_not_added(database_type, cnx)
+        print("starting celery")
+        start_celery_worker()
         return {"status": "Startup tasks completed successfully."}
 
         database_functions.valkey_client.connect()
@@ -5870,6 +5882,42 @@ async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_conne
         # The connection will automatically be closed by FastAPI's dependency system
         pass
 
+@app.get("/api/debug/celery_test")
+async def test_celery():
+    """Test Celery task execution"""
+    try:
+        # Queue a simple task
+        print("CELERY TEST: Queueing debug_task")
+        task = debug_task.delay(5, 10)
+        print(f"CELERY TEST: Task queued with ID {task.id}")
+        return {"task_id": task.id, "status": "queued"}
+    except Exception as e:
+        print(f"CELERY TEST ERROR: {str(e)}")
+        return {"error": str(e)}
+
+@app.get("/api/debug/celery_status")
+async def check_celery_status():
+    """Check if Celery worker is running"""
+    try:
+        import subprocess
+
+        # Try to find the Celery process
+        ps_output = subprocess.check_output(["ps", "aux"]).decode()
+        print("PROCESS LIST:")
+        print(ps_output)
+
+        celery_processes = [line for line in ps_output.split('\n')
+                           if 'celery' in line and 'worker' in line]
+
+        print(f"CELERY PROCESSES: {celery_processes}")
+
+        return {
+            "worker_processes": celery_processes,
+            "worker_running": len(celery_processes) > 0
+        }
+    except Exception as e:
+        print(f"CELERY STATUS ERROR: {str(e)}")
+        return {"error": str(e)}
 
 
 

@@ -31,3 +31,4 @@ feedgenerator
 yt-dlp
 beautifulsoup4
 mutagen
+celery
