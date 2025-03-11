@@ -295,34 +295,46 @@ pub fn downloads() -> Html {
                     {
                         html! {
                             <div>
-                                <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Downloaded Episodes"}</h1>
-                                <div class="flex justify-between">
-                                    {
-                                        if **page_state.borrow() == PageState::Normal {
-                                            html! {
-                                                <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
-                                                    onclick={delete_mode_enable.clone()}>
-                                                    <i class="ph ph-lasso text-2xl"></i>
-                                                    <span class="text-lg ml-2">{"Select Multiple"}</span>
-                                                </button>
-                                            }
-                                        } else {
-                                            html! {
-                                                <>
-                                                <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
-                                                    onclick={delete_mode_disable.clone()}>
-                                                    <i class="ph ph-prohibit text-2xl"></i>
-                                                    <span class="text-lg ml-2">{"Cancel"}</span>
-                                                </button>
-                                                <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
-                                                    onclick={delete_selected_episodes.clone()}>
-                                                    <i class="ph ph-trash text-2xl"></i>
-                                                    <span class="text-lg ml-2">{"Delete"}</span>
-                                                </button>
-                                                </>
+                                <div class="flex justify-between items-center mb-6">
+                                    <div class="w-1/4">
+                                        {
+                                            if **page_state.borrow() == PageState::Normal {
+                                                html! {
+                                                    <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
+                                                        onclick={delete_mode_enable.clone()}>
+                                                        <i class="ph ph-lasso text-2xl"></i>
+                                                        <span class="text-lg ml-2 hidden sm:inline">{"Select Multiple"}</span>
+                                                    </button>
+                                                }
+                                            } else {
+                                                html! {
+                                                    <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
+                                                        onclick={delete_mode_disable.clone()}>
+                                                        <i class="ph ph-prohibit text-2xl"></i>
+                                                        <span class="text-lg ml-2 hidden sm:inline">{"Cancel"}</span>
+                                                    </button>
+                                                }
                                             }
                                         }
-                                    }
+                                    </div>
+
+                                    <h1 class="text-2xl item_container-text font-bold text-center w-2/4">{"Downloaded Episodes"}</h1>
+
+                                    <div class="w-1/4 flex justify-end">
+                                        {
+                                            if **page_state.borrow() != PageState::Normal {
+                                                html! {
+                                                    <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
+                                                        onclick={delete_selected_episodes.clone()}>
+                                                        <i class="ph ph-trash text-2xl"></i>
+                                                        <span class="text-lg ml-2 hidden sm:inline">{"Delete"}</span>
+                                                    </button>
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
+                                    </div>
                                 </div>
                             </div>
                         }
@@ -468,165 +480,173 @@ pub fn render_podcast_with_episodes(
     };
     html! {
         <div key={podcast.podcastid}>
-            <div class="item-container border-solid border flex mb-4 shadow-md rounded-lg h-full" onclick={toggle_pod_expanded}>
-                {if is_delete_mode {
-                    html! {
-                        <div class="flex items-center pl-4" onclick={|e: MouseEvent| e.stop_propagation()}>
-                            <input
-                                type="checkbox"
-                                class="h-5 w-5 rounded border-2 border-gray-400 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer appearance-none checked:bg-primary checked:border-primary relative
-                                before:content-[''] before:block before:w-full before:h-full before:checked:bg-[url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PScwIDAgMTYgMTYnIGZpbGw9JyNmZmYnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zyc+PHBhdGggZD0nTTEyLjIwNyA0Ljc5M2ExIDEgMCAwIDEgMCAxLjQxNGwtNSA1YTEgMSAwIDAgMS0xLjQxNCAwbC0yLTJhMSAxIDAgMCAxIDEuNDE0LTEuNDE0TDYuNSA5LjA4NmwzLjc5My0zLjc5M2ExIDEgMCAwIDEgMS40MTQgMHonLz48L3N2Zz4=')] before:checked:bg-no-repeat before:checked:bg-center"
-                                onchange={on_podcast_checkbox_change}
-                            />
-                        </div>
-                    }
-                } else {
-                    html! {}
-                }}
-                <div class="flex flex-col w-auto object-cover pl-4">
+            <div class="podcast-dropdown-header">
+                <div class="podcast-dropdown-content" onclick={toggle_pod_expanded}>
+                    {if is_delete_mode {
+                        html! {
+                            <div onclick={|e: MouseEvent| e.stop_propagation()}>
+                                <input
+                                    type="checkbox"
+                                    class="podcast-dropdown-checkbox"
+                                    onchange={on_podcast_checkbox_change}
+                                />
+                            </div>
+                        }
+                    } else {
+                        html! {}
+                    }}
+
                     <FallbackImage
-                    src={podcast.artworkurl.clone().unwrap()}
-                        // onclick={on_title_click.clone()}
+                        src={podcast.artworkurl.clone().unwrap()}
                         alt={format!("Cover for {}", podcast.podcastname.clone())}
-                        class="episode-image"
+                        class="podcast-dropdown-image"
                     />
-                </div>
-                <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                    <p class="item_container-text episode-title font-semibold cursor-pointer">
-                        { &podcast.podcastname }
-                    </p>
-                    <hr class="my-2 border-t hidden md:block"/>
-                    <p class="item_container-text">{ format!("Downloaded Episode Count: {}", downloaded_episode_count) }</p>
+
+                    <div class="podcast-dropdown-info">
+                        <p class="podcast-dropdown-title item_container-text">
+                            { &podcast.podcastname }
+                        </p>
+                        <p class="podcast-dropdown-count item_container-text">
+                            { format!("{} Downloaded Episodes", downloaded_episode_count) }
+                        </p>
+                    </div>
+
+                    <div class={classes!("podcast-dropdown-arrow", is_expanded.then(|| "expanded"))}>
+                        <i class="ph ph-caret-down text-2xl"></i>
+                    </div>
                 </div>
             </div>
+
             { if is_expanded {
                 html! {
-                    <div class="episodes-dropdown, pl-4">
-                        { for episodes.into_iter().map(|episode| {
-                            let id_string = &episode.episodeid.to_string();
+                    <div class="podcast-episodes-container expanded">
+                        <div class="podcast-episodes-inner">
+                            { for episodes.into_iter().map(|episode| {
+                                let id_string = &episode.episodeid.to_string();
 
-                            let dispatch = dispatch.clone();
+                                let dispatch = dispatch.clone();
 
-                            let episode_url_clone = episode.episodeurl.clone();
-                            let episode_title_clone = episode.episodetitle.clone();
-                            let episode_description_clone = episode.episodedescription.clone();
-                            let episode_artwork_clone = episode.episodeartwork.clone();
-                            let episode_duration_clone = episode.episodeduration.clone();
-                            let episode_id_clone = episode.episodeid.clone();
-                            let episode_listened_clone = episode.listenduration.clone();
-                            let episode_is_youtube = Some(episode.is_youtube.clone());
-                            let _completed = episode.completed;
-                            let desc_expanded = desc_rc.expanded_descriptions.contains(id_string);
-                            #[wasm_bindgen]
-                            extern "C" {
-                                #[wasm_bindgen(js_namespace = window)]
-                                fn toggleDescription(guid: &str, expanded: bool);
-                            }
-                            let toggle_expanded = {
-                                let desc_dispatch = desc_state.clone();
-                                let episode_guid = episode.episodeid.clone().to_string();
+                                let episode_url_clone = episode.episodeurl.clone();
+                                let episode_title_clone = episode.episodetitle.clone();
+                                let episode_description_clone = episode.episodedescription.clone();
+                                let episode_artwork_clone = episode.episodeartwork.clone();
+                                let episode_duration_clone = episode.episodeduration.clone();
+                                let episode_id_clone = episode.episodeid.clone();
+                                let episode_listened_clone = episode.listenduration.clone();
+                                let episode_is_youtube = Some(episode.is_youtube.clone());
+                                let _completed = episode.completed;
+                                let desc_expanded = desc_rc.expanded_descriptions.contains(id_string);
+                                #[wasm_bindgen]
+                                extern "C" {
+                                    #[wasm_bindgen(js_namespace = window)]
+                                    fn toggleDescription(guid: &str, expanded: bool);
+                                }
+                                let toggle_expanded = {
+                                    let desc_dispatch = desc_state.clone();
+                                    let episode_guid = episode.episodeid.clone().to_string();
 
-                                Callback::from(move |_: MouseEvent| {
-                                    let guid = episode_guid.clone();
-                                    desc_dispatch.reduce_mut(move |state| {
-                                        if state.expanded_descriptions.contains(&guid) {
-                                            state.expanded_descriptions.remove(&guid); // Collapse the description
-                                            toggleDescription(&guid, false); // Call JavaScript function
-                                        } else {
-                                            state.expanded_descriptions.insert(guid.clone()); // Expand the description
-                                            toggleDescription(&guid, true); // Call JavaScript function
-                                        }
-                                    });
-                                })
-                            };
+                                    Callback::from(move |_: MouseEvent| {
+                                        let guid = episode_guid.clone();
+                                        desc_dispatch.reduce_mut(move |state| {
+                                            if state.expanded_descriptions.contains(&guid) {
+                                                state.expanded_descriptions.remove(&guid); // Collapse the description
+                                                toggleDescription(&guid, false); // Call JavaScript function
+                                            } else {
+                                                state.expanded_descriptions.insert(guid.clone()); // Expand the description
+                                                toggleDescription(&guid, true); // Call JavaScript function
+                                            }
+                                        });
+                                    })
+                                };
 
-                            let episode_url_for_closure = episode_url_clone.clone();
-                            let episode_title_for_closure = episode_title_clone.clone();
-                            let episode_description_for_closure = episode_description_clone.clone();
-                            let episode_artwork_for_closure = episode_artwork_clone.clone();
-                            let episode_duration_for_closure = episode_duration_clone.clone();
-                            let listener_duration_for_closure = episode_listened_clone.clone();
-                            let episode_id_for_closure = episode_id_clone.clone();
-                            let user_id_play = user_id.clone();
-                            let server_name_play = server_name.clone();
-                            let api_key_play = api_key.clone();
-                            let audio_dispatch = audio_dispatch.clone();
-                            let is_local = Option::from(true);
+                                let episode_url_for_closure = episode_url_clone.clone();
+                                let episode_title_for_closure = episode_title_clone.clone();
+                                let episode_description_for_closure = episode_description_clone.clone();
+                                let episode_artwork_for_closure = episode_artwork_clone.clone();
+                                let episode_duration_for_closure = episode_duration_clone.clone();
+                                let listener_duration_for_closure = episode_listened_clone.clone();
+                                let episode_id_for_closure = episode_id_clone.clone();
+                                let user_id_play = user_id.clone();
+                                let server_name_play = server_name.clone();
+                                let api_key_play = api_key.clone();
+                                let audio_dispatch = audio_dispatch.clone();
+                                let is_local = Option::from(true);
 
-                            let is_current_episode = audio_state
-                                                            .currently_playing
-                                                            .as_ref()
-                                                            .map_or(false, |current| current.episode_id == episode.episodeid);
-                            let is_playing = audio_state.audio_playing.unwrap_or(false);
+                                let is_current_episode = audio_state
+                                                                .currently_playing
+                                                                .as_ref()
+                                                                .map_or(false, |current| current.episode_id == episode.episodeid);
+                                let is_playing = audio_state.audio_playing.unwrap_or(false);
 
-                            let date_format = match_date_format(state.date_format.as_deref());
-                            let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
-                            let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
+                                let date_format = match_date_format(state.date_format.as_deref());
+                                let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
+                                let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
 
-                            let on_play_pause = on_play_pause(
-                                episode_url_for_closure.clone(),
-                                episode_title_for_closure.clone(),
-                                episode_description_for_closure.clone(),
-                                format_release.clone(),
-                                episode_artwork_for_closure.clone(),
-                                episode_duration_for_closure.clone(),
-                                episode_id_for_closure.clone(),
-                                listener_duration_for_closure.clone(),
-                                api_key_play.unwrap().unwrap(),
-                                user_id_play.unwrap(),
-                                server_name_play.unwrap(),
-                                audio_dispatch.clone(),
-                                audio_state.clone(),
-                                is_local,
-                                episode_is_youtube,
-                            );
+                                let on_play_pause = on_play_pause(
+                                    episode_url_for_closure.clone(),
+                                    episode_title_for_closure.clone(),
+                                    episode_description_for_closure.clone(),
+                                    format_release.clone(),
+                                    episode_artwork_for_closure.clone(),
+                                    episode_duration_for_closure.clone(),
+                                    episode_id_for_closure.clone(),
+                                    listener_duration_for_closure.clone(),
+                                    api_key_play.unwrap().unwrap(),
+                                    user_id_play.unwrap(),
+                                    server_name_play.unwrap(),
+                                    audio_dispatch.clone(),
+                                    audio_state.clone(),
+                                    is_local,
+                                    episode_is_youtube,
+                                );
 
-                            let on_shownotes_click = on_shownotes_click(
-                                history_clone.clone(),
-                                dispatch.clone(),
-                                Some(episode_id_for_closure.clone()),
-                                Some(String::from("Not needed")),
-                                Some(String::from("Not needed")),
-                                Some(String::from("Not needed")),
-                                true,
-                                None,
-                                episode_is_youtube,
-                            );
+                                let on_shownotes_click = on_shownotes_click(
+                                    history_clone.clone(),
+                                    dispatch.clone(),
+                                    Some(episode_id_for_closure.clone()),
+                                    Some(String::from("Not needed")),
+                                    Some(String::from("Not needed")),
+                                    Some(String::from("Not needed")),
+                                    true,
+                                    None,
+                                    episode_is_youtube,
+                                );
 
-                            let on_checkbox_change_cloned = on_checkbox_change.clone();
-                            let episode_url_for_ep_item = episode_url_clone.clone();
-                            let sanitized_description =
-                                sanitize_html_with_blank_target(&episode.episodedescription.clone());
+                                let on_checkbox_change_cloned = on_checkbox_change.clone();
+                                let episode_url_for_ep_item = episode_url_clone.clone();
+                                let sanitized_description =
+                                    sanitize_html_with_blank_target(&episode.episodedescription.clone());
 
-                            let check_episode_id = &episode.episodeid.clone();
-                            let is_completed = state
-                                .completed_episodes
-                                .as_ref()
-                                .unwrap_or(&vec![])
-                                .contains(&check_episode_id);
-                            download_episode_item(
-                                Box::new(episode),
-                                sanitized_description.clone(),
-                                desc_expanded,
-                                &format_release,
-                                on_play_pause,
-                                on_shownotes_click,
-                                toggle_expanded,
-                                episode_duration_clone,
-                                episode_listened_clone,
-                                "downloads",
-                                on_checkbox_change_cloned, // Add this line
-                                is_delete_mode, // Add this line
-                                episode_url_for_ep_item,
-                                is_completed,
-                                show_modal,
-                                on_modal_open.clone(),
-                                on_modal_close.clone(),
-                                is_current_episode,
-                                is_playing,
-                                state.clone()
-                            )
-                        }) }
+                                let check_episode_id = &episode.episodeid.clone();
+                                let is_completed = state
+                                    .completed_episodes
+                                    .as_ref()
+                                    .unwrap_or(&vec![])
+                                    .contains(&check_episode_id);
+                                download_episode_item(
+                                    Box::new(episode),
+                                    sanitized_description.clone(),
+                                    desc_expanded,
+                                    &format_release,
+                                    on_play_pause,
+                                    on_shownotes_click,
+                                    toggle_expanded,
+                                    episode_duration_clone,
+                                    episode_listened_clone,
+                                    "downloads",
+                                    on_checkbox_change_cloned, // Add this line
+                                    is_delete_mode, // Add this line
+                                    episode_url_for_ep_item,
+                                    is_completed,
+                                    show_modal,
+                                    on_modal_open.clone(),
+                                    on_modal_close.clone(),
+                                    is_current_episode,
+                                    is_playing,
+                                    state.clone()
+                                )
+                            }) }
+                        </div>
                     </div>
                 }
             } else {

@@ -11,19 +11,21 @@ Pre 0.7.4
 - [x] Implement specific podcasts to pass to playlist creation. So you can choose specific ones
 - [x] Make the create playlist function work
 - [x] On deletion of a podcast delete any references to it in the playlist content func
-- [ ] Make sure youtube entirely works on playlists
-- [ ] Make sure youtube entirely works on homepage
 - [x] Run a playlist refresh after adding a podcast, deleting a podcast, and any other time that makes sense. Maybe even on a standard refresh of podcasts?
 - Fix Virtual Line Spacing on Playlist Page
 - [x] Make states work on homepage. Saved or not, current progress, completed etc.
 - [x] Make Podcast tiles Adapt better to large screens
-- [ ] Add user doesn't work on MYSQL
-- [ ] Recent Episodes on homepage is not correct
-- [ ] Make podcast downloading not stop the server from functioning
-- [ ] All of mysql
+- [x] Make podcast downloading not stop the server from functioning
 - [x] Fixed an issue where sometimes chapters didn't load due to incorrect headers
+- [x] Recent Episodes on homepage is not correct
 
+- [ ] All of mysql
+- [ ] Add user doesn't work on MYSQL
+- [ ] Make sure youtube entirely works on playlists
+- [ ] Make sure youtube entirely works on homepage
 - [ ] Ensure user creation works with mysql
+- [ ] Adjusted Downloads page so that podcast headers take up less space
+
 - [x] Ensure configured start page is navigated to
 - [x] Ensure OIDC Logins work
 - [x] Ensure Github logins work

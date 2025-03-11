@@ -5882,45 +5882,6 @@ async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_conne
         # The connection will automatically be closed by FastAPI's dependency system
         pass
 
-@app.get("/api/debug/celery_test")
-async def test_celery():
-    """Test Celery task execution"""
-    try:
-        # Queue a simple task
-        print("CELERY TEST: Queueing debug_task")
-        task = debug_task.delay(5, 10)
-        print(f"CELERY TEST: Task queued with ID {task.id}")
-        return {"task_id": task.id, "status": "queued"}
-    except Exception as e:
-        print(f"CELERY TEST ERROR: {str(e)}")
-        return {"error": str(e)}
-
-@app.get("/api/debug/celery_status")
-async def check_celery_status():
-    """Check if Celery worker is running"""
-    try:
-        import subprocess
-
-        # Try to find the Celery process
-        ps_output = subprocess.check_output(["ps", "aux"]).decode()
-        print("PROCESS LIST:")
-        print(ps_output)
-
-        celery_processes = [line for line in ps_output.split('\n')
-                           if 'celery' in line and 'worker' in line]
-
-        print(f"CELERY PROCESSES: {celery_processes}")
-
-        return {
-            "worker_processes": celery_processes,
-            "worker_running": len(celery_processes) > 0
-        }
-    except Exception as e:
-        print(f"CELERY STATUS ERROR: {str(e)}")
-        return {"error": str(e)}
-
-
-
 async def async_tasks():
     # Start cleanup task
     logging.info("Starting cleanup tasks")
