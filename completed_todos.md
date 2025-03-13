@@ -6,24 +6,32 @@ Major Version:
 
 - [] iOS App
 
+- [ ] Make sure youtube entirely works on playlists
+- [ ] Make sure youtube entirely works on homepage
+- [ ] Fix Virtual Line Spacing on Playlist Page
+
 Pre 0.7.4
 
 - [x] Implement specific podcasts to pass to playlist creation. So you can choose specific ones
 - [x] Make the create playlist function work
 - [x] On deletion of a podcast delete any references to it in the playlist content func
-- [ ] Make sure youtube entirely works on playlists
-- [ ] Make sure youtube entirely works on homepage
 - [x] Run a playlist refresh after adding a podcast, deleting a podcast, and any other time that makes sense. Maybe even on a standard refresh of podcasts?
-- Fix Virtual Line Spacing on Playlist Page
 - [x] Make states work on homepage. Saved or not, current progress, completed etc.
 - [x] Make Podcast tiles Adapt better to large screens
-- [ ] Add user doesn't work on MYSQL
-- [ ] Recent Episodes on homepage is not correct
-- [ ] Make podcast downloading not stop the server from functioning
-- [ ] All of mysql
+- [x] Make podcast downloading not stop the server from functioning
 - [x] Fixed an issue where sometimes chapters didn't load due to incorrect headers
+- [x] Recent Episodes on homepage is not correct
 
-- [ ] Ensure user creation works with mysql
+- [x] All of mysql
+- [x] Check almost done and currently listening playlists
+- [x] Add user doesn't work on MYSQL
+- [x] Upgrade from 0.7.3 to 0.7.4 works both postgres and mysql
+- [x] Notifications in mysql
+- [x] Validate Builds with tauri
+- [x] Upgrade packages
+- [ ] Build flatpak and ensure version bump
+
+- [x] Adjusted Downloads page so that podcast headers take up less space
 - [x] Ensure configured start page is navigated to
 - [x] Ensure OIDC Logins work
 - [x] Ensure Github logins work
@@ -33,6 +41,7 @@ Pre 0.7.4
 - [x] OIDC Logins
 - [x] Smart Playlists
 - [x] New Homepage Component
+- [x] Experimental finger hold context button homepage
 - [x] Configurable start page
 - [x] Fixed issue where sometimes it was possible for images to not load for episodes and podcasts
 - [x] Image Caching
@@ -45,7 +54,7 @@ Pre 0.7.4
 
 Next Minor Version:
 
-- [] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
+- [ ] Ensure even when a podcast is clicked via the search page it still loads all the podcast db context
 - [ ] Allow user to adjust amount of time to save/download youtube videos
 - [ ] After adding podcast we no longer show dumpster
 - [ ] Bad url while no channels added youtube

@@ -12,18 +12,18 @@ rust-version = "1.81"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-tauri-build = { version = "2.0.5", features = [] }
+tauri-build = { version = "2.0.6", features = [] }
 
 [dependencies]
-serde_json = "1.0.138"
-serde = { version = "1.0.217", features = ["derive"] }
-tauri = { version = "2.2.5", features = ["tray-icon"] }
+serde_json = "1.0.140"
+serde = { version = "1.0.219", features = ["derive"] }
+tauri = { version = "2.3.1", features = ["tray-icon"] }
 directories = "6.0.0"
 dirs = "6.0.0"
 # reqwest = { version = "0.12.5", features = ["blocking", "json"] }
-tokio = { version = "1.43.0", features = ["full"] }
+tokio = { version = "1.44.1", features = ["full"] }
 warp = "0.3.7"
-ureq = "=3.0.3"
+ureq = "=3.0.8"
 
 
 [features]

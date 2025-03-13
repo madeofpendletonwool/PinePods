@@ -915,6 +915,7 @@ pub fn render_podcast_with_episodes(
                                 on_modal_close.clone(),
                                 is_current_episode,
                                 is_playing,
+                                state.clone()
                             )
                         }) }
                     </div>

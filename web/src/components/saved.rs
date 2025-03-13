@@ -285,19 +285,19 @@ pub fn saved() -> Html {
                                 <div class="flex gap-4">
                                     // Search input
                                     <div class="filter-dropdown filter-button relative">
-                                        <input
-                                            type="text"
-                                            class="filter-input appearance-none pr-8"
-                                            placeholder="Search"
-                                            value={(*episode_search_term).clone()}
-                                            oninput={let episode_search_term = episode_search_term.clone();
-                                                Callback::from(move |e: InputEvent| {
-                                                    if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
-                                                        episode_search_term.set(input.value());
-                                                    }
-                                                })
-                                            }
-                                        />
+                                    <input
+                                        type="text"
+                                        class="filter-input appearance-none pr-8 rounded-lg"
+                                        placeholder="Search"
+                                        value={(*episode_search_term).clone()}
+                                        oninput={let episode_search_term = episode_search_term.clone();
+                                            Callback::from(move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                                                    episode_search_term.set(input.value());
+                                                }
+                                            })
+                                        }
+                                    />
                                         <i class="ph ph-magnifying-glass absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
                                     </div>
 

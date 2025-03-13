@@ -128,7 +128,7 @@ pub fn theme() -> Html {
         "Greenie Meanie",
         "Wildberries",
         "Hot Dog Stand - MY EYES",
-        "Catppuccin Mocha Mauve"
+        "Catppuccin Mocha Mauve",
     ];
 
     html! {
@@ -205,6 +205,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#0099e1');
                 root.style.setProperty('--thumb-color', '#666673');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#000000');
                 break;
 
             case 'Github Light':
@@ -226,6 +227,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#6590fd');
                 root.style.setProperty('--thumb-color', '#666673');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#000000');
                 break;
 
             case 'Dark':
@@ -246,6 +248,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#6590fd');
                 root.style.setProperty('--thumb-color', '#1a1c1d');
                 root.style.setProperty('--unfilled-color', '#e5e5e5');
+                root.style.setProperty('--check-box-color', '#ffffff');
                 break;
 
             case 'Nordic Light':
@@ -266,6 +269,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#2a85cf');
                 root.style.setProperty('--thumb-color', '#2984ce');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#000000');
                 break;
 
             case 'Nordic':
@@ -286,6 +290,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#5d80aa');
                 root.style.setProperty('--thumb-color', '#3550af');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#ffffff');
                 break;
 
             case 'Abyss':
@@ -306,6 +311,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#c8aa7d');
                 root.style.setProperty('--thumb-color', '#326fef');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#ffffff');
                 break;
 
             case 'Dracula':
@@ -326,6 +332,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#6590fd');
                 root.style.setProperty('--thumb-color', '#bd93f9');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#ffffff');
                 break;
 
             case 'Kimbie':
@@ -346,6 +353,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#f6f5f4');
                 root.style.setProperty('--thumb-color', '#ca9858');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#b1ad86');
                 break;
 
             case 'Neon':
@@ -366,6 +374,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#7000ff');
                 root.style.setProperty('--thumb-color', '#f75c1d');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#8a888c');
                 break;
 
             case 'Greenie Meanie':
@@ -386,6 +395,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#6590fd');
                 root.style.setProperty('--thumb-color', '#666673');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#489d50');
                 break;
 
             case 'Gruvbox Light':
@@ -406,6 +416,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#a68738');
                 root.style.setProperty('--thumb-color', '#d1ac0e');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#5f5750');
                 break;
 
             case 'Gruvbox Dark':
@@ -426,6 +437,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#6f701b');
                 root.style.setProperty('--thumb-color', '#424314');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#868729');
                 break;
 
             case 'Wildberries':
@@ -446,6 +458,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#5196B2');
                 root.style.setProperty('--thumb-color', '#666673');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#cf8b3e');
                 break;
 
             case 'Midnight Ocean':
@@ -466,6 +479,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#60a5fa');
                 root.style.setProperty('--thumb-color', '#38bdf8');
                 root.style.setProperty('--unfilled-color', '#334155');
+                root.style.setProperty('--check-box-color', '#ffffff');
                 break;
 
             case 'Forest Depths':
@@ -486,6 +500,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#a1d0a5');
                 root.style.setProperty('--thumb-color', '#7fb685');
                 root.style.setProperty('--unfilled-color', '#3d5a43');
+                root.style.setProperty('--check-box-color', '#c9e4ca');
                 break;
 
             case 'Sunset Horizon':
@@ -506,6 +521,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#ffb088');
                 root.style.setProperty('--thumb-color', '#ff9e64');
                 root.style.setProperty('--unfilled-color', '#533a54');
+                root.style.setProperty('--check-box-color', '#ffd9c0');
                 break;
 
             case 'Arctic Frost':
@@ -526,6 +542,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#81a1c1');
                 root.style.setProperty('--thumb-color', '#88c0d0');
                 root.style.setProperty('--unfilled-color', '#3b4252');
+                root.style.setProperty('--check-box-color', '#eceff4');
                 break;
 
             case 'Cyber Synthwave':
@@ -546,6 +563,7 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#ff71ce');
                 root.style.setProperty('--thumb-color', '#f92aad');
                 root.style.setProperty('--unfilled-color', '#3a2f4a');
+                root.style.setProperty('--check-box-color', '#eee6ff');
                 break;
 
 
@@ -567,10 +585,11 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#6590fd');
                 root.style.setProperty('--thumb-color', '#666673');
                 root.style.setProperty('--unfilled-color', '#d4d6d7');
+                root.style.setProperty('--check-box-color', '#000000');
                 break;
 
             case 'Catppuccin Mocha Mauve':
-                root.style.setProperty('--background-color', '#1e1e2e');                
+                root.style.setProperty('--background-color', '#1e1e2e');
                 root.style.setProperty('--button-color', '#313244');
                 root.style.setProperty('--button-text-color', '#a6adc8');
                 root.style.setProperty('--text-color', '#cdd6f4');
@@ -587,8 +606,9 @@ pub fn theme() -> Html {
                 root.style.setProperty('--link-color', '#f5c2e7');
                 root.style.setProperty('--thumb-color', '#b4befe');
                 root.style.setProperty('--unfilled-color', '#74c7ec');
+                root.style.setProperty('--check-box-color', '#cdd6f4');
                 break;
-                
+
             default:
                 // Reset to default (perhaps the Light or Dark theme)
                 break;

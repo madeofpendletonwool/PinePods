@@ -106,7 +106,7 @@ try:
         )
     """)
 
-    # Create OIDCProviders table if it doesn't exist
+    # Create OIDCProviders table if it doesn't exist (MySQL version)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS OIDCProviders (
             ProviderID INT AUTO_INCREMENT PRIMARY KEY,
@@ -116,16 +116,17 @@ try:
             AuthorizationURL VARCHAR(255) NOT NULL,
             TokenURL VARCHAR(255) NOT NULL,
             UserInfoURL VARCHAR(255) NOT NULL,
-            RedirectURL VARCHAR(255) NOT NULL,
             Scope VARCHAR(255) DEFAULT 'openid email profile',
             ButtonColor VARCHAR(50) DEFAULT '#000000',
             ButtonText VARCHAR(255) NOT NULL,
+            ButtonTextColor VARCHAR(50) DEFAULT '#000000',
             IconSVG TEXT,
             Enabled TINYINT(1) DEFAULT 1,
             Created DATETIME DEFAULT CURRENT_TIMESTAMP,
             Modified DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )
     """)
+    cnx.commit()
 
     # Add new columns to Users table if they don't exist
     add_column_if_not_exists(cursor, 'Users', 'auth_type', 'VARCHAR(50) DEFAULT \'standard\'')
@@ -764,29 +765,46 @@ try:
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                     )""")
 
-    # First define functions to check and add columns/tables
     def add_notification_column_if_not_exists(cursor, cnx):
         try:
+            # First check if the column exists
             cursor.execute("""
-                SELECT COLUMN_NAME
+                SELECT COUNT(*) as column_exists
                 FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_NAME = Podcasts
-                AND COLUMN_NAME = NotificationsEnabled
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'NotificationsEnabled'
                 AND TABLE_SCHEMA = DATABASE()
             """)
+            result = cursor.fetchone()
+            column_exists = result[0] > 0 if isinstance(result, tuple) else result.get('column_exists', 0) > 0
 
-            if not cursor.fetchone():
-                cursor.execute("""
-                    ALTER TABLE Podcasts
-                    ADD COLUMN NotificationsEnabled TINYINT(1) DEFAULT 0
-                """)
-                print("Added NotificationsEnabled column to Podcasts table.")
-                cnx.commit()
+            # Only attempt to add the column if it doesn't exist
+            if not column_exists:
+                try:
+                    cursor.execute("""
+                        ALTER TABLE Podcasts
+                        ADD COLUMN NotificationsEnabled TINYINT(1) DEFAULT 0
+                    """)
+                    print("Added NotificationsEnabled column to Podcasts table.")
+                    cnx.commit()
+                except Exception as alter_err:
+                    # Check if the error is because the column already exists
+                    # (This can happen in race conditions or if the schema check was outdated)
+                    if "Duplicate column name" in str(alter_err) or "column already exists" in str(alter_err).lower():
+                        print("Column NotificationsEnabled already exists in Podcasts table.")
+                    else:
+                        # It's a different error, so re-raise it
+                        raise alter_err
             else:
                 print("Column NotificationsEnabled already exists in Podcasts table.")
+
         except Exception as e:
-            print(f"Error adding NotificationsEnabled column to Podcasts table: {e}")
-            cnx.rollback()
+            print(f"Error checking/adding NotificationsEnabled column to Podcasts table: {e}")
+            # Only rollback if we're in a transaction that needs rolling back
+            try:
+                cnx.rollback()
+            except:
+                pass  # If rollback fails, we're not in a transaction
 
     # Create the notification settings table
     try:
@@ -813,7 +831,225 @@ try:
         cnx.rollback()
 
     # Call our function to add the new column
-    add_notification_column_if_not_exist(cursor, cnx)
+    add_notification_column_if_not_exists(cursor, cnx)
+
+    try:
+        # Create Playlists table with the unique constraint
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS Playlists (
+                PlaylistID INT AUTO_INCREMENT PRIMARY KEY,
+                UserID INT NOT NULL,
+                Name VARCHAR(255) NOT NULL,
+                Description TEXT,
+                IsSystemPlaylist TINYINT(1) NOT NULL DEFAULT 0,
+                PodcastIDs TEXT, -- Storing as JSON array in MySQL
+                IncludeUnplayed TINYINT(1) NOT NULL DEFAULT 1,
+                IncludePartiallyPlayed TINYINT(1) NOT NULL DEFAULT 1,
+                IncludePlayed TINYINT(1) NOT NULL DEFAULT 0,
+                MinDuration INT, -- NULL means no minimum
+                MaxDuration INT, -- NULL means no maximum
+                SortOrder VARCHAR(50) NOT NULL DEFAULT 'date_desc',
+                GroupByPodcast TINYINT(1) NOT NULL DEFAULT 0,
+                MaxEpisodes INT, -- NULL means no limit
+                PlayProgressMin FLOAT, -- NULL means no minimum progress requirement
+                PlayProgressMax FLOAT, -- NULL means no maximum progress limit
+                TimeFilterHours INT, -- NULL means no time filter
+                LastUpdated DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                Created DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                IconName VARCHAR(50) NOT NULL DEFAULT 'ph-playlist',
+                FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                UNIQUE(UserID, Name),
+                CHECK (PlayProgressMin IS NULL OR (PlayProgressMin >= 0 AND PlayProgressMin <= 100)),
+                CHECK (PlayProgressMax IS NULL OR (PlayProgressMax >= 0 AND PlayProgressMax <= 100)),
+                CHECK (PlayProgressMin IS NULL OR PlayProgressMax IS NULL OR PlayProgressMin <= PlayProgressMax),
+                CHECK (MinDuration IS NULL OR MinDuration >= 0),
+                CHECK (MaxDuration IS NULL OR MaxDuration >= 0),
+                CHECK (MinDuration IS NULL OR MaxDuration IS NULL OR MinDuration <= MaxDuration),
+                CHECK (TimeFilterHours IS NULL OR TimeFilterHours > 0),
+                CHECK (MaxEpisodes IS NULL OR MaxEpisodes > 0),
+                CHECK (SortOrder IN ('date_asc', 'date_desc',
+                                'duration_asc', 'duration_desc',
+                                'listen_progress', 'completion'))
+            )
+        """)
+        cnx.commit()
+
+        # Create PlaylistContents table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS PlaylistContents (
+                PlaylistContentID INT AUTO_INCREMENT PRIMARY KEY,
+                PlaylistID INT,
+                EpisodeID INT,
+                VideoID INT,
+                Position INT,
+                DateAdded DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (PlaylistID) REFERENCES Playlists(PlaylistID) ON DELETE CASCADE,
+                FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE,
+                FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID) ON DELETE CASCADE,
+                CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+            )
+        """)
+        cnx.commit()
+
+        # Create indexes
+        cursor.execute("CREATE INDEX idx_playlists_userid ON Playlists(UserID)")
+        cnx.commit()
+
+        cursor.execute("CREATE INDEX idx_playlist_contents_playlistid ON PlaylistContents(PlaylistID)")
+        cnx.commit()
+
+        cursor.execute("CREATE INDEX idx_playlist_contents_episodeid ON PlaylistContents(EpisodeID)")
+        cnx.commit()
+
+        cursor.execute("CREATE INDEX idx_playlist_contents_videoid ON PlaylistContents(VideoID)")
+        cnx.commit()
+
+        # Define system playlists
+        system_playlists = [
+            {
+                'name': 'Quick Listens',
+                'description': 'Short episodes under 15 minutes, perfect for quick breaks',
+                'min_duration': None,
+                'max_duration': 900,  # 15 minutes
+                'sort_order': 'duration_asc',
+                'icon_name': 'ph-fast-forward'
+            },
+            {
+                'name': 'Longform',
+                'description': 'Extended episodes over 1 hour, ideal for long drives or deep dives',
+                'min_duration': 3600,  # 1 hour
+                'max_duration': None,
+                'sort_order': 'duration_desc',
+                'icon_name': 'ph-car'
+            },
+            {
+                'name': 'Currently Listening',
+                'description': 'Episodes you\'ve started but haven\'t finished',
+                'min_duration': None,
+                'max_duration': None,
+                'sort_order': 'date_desc',
+                'include_unplayed': False,
+                'include_partially_played': True,
+                'include_played': False,
+                'icon_name': 'ph-play'
+            },
+            {
+                'name': 'Fresh Releases',
+                'description': 'Latest episodes from the last 24 hours',
+                'min_duration': None,
+                'max_duration': None,
+                'sort_order': 'date_desc',
+                'include_unplayed': True,
+                'include_partially_played': False,
+                'include_played': False,
+                'time_filter_hours': 24,
+                'icon_name': 'ph-sparkle'
+            },
+            {
+                'name': 'Weekend Marathon',
+                'description': 'Longer episodes (30+ minutes) perfect for weekend listening',
+                'min_duration': 1800,  # 30 minutes
+                'max_duration': None,
+                'sort_order': 'duration_desc',
+                'group_by_podcast': True,
+                'icon_name': 'ph-couch'
+            },
+            {
+                'name': 'Commuter Mix',
+                'description': 'Episodes between 20-40 minutes, ideal for average commute times',
+                'min_duration': 1200,  # 20 minutes
+                'max_duration': 2400,  # 40 minutes
+                'sort_order': 'date_desc',
+                'icon_name': 'ph-train'
+            },
+            {
+                'name': 'Almost Done',
+                'description': 'Episodes you\'re close to finishing (75%+ complete)',
+                'min_duration': None,
+                'max_duration': None,
+                'sort_order': 'date_asc',
+                'include_unplayed': False,
+                'include_partially_played': True,
+                'include_played': False,
+                'play_progress_min': 75.0,
+                'play_progress_max': None,
+                'icon_name': 'ph-hourglass'
+            }
+        ]
+
+        # Insert system playlists
+        for playlist in system_playlists:
+            try:
+                # First check if this playlist already exists
+                cursor.execute("""
+                    SELECT COUNT(*)
+                    FROM Playlists
+                    WHERE UserID = 1 AND Name = %s AND IsSystemPlaylist = 1
+                """, (playlist['name'],))
+
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        INSERT INTO Playlists (
+                            UserID,
+                            Name,
+                            Description,
+                            IsSystemPlaylist,
+                            MinDuration,
+                            MaxDuration,
+                            SortOrder,
+                            GroupByPodcast,
+                            IncludeUnplayed,
+                            IncludePartiallyPlayed,
+                            IncludePlayed,
+                            IconName,
+                            PlayProgressMin,
+                            PlayProgressMax,
+                            TimeFilterHours
+                        ) VALUES (
+                            1,
+                            %s,
+                            %s,
+                            1,
+                            %s,
+                            %s,
+                            %s,
+                            %s,
+                            %s,
+                            %s,
+                            %s,
+                            %s,
+                            %s,
+                            %s,
+                            %s
+                        )
+                    """, (
+                        playlist['name'],
+                        playlist['description'],
+                        playlist.get('min_duration'),
+                        playlist.get('max_duration'),
+                        playlist.get('sort_order', 'date_asc'),
+                        1 if playlist.get('group_by_podcast', False) else 0,
+                        1 if playlist.get('include_unplayed', True) else 0,
+                        1 if playlist.get('include_partially_played', True) else 0,
+                        1 if playlist.get('include_played', False) else 0,
+                        playlist.get('icon_name', 'ph-playlist'),
+                        playlist.get('play_progress_min'),
+                        playlist.get('play_progress_max'),
+                        playlist.get('time_filter_hours')
+                    ))
+                    cnx.commit()
+                    print(f"Successfully added system playlist: {playlist['name']}")
+                else:
+                    print(f"System playlist already exists: {playlist['name']}")
+
+            except Exception as e:
+                print(f"Error handling system playlist {playlist['name']}: {e}")
+                continue
+
+    except Exception as e:
+        print(f"Error setting up platlists: {e}")
+
+    print("Checked/Created Playlist Tables")
 
 except mysql.connector.Error as err:
     logging.error(f"Database error: {err}")
