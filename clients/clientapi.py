@@ -4946,27 +4946,42 @@ async def api_return_person_episodes(
 async def refresh_all_hosts(
     background_tasks: BackgroundTasks,
     cnx=Depends(get_database_connection), is_admin: bool = Depends(check_if_admin),
-    api_key: str = Depends(get_api_key_from_header)
+    api_key: str = Depends(get_api_key_from_header),
 ):
     """Refresh episodes for all subscribed hosts"""
     # Verify it's the system/web API key
     if api_key != base_webkey.web_key:
         raise HTTPException(status_code=403, detail="This endpoint requires system API key")
-
     try:
         cursor = cnx.cursor()
         # Get all unique people that users are subscribed to
-        cursor.execute("""
-            SELECT DISTINCT p.PersonID, p.Name, p.UserID
-            FROM "People" p
-        """)
-        subscribed_hosts = cursor.fetchall()
+        if database_type == "postgresql":
+            cursor.execute("""
+                SELECT DISTINCT p.PersonID, p.Name, p.UserID
+                FROM "People" p
+            """)
+        else:  # MySQL
+            cursor.execute("""
+                SELECT DISTINCT p.PersonID, p.Name, p.UserID
+                FROM People p
+            """)
 
+        subscribed_hosts = cursor.fetchall()
         if not subscribed_hosts:
             return {"message": "No subscribed hosts found"}
 
         # Process each host in the background
-        for person_id, person_name, user_id in subscribed_hosts:
+        hosts_to_process = []
+        for host in subscribed_hosts:
+            # Handle both tuple and dict result formats
+            if isinstance(host, dict):
+                person_id = host.get('PersonID', host.get('personid'))
+                person_name = host.get('Name', host.get('name'))
+                user_id = host.get('UserID', host.get('userid'))
+            else:  # tuple
+                person_id, person_name, user_id = host
+
+            hosts_to_process.append(person_name)
             background_tasks.add_task(
                 process_person_subscription_task,
                 user_id,
@@ -4976,9 +4991,8 @@ async def refresh_all_hosts(
 
         return {
             "message": f"Refresh initiated for {len(subscribed_hosts)} hosts",
-            "hosts": [name for _, name, _ in subscribed_hosts]
+            "hosts": hosts_to_process
         }
-
     except Exception as e:
         logging.error(f"Error refreshing hosts: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -5870,8 +5884,6 @@ async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_conne
 
         # Execute the startup tasks
         database_functions.functions.add_news_feed_if_not_added(database_type, cnx)
-        print("starting celery")
-        start_celery_worker()
         return {"status": "Startup tasks completed successfully."}
 
         database_functions.valkey_client.connect()

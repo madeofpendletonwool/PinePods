@@ -488,20 +488,24 @@ def add_user(cnx, database_type, user_values):
             result = cursor.fetchone()
             if result is None:
                 raise Exception("Failed to create user - no ID returned")
-
             # Print the result for debugging
             print(f"Raw PostgreSQL result: {result}")
             logging.debug(f"Raw PostgreSQL result: {result}")
-
             # Handle different return types
             if isinstance(result, dict):
                 # Try different case variations
                 user_id = result.get('userid') or result.get('UserID') or result.get('userId') or result.get('user_id')
             else:
                 user_id = result[0]
-
             if not user_id:
                 raise Exception("Failed to create user - invalid ID returned")
+        else:  # MySQL or MariaDB
+            # Get the last inserted ID for MySQL
+            user_id = cursor.lastrowid
+            if not user_id:
+                raise Exception("Failed to create user - no ID returned from MySQL")
+            print(f"MySQL generated user_id: {user_id}")
+
         # Add user settings
         settings_query = """
             INSERT INTO "UserSettings"
@@ -528,12 +532,10 @@ def add_user(cnx, database_type, user_values):
 
         cnx.commit()
         return user_id
-
     except Exception as e:
         cnx.rollback()
         logging.error(f"Error in add_user: {str(e)}")
         raise
-
     finally:
         cursor.close()
 
@@ -762,6 +764,9 @@ def list_oidc_providers(cnx, database_type):
                         normalized["button_text_color"] = value
                     elif normalized_key == "iconsvg":
                         normalized["icon_svg"] = value
+                    elif normalized_key == "enabled":
+                        # Convert MySQL TINYINT to boolean
+                        normalized["enabled"] = bool(value)
                     else:
                         normalized[normalized_key] = value
                 providers.append(normalized)
@@ -6606,7 +6611,7 @@ def update_notification_settings(cnx, database_type, user_id, platform, enabled,
             else:
                 query = """
                     INSERT INTO UserNotificationSettings
-                    (UserID, Platform, Enabled, NtfyTopic, NtfyServer_url, GotifyUrl, GotifyToken)
+                    (UserID, Platform, Enabled, NtfyTopic, NtfyServerUrl, GotifyUrl, GotifyToken)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """
 
@@ -8110,212 +8115,270 @@ def build_playlist_query(playlist, database_type):
     is_system_playlist = playlist['userid'] == 1 and playlist['issystemplaylist']
 
     if database_type == "postgresql":
-        # PostgreSQL version
-        # For system playlists, we want to show episodes from ALL users' podcasts
-        # For user playlists, we only show episodes from that specific user's podcasts
-        if is_system_playlist:
+        if is_system_playlist and playlist['includepartiallyplayed'] and not playlist['includeunplayed'] and not playlist['includeplayed']:
+            # This is a special case for "Currently Listening" or "Almost Done"
             query = """
-                    SELECT e.episodeid
+                    SELECT DISTINCT e.episodeid
                     FROM "Episodes" e
                     JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = %s
-                    JOIN "Users" u ON u.UserID = %s
-                    WHERE 1=1
-                """
-            # Only include history/timezone params - no user filtering on podcasts
-            params.extend([playlist['userid'], playlist['userid']])
-            print(f"System playlist detected - showing podcasts for all users")
-        else:
-            # Normal user playlist - only show their own podcasts
-            query = """
-                    SELECT e.episodeid
-                    FROM "Episodes" e
-                    JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = %s
-                    JOIN "Users" u ON u.UserID = %s
-                    WHERE p.UserID = %s
-                """
-            # Add all params including user filtering
-            params.extend([playlist['userid'], playlist['userid'], playlist['userid']])
-            print(f"User playlist detected - only showing podcasts for user {playlist['userid']}")
+                    JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid
+                    WHERE h.listenduration > 0
+                    AND h.listenduration < e.episodeduration
+                    AND e.Completed = FALSE
+            """
+            params = []
 
-        # Podcast filter for PostgreSQL
-        if playlist['podcastids']:
-            conditions.append('e.podcastid = ANY(%s)')
-            params.append(playlist['podcastids'])
-
-        # Duration filters
-        if playlist['minduration'] is not None:
-            conditions.append('e.episodeduration >= %s')
-            params.append(playlist['minduration'])
-        if playlist['maxduration'] is not None:
-            conditions.append('e.episodeduration <= %s')
-            params.append(playlist['maxduration'])
-
-        # Play state filters with progress
-        play_state_conditions = []
-
-        if playlist['includeunplayed']:
-            play_state_conditions.append('h.listenduration IS NULL')
-
-        if playlist['includepartiallyplayed']:
-            partial_condition = '(h.listenduration > 0 AND h.listenduration < e.episodeduration)'
+            # Add progress constraints for "Almost Done" if needed
             if playlist.get('playprogressmin') is not None:
                 min_decimal = float(playlist["playprogressmin"]) / 100.0
-                partial_condition += f' AND (h.listenduration::float / e.episodeduration) >= {min_decimal}'
+                query += f' AND (h.listenduration::float / e.episodeduration) >= {min_decimal}'
+
             if playlist.get('playprogressmax') is not None:
                 max_decimal = float(playlist["playprogressmax"]) / 100.0
-                partial_condition += f' AND (h.listenduration::float / e.episodeduration) <= {max_decimal}'
-            play_state_conditions.append(partial_condition)
+                query += f' AND (h.listenduration::float / e.episodeduration) <= {max_decimal}'
 
-        if playlist['includeplayed']:
-            play_state_conditions.append('h.listenduration >= e.episodeduration')
+            print(f"Special query for system in-progress playlist for all users")
+        else:
+            # PostgreSQL version
+            # For system playlists, we want to show episodes from ALL users' podcasts
+            # For user playlists, we only show episodes from that specific user's podcasts
+            if is_system_playlist:
+                query = """
+                        SELECT e.episodeid
+                        FROM "Episodes" e
+                        JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                        LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = %s
+                        JOIN "Users" u ON u.UserID = %s
+                        WHERE 1=1
+                    """
+                # Only include history/timezone params - no user filtering on podcasts
+                params.extend([playlist['userid'], playlist['userid']])
+                print(f"System playlist detected - showing podcasts for all users")
+            else:
+                # Normal user playlist - only show their own podcasts
+                query = """
+                        SELECT e.episodeid
+                        FROM "Episodes" e
+                        JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                        LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = %s
+                        JOIN "Users" u ON u.UserID = %s
+                        WHERE p.UserID = %s
+                    """
+                # Add all params including user filtering
+                params.extend([playlist['userid'], playlist['userid'], playlist['userid']])
+                print(f"User playlist detected - only showing podcasts for user {playlist['userid']}")
 
-        if play_state_conditions:
-            conditions.append(f"({' OR '.join(play_state_conditions)})")
+            # Podcast filter for PostgreSQL
+            if playlist['podcastids']:
+                conditions.append('e.podcastid = ANY(%s)')
+                params.append(playlist['podcastids'])
 
-        # Time filter for PostgreSQL
-        if playlist.get('timefilterhours') is not None:
-            conditions.append('''
-                e.episodepubdate AT TIME ZONE 'UTC'
-                AT TIME ZONE u.TimeZone >=
-                (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
-                 AT TIME ZONE u.TimeZone - INTERVAL '%s hours')
-            ''')
-            params.append(playlist['timefilterhours'])
+            # Duration filters
+            if playlist['minduration'] is not None:
+                conditions.append('e.episodeduration >= %s')
+                params.append(playlist['minduration'])
+            if playlist['maxduration'] is not None:
+                conditions.append('e.episodeduration <= %s')
+                params.append(playlist['maxduration'])
 
-        # Add all conditions
-        if conditions:
-            query += " AND " + " AND ".join(conditions)
+            # Play state filters with progress
+            play_state_conditions = []
 
-        # Sorting for PostgreSQL
-        sort_mapping = {
-            'date_asc': 'e.episodepubdate ASC',
-            'date_desc': 'e.episodepubdate DESC',
-            'duration_asc': 'e.episodeduration ASC',
-            'duration_desc': 'e.episodeduration DESC',
-            'listen_progress': '(COALESCE(h.listenduration, 0)::float / e.episodeduration) DESC',
-            'completion': 'h.listenduration::float / e.episodeduration DESC'
-        }
+            if playlist['includeunplayed']:
+                play_state_conditions.append('h.listenduration IS NULL')
 
-        order_by = sort_mapping.get(playlist['sortorder'], 'e.episodepubdate DESC')
-        if playlist['groupbypodcast']:
-            order_by = f'e.podcastid, {order_by}'
+            if playlist['includepartiallyplayed']:
+                # Base condition: episodes with some progress but not fully listened
+                partial_condition = '(h.listenduration > 0 AND h.listenduration < e.episodeduration AND e.Completed = FALSE)'
 
-        query += f" ORDER BY {order_by}"
+                # Add progress range conditions if specified
+                if playlist.get('playprogressmin') is not None:
+                    min_decimal = float(playlist["playprogressmin"]) / 100.0
+                    partial_condition += f' AND (h.listenduration::float / e.episodeduration) >= {min_decimal}'
+
+                if playlist.get('playprogressmax') is not None:
+                    max_decimal = float(playlist["playprogressmax"]) / 100.0
+                    partial_condition += f' AND (h.listenduration::float / e.episodeduration) <= {max_decimal}'
+
+                play_state_conditions.append(partial_condition)
+
+            if playlist['includeplayed']:
+                play_state_conditions.append('h.listenduration >= e.episodeduration')
+
+            if play_state_conditions:
+                conditions.append(f"({' OR '.join(play_state_conditions)})")
+
+            # Time filter for PostgreSQL
+            if playlist.get('timefilterhours') is not None:
+                conditions.append('''
+                    e.episodepubdate AT TIME ZONE 'UTC'
+                    AT TIME ZONE u.TimeZone >=
+                    (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+                    AT TIME ZONE u.TimeZone - INTERVAL '%s hours')
+                ''')
+                params.append(playlist['timefilterhours'])
+
+            # Add all conditions
+            if conditions:
+                query += " AND " + " AND ".join(conditions)
+
+            # Sorting for PostgreSQL
+            sort_mapping = {
+                'date_asc': 'e.episodepubdate ASC',
+                'date_desc': 'e.episodepubdate DESC',
+                'duration_asc': 'e.episodeduration ASC',
+                'duration_desc': 'e.episodeduration DESC',
+                'listen_progress': '(COALESCE(h.listenduration, 0)::float / e.episodeduration) DESC',
+                'completion': 'h.listenduration::float / e.episodeduration DESC'
+            }
+
+            order_by = sort_mapping.get(playlist['sortorder'], 'e.episodepubdate DESC')
+            if playlist['groupbypodcast']:
+                order_by = f'e.podcastid, {order_by}'
+
+            query += f" ORDER BY {order_by}"
 
     else:
-        # MySQL version
-        # For system playlists, we want to show episodes from ALL users' podcasts
-        # For user playlists, we only show episodes from that specific user's podcasts
-        if is_system_playlist:
+        if is_system_playlist and playlist['includepartiallyplayed'] and not playlist['includeunplayed'] and not playlist['includeplayed']:
+            # This is a special case for "Currently Listening" or "Almost Done"
             query = """
-                    SELECT e.episodeid
+                    SELECT DISTINCT e.episodeid
                     FROM Episodes e
                     JOIN Podcasts p ON e.podcastid = p.podcastid
-                    LEFT JOIN UserEpisodeHistory h ON e.episodeid = h.episodeid AND h.userid = %s
-                    JOIN Users u ON u.UserID = %s
-                    WHERE 1=1
-                """
-            # Only include history/timezone params - no user filtering on podcasts
-            params.extend([playlist['userid'], playlist['userid']])
-            print(f"System playlist detected - showing podcasts for all users")
-        else:
-            # Normal user playlist - only show their own podcasts
-            query = """
-                    SELECT e.episodeid
-                    FROM Episodes e
-                    JOIN Podcasts p ON e.podcastid = p.podcastid
-                    LEFT JOIN UserEpisodeHistory h ON e.episodeid = h.episodeid AND h.userid = %s
-                    JOIN Users u ON u.UserID = %s
-                    WHERE p.UserID = %s
-                """
-            # Add all params including user filtering
-            params.extend([playlist['userid'], playlist['userid'], playlist['userid']])
-            print(f"User playlist detected - only showing podcasts for user {playlist['userid']}")
+                    JOIN UserEpisodeHistory h ON e.episodeid = h.episodeid
+                    WHERE h.listenduration > 0
+                    AND h.listenduration < e.episodeduration
+                    AND e.Completed = 0
+            """
+            params = []
 
-        # Podcast filter for MySQL using JSON_CONTAINS
-        if playlist['podcastids']:
-            # In MySQL, we'd store podcast IDs as a JSON array in TEXT field
-            # Convert the PostgreSQL array to a list of integers for MySQL
-            if isinstance(playlist['podcastids'], list):
-                podcast_ids = playlist['podcastids']
-            else:
-                # If it's a string representation of a list
-                import json
-                try:
-                    podcast_ids = json.loads(playlist['podcastids'])
-                except:
-                    # Fallback for PostgreSQL array string format like '{1,2,3}'
-                    podcast_ids = [int(id.strip()) for id in playlist['podcastids'].strip('{}').split(',') if id.strip()]
-
-            if len(podcast_ids) == 1:
-                # Simple equality for a single podcast
-                conditions.append('e.podcastid = %s')
-                params.append(podcast_ids[0])
-            else:
-                # IN clause for multiple podcasts
-                placeholders = ', '.join(['%s'] * len(podcast_ids))
-                conditions.append(f'e.podcastid IN ({placeholders})')
-                params.extend(podcast_ids)
-
-        # Duration filters (same for both databases)
-        if playlist['minduration'] is not None:
-            conditions.append('e.episodeduration >= %s')
-            params.append(playlist['minduration'])
-        if playlist['maxduration'] is not None:
-            conditions.append('e.episodeduration <= %s')
-            params.append(playlist['maxduration'])
-
-        # Play state filters with progress
-        play_state_conditions = []
-
-        if playlist['includeunplayed']:
-            play_state_conditions.append('h.listenduration IS NULL')
-
-        if playlist['includepartiallyplayed']:
-            partial_condition = '(h.listenduration > 0 AND h.listenduration < e.episodeduration)'
+            # Add progress constraints for "Almost Done" if needed
             if playlist.get('playprogressmin') is not None:
                 min_decimal = float(playlist["playprogressmin"]) / 100.0
-                partial_condition += f' AND (h.listenduration / e.episodeduration) >= {min_decimal}'
+                query += f' AND (h.listenduration / e.episodeduration) >= {min_decimal}'
+
             if playlist.get('playprogressmax') is not None:
                 max_decimal = float(playlist["playprogressmax"]) / 100.0
-                partial_condition += f' AND (h.listenduration / e.episodeduration) <= {max_decimal}'
-            play_state_conditions.append(partial_condition)
+                query += f' AND (h.listenduration / e.episodeduration) <= {max_decimal}'
 
-        if playlist['includeplayed']:
-            play_state_conditions.append('h.listenduration >= e.episodeduration')
+            print(f"Special query for system in-progress playlist for all users")
+        else:
+            # MySQL version
+            # For system playlists, we want to show episodes from ALL users' podcasts
+            # For user playlists, we only show episodes from that specific user's podcasts
+            if is_system_playlist:
+                query = """
+                        SELECT e.episodeid
+                        FROM Episodes e
+                        JOIN Podcasts p ON e.podcastid = p.podcastid
+                        LEFT JOIN UserEpisodeHistory h ON e.episodeid = h.episodeid AND h.userid = %s
+                        JOIN Users u ON u.UserID = %s
+                        WHERE 1=1
+                    """
+                # Only include history/timezone params - no user filtering on podcasts
+                params.extend([playlist['userid'], playlist['userid']])
+                print(f"System playlist detected - showing podcasts for all users")
+            else:
+                # Normal user playlist - only show their own podcasts
+                query = """
+                        SELECT e.episodeid
+                        FROM Episodes e
+                        JOIN Podcasts p ON e.podcastid = p.podcastid
+                        LEFT JOIN UserEpisodeHistory h ON e.episodeid = h.episodeid AND h.userid = %s
+                        JOIN Users u ON u.UserID = %s
+                        WHERE p.UserID = %s
+                    """
+                # Add all params including user filtering
+                params.extend([playlist['userid'], playlist['userid'], playlist['userid']])
+                print(f"User playlist detected - only showing podcasts for user {playlist['userid']}")
 
-        if play_state_conditions:
-            conditions.append(f"({' OR '.join(play_state_conditions)})")
+            # Podcast filter for MySQL using JSON_CONTAINS
+            if playlist['podcastids']:
+                # In MySQL, we'd store podcast IDs as a JSON array in TEXT field
+                # Convert the PostgreSQL array to a list of integers for MySQL
+                if isinstance(playlist['podcastids'], list):
+                    podcast_ids = playlist['podcastids']
+                else:
+                    # If it's a string representation of a list
+                    import json
+                    try:
+                        podcast_ids = json.loads(playlist['podcastids'])
+                    except:
+                        # Fallback for PostgreSQL array string format like '{1,2,3}'
+                        podcast_ids = [int(id.strip()) for id in playlist['podcastids'].strip('{}').split(',') if id.strip()]
 
-        # Time filter for MySQL
-        if playlist.get('timefilterhours') is not None:
-            conditions.append('''
-                CONVERT_TZ(e.episodepubdate, 'UTC', u.TimeZone) >=
-                DATE_SUB(CONVERT_TZ(NOW(), 'UTC', u.TimeZone), INTERVAL %s HOUR)
-            ''')
-            params.append(playlist['timefilterhours'])
+                if len(podcast_ids) == 1:
+                    # Simple equality for a single podcast
+                    conditions.append('e.podcastid = %s')
+                    params.append(podcast_ids[0])
+                else:
+                    # IN clause for multiple podcasts
+                    placeholders = ', '.join(['%s'] * len(podcast_ids))
+                    conditions.append(f'e.podcastid IN ({placeholders})')
+                    params.extend(podcast_ids)
 
-        # Add all conditions
-        if conditions:
-            query += " AND " + " AND ".join(conditions)
+            # Duration filters (same for both databases)
+            if playlist['minduration'] is not None:
+                conditions.append('e.episodeduration >= %s')
+                params.append(playlist['minduration'])
+            if playlist['maxduration'] is not None:
+                conditions.append('e.episodeduration <= %s')
+                params.append(playlist['maxduration'])
 
-        # Sorting for MySQL
-        sort_mapping = {
-            'date_asc': 'e.episodepubdate ASC',
-            'date_desc': 'e.episodepubdate DESC',
-            'duration_asc': 'e.episodeduration ASC',
-            'duration_desc': 'e.episodeduration DESC',
-            'listen_progress': '(COALESCE(h.listenduration, 0) / e.episodeduration) DESC',
-            'completion': '(h.listenduration / e.episodeduration) DESC'
-        }
+            # Play state filters with progress
+            play_state_conditions = []
 
-        order_by = sort_mapping.get(playlist['sortorder'], 'e.episodepubdate DESC')
-        if playlist['groupbypodcast']:
-            order_by = f'e.podcastid, {order_by}'
+            if playlist['includeunplayed']:
+                play_state_conditions.append('h.listenduration IS NULL')
 
-        query += f" ORDER BY {order_by}"
+            if playlist['includepartiallyplayed']:
+                # Base condition: episodes with some progress but not fully listened
+                partial_condition = '(h.listenduration > 0 AND h.listenduration < e.episodeduration AND e.Completed = FALSE)'
+
+                # Add progress range conditions if specified
+                if playlist.get('playprogressmin') is not None:
+                    min_decimal = float(playlist["playprogressmin"]) / 100.0
+                    partial_condition += f' AND (h.listenduration / e.episodeduration) >= {min_decimal}'
+
+                if playlist.get('playprogressmax') is not None:
+                    max_decimal = float(playlist["playprogressmax"]) / 100.0
+                    partial_condition += f' AND (h.listenduration / e.episodeduration) <= {max_decimal}'
+
+                play_state_conditions.append(partial_condition)
+
+            if playlist['includeplayed']:
+                play_state_conditions.append('h.listenduration >= e.episodeduration')
+
+            if play_state_conditions:
+                conditions.append(f"({' OR '.join(play_state_conditions)})")
+
+            # Time filter for MySQL
+            if playlist.get('timefilterhours') is not None:
+                conditions.append('''
+                    CONVERT_TZ(e.episodepubdate, 'UTC', u.TimeZone) >=
+                    DATE_SUB(CONVERT_TZ(NOW(), 'UTC', u.TimeZone), INTERVAL %s HOUR)
+                ''')
+                params.append(playlist['timefilterhours'])
+
+            # Add all conditions
+            if conditions:
+                query += " AND " + " AND ".join(conditions)
+
+            # Sorting for MySQL
+            sort_mapping = {
+                'date_asc': 'e.episodepubdate ASC',
+                'date_desc': 'e.episodepubdate DESC',
+                'duration_asc': 'e.episodeduration ASC',
+                'duration_desc': 'e.episodeduration DESC',
+                'listen_progress': '(COALESCE(h.listenduration, 0) / e.episodeduration) DESC',
+                'completion': '(h.listenduration / e.episodeduration) DESC'
+            }
+
+            order_by = sort_mapping.get(playlist['sortorder'], 'e.episodepubdate DESC')
+            if playlist['groupbypodcast']:
+                order_by = f'e.podcastid, {order_by}'
+
+            query += f" ORDER BY {order_by}"
 
     # Add limit (same for both databases)
     if playlist['maxepisodes']:
@@ -8335,8 +8398,30 @@ def update_playlist_contents(cnx, database_type, playlist):
             cursor.execute('DELETE FROM "PlaylistContents" WHERE playlistid = %s',
                           (playlist['playlistid'],))
         else:  # MySQL
-            cursor.execute('DELETE FROM PlaylistContents WHERE playlistid = %s',
-                          (playlist['playlistid'],))
+            # For MySQL, add retry logic to handle deadlocks
+            max_retries = 3
+            retry_count = 0
+
+            while retry_count < max_retries:
+                try:
+                    # Start a fresh transaction for each attempt
+                    cnx.rollback()  # Clear any previous transaction state
+
+                    cursor.execute('DELETE FROM PlaylistContents WHERE playlistid = %s',
+                                  (playlist['playlistid'],))
+                    break  # Exit the retry loop if successful
+                except mysql.connector.errors.InternalError as e:
+                    if "Deadlock" in str(e) and retry_count < max_retries - 1:
+                        # If it's a deadlock and we have retries left
+                        retry_count += 1
+                        print(f"Deadlock detected, retrying operation (attempt {retry_count}/{max_retries})")
+                        # Add a small delay before retrying to reduce contention
+                        import time
+                        time.sleep(0.5 * retry_count)  # Increasing backoff
+                    else:
+                        # Either not a deadlock or we've exhausted retries
+                        raise
+
         print(f"Cleared existing contents for playlist {playlist['playlistid']}")
 
         # Build and execute query
@@ -8655,6 +8740,31 @@ def create_playlist(cnx, database_type, playlist_data):
                     else:
                         playlist_id = result[0]
                     cnx.commit()
+
+                    # Get the newly created playlist details to update it
+                    playlist_dict = {
+                        'playlistid': playlist_id,
+                        'userid': playlist_data.user_id,
+                        'name': playlist_data.name,
+                        'description': playlist_data.description,
+                        'issystemplaylist': False,
+                        'podcastids': playlist_data.podcast_ids,
+                        'includeunplayed': playlist_data.include_unplayed,
+                        'includepartiallyplayed': playlist_data.include_partially_played,
+                        'includeplayed': playlist_data.include_played,
+                        'minduration': min_duration,
+                        'maxduration': max_duration,
+                        'sortorder': playlist_data.sort_order,
+                        'groupbypodcast': playlist_data.group_by_podcast,
+                        'maxepisodes': playlist_data.max_episodes,
+                        'playprogressmin': playlist_data.play_progress_min,
+                        'playprogressmax': playlist_data.play_progress_max,
+                        'timefilterhours': playlist_data.time_filter_hours
+                    }
+
+                    # Update the playlist contents immediately
+                    update_playlist_contents(cnx, database_type, playlist_dict)
+
                     return playlist_id
                 except Exception as fetch_e:
                     logging.error(f"Error fetching result: {fetch_e}")
@@ -8690,6 +8800,31 @@ def create_playlist(cnx, database_type, playlist_data):
                 if playlist_id is None:
                     raise Exception("No playlist ID returned from insert")
                 cnx.commit()
+
+                # Get the newly created playlist details to update it
+                playlist_dict = {
+                    'playlistid': playlist_id,
+                    'userid': playlist_data.user_id,
+                    'name': playlist_data.name,
+                    'description': playlist_data.description,
+                    'issystemplaylist': False,
+                    'podcastids': playlist_data.podcast_ids,
+                    'includeunplayed': playlist_data.include_unplayed,
+                    'includepartiallyplayed': playlist_data.include_partially_played,
+                    'includeplayed': playlist_data.include_played,
+                    'minduration': min_duration,
+                    'maxduration': max_duration,
+                    'sortorder': playlist_data.sort_order,
+                    'groupbypodcast': playlist_data.group_by_podcast,
+                    'maxepisodes': playlist_data.max_episodes,
+                    'playprogressmin': playlist_data.play_progress_min,
+                    'playprogressmax': playlist_data.play_progress_max,
+                    'timefilterhours': playlist_data.time_filter_hours
+                }
+
+                # Update the playlist contents immediately
+                update_playlist_contents(cnx, database_type, playlist_dict)
+
                 return playlist_id
 
         except Exception as sql_e:
@@ -8915,15 +9050,15 @@ def get_playlists(cnx, database_type, user_id):
                 'user_id': playlist_record.get('userid', playlist_record.get('UserID')),
                 'name': playlist_record.get('name', playlist_record.get('Name')),
                 'description': playlist_record.get('description', playlist_record.get('Description')),
-                'is_system_playlist': playlist_record.get('issystemplaylist', playlist_record.get('IsSystemPlaylist')),
+                'is_system_playlist': bool(playlist_record.get('issystemplaylist', playlist_record.get('IsSystemPlaylist'))),
                 'podcast_ids': playlist_record.get('podcastids', playlist_record.get('PodcastIDs')),
-                'include_unplayed': playlist_record.get('includeunplayed', playlist_record.get('IncludeUnplayed')),
-                'include_partially_played': playlist_record.get('includepartiallyplayed', playlist_record.get('IncludePartiallyPlayed')),
-                'include_played': playlist_record.get('includeplayed', playlist_record.get('IncludePlayed')),
+                'include_unplayed': bool(playlist_record.get('includeunplayed', playlist_record.get('IncludeUnplayed'))),
+                'include_partially_played': bool(playlist_record.get('includepartiallyplayed', playlist_record.get('IncludePartiallyPlayed'))),
+                'include_played': bool(playlist_record.get('includeplayed', playlist_record.get('IncludePlayed'))),
                 'min_duration': playlist_record.get('minduration', playlist_record.get('MinDuration')),
                 'max_duration': playlist_record.get('maxduration', playlist_record.get('MaxDuration')),
                 'sort_order': playlist_record.get('sortorder', playlist_record.get('SortOrder')),
-                'group_by_podcast': playlist_record.get('groupbypodcast', playlist_record.get('GroupByPodcast')),
+                'group_by_podcast': bool(playlist_record.get('groupbypodcast', playlist_record.get('GroupByPodcast'))),
                 'max_episodes': playlist_record.get('maxepisodes', playlist_record.get('MaxEpisodes')),
                 'last_updated': playlist_record.get('lastupdated', playlist_record.get('LastUpdated', "")),
                 'created': playlist_record.get('created', playlist_record.get('Created', "")),
@@ -9083,32 +9218,49 @@ def get_playlist_episodes(cnx, database_type, user_id, playlist_id):
     cursor = cnx.cursor()
     try:
         # Get playlist info
+        # Get playlist info with user-specific episode count
         if database_type == "postgresql":
             cursor.execute("""
                 SELECT
                     p.Name,
                     p.Description,
-                    COUNT(pc.PlaylistContentID) as episode_count,
+                    (SELECT COUNT(*)
+                     FROM "PlaylistContents" pc
+                     JOIN "Episodes" e ON pc.EpisodeID = e.EpisodeID
+                     JOIN "Podcasts" pod ON e.PodcastID = pod.PodcastID
+                     LEFT JOIN "UserEpisodeHistory" h ON e.EpisodeID = h.EpisodeID AND h.UserID = %s
+                     WHERE pc.PlaylistID = p.PlaylistID
+                     AND (p.IsSystemPlaylist = FALSE OR
+                          (p.IsSystemPlaylist = TRUE AND
+                           (h.EpisodeID IS NOT NULL OR pod.UserID = %s)))
+                    ) as episode_count,
                     p.IconName,
                     p.IsSystemPlaylist
                 FROM "Playlists" p
-                LEFT JOIN "PlaylistContents" pc ON p.PlaylistID = pc.PlaylistID
                 WHERE p.PlaylistID = %s AND (p.UserID = %s OR p.IsSystemPlaylist = TRUE)
                 GROUP BY p.PlaylistID, p.Name, p.Description, p.IconName, p.IsSystemPlaylist
-            """, (playlist_id, user_id))
+            """, (user_id, user_id, playlist_id, user_id))
+            # Get playlist info with user-specific episode count
         else:  # MySQL
             cursor.execute("""
                 SELECT
                     p.Name,
                     p.Description,
-                    COUNT(pc.PlaylistContentID) as episode_count,
+                    (SELECT COUNT(*)
+                        FROM PlaylistContents pc
+                        JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
+                        JOIN Podcasts pod ON e.PodcastID = pod.PodcastID
+                        LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = %s
+                        WHERE pc.PlaylistID = p.PlaylistID
+                        AND (p.IsSystemPlaylist = 0 OR
+                            (p.IsSystemPlaylist = 1 AND
+                            (h.EpisodeID IS NOT NULL OR pod.UserID = %s)))
+                    ) as episode_count,
                     p.IconName,
                     p.IsSystemPlaylist
                 FROM Playlists p
-                LEFT JOIN PlaylistContents pc ON p.PlaylistID = pc.PlaylistID
                 WHERE p.PlaylistID = %s AND (p.UserID = %s OR p.IsSystemPlaylist = 1)
-                GROUP BY p.PlaylistID, p.Name, p.Description, p.IconName, p.IsSystemPlaylist
-            """, (playlist_id, user_id))
+            """, (user_id, user_id, playlist_id, user_id))
 
         playlist_info = cursor.fetchone()
 
@@ -11028,6 +11180,25 @@ def set_user_startpage(cnx, database_type, user_id, startpage):
     finally:
         cursor.close()
 
+
+def convert_booleans(data):
+    boolean_fields = ['completed', 'saved', 'queued', 'downloaded', 'is_youtube', 'explicit', 'is_system_playlist', 'include_unplayed', 'include_partially_played', 'include_played']
+
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key in boolean_fields and value is not None:
+                # Convert 0/1 to False/True for known boolean fields
+                data[key] = bool(value)
+            elif isinstance(value, (dict, list)):
+                # Recursively process nested dictionaries and lists
+                data[key] = convert_booleans(value)
+    elif isinstance(data, list):
+        # Process each item in the list
+        for i, item in enumerate(data):
+            data[i] = convert_booleans(item)
+
+    return data
+
 def get_home_overview(database_type, cnx, user_id):
     if database_type == "postgresql":
         cnx.row_factory = dict_row
@@ -11264,5 +11435,8 @@ def get_home_overview(database_type, cnx, user_id):
         return None
     finally:
         cursor.close()
+
+    if database_type != "postgresql":
+        home_data = convert_booleans(home_data)
 
     return lowercase_keys(home_data)

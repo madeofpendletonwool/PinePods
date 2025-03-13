@@ -376,7 +376,7 @@ try:
             if not cursor.fetchone():
                 cursor.execute("""
                     ALTER TABLE "UserSettings"
-                    ADD COLUMN "StartPage" VARCHAR(255) DEFAULT 'home';
+                    ADD COLUMN StartPage VARCHAR(255) DEFAULT 'home';
                 """)
                 print("Successfully added StartPage column to UserSettings table")
             else:

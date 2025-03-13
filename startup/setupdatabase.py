@@ -765,29 +765,46 @@ try:
                     FOREIGN KEY (UserID) REFERENCES Users(UserID)
                     )""")
 
-    # First define functions to check and add columns/tables
     def add_notification_column_if_not_exists(cursor, cnx):
         try:
+            # First check if the column exists
             cursor.execute("""
-                SELECT COLUMN_NAME
+                SELECT COUNT(*) as column_exists
                 FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_NAME = Podcasts
-                AND COLUMN_NAME = NotificationsEnabled
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'NotificationsEnabled'
                 AND TABLE_SCHEMA = DATABASE()
             """)
+            result = cursor.fetchone()
+            column_exists = result[0] > 0 if isinstance(result, tuple) else result.get('column_exists', 0) > 0
 
-            if not cursor.fetchone():
-                cursor.execute("""
-                    ALTER TABLE Podcasts
-                    ADD COLUMN NotificationsEnabled TINYINT(1) DEFAULT 0
-                """)
-                print("Added NotificationsEnabled column to Podcasts table.")
-                cnx.commit()
+            # Only attempt to add the column if it doesn't exist
+            if not column_exists:
+                try:
+                    cursor.execute("""
+                        ALTER TABLE Podcasts
+                        ADD COLUMN NotificationsEnabled TINYINT(1) DEFAULT 0
+                    """)
+                    print("Added NotificationsEnabled column to Podcasts table.")
+                    cnx.commit()
+                except Exception as alter_err:
+                    # Check if the error is because the column already exists
+                    # (This can happen in race conditions or if the schema check was outdated)
+                    if "Duplicate column name" in str(alter_err) or "column already exists" in str(alter_err).lower():
+                        print("Column NotificationsEnabled already exists in Podcasts table.")
+                    else:
+                        # It's a different error, so re-raise it
+                        raise alter_err
             else:
                 print("Column NotificationsEnabled already exists in Podcasts table.")
+
         except Exception as e:
-            print(f"Error adding NotificationsEnabled column to Podcasts table: {e}")
-            cnx.rollback()
+            print(f"Error checking/adding NotificationsEnabled column to Podcasts table: {e}")
+            # Only rollback if we're in a transaction that needs rolling back
+            try:
+                cnx.rollback()
+            except:
+                pass  # If rollback fails, we're not in a transaction
 
     # Create the notification settings table
     try:
@@ -814,7 +831,7 @@ try:
         cnx.rollback()
 
     # Call our function to add the new column
-    add_notification_column_if_not_exist(cursor, cnx)
+    add_notification_column_if_not_exists(cursor, cnx)
 
     try:
         # Create Playlists table with the unique constraint
