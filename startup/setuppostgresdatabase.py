@@ -352,42 +352,56 @@ try:
         print(f"Error creating web key: {e}")
 
     try:
-        cursor.execute("""CREATE TABLE IF NOT EXISTS "UserSettings" (
+        # First check if the table exists
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables
+                WHERE table_schema = 'public'
+                AND table_name = 'UserSettings'
+            );
+        """)
+        table_exists = cursor.fetchone()[0]
+
+        if not table_exists:
+            # Fresh install - create the table with all columns
+            cursor.execute("""CREATE TABLE IF NOT EXISTS "UserSettings" (
                             UserSettingID SERIAL PRIMARY KEY,
                             UserID INT UNIQUE,
                             Theme VARCHAR(255) DEFAULT 'Nordic',
                             StartPage VARCHAR(255) DEFAULT 'home',
                             FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
                         )""")
-    except Exception as e:
-        print(f"Error adding UserSettings table: {e}")
-
-    def add_startpage_column():
-        try:
-            # Check if the column exists
+            print("UserSettings table created with StartPage column included")
+        else:
+            # Existing table - explicitly check for column case-insensitively
             cursor.execute("""
-                SELECT column_name
+                SELECT COUNT(*)
                 FROM information_schema.columns
-                WHERE table_name='UserSettings'
-                AND column_name='StartPage';
+                WHERE table_name = 'usersettings'
+                AND lower(column_name) = 'startpage'
             """)
+            column_count = cursor.fetchone()[0]
 
-            # If the column doesn't exist (no rows returned), add it
-            if not cursor.fetchone():
-                cursor.execute("""
-                    ALTER TABLE "UserSettings"
-                    ADD COLUMN StartPage VARCHAR(255) DEFAULT 'home';
-                """)
-                print("Successfully added StartPage column to UserSettings table")
+            if column_count == 0:
+                # Column doesn't exist - add it
+                try:
+                    cursor.execute("""
+                        ALTER TABLE "UserSettings"
+                        ADD COLUMN StartPage VARCHAR(255) DEFAULT 'home'
+                    """)
+                    print("StartPage column added to existing UserSettings table")
+                except Exception as column_error:
+                    # Log the specific error
+                    print(f"Error adding StartPage column: {column_error}")
             else:
                 print("StartPage column already exists in UserSettings table")
 
-        except Exception as e:
-            print(f"Error adding StartPage column: {e}")
-
-    # Call the function to ensure the column exists
-    add_startpage_column()
-
+        # Always commit the transaction
+        cnx.commit()
+    except Exception as e:
+        # Log the general error and rollback
+        print(f"Error handling UserSettings table: {e}")
+        cnx.rollback()
 
     admin_created = False
     try:

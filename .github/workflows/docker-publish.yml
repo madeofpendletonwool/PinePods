@@ -57,7 +57,7 @@ jobs:
     needs: set-env
     runs-on:
       - runs-on=${{ github.run_id }}
-      - runner=2cpu-linux-arm64
+      - runner=4cpu-linux-arm64
     permissions:
       contents: read
       packages: write
