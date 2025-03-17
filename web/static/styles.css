@@ -2553,6 +2553,262 @@ input[type="range"]::-moz-range-thumb {
     border-color: var(--text-secondary-color);
 }
 
+.search-border-bottom: 1px solid var(--border-color);
+    background-color: var(--secondary-background);
+    min-height: 180px;
+}
+
+.search-podcast-image-container {
+    position: relative;
+    width: 100%;
+    height: 0;
+    padding-top: 100%; /* 1:1 Aspect Ratio */
+    overflow: hidden;
+    background-color: var(--secondary-background);
+}
+
+.search-podcast-image-container img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.search-podcast-image-container:hover img {
+    transform: scale(1.05);
+}
+
+/* Force two columns on small screens */
+@media (max-width: 639px) {
+    .grid-cols-2 {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    .gap-4 {
+        gap: 0.75rem !important;
+    }
+
+    .search-item-container h3 {
+        font-size: 1rem;
+    }
+
+    .search-item-container .text-sm {
+        font-size: 0.75rem;
+    }
+
+    .search-item-container button {
+        width: 32px !important;
+        height: 32px !important;
+    }
+
+    .search-item-container button i {
+        font-size: 1.25rem;
+    }
+}
+
+.podcast-grid-container {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    padding: 0 12px 24px;
+    width: 100%;
+}
+
+/* Better hover effects and card styling */
+.search-item-container {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--container-background);
+    border-color: var(--border-color);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    height: 100%;
+    width: 100%;
+}
+
+.search-item-container:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+}
+
+/* Fix text colors */
+.search-item-container .item_container-text {
+    color: var(--text-color);
+}
+
+/* Line clamp utility classes */
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Animation for loading spinner */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Ensure grid styles always work */
+.grid {
+    display: grid;
+}
+
+.grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.md\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lg\:grid-cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (min-width: 640px) {
+    .md\:grid-cols-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1024px) {
+    .lg\:grid-cols-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+/* Ensure images take full width and height */
+.w-full {
+    width: 100% !important;
+}
+
+.h-full {
+    height: 100% !important;
+}
+
+.object-cover {
+    object-fit: cover !important;
+}
+
+/* Fix aspect ratio */
+[style*="aspect-ratio"] {
+    position: relative;
+    width: 100%;
+    padding-bottom: 100%; /* 1:1 Aspect Ratio */
+    height: 0;
+    overflow: hidden;
+}
+
+[style*="aspect-ratio"] img,
+[style*="aspect-ratio"] > * {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Fix for missing icons */
+.ph {
+    display: inline-block;
+}
+
+.ph-trash:before {
+    content: "🗑️";
+}
+
+.ph-plus-circle:before {
+    content: "➕";
+}
+
+.ph-spinner-gap:before {
+    content: "⌛";
+}
+
+.ph-microphone:before {
+    content: "🎙️";
+}
+
+.selector-button {
+    background-color: var(--container-button-color);
+    color: var(--button-text-color);
+    transition: all 0.2s ease;
+}
+
+.selector-button:active {
+    transform: scale(0.95);
+}
+
+/* Improved description styling */
+.item-container .item_container-text {
+    color: var(--text-color);
+}
+
+/* Line clamp utility classes */
+.line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Animation for loading spinner */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .search-item-container {
+        margin-bottom: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .podcast-grid-container {
+        gap: 10px;
+        padding: 0 8px 16px;
+    }
+
+    .search-item-container {
+        border-radius: 8px;
+    }
+
+    .search-item-container .p-4 {
+        padding: 10px;
+    }
+}
+
 .item-header-details {
     text-align: center;
     display: flex;
@@ -3280,7 +3536,45 @@ button.item-container-action-button.item-container-action-button {
     display: inline-flex;
     /* Keeps elements in line but allows for internal flex properties */
     align-items: center;
+    white-space: nowrap; /* Prevent line breaks */
+    overflow: hidden;    /* Hide overflow if needed */
+    text-overflow: ellipsis; /* Show ellipsis for overflow */
+    font-size: 14px;
     /* Aligns children vertically in the center */
+}
+
+/* Progressively reduce text size on smaller screens */
+@media (max-width: 600px) {
+    .episode-time-badge {
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 500px) {
+    .episode-time-badge {
+        font-size: 11px;
+        padding: 1px 4px !important; /* Reduce padding */
+    }
+
+    .episode-time-badge .time-icon {
+        width: 2px !important;
+        height: 2px !important;
+        margin-right: 3px !important;
+    }
+}
+
+@media (max-width: 400px) {
+    .episode-time-badge {
+        font-size: 10px;
+        padding: 1px 3px !important;
+    }
+}
+
+/* Ensure the container doesn't grow too large */
+.episode-time-badge-container {
+    max-width: 100%;
+    display: flex;
+    align-items: center;
 }
 
 .time-icon {

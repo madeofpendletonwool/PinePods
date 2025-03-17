@@ -164,7 +164,7 @@ pub fn saved() -> Html {
                                 let new_height = if width <= 530.0 {
                                     "122px"
                                 } else if width <= 768.0 {
-                                    "162px"
+                                    "150px"
                                 } else {
                                     "221px"
                                 };

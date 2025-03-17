@@ -45,13 +45,13 @@ pub fn search(_props: &SearchProps) -> Html {
         active_modal_clone.set(None);
     });
 
-    // let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let error_message = audio_state.error_message.clone();
     let info_message = audio_state.info_message.clone();
     let history = BrowserHistory::new();
 
+    // Clear messages on click
     {
         let ui_dispatch = audio_dispatch.clone();
         use_effect(move || {
@@ -67,17 +67,14 @@ pub fn search(_props: &SearchProps) -> Html {
                 .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
                 .unwrap();
 
-            // Return cleanup function
             move || {
                 document
                     .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
                     .unwrap();
-                closure.forget(); // Prevents the closure from being dropped
+                closure.forget();
             }
         });
     }
-    // let search_results = use_state(|| Vec::new());
-    // let search_results_clone = search_results.clone();
 
     let input_ref = use_node_ref();
     let input_ref_clone1 = input_ref.clone();
@@ -97,18 +94,45 @@ pub fn search(_props: &SearchProps) -> Html {
         .as_ref()
         .map(|ud| ud.server_name.clone());
 
-    // let on_click = Callback::from(move |_| {
-    //     if let Some(form) = input_ref_clone1.cast::<HtmlElement>() {
-    //         form.class_list().add_1("move-to-top").unwrap();
-    //     }
-    // });
+    // Track screen size for responsive adjustments
+    let is_mobile = use_state(|| false);
+
+    {
+        let is_mobile = is_mobile.clone();
+
+        use_effect_with((), move |_| {
+            let update_mobile_state = {
+                let is_mobile = is_mobile.clone();
+
+                Callback::from(move |_| {
+                    if let Some(window) = window() {
+                        if let Ok(width) = window.inner_width() {
+                            if let Some(width) = width.as_f64() {
+                                is_mobile.set(width <= 500.0);
+                            }
+                        }
+                    }
+                })
+            };
+
+            // Set initial state
+            update_mobile_state.emit(());
+
+            // Add resize listener
+            let window = window().unwrap();
+            let listener = EventListener::new(&window, "resize", move |_| {
+                update_mobile_state.emit(());
+            });
+
+            move || drop(listener)
+        });
+    }
 
     let api_key_submit = api_key.clone();
     let user_id_submit = user_id.clone();
     let server_name_submit = server_name.clone();
 
     let on_submit = Callback::from(move |event: SubmitEvent| {
-        event.prevent_default();
         event.prevent_default();
         let container_ref_submit_clone1 = container_ref_clone1.clone();
 
@@ -120,21 +144,19 @@ pub fn search(_props: &SearchProps) -> Html {
             form.class_list().add_1("move-to-top").unwrap();
         }
 
-        // Clone the necessary variables
         let server_name_submit = server_name_submit.clone();
         let api_key_submit = api_key_submit.clone();
         let user_id_submit = user_id_submit.clone();
-        // let search_results = search_results_clone.clone();
+
         let mut search_request = None;
         if let Some(input_element) = input_ref_clone2.cast::<HtmlInputElement>() {
             let search_term = input_element.value();
             search_request = Some(SearchRequest {
                 search_term,
-                user_id: user_id_submit.unwrap(), // replace with the actual user id
+                user_id: user_id_submit.unwrap(),
             });
-        } else {
-            // web_sys::console::log_1(&"input_ref_clone2 is not an HtmlInputElement".into());
         }
+
         let future_dispatch = search_dispatch.clone();
         let future = async move {
             sleep(Duration::from_secs(1)).await;
@@ -154,14 +176,11 @@ pub fn search(_props: &SearchProps) -> Html {
                         dispatch.reduce_mut(move |state| {
                             state.search_episodes = Some(SearchResponse { data: results });
                         });
-                        // Update the search results state
-                        // search_results.set(results);
                     }
                     Err(e) => {
-                        // Handle the error
                         web_sys::console::log_1(
                             &format!("Failed to search database: {:?}", e).into(),
-                        ); // Log for debugging
+                        );
                     }
                 }
             }
@@ -169,7 +188,8 @@ pub fn search(_props: &SearchProps) -> Html {
         spawn_local(future);
     });
 
-    let container_height = use_state(|| "221px".to_string()); // Add this state
+    let container_height = use_state(|| "221px".to_string());
+
     {
         let container_height = container_height.clone();
         use_effect_with((), move |_| {
@@ -182,7 +202,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                 let new_height = if width <= 530.0 {
                                     "122px"
                                 } else if width <= 768.0 {
-                                    "162px"
+                                    "150px"
                                 } else {
                                     "221px"
                                 };
@@ -193,10 +213,8 @@ pub fn search(_props: &SearchProps) -> Html {
                 })
             };
 
-            // Set initial height
             update_height.emit(());
 
-            // Add resize listener
             let listener = EventListener::new(&window().unwrap(), "resize", move |_| {
                 update_height.emit(());
             });
@@ -204,6 +222,13 @@ pub fn search(_props: &SearchProps) -> Html {
             move || drop(listener)
         });
     }
+
+    // Placeholder text changes based on screen size
+    let placeholder_text = if *is_mobile {
+        "Search podcasts..."
+    } else {
+        "Search for a podcast, episode, or description"
+    };
 
     html! {
         <>
@@ -219,29 +244,43 @@ pub fn search(_props: &SearchProps) -> Html {
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/>
                             </svg>
                         </div>
-                        <input type="search" id="search" class="search-bar-input block w-full p-4 ps-10 text-sm border rounded-lg" placeholder="Search for a podcast, episode, or description" ref={input_ref.clone()}/>
-                        <button class="search-page-button absolute end-2.5 bottom-2.5 focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-4 py-2">{ "Search" }</button>
+                        <input
+                            type="search"
+                            id="search"
+                            class={if *is_mobile { "search-bar-input mobile-search-input block w-full p-3 ps-10 text-sm border rounded-lg" }
+                                  else { "search-bar-input block w-full p-4 ps-10 text-sm border rounded-lg" }}
+                            placeholder={placeholder_text}
+                            ref={input_ref.clone()}
+                        />
+                        <button
+                            class={if *is_mobile { "search-page-button mobile-search-button absolute end-2 bottom-2 focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-3 py-1.5" }
+                                   else { "search-page-button absolute end-2.5 bottom-2.5 focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-4 py-2" }}
+                        >
+                            { if *is_mobile { "Go" } else { "Search" } }
+                        </button>
                     </div>
                 </form>
             </div>
+
             {
                 if let Some(search_eps) = state.search_episodes.clone() {
                     let int_search_eps = search_eps.clone();
                     let episodes = int_search_eps.data;
                     if episodes.is_empty() {
-                                // Render "No Recent Episodes Found" if episodes list is empty
-                                empty_message(
-                                    "No Search Results Found",
-                                    "Perhaps try again, but search for something slightly different :/"
-                                )
-                            } else {
-                                episodes.into_iter().map(|episode| {
+                        empty_message(
+                            "No Search Results Found",
+                            "Perhaps try again, but search for something slightly different :/"
+                        )
+                    } else {
+                        // Wrap results in a container with proper styling for mobile
+                        html! {
+                            <div class={if *is_mobile { "search-results-container mobile-results" } else { "search-results-container" }}>
+                                { episodes.into_iter().map(|episode| {
                                     let id_string = &episode.episodeid.to_string();
-
                                     let is_expanded = state.expanded_descriptions.contains(id_string);
-
                                     let dispatch = dispatch.clone();
 
+                                    // Same episode rendering logic as before
                                     let episode_url_clone = episode.episodeurl.clone();
                                     let episode_title_clone = episode.episodetitle.clone();
                                     let episode_description_clone = episode.episodedescription.clone();
@@ -330,6 +369,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                         .unwrap_or(&vec![])
                                         .contains(&check_episode_id);
                                     let episode_id_clone = Some(episode.episodeid).clone();
+
                                     let item = episode_item(
                                         Box::new(episode),
                                         sanitized_description,
@@ -354,19 +394,17 @@ pub fn search(_props: &SearchProps) -> Html {
                                     );
 
                                     item
-                                }).collect::<Html>()
-                            }
-                    // } else {
-                    //     empty_message(
-                    //         "No Recent Episodes Found",
-                    //         "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
-                    //     )
-                    // }
+                                }).collect::<Html>() }
+                            </div>
+                        }
+                    }
                 } else {
                     html! {}
                 }
             }
+
             <App_drawer />
+
             {
                 if let Some(audio_props) = &audio_state.currently_playing {
                     html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
@@ -374,6 +412,7 @@ pub fn search(_props: &SearchProps) -> Html {
                     html! {}
                 }
             }
+
             if let Some(error) = error_message {
                 <div class="error-snackbar">{ error }</div>
             }
