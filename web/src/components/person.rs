@@ -7,7 +7,7 @@ use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg as EpisodeMsg;
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_components::on_shownotes_click;
-use crate::components::gen_components::{Search_nav, FallbackImage, UseScrollToTop};
+use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
     strip_images_from_html, truncate_description, unix_timestamp_to_datetime_string,
@@ -297,8 +297,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                         .await
                         {
                             Ok(podcast_info) => {
-                                let new_podcast_id = podcast_info.podcast_id.unwrap();
-
+                                let new_podcast_id = podcast_info.podcast_id;
                                 // Update the podcast ID with the correct one from the DB
                                 podcast.podcastid = new_podcast_id;
                                 // Update Yewdux state
@@ -908,12 +907,17 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                             </div>
                                                         }
                                                     }
-                                                    <span class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2">
-                                                        <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-                                                            <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
-                                                        </svg>
-                                                        { format_release }
-                                                    </span>
+                                                    <div class="episode-time-badge-container" style="max-width: 100%; overflow: hidden;">
+                                                        <span
+                                                            class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2"
+                                                            style="flex-grow: 0; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+                                                        >
+                                                            <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                                                                <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
+                                                            </svg>
+                                                            { format_release }
+                                                        </span>
+                                                    </div>
                                                     {
                                                             html! {
                                                                 <span class="item_container-text">{ format!("{}", formatted_duration) }</span>

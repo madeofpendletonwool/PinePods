@@ -238,7 +238,7 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
                 let new_item_height = if width <= 530.0 {
                     122.0 + 16.0 // Base height + margin
                 } else if width <= 768.0 {
-                    162.0 + 16.0 // Base height + margin
+                    150.0 + 16.0 // Base height + margin
                 } else {
                     221.0 + 16.0 // Base height + margin
                 };
@@ -420,7 +420,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
                                 let new_height = if width <= 530.0 {
                                     "122px"
                                 } else if width <= 768.0 {
-                                    "162px"
+                                    "150px"
                                 } else {
                                     "221px"
                                 };
