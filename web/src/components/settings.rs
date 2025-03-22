@@ -2,7 +2,7 @@ use super::app_drawer::App_drawer;
 use super::gen_components::{Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
-use crate::components::episodes_layout::UIStateMsg;
+use crate::components::gen_funcs::format_error_message;
 use crate::components::setting_components;
 use crate::requests::setting_reqs::call_user_admin_check;
 use wasm_bindgen::closure::Closure;
@@ -111,8 +111,8 @@ pub fn settings() -> Html {
     let (_post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
 
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
+    let error_message = _post_state.error_message.clone();
+    let info_message = _post_state.info_message.clone();
     let active_tab = use_state(|| "user");
 
     let api_key = _post_state
@@ -129,7 +129,7 @@ pub fn settings() -> Html {
         .map(|ud| ud.server_name.clone());
 
     let is_admin = use_state(|| false);
-    let audio_admin = audio_dispatch.clone();
+    let audio_admin = _post_dispatch.clone();
 
     {
         let is_admin = is_admin.clone();
@@ -147,9 +147,12 @@ pub fn settings() -> Html {
                                 is_admin.set(response.is_admin);
                             }
                             Err(e) => {
+                                let formatted_error = format_error_message(&e.to_string());
                                 audio_admin.reduce_mut(|state| {
-                                    state.error_message =
-                                        Some(format!("Failed to check admin status: {:?}", e))
+                                    state.error_message = Some(format!(
+                                        "Failed to check admin status: {:?}",
+                                        formatted_error
+                                    ))
                                 });
                                 // console::log_1(&format!("Failed to check admin status: {:?}", e).into());
                             }
@@ -159,31 +162,6 @@ pub fn settings() -> Html {
                 || ()
             },
         );
-    }
-
-    {
-        let ui_dispatch = audio_dispatch.clone();
-        use_effect(move || {
-            let window = window().unwrap();
-            let document = window.document().unwrap();
-
-            let closure = Closure::wrap(Box::new(move |_event: Event| {
-                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
-                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
-            }) as Box<dyn Fn(_)>);
-
-            document
-                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                .unwrap();
-
-            // Return cleanup function
-            move || {
-                document
-                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                    .unwrap();
-                closure.forget(); // Prevents the closure from being dropped
-            }
-        });
     }
 
     let on_user_tab_click = {
@@ -262,13 +240,6 @@ pub fn settings() -> Html {
                 }
                 </div>
             </div>
-            // Conditional rendering for the error banner
-            if let Some(error) = error_message {
-                <div class="error-snackbar">{ error }</div>
-            }
-            if let Some(info) = info_message {
-                <div class="info-snackbar">{ info }</div>
-            }
             {
                 if let Some(audio_props) = &audio_state.currently_playing {
                     html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }

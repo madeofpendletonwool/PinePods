@@ -3,6 +3,7 @@ use super::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollT
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, PodcastState, UIState};
 use crate::components::episodes_layout::SafeHtml;
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{
     call_add_podcast, call_check_podcast, call_remove_podcasts_name, PodcastDetails, PodcastValues,
     RemovePodcastValuesName,
@@ -293,9 +294,10 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             });
                         }
                         Err(e) => {
+                            let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Error removing podcast: {:?}", e));
+                                    Some(format!("Error removing podcast: {:?}", formatted_error));
                             });
                         }
                     }
@@ -338,9 +340,10 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             });
                         }
                         Err(e) => {
+                            let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Error adding podcast: {:?}", e));
+                                    Some(format!("Error adding podcast: {:?}", formatted_error));
                             });
                         }
                     }

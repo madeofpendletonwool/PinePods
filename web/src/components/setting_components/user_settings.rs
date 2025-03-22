@@ -20,8 +20,8 @@ use yewdux::prelude::*;
 pub fn user_settings() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let ui_user = audio_dispatch.clone();
-    let ui_wasm = audio_dispatch.clone();
+    let ui_user = _dispatch.clone();
+    let ui_wasm = _dispatch.clone();
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let new_username = use_state(|| "".to_string());
@@ -30,8 +30,8 @@ pub fn user_settings() -> Html {
     let fullname = use_state(|| "".to_string());
     let admin_status = use_state(|| false);
     let selected_user_id = use_state(|| None);
-    let _error_message = audio_state.error_message.clone();
-    let _info_message = audio_state.info_message.clone();
+    let _error_message = state.error_message.clone();
+    let _info_message = state.info_message.clone();
     let error_message_container = use_state(|| "".to_string());
     let admin_edit_status = use_state(|| 0);
     let update_trigger = use_state(|| false);

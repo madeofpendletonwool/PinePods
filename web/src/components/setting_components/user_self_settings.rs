@@ -1,4 +1,5 @@
 use crate::components::context::{AppState, UIState};
+use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{encode_password, validate_email, validate_username};
 use crate::requests::setting_reqs::{call_get_my_user_info, MyUserInfo};
 use crate::requests::setting_reqs::{
@@ -46,7 +47,7 @@ pub fn user_self_settings() -> Html {
     {
         let user_info = user_info.clone();
         let update_trigger = update_trigger.clone();
-        let audio_dispatch = audio_dispatch.clone();
+        let _dispatch = _dispatch.clone();
 
         use_effect_with(
             (api_key.clone(), server_name.clone(), *update_trigger), // Include update_trigger in dependencies
@@ -63,9 +64,12 @@ pub fn user_self_settings() -> Html {
                                 user_info.set(Some(info));
                             }
                             Err(e) => {
-                                audio_dispatch.reduce_mut(|state| {
-                                    state.error_message =
-                                        Some(format!("Failed to fetch user info: {}", e));
+                                let formatted_error = format_error_message(&e.to_string());
+                                _dispatch.reduce_mut(|state| {
+                                    state.error_message = Some(format!(
+                                        "Failed to fetch user info: {}",
+                                        formatted_error
+                                    ));
                                 });
                             }
                         }
@@ -130,7 +134,7 @@ pub fn user_self_settings() -> Html {
         let show_password_match_error = show_password_match_error.clone();
         let show_success = show_success.clone();
         let success_message = success_message.clone();
-        let audio_dispatch = audio_dispatch.clone();
+        let _dispatch = _dispatch.clone();
         let updated_fields_call = updated_fields.clone();
 
         Callback::from(move |e: SubmitEvent| {
@@ -175,7 +179,7 @@ pub fn user_self_settings() -> Html {
                 let api_key = api_key.clone();
                 let show_success = show_success.clone();
                 let success_message = success_message.clone();
-                let audio_dispatch = audio_dispatch.clone();
+                let _dispatch = _dispatch.clone();
                 let updated_user = updated_fields_call.clone();
                 let updated_trigger_call = update_trigger.clone();
 
@@ -196,9 +200,10 @@ pub fn user_self_settings() -> Html {
                             web_sys::console::log_1(
                                 &format!("Username update failed: {}", e).into(),
                             );
-                            audio_dispatch.reduce_mut(|state| {
+                            let formatted_error = format_error_message(&e.to_string());
+                            _dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Failed to update username: {}", e));
+                                    Some(format!("Failed to update username: {}", formatted_error));
                             });
                         }
                     }
@@ -217,7 +222,7 @@ pub fn user_self_settings() -> Html {
                 let api_key = api_key.clone();
                 let show_success = show_success.clone();
                 let success_message = success_message.clone();
-                let audio_dispatch = audio_dispatch.clone();
+                let _dispatch = _dispatch.clone();
                 let updated_user = updated_fields_call.clone();
                 let updated_trigger_call = update_trigger.clone();
 
@@ -234,9 +239,10 @@ pub fn user_self_settings() -> Html {
                             success_message.set("Successfully updated user values".to_string());
                         }
                         Err(e) => {
-                            audio_dispatch.reduce_mut(|state| {
+                            let formatted_error = format_error_message(&e.to_string());
+                            _dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Failed to update email: {}", e));
+                                    Some(format!("Failed to update email: {}", formatted_error));
                             });
                         }
                     }
@@ -249,7 +255,7 @@ pub fn user_self_settings() -> Html {
                 let api_key = api_key.clone();
                 let show_success = show_success.clone();
                 let success_message = success_message.clone();
-                let audio_dispatch = audio_dispatch.clone();
+                let _dispatch = _dispatch.clone();
                 let updated_user = updated_fields_call.clone();
                 let updated_trigger_call = update_trigger.clone();
 
@@ -266,9 +272,12 @@ pub fn user_self_settings() -> Html {
                             success_message.set("Successfully updated user values".to_string());
                         }
                         Err(e) => {
-                            audio_dispatch.reduce_mut(|state| {
-                                state.error_message =
-                                    Some(format!("Failed to update full name: {}", e));
+                            let formatted_error = format_error_message(&e.to_string());
+                            _dispatch.reduce_mut(|state| {
+                                state.error_message = Some(format!(
+                                    "Failed to update full name: {}",
+                                    formatted_error
+                                ));
                             });
                         }
                     }
@@ -302,7 +311,7 @@ pub fn user_self_settings() -> Html {
                         let api_key = api_key.clone();
                         let show_success = show_success.clone();
                         let success_message = success_message.clone();
-                        let audio_dispatch = audio_dispatch.clone();
+                        let _dispatch = _dispatch.clone();
                         let updated_trigger_call = update_trigger.clone();
 
                         wasm_bindgen_futures::spawn_local(async move {
@@ -316,17 +325,22 @@ pub fn user_self_settings() -> Html {
                                         .set("Successfully updated user values".to_string());
                                 }
                                 Err(e) => {
-                                    audio_dispatch.reduce_mut(|state| {
-                                        state.error_message =
-                                            Some(format!("Failed to update password: {}", e));
+                                    let formatted_error = format_error_message(&e.to_string());
+                                    _dispatch.reduce_mut(|state| {
+                                        state.error_message = Some(format!(
+                                            "Failed to update password: {}",
+                                            formatted_error
+                                        ));
                                     });
                                 }
                             }
                         });
                     }
                     Err(e) => {
-                        audio_dispatch.reduce_mut(|state| {
-                            state.error_message = Some(format!("Error encoding password: {}", e));
+                        let formatted_error = format_error_message(&e.to_string());
+                        _dispatch.reduce_mut(|state| {
+                            state.error_message =
+                                Some(format!("Error encoding password: {}", formatted_error));
                         });
                     }
                 }

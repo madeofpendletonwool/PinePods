@@ -1,4 +1,5 @@
 use crate::components::context::{AppState, UIState};
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_create_api_key, call_delete_api_key, call_get_api_info, DeleteAPIRequest,
 };
@@ -17,10 +18,10 @@ pub fn api_keys() -> Html {
     let api_infos = use_state(|| Vec::new());
     let new_api_key = use_state(|| String::new());
     let selected_api_key_id: UseStateHandle<Option<i32>> = use_state(|| None);
-    let _error_message = audio_state.error_message.clone();
-    let _info_message = audio_state.info_message.clone();
-    let audio_dispatch_effect = audio_dispatch.clone();
-    let audio_dispatch_call = audio_dispatch.clone();
+    let _error_message = state.error_message.clone();
+    let _info_message = state.info_message.clone();
+    let dispatch_effect = _dispatch.clone();
+    let dispatch_call = _dispatch.clone();
     // Define the type of user in the Vec
     // let users: UseStateHandle<Vec<SettingsUser>> = use_state(|| Vec::new());
 
@@ -48,9 +49,12 @@ pub fn api_keys() -> Html {
                                     api_infos.set(response.api_info);
                                 }
                                 Err(e) => {
-                                    audio_dispatch_effect.reduce_mut(|audio_state| {
-                                        audio_state.error_message =
-                                            Option::from(format!("Error getting API Info: {}", e))
+                                    let formatted_error = format_error_message(&e.to_string());
+                                    dispatch_effect.reduce_mut(|audio_state| {
+                                        audio_state.error_message = Option::from(format!(
+                                            "Error getting API Info: {}",
+                                            formatted_error
+                                        ))
                                     });
                                 }
                             }
@@ -63,7 +67,7 @@ pub fn api_keys() -> Html {
         );
     }
 
-    let audio_dispatch_refresh = audio_dispatch.clone();
+    let dispatch_refresh = _dispatch.clone();
 
     // Add a new `use_effect_with` to re-fetch the API keys when a new API key is added
     {
@@ -89,9 +93,12 @@ pub fn api_keys() -> Html {
                                     api_infos.set(response.api_info);
                                 }
                                 Err(e) => {
-                                    audio_dispatch_refresh.reduce_mut(|audio_state| {
-                                        audio_state.error_message =
-                                            Option::from(format!("Error getting API Info: {}", e))
+                                    let formatted_error = format_error_message(&e.to_string());
+                                    dispatch_refresh.reduce_mut(|audio_state| {
+                                        audio_state.error_message = Option::from(format!(
+                                            "Error getting API Info: {}",
+                                            formatted_error
+                                        ))
                                     });
                                 }
                             }
@@ -146,7 +153,7 @@ pub fn api_keys() -> Html {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         Callback::from(move |_| {
-            let audio_dispatch = audio_dispatch.clone();
+            let _dispatch = _dispatch.clone();
             let api_key = api_key.clone();
             let user_id = request_state
                 .user_details
@@ -168,7 +175,7 @@ pub fn api_keys() -> Html {
                         page_state.set(PageState::Shown); // Move to the edit page state
                     }
                     Err(e) => {
-                        audio_dispatch.reduce_mut(|audio_state| {
+                        _dispatch.reduce_mut(|audio_state| {
                             audio_state.error_message = Option::from(e.to_string())
                         });
                     }
@@ -186,7 +193,7 @@ pub fn api_keys() -> Html {
         // Assume you have user_id and api_key from context or props
         let user_id = 1; // Example user_id
         Callback::from(move |_| {
-            let audio_dispatch = audio_dispatch_call.clone();
+            let dispatch = dispatch_call.clone();
             let api_key = api_key.clone();
             // let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
             let server_name = server_name.clone();
@@ -206,16 +213,17 @@ pub fn api_keys() -> Html {
                 .await
                 {
                     Ok(_) => {
-                        audio_dispatch.reduce_mut(|audio_state| {
+                        dispatch.reduce_mut(|audio_state| {
                             audio_state.info_message =
                                 Option::from(format!("API key deleted successfully"))
                         });
                         // Update UI accordingly, e.g., remove the deleted API key from the list
                     }
                     Err(e) => {
-                        audio_dispatch.reduce_mut(|audio_state| {
+                        let formatted_error = format_error_message(&e.to_string());
+                        dispatch.reduce_mut(|audio_state| {
                             audio_state.error_message =
-                                Option::from(format!("Error Deleting API Key: {}", e))
+                                Option::from(format!("Error Deleting API Key: {}", formatted_error))
                         });
                     }
                 }

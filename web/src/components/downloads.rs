@@ -13,12 +13,6 @@ use crate::requests::pod_req::{
     call_get_episode_downloads, call_get_podcasts, call_remove_downloaded_episode,
     DownloadEpisodeRequest, EpisodeDownload, EpisodeDownloadResponse, Podcast, PodcastResponse,
 };
-use yew::prelude::*;
-use yew::{function_component, html, Html};
-use yew_router::history::BrowserHistory;
-use yewdux::prelude::*;
-// use crate::components::gen_funcs::check_auth;
-use crate::components::episodes_layout::UIStateMsg;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -26,6 +20,10 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 use web_sys::window;
+use yew::prelude::*;
+use yew::{function_component, html, Html};
+use yew_router::history::BrowserHistory;
+use yewdux::prelude::*;
 
 fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec<EpisodeDownload>> {
     let mut grouped: HashMap<i32, Vec<EpisodeDownload>> = HashMap::new();
@@ -54,8 +52,8 @@ pub fn downloads() -> Html {
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
+    let error_message = post_state.error_message.clone();
+    let info_message = post_state.info_message.clone();
     let page_state = use_state(|| PageState::Normal);
     let api_key = post_state
         .auth_details
@@ -67,31 +65,6 @@ pub fn downloads() -> Html {
         .as_ref()
         .map(|ud| ud.server_name.clone());
     let loading = use_state(|| true);
-
-    {
-        let ui_dispatch = audio_dispatch.clone();
-        use_effect(move || {
-            let window = window().unwrap();
-            let document = window.document().unwrap();
-
-            let closure = Closure::wrap(Box::new(move |_event: Event| {
-                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
-                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
-            }) as Box<dyn Fn(_)>);
-
-            document
-                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                .unwrap();
-
-            // Return cleanup function
-            move || {
-                document
-                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                    .unwrap();
-                closure.forget(); // Prevents the closure from being dropped
-            }
-        });
-    }
 
     // Fetch episodes on component mount
     let loading_ep = loading.clone();
@@ -415,13 +388,6 @@ pub fn downloads() -> Html {
             } else {
                 html! {}
             }
-        }
-        // Conditional rendering for the error banner
-        if let Some(error) = error_message {
-            <div class="error-snackbar">{ error }</div>
-        }
-        if let Some(info) = info_message {
-            <div class="info-snackbar">{ info }</div>
         }
         </div>
         <App_drawer />

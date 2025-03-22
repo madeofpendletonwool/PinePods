@@ -1,6 +1,7 @@
 // notifications.rs
 
 use crate::components::context::{AppState, UIState};
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_get_notification_settings, call_test_notification, call_update_notification_settings,
     NotificationSettings, NotificationSettingsResponse,
@@ -61,7 +62,7 @@ pub fn notification_settings() -> Html {
         let ntfy_server = ntfy_server.clone();
         let gotify_url = gotify_url.clone();
         let gotify_token = gotify_token.clone();
-        let audio_dispatch = audio_dispatch.clone();
+        let _dispatch = _dispatch.clone();
         let notification_info = notification_info.clone();
 
         use_effect_with(
@@ -116,10 +117,11 @@ pub fn notification_settings() -> Html {
                                 }
                             }
                             Err(e) => {
-                                audio_dispatch.reduce_mut(|state| {
+                                let formatted_error = format_error_message(&e.to_string());
+                                _dispatch.reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "Failed to fetch notification settings: {}",
-                                        e
+                                        formatted_error
                                     ));
                                 });
                             }
@@ -144,13 +146,13 @@ pub fn notification_settings() -> Html {
         let gotify_token = gotify_token.clone();
         let show_success = show_success.clone();
         let success_message = success_message.clone();
-        let audio_dispatch = audio_dispatch.clone();
+        let _dispatch = _dispatch.clone();
 
         Callback::from(move |e: SubmitEvent| {
             let update_trig = update_trigger.clone();
             let success_call = show_success.clone();
             let success_call_message = success_message.clone();
-            let dispatch_call = audio_dispatch.clone();
+            let dispatch_call = _dispatch.clone();
             let server_submit = submit_server.clone();
             let key_submit = submit_api.clone();
             let id_submit = submit_user.clone();
@@ -182,9 +184,12 @@ pub fn notification_settings() -> Html {
                         update_trig.set(!*update_trig);
                     }
                     Err(e) => {
+                        let formatted_error = format_error_message(&e.to_string());
                         dispatch_call.reduce_mut(|state| {
-                            state.error_message =
-                                Some(format!("Failed to update notification settings: {}", e));
+                            state.error_message = Some(format!(
+                                "Failed to update notification settings: {}",
+                                formatted_error
+                            ));
                         });
                     }
                 }
@@ -194,10 +199,11 @@ pub fn notification_settings() -> Html {
 
     let on_test_notification = {
         let platform = platform.clone();
-        let audio_dispatch = audio_dispatch.clone();
+        let _dispatch = _dispatch.clone();
 
         Callback::from(move |_| {
             let aud_call = audio_dispatch.clone();
+            let dispatch = _dispatch.clone();
             let platform_value = (*platform).clone();
             let test_server = server_name.clone();
             let test_api = api_key.clone();
@@ -207,14 +213,18 @@ pub fn notification_settings() -> Html {
                 match call_test_notification(test_server, test_api, test_user, platform_value).await
                 {
                     Ok(_) => {
-                        aud_call.reduce_mut(|state| {
+                        dispatch.reduce_mut(|state| {
                             state.info_message = Some("Test notification sent!".to_string())
                         });
                     }
                     Err(e) => {
-                        aud_call.reduce_mut(|state| {
-                            state.error_message =
-                                Some(format!("Failed to send test notification: {}", e))
+                        // Format the error message to be more user-friendly
+                        let formatted_error = format_error_message(&e.to_string());
+                        dispatch.reduce_mut(|state| {
+                            state.error_message = Some(format!(
+                                "Failed to send test notification: {}",
+                                formatted_error
+                            ))
                         });
                     }
                 }

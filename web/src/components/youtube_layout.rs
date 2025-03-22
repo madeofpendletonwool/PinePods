@@ -2,6 +2,7 @@ use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_components::{empty_message, Search_nav, UseScrollToTop};
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{
     call_check_youtube_channel, call_remove_youtube_channel, call_subscribe_to_channel,
     RemoveYouTubeChannelValues,
@@ -20,8 +21,8 @@ pub struct YouTubeChannelItemProps {
 pub fn youtube_layout() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
+    let error_message = state.error_message.clone();
+    let info_message = state.info_message.clone();
 
     html! {
         <>
@@ -64,13 +65,6 @@ pub fn youtube_layout() -> Html {
                         )}
                     }
                 }
-            // Conditional rendering for the error banner
-            if let Some(error) = error_message {
-                <div class="error-snackbar">{ error }</div>
-            }
-            if let Some(info) = info_message {
-                <div class="info-snackbar">{ info }</div>
-            }
             {
                 if let Some(audio_props) = &audio_state.currently_playing {
                     html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
@@ -175,9 +169,12 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
                             });
                         }
                         Err(e) => {
+                            let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
-                                state.error_message =
-                                    Some(format!("Failed to subscribe to channel: {}", e));
+                                state.error_message = Some(format!(
+                                    "Failed to subscribe to channel: {}",
+                                    formatted_error
+                                ));
                             });
                         }
                     }
@@ -207,9 +204,12 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
                             });
                         }
                         Err(e) => {
+                            let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
-                                state.error_message =
-                                    Some(format!("Failed to unsubscribe from channel: {}", e));
+                                state.error_message = Some(format!(
+                                    "Failed to unsubscribe from channel: {}",
+                                    formatted_error
+                                ));
                             });
                         }
                     }

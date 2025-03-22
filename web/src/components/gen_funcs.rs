@@ -486,3 +486,63 @@ pub fn use_context_menu_long_press(
         close_context_menu,
     )
 }
+
+use serde_json::Value;
+
+/// Format error messages to be more user-friendly
+/// This function attempts to extract meaningful messages from error responses
+pub fn format_error_message(error: &str) -> String {
+    // Check if the error is in JSON format
+    if let Ok(json) = serde_json::from_str::<Value>(error) {
+        // Try to extract detail field from JSON
+        if let Some(detail) = json.get("detail") {
+            if let Some(detail_str) = detail.as_str() {
+                return detail_str.to_string();
+            }
+        }
+
+        // Try to extract message field from JSON
+        if let Some(message) = json.get("message") {
+            if let Some(message_str) = message.as_str() {
+                return message_str.to_string();
+            }
+        }
+
+        // Try to extract error field from JSON
+        if let Some(error_field) = json.get("error") {
+            if let Some(error_str) = error_field.as_str() {
+                return error_str.to_string();
+            }
+        }
+    }
+
+    // If we can't parse as JSON or find specific fields, check for common patterns
+    if error.contains("Error sending test notification:") {
+        return error
+            .replace("Error sending test notification:", "")
+            .trim()
+            .to_string();
+    }
+
+    // Check if error contains nested JSON strings and try to clean them up
+    if error.contains("{\"") && error.contains("\"}") {
+        let mut cleaned = error.to_string();
+        // Remove common wrapper phrases
+        let patterns = ["Error:", "Failed:", "Error sending", "Failed to"];
+        for pattern in &patterns {
+            cleaned = cleaned.replace(pattern, "");
+        }
+
+        // Try to parse any JSON strings within the error
+        if let Ok(json) = serde_json::from_str::<Value>(&cleaned.trim()) {
+            if let Some(detail) = json.get("detail") {
+                if let Some(detail_str) = detail.as_str() {
+                    return detail_str.to_string();
+                }
+            }
+        }
+    }
+
+    // Return the original error as a fallback
+    error.to_string()
+}

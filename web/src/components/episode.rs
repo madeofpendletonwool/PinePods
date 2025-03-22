@@ -4,7 +4,8 @@ use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
-use crate::components::episodes_layout::{SafeHtml, UIStateMsg};
+use crate::components::episodes_layout::SafeHtml;
+use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{
     convert_time_to_seconds, format_datetime, format_time, match_date_format, parse_date,
     sanitize_html_with_blank_target,
@@ -252,8 +253,8 @@ pub fn epsiode() -> Html {
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
+    let error_message = post_state.error_message.clone();
+    let info_message = post_state.info_message.clone();
     let history = BrowserHistory::new();
     let episode_id = state.selected_episode_id.clone();
     let ep_in_db = use_state(|| false);
@@ -289,31 +290,6 @@ pub fn epsiode() -> Html {
             closure.forget(); // Ensure the closure is not dropped prematurely
 
             || ()
-        });
-    }
-
-    {
-        let ui_dispatch = audio_dispatch.clone();
-        use_effect(move || {
-            let window = window().unwrap();
-            let document = window.document().unwrap();
-
-            let closure = Closure::wrap(Box::new(move |_event: Event| {
-                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
-                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
-            }) as Box<dyn Fn(_)>);
-
-            document
-                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                .unwrap();
-
-            // Return cleanup function
-            move || {
-                document
-                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                    .unwrap();
-                closure.forget(); // Prevents the closure from being dropped
-            }
         });
     }
 
@@ -1271,8 +1247,9 @@ pub fn epsiode() -> Html {
                                             });
                                         }
                                         Err(e) => {
+                                            let formatted_error = format_error_message(&e.to_string());
                                             post_dispatch.reduce_mut(|state| {
-                                                state.error_message = Option::from(format!("{}", e))
+                                                state.error_message = Option::from(format!("{}", formatted_error))
                                             });
                                             // Handle error, e.g., display the error message
                                         }
@@ -1329,8 +1306,9 @@ pub fn epsiode() -> Html {
                                             });
                                         }
                                         Err(e) => {
+                                            let formatted_error = format_error_message(&e.to_string());
                                             post_dispatch.reduce_mut(|state| {
-                                                state.error_message = Option::from(format!("{}", e))
+                                                state.error_message = Option::from(format!("{}", formatted_error))
                                             });
                                             // Handle error, e.g., display the error message
                                         }
@@ -1363,14 +1341,14 @@ pub fn epsiode() -> Html {
                             let server_name_queue = server_name.clone();
                             let api_key_queue = api_key.clone();
                             let user_id_queue = user_id.clone();
-                            let audio_dispatch_queue = audio_dispatch.clone();
+                            let dispatch_queue = _post_dispatch.clone();
                             let episode_id = episode_id_for_closure;
                             let is_youtube = episode_is_youtube.unwrap_or(false);
 
                             Callback::from(move |_: MouseEvent| {
                                 let server_name_copy = server_name_queue.clone();
                                 let api_key_copy = api_key_queue.clone();
-                                let queue_post = audio_dispatch_queue.clone();
+                                let queue_post = dispatch_queue.clone();
                                 let queue_status = queue_status.clone();
                                 let is_queued = *queue_status;
                                 let request = QueuePodcastRequest {
@@ -1391,7 +1369,8 @@ pub fn epsiode() -> Html {
                                             queue_status.set(!is_queued); // Toggle the state after successful API call
                                         },
                                         Err(e) => {
-                                            queue_post.reduce_mut(|state| state.error_message = Some(format!("{}", e)));
+                                            let formatted_error = format_error_message(&e.to_string());
+                                            queue_post.reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
                                         }
                                     }
                                 };
@@ -1403,7 +1382,7 @@ pub fn epsiode() -> Html {
                             let save_status = save_status.clone();
                             let saved_server_name = server_name.clone();
                             let saved_api_key = api_key.clone();
-                            let save_post = audio_dispatch.clone();
+                            let save_post = _post_dispatch.clone();
                             let user_id_save = user_id.clone();
                             let episode_id = episode_id_for_closure;
                             let is_youtube = episode_is_youtube.unwrap_or(false);
@@ -1432,7 +1411,8 @@ pub fn epsiode() -> Html {
                                             save_status.set(!is_saved); // Toggle the state after successful API call
                                         },
                                         Err(e) => {
-                                            post_state.reduce_mut(|state| state.error_message = Some(format!("{}", e)));
+                                            let formatted_error = format_error_message(&e.to_string());
+                                            post_state.reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
                                         }
                                     }
                                 };
@@ -1444,7 +1424,7 @@ pub fn epsiode() -> Html {
                             let download_status = download_status.clone();
                             let download_server_name = server_name.clone();
                             let download_api_key = api_key.clone();
-                            let download_post = audio_dispatch.clone();
+                            let download_post = _post_dispatch.clone();
                             let user_id_download = user_id.clone();
                             let episode_id = episode_id_for_closure;
 
@@ -1472,7 +1452,8 @@ pub fn epsiode() -> Html {
                                             download_status.set(!is_downloaded); // Toggle the state after successful API call
                                         },
                                         Err(e) => {
-                                            post_state.reduce_mut(|state| state.error_message = Some(format!("{}", e)));
+                                            let formatted_error = format_error_message(&e.to_string());
+                                            post_state.reduce_mut(|state| state.error_message = Some(format!("{}", formatted_error)));
                                         }
                                     }
                                 };
@@ -1570,8 +1551,9 @@ pub fn epsiode() -> Html {
                                                 "Error fetching podcast details: {}", error
                                             ).into());
                                             dispatch.reduce_mut(move |state| {
+                                                let formatted_error = format_error_message(&error.to_string());
                                                 state.error_message = Some(format!(
-                                                    "Failed to load details: {}", error
+                                                    "Failed to load details: {}", formatted_error
                                                 ));
                                             });
                                         }
@@ -1993,13 +1975,6 @@ pub fn epsiode() -> Html {
             } else {
                 html! {}
             }
-        }
-        // Conditional rendering for the error banner
-        if let Some(error) = error_message {
-            <div class="error-snackbar">{ error }</div>
-        }
-        if let Some(info) = info_message {
-            <div class="info-snackbar">{ info }</div>
         }
         </div>
         <App_drawer />

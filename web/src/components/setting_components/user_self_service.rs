@@ -1,10 +1,11 @@
+use crate::components::context::{AppState, UIState};
+use crate::components::gen_funcs::format_error_message;
+use crate::requests::setting_reqs::{call_enable_disable_self_service, call_self_service_status};
+use std::borrow::Borrow;
+use web_sys::console;
+use yew::platform::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::{AppState, UIState};
-use yew::platform::spawn_local;
-use web_sys::console;
-use crate::requests::setting_reqs::{call_self_service_status, call_enable_disable_self_service};
-use std::borrow::Borrow;
 
 #[function_component(SelfServiceSettings)]
 pub fn self_service_settings() -> Html {
@@ -18,25 +19,31 @@ pub fn self_service_settings() -> Html {
 
     {
         let self_service_status = self_service_status.clone();
-        use_effect_with((api_key.clone(), server_name.clone()), move |(api_key, server_name)| {
-            let self_service_status = self_service_status.clone();
-            let api_key = api_key.clone();
-            let server_name = server_name.clone();
-            let future = async move {
-                if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
-                    let response = call_self_service_status(server_name, api_key.unwrap()).await;
-                    match response {
-                        Ok(self_service_status_response) => {
-                            self_service_status.set(self_service_status_response);
-                        },
-                        Err(e) => console::log_1(&format!("Error getting self service status: {}", e).into()),
+        use_effect_with(
+            (api_key.clone(), server_name.clone()),
+            move |(api_key, server_name)| {
+                let self_service_status = self_service_status.clone();
+                let api_key = api_key.clone();
+                let server_name = server_name.clone();
+                let future = async move {
+                    if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
+                        let response =
+                            call_self_service_status(server_name, api_key.unwrap()).await;
+                        match response {
+                            Ok(self_service_status_response) => {
+                                self_service_status.set(self_service_status_response);
+                            }
+                            Err(e) => console::log_1(
+                                &format!("Error getting self service status: {}", e).into(),
+                            ),
+                        }
                     }
-                }
-            };
-            spawn_local(future);
-            // Return cleanup function
-            || {}
-        });
+                };
+                spawn_local(future);
+                // Return cleanup function
+                || {}
+            },
+        );
     }
     let html_self_service = self_service_status.clone();
     let loading = use_state(|| false);
@@ -51,7 +58,7 @@ pub fn self_service_settings() -> Html {
                     let api_key = api_key.clone();
                     let server_name = server_name.clone();
                     let self_service_status = html_self_service.clone();
-                    let audio_dispatch = audio_dispatch.clone();
+                    let _dispatch = _dispatch.clone();
                     let loading = loading.clone();
                     let future = async move {
                         loading.set(true);
@@ -63,7 +70,8 @@ pub fn self_service_settings() -> Html {
                                     self_service_status.set(!*current_status);
                                 },
                                 Err(e) => {
-                                    audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling self service: {}", e)));
+                                    let formatted_error = format_error_message(&e.to_string());
+                                    _dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling self service: {}", formatted_error)));
                                 },
                             }
                         }

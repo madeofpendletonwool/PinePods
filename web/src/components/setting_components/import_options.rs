@@ -144,7 +144,7 @@ pub fn import_options() -> Html {
                                                     dispatch_wasm.reduce_mut(|state| {
                                                         state.is_loading = Some(false)
                                                     });
-                                                    audio_dispatch.reduce_mut(|audio_state| {
+                                                    dispatch_wasm.reduce_mut(|audio_state| {
                                                         audio_state.info_message = Option::from(
                                                             "OPML Import Completed!".to_string(),
                                                         )
@@ -177,11 +177,11 @@ pub fn import_options() -> Html {
                             }
                             Err(e) => {
                                 log::error!("Failed to import OPML: {:?}", e);
-                                dispatch_wasm_call
-                                    .reduce_mut(|state| state.is_loading = Some(false));
-                                audio_dispatch_call.reduce_mut(|audio_state| {
-                                    audio_state.info_message =
-                                        Option::from("Failed to import OPML".to_string())
+                                dispatch_wasm_call.reduce_mut(|state| {
+                                    state.is_loading = Some(false);
+                                    state.info_message =
+                                        Option::from("Failed to import OPML".to_string());
+                                    state.clone()
                                 });
                             }
                         }

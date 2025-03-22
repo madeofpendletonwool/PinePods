@@ -1,4 +1,5 @@
 use crate::components::context::{AppState, UIState};
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{call_get_startpage, call_set_startpage, SetStartPageRequest};
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlSelectElement;
@@ -61,6 +62,7 @@ pub fn startpage() -> Html {
 
         Callback::from(move |_| {
             let audio_dispatch = audio_dispatch.clone();
+            let dispatch = _dispatch.clone();
             let startpage = (*selected_startpage).clone();
 
             if startpage.is_empty() {
@@ -86,15 +88,18 @@ pub fn startpage() -> Html {
                         .await
                     {
                         Ok(_) => {
-                            audio_dispatch.reduce_mut(|state| {
+                            dispatch.reduce_mut(|state| {
                                 state.info_message =
                                     Some("Start page updated successfully!".to_string());
                             });
                         }
                         Err(e) => {
-                            audio_dispatch.reduce_mut(|state| {
-                                state.error_message =
-                                    Some(format!("Failed to update start page: {}", e));
+                            let formatted_error = format_error_message(&e.to_string());
+                            dispatch.reduce_mut(|state| {
+                                state.error_message = Some(format!(
+                                    "Failed to update start page: {}",
+                                    formatted_error
+                                ));
                             });
                         }
                     }

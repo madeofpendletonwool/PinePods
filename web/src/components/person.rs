@@ -8,6 +8,7 @@ use crate::components::episodes_layout::AppStateMsg as EpisodeMsg;
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_components::on_shownotes_click;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
+use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
     strip_images_from_html, truncate_description, unix_timestamp_to_datetime_string,
@@ -77,8 +78,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
+    let error_message = state.error_message.clone();
+    let info_message = state.info_message.clone();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
     let is_expanded = use_state(|| true); // Start expanded by default
@@ -253,8 +254,11 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                             }
                             Err(e) => {
                                 dispatch_callback.reduce_mut(|state| {
-                                    state.error_message =
-                                        Some(format!("Error removing podcast: {:?}", e));
+                                    let formatted_error = format_error_message(&e.to_string());
+                                    state.error_message = Some(format!(
+                                        "Error removing podcast: {:?}",
+                                        formatted_error
+                                    ));
                                     state.is_loading = Some(false);
                                 });
                             }
@@ -323,8 +327,11 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                             }
                             Err(e) => {
                                 dispatch_callback.reduce_mut(|state| {
-                                    state.error_message =
-                                        Some(format!("Error adding podcast: {:?}", e));
+                                    let formatted_error = format_error_message(&e.to_string());
+                                    state.error_message = Some(format!(
+                                        "Error adding podcast: {:?}",
+                                        formatted_error
+                                    ));
                                     state.is_loading = Some(false);
                                 });
                             }
@@ -970,13 +977,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                     } else {
                         html! {}
                     }
-                }
-                // Conditional rendering for the error banner
-                if let Some(error) = error_message {
-                    <div class="error-snackbar">{ error }</div>
-                }
-                if let Some(info) = info_message {
-                    <div class="info-snackbar">{ info }</div>
                 }
             </div>
             <App_drawer />

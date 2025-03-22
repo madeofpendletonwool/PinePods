@@ -1,5 +1,6 @@
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::UIStateMsg;
+use crate::components::notification_center::ToastNotification;
 use crate::requests::login_requests::{self, call_check_mfa_enabled};
 use crate::requests::login_requests::{
     call_first_login_done, call_get_time_info, call_self_service_login_status,
@@ -121,9 +122,11 @@ pub fn login() -> Html {
                             } else {
                                 stored_theme
                             };
-                            
+
                             // Set the theme using your existing theme change function
-                            crate::components::setting_components::theme_options::changeTheme(&theme_to_use);
+                            crate::components::setting_components::theme_options::changeTheme(
+                                &theme_to_use,
+                            );
                         }
 
                         if let Ok(Some(user_state)) = storage.get_item("userState") {
@@ -643,9 +646,12 @@ pub fn login() -> Html {
                     Err(e) => {
                         page_state.set(PageState::Default);
                         // dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
+                        let formatted_error = format_error_message(&e.to_string());
                         post_state.reduce_mut(|state| {
-                            state.error_message =
-                                Option::from(format!("Error setting up time zone: {:?}", e))
+                            state.error_message = Option::from(format!(
+                                "Error setting up time zone: {:?}",
+                                formatted_error
+                            ))
                         });
                     }
                 }
@@ -815,9 +821,12 @@ pub fn login() -> Html {
                     }
                     Err(e) => {
                         page_state.set(PageState::Default);
+                        let formatted_error = format_error_message(&e.to_string());
                         post_state.reduce_mut(|state| {
-                            state.error_message =
-                                Option::from(format!("Error setting up time zone: {:?}", e))
+                            state.error_message = Option::from(format!(
+                                "Error setting up time zone: {:?}",
+                                formatted_error
+                            ))
                         });
                     }
                 }
@@ -899,13 +908,7 @@ pub fn login() -> Html {
                     {"Offline Mode"}
                 </button>
             </div>
-            // Conditional rendering for the error banner
-            if let Some(error) = error_message {
-                <div class="error-snackbar">{ error }</div>
-            }
-            if let Some(info) = info_message {
-                <div class="info-snackbar">{ info }</div>
-            }
+            <ToastNotification />
         </div>
         </div>
         </>

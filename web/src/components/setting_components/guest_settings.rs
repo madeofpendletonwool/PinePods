@@ -1,10 +1,9 @@
+use crate::components::context::{AppState, UIState};
+use crate::requests::setting_reqs::{call_enable_disable_guest, call_guest_status};
+use std::borrow::Borrow;
+use yew::platform::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::{AppState, UIState};
-use yew::platform::spawn_local;
-use crate::requests::setting_reqs::{call_guest_status, call_enable_disable_guest};
-use std::borrow::Borrow;
-
 
 #[function_component(GuestSettings)]
 pub fn guest_settings() -> Html {
@@ -15,36 +14,40 @@ pub fn guest_settings() -> Html {
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let _error_message = state.error_message.clone();
     let guest_status = use_state(|| false);
-    let audio_dispatch_effect = audio_dispatch.clone();
+    let dispatch_effect = _dispatch.clone();
 
     {
         let guest_status = guest_status.clone();
-        use_effect_with((api_key.clone(), server_name.clone()), move |(api_key, server_name)| {
-            let guest_status = guest_status.clone();
-            let api_key = api_key.clone();
-            let server_name = server_name.clone();
-            let future = async move {
-                if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
-                    let response = call_guest_status(server_name, api_key.unwrap()).await;
-                    match response {
-                        Ok(guest_status_response) => {
-                            guest_status.set(guest_status_response);
-                        },
-                        Err(e) => {
-                            audio_dispatch_effect.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error getting guest status: {}", e)));
-                        },
-
+        use_effect_with(
+            (api_key.clone(), server_name.clone()),
+            move |(api_key, server_name)| {
+                let guest_status = guest_status.clone();
+                let api_key = api_key.clone();
+                let server_name = server_name.clone();
+                let future = async move {
+                    if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
+                        let response = call_guest_status(server_name, api_key.unwrap()).await;
+                        match response {
+                            Ok(guest_status_response) => {
+                                guest_status.set(guest_status_response);
+                            }
+                            Err(e) => {
+                                dispatch_effect.reduce_mut(|audio_state| {
+                                    audio_state.error_message =
+                                        Option::from(format!("Error getting guest status: {}", e))
+                                });
+                            }
+                        }
                     }
-                }
-            };
-            spawn_local(future);
-            // Return cleanup function
-            || {}
-        });
+                };
+                spawn_local(future);
+                // Return cleanup function
+                || {}
+            },
+        );
     }
     let html_guest = guest_status.clone();
     let loading = use_state(|| false);
-
 
     html! {
         <div class="p-4"> // You can adjust the padding as needed
@@ -53,7 +56,7 @@ pub fn guest_settings() -> Html {
 
             <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" disabled={**loading.borrow()} checked={**guest_status.borrow()} class="sr-only peer" onclick={Callback::from(move |_| {
-                let audio_dispatch = audio_dispatch.clone();
+                let _dispatch = _dispatch.clone();
                 let api_key = api_key.clone();
                 let server_name = server_name.clone();
                 let guest_status = html_guest.clone();
@@ -69,7 +72,7 @@ pub fn guest_settings() -> Html {
                             },
 
                             Err(e) => {
-                                audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling guest access: {}", e)));
+                                _dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling guest access: {}", e)));
                             },
                         }
                     }
@@ -89,4 +92,3 @@ pub fn guest_settings() -> Html {
         </div>
     }
 }
-

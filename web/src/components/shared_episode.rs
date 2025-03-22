@@ -2,10 +2,11 @@ use super::gen_components::{empty_message, FallbackImage, UseScrollToTop};
 use crate::components::audio::on_play_click_shared;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
-use crate::components::episodes_layout::{SafeHtml, UIStateMsg};
+use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
+use crate::components::notification_center::ToastNotification;
 use crate::requests::pod_req::call_get_episode_by_url_key;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
@@ -40,8 +41,8 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
     //     .auth_details
     //     .as_ref()
     //     .map(|ud| ud.server_name.clone());
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
+    let error_message = _post_state.error_message.clone();
+    let info_message = _post_state.info_message.clone();
     let loading = use_state(|| true); // Initial loading state set to true
 
     {
@@ -72,31 +73,6 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
             closure.forget(); // Ensure the closure is not dropped prematurely
 
             || ()
-        });
-    }
-
-    {
-        let ui_dispatch = audio_dispatch.clone();
-        use_effect(move || {
-            let window = window().unwrap();
-            let document = window.document().unwrap();
-
-            let closure = Closure::wrap(Box::new(move |_event: Event| {
-                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
-                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
-            }) as Box<dyn Fn(_)>);
-
-            document
-                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                .unwrap();
-
-            // Return cleanup function
-            move || {
-                document
-                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                    .unwrap();
-                closure.forget(); // Prevents the closure from being dropped
-            }
         });
     }
 
@@ -221,7 +197,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                 <div class="episode-layout-container">
                                         <div class="item-header-mobile-cover-container">
                                         <FallbackImage
-                                            src={episode.episode.episodeartwork.clone()} 
+                                            src={episode.episode.episodeartwork.clone()}
                                             alt="episode artwork"
                                             class="episode-artwork"
                                         />
@@ -263,7 +239,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                 <div class="episode-layout-container-shared" style="padding-top: 20px;">
                                     <div class="episode-top-info">
                                         <FallbackImage
-                                            src={episode.episode.episodeartwork.clone()} 
+                                            src={episode.episode.episodeartwork.clone()}
                                             alt="episode artwork"
                                             class="episode-artwork"
                                         />
@@ -343,13 +319,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                 html! {}
             }
         }
-        // Conditional rendering for the error banner
-        if let Some(error) = error_message {
-            <div class="error-snackbar">{ error }</div>
-        }
-        if let Some(info) = info_message {
-            <div class="info-snackbar">{ info }</div>
-        }
+        <ToastNotification />
         </div>
         </>
     }

@@ -1,4 +1,5 @@
 use crate::components::context::{AppState, UIState};
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_add_oidc_provider, call_list_oidc_providers, call_remove_oidc_provider,
     AddOIDCProviderRequest, OIDCProvider,
@@ -403,7 +404,7 @@ pub fn oidc_settings() -> Html {
     {
         let providers = providers.clone();
         let update_trigger = update_trigger.clone();
-        let audio_dispatch = audio_dispatch.clone();
+        let _dispatch = _dispatch.clone();
 
         use_effect_with(*update_trigger, move |_| {
             let server_name = effect_state
@@ -422,9 +423,12 @@ pub fn oidc_settings() -> Html {
                             providers.set(fetched_providers);
                         }
                         Err(e) => {
-                            audio_dispatch.reduce_mut(|state| {
-                                state.error_message =
-                                    Some(format!("Failed to fetch OIDC providers: {}", e));
+                            let formatted_error = format_error_message(&e.to_string());
+                            _dispatch.reduce_mut(|state| {
+                                state.error_message = Some(format!(
+                                    "Failed to fetch OIDC providers: {}",
+                                    formatted_error
+                                ));
                             });
                         }
                     }
@@ -466,7 +470,7 @@ pub fn oidc_settings() -> Html {
     let remove_state = state.clone();
     let on_remove_provider = {
         let update_trigger = update_trigger.clone();
-        let audio_dispatch = audio_dispatch.clone();
+        let _dispatch = _dispatch.clone();
 
         Callback::from(move |provider_id: i32| {
             let server_name = remove_state
@@ -478,22 +482,23 @@ pub fn oidc_settings() -> Html {
                 .as_ref()
                 .and_then(|ud| ud.api_key.clone());
             let update_trigger = update_trigger.clone();
-            let audio_dispatch = audio_dispatch.clone();
+            let _dispatch = _dispatch.clone();
 
             if let (Some(server_name), Some(api_key)) = (server_name, api_key) {
                 wasm_bindgen_futures::spawn_local(async move {
                     match call_remove_oidc_provider(server_name, api_key, provider_id).await {
                         Ok(_) => {
                             update_trigger.set(!*update_trigger);
-                            audio_dispatch.reduce_mut(|state| {
+                            _dispatch.reduce_mut(|state| {
                                 state.info_message =
                                     Some("Provider successfully removed".to_string());
                             });
                         }
                         Err(e) => {
-                            audio_dispatch.reduce_mut(|state| {
+                            let formatted_error = format_error_message(&e.to_string());
+                            _dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Failed to remove provider: {}", e));
+                                    Some(format!("Failed to remove provider: {}", formatted_error));
                             });
                         }
                     }
@@ -606,13 +611,13 @@ pub fn oidc_settings() -> Html {
         let icon_svg = icon_svg.clone();
         let page_state = page_state.clone();
         let update_trigger = update_trigger.clone();
-        let audio_dispatch = audio_dispatch.clone();
+        let _dispatch = _dispatch.clone();
         let selected_scopes = selected_scopes.clone();
 
         Callback::from(move |e: SubmitEvent| {
             let call_trigger = update_trigger.clone();
             let call_page_state = page_state.clone();
-            let call_dispatch = audio_dispatch.clone();
+            let call_dispatch = _dispatch.clone();
             e.prevent_default();
 
             // Calculate detected_provider inside the callback so it uses current values
@@ -657,9 +662,10 @@ pub fn oidc_settings() -> Html {
                             });
                         }
                         Err(e) => {
+                            let formatted_error = format_error_message(&e.to_string());
                             call_dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Failed to add provider: {}", e));
+                                    Some(format!("Failed to add provider: {}", formatted_error));
                             });
                         }
                     }

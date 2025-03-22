@@ -357,7 +357,7 @@ try:
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
                 WHERE table_schema = 'public'
-                AND table_name = 'UserSettings'
+                AND table_name = 'usersettings'
             );
         """)
         table_exists = cursor.fetchone()[0]
@@ -373,25 +373,27 @@ try:
                         )""")
             print("UserSettings table created with StartPage column included")
         else:
-            # Existing table - explicitly check for column case-insensitively
+            # Existing table - check for column with exact data type and constraints
             cursor.execute("""
-                SELECT COUNT(*)
+                SELECT column_name, data_type, column_default
                 FROM information_schema.columns
                 WHERE table_name = 'usersettings'
-                AND lower(column_name) = 'startpage'
             """)
-            column_count = cursor.fetchone()[0]
+            columns = cursor.fetchall()
 
-            if column_count == 0:
-                # Column doesn't exist - add it
+            # Check if "startpage" already exists (case-insensitive)
+            startpage_exists = any(col[0].lower() == 'startpage' for col in columns)
+
+            if not startpage_exists:
                 try:
+                    # Column doesn't exist - add it
                     cursor.execute("""
                         ALTER TABLE "UserSettings"
-                        ADD COLUMN StartPage VARCHAR(255) DEFAULT 'home'
+                        ADD COLUMN "startpage" VARCHAR(255) DEFAULT 'home'
                     """)
                     print("StartPage column added to existing UserSettings table")
                 except Exception as column_error:
-                    # Log the specific error
+                    # Log the specific error and continue
                     print(f"Error adding StartPage column: {column_error}")
             else:
                 print("StartPage column already exists in UserSettings table")
