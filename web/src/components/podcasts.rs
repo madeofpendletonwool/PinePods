@@ -663,15 +663,6 @@ pub fn podcasts() -> Html {
                                     }
                                     </button>
                                 </div>
-                                <div>
-                                if let Some(error) = &*error_message {
-                                    <span class="text-red-600 text-xs">{ error }</span>
-                                }
-                                // Display informational message inline right below the text input
-                                if let Some(info) = &*info_message {
-                                    <span class="text-green-600 text-xs">{ info }</span>
-                                }
-                                </div>
                             </div>
                         </form>
                     </div>

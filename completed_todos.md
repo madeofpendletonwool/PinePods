@@ -11,14 +11,23 @@ Major Version:
 - [ ] Fix Virtual Line Spacing on Playlist Page
 - [ ] Update /home/collinp/Documents/github/PinePods/web/src-tauri/com.gooseberrydevelopment.pinepods.metainfo.xml file along with flatpak automation. This must be done on each release
 
+0.7.7
+
+- [] Updated youtube search results page to be similar to new pod results page
+
 0.7.6
-- [] Add ability to delete playlsits
+- [x] Add ability to delete playlsits
 - [x] Notification system
-- [] Ability to delete nextcloud
-- [] Finalize OIDC errors
+- [x] Ability to delete nextcloud
+- [x] Finalize OIDC errors
 - [x] Fix context menu on downloads page
 - [x] adjust login screen component to be set amount down
-- [] Implement download_youtube_video_task
+- [x] Implement download_youtube_video_task
+- [x] Fix specific issue with playlist creation
+- [] mysql tests
+- [] Go from 0.7.3 to 0.7.5 check startpage
+- [] release
+- [] flatpak
 
 - [x] Fade out animation for toast
 - [x] Check for and remove other on page notifications

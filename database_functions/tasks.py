@@ -578,15 +578,42 @@ def download_youtube_video_task(self, video_id: int, user_id: int, database_type
                 "status_text": status_message
             })
 
-        # Execute the download with progress callback
-        success = download_youtube_video(
-            cnx,
-            database_type,
-            video_id,
-            user_id,
-            task_id,
-            progress_callback=progress_callback
-        )
+        # Check if the download_youtube_video function accepts progress_callback parameter
+        import inspect
+        try:
+            signature = inspect.signature(download_youtube_video)
+            has_progress_callback = 'progress_callback' in signature.parameters
+        except (TypeError, ValueError):
+            has_progress_callback = False
+
+        # Execute the download with progress callback if supported, otherwise without it
+        if has_progress_callback:
+            success = download_youtube_video(
+                cnx,
+                database_type,
+                video_id,
+                user_id,
+                task_id,
+                progress_callback=progress_callback
+            )
+        else:
+            # Call without the progress_callback parameter
+            success = download_youtube_video(
+                cnx,
+                database_type,
+                video_id,
+                user_id,
+                task_id
+            )
+
+            # Since we can't use progress callbacks directly, manually update progress after completion
+            task_manager.update_task(task_id, 100 if success else 0,
+                                    "SUCCESS" if success else "FAILED",
+                                    {
+                                        "item_id": video_id,
+                                        "item_title": display_title,
+                                        "status_text": f"{'Download complete' if success else 'Download failed'}"
+                                    })
 
         # Mark task as complete with a nice message
         completion_message = f"{'Successfully downloaded' if success else 'Failed to download'} {display_title}"

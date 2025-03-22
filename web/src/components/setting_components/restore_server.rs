@@ -154,18 +154,6 @@ pub fn restore_server() -> Html {
                 </div>
             </div>
 
-            if let Some(error) = &*error_message {
-                <div class="mt-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-900 dark:text-red-200">
-                    {error}
-                </div>
-            }
-
-            if let Some(info) = &*info_message {
-                <div class="mt-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-900 dark:text-green-200">
-                    {info}
-                </div>
-            }
-
             if *is_loading {
                 <div class="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                     <div class="flex items-center space-x-3">

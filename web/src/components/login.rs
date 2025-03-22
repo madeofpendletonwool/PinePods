@@ -1735,13 +1735,6 @@ pub fn login() -> Html {
 
 
                 </div>
-                {
-                    if app_state.error_message.as_ref().map_or(false, |msg| !msg.is_empty()) {
-                        html! { <div class="error-snackbar">{ &app_state.error_message }</div> }
-                    } else {
-                        html! {}
-                    }
-                }
                 <ToastNotification />
                 // Connect to Different Server button at bottom right
                 <div class="fixed bottom-4 right-4">

@@ -119,18 +119,6 @@ pub fn pod_layout() -> Html {
                 <h1 class="item_container-text text-2xl font-bold my-6 text-center">{ "Podcast Search Results" }</h1>
 
                 {
-                    if let Some(error) = error_message {
-                        html! { <div class="error-snackbar">{ error }</div> }
-                    } else { html! {} }
-                }
-
-                {
-                    if let Some(info) = info_message {
-                        html! { <div class="info-snackbar">{ info }</div> }
-                    } else { html! {} }
-                }
-
-                {
                     if let Some(results) = search_results {
                         let podcasts = results.feeds.as_ref().map_or_else(
                             || results.results.as_ref().map(|r| r.iter().map(|item| item.clone().into()).collect::<Vec<UnifiedPodcast>>()),
