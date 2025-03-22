@@ -1603,6 +1603,9 @@ pub fn episode_layout() -> Html {
                     .await
                     {
                         Ok(response_body) => {
+                            // Replace the problematic sections in episodes_layout.rs with this code:
+
+                            // First issue: response_body.podcast_id is now i32, not Option<i32>
                             if response_body.success {
                                 dispatch_wasm.reduce_mut(|state| {
                                     state.info_message =
@@ -1610,43 +1613,45 @@ pub fn episode_layout() -> Html {
                                 });
                                 app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 is_added_inner.set(true);
-                                if let Some(call_podcast_id) = response_body.podcast_id {
-                                    // Use the podcast_id for further processing if needed
-                                    callback_podcast_id.set(call_podcast_id);
-                                }
-                                if let Some(first_episode_id) = response_body.first_episode_id {
-                                    // Set the episode_id to the first episode's ID
-                                    let episode_id = Some(first_episode_id);
 
-                                    // Use the episode_id for further processing if needed
-                                    app_dispatch.reduce_mut(|state| {
-                                        state.selected_episode_id = episode_id; // Example usage
-                                    });
+                                // podcast_id is now directly an i32, not an Option
+                                let call_podcast_id = response_body.podcast_id;
+                                callback_podcast_id.set(call_podcast_id);
+
+                                // Handle first episode ID differently since it's now Option<Vec<FirstEpisodeInfo>>
+                                if let Some(first_episodes) = &response_body.first_episode_id {
+                                    if !first_episodes.is_empty() {
+                                        // Get the episode_id from the first episode in the array
+                                        let episode_id = Some(first_episodes[0].episode_id);
+
+                                        // Use the episode_id for further processing if needed
+                                        app_dispatch.reduce_mut(|state| {
+                                            state.selected_episode_id = episode_id;
+                                            // Now this matches Option<i32>
+                                        });
+                                    }
                                 }
 
-                                // Fetch episodes from the database after adding the podcast
-                                if let Some(call_podcast_id) = response_body.podcast_id {
-                                    match call_get_podcast_episodes(
-                                        &server_name_wasm.unwrap(),
-                                        &api_key_wasm,
-                                        &user_id_wasm,
-                                        &call_podcast_id,
-                                    )
-                                    .await
-                                    {
-                                        Ok(podcast_feed_results) => {
-                                            app_dispatch.reduce_mut(move |state| {
-                                                state.podcast_feed_results =
-                                                    Some(podcast_feed_results);
-                                            });
-                                            app_dispatch
-                                                .reduce_mut(|state| state.is_loading = Some(false));
-                                        }
-                                        Err(e) => {
-                                            web_sys::console::log_1(
-                                                &format!("Error fetching episodes: {:?}", e).into(),
-                                            );
-                                        }
+                                // Fetch episodes - podcast_id is now direct i32
+                                match call_get_podcast_episodes(
+                                    &server_name_wasm.unwrap(),
+                                    &api_key_wasm,
+                                    &user_id_wasm,
+                                    &call_podcast_id,
+                                )
+                                .await
+                                {
+                                    Ok(podcast_feed_results) => {
+                                        app_dispatch.reduce_mut(move |state| {
+                                            state.podcast_feed_results = Some(podcast_feed_results);
+                                        });
+                                        app_dispatch
+                                            .reduce_mut(|state| state.is_loading = Some(false));
+                                    }
+                                    Err(e) => {
+                                        web_sys::console::log_1(
+                                            &format!("Error fetching episodes: {:?}", e).into(),
+                                        );
                                     }
                                 }
 

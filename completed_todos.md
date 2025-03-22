@@ -9,6 +9,7 @@ Major Version:
 - [ ] Make sure youtube entirely works on playlists
 - [ ] Make sure youtube entirely works on homepage
 - [ ] Fix Virtual Line Spacing on Playlist Page
+- [ ] Update /home/collinp/Documents/github/PinePods/web/src-tauri/com.gooseberrydevelopment.pinepods.metainfo.xml file along with flatpak automation. This must be done on each release
 
 0.7.6
 - [] Add ability to delete playlsits

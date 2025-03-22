@@ -1,4 +1,6 @@
-use super::gen_components::{on_shownotes_click, FallbackImage, ContextButton, EpisodeModal, EpisodeTrait};
+use super::gen_components::{
+    on_shownotes_click, ContextButton, EpisodeModal, EpisodeTrait, FallbackImage,
+};
 use super::gen_funcs::{format_datetime, match_date_format, parse_date};
 use crate::components::audio::on_play_pause;
 use crate::components::context::{AppState, UIState};
@@ -65,7 +67,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 let (new_item_height, new_container_height) = if width <= 530.0 {
                     (122.0 + 16.0, 122.0)
                 } else if width <= 768.0 {
-                    (162.0 + 16.0, 162.0)
+                    (150.0 + 16.0, 150.0)
                 } else {
                     (221.0 + 16.0, 221.0)
                 };
@@ -253,12 +255,17 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                                 </div>
                             }
                         }
-                        <span class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2">
-                            <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
-                            </svg>
-                            { format_release.clone() }
-                        </span>
+                        <div class="episode-time-badge-container" style="max-width: 100%; overflow: hidden;">
+                            <span
+                                class="episode-time-badge inline-flex items-center px-2.5 py-0.5 rounded me-2"
+                                style="flex-grow: 0; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"
+                            >
+                                <svg class="time-icon w-2.5 h-2.5 me-1.5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10 0a10 10 0 1 0 10 10A10.011 10.011 0 0 0 10 0Zm3.982 13.982a1 1 0 0 1-1.414 0l-3.274-3.274A1.012 1.012 0 0 1 9 10V6a1 1 0 0 1 2 0v3.586l2.982 2.982a1 1 0 0 1 0 1.414Z"/>
+                                </svg>
+                                { format_release.clone() }
+                            </span>
+                        </div>
 
                         {
                             if episode.completed.unwrap_or(false) {

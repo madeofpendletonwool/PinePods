@@ -121,12 +121,24 @@ pub struct PodcastValues {
     pub user_id: i32,
 }
 
-#[derive(serde::Deserialize, Serialize)]
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+pub struct FirstEpisodeInfo {
+    pub episode_id: i32,
+    pub podcast_id: i32,
+    pub title: String,
+    pub description: String,
+    pub audio_url: String,
+    pub artwork_url: String,
+    pub release_datetime: String,
+    pub duration: i32,
+    pub completed: bool,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
 pub struct PodcastStatusResponse {
     pub success: bool,
-    pub podcast_id: Option<i32>,
-    pub first_episode_id: Option<i32>,
-    // Include other fields if your response contains more data
+    pub podcast_id: i32,
+    pub first_episode_id: Option<Vec<FirstEpisodeInfo>>,
 }
 
 pub async fn call_add_podcast(
@@ -2714,7 +2726,7 @@ pub struct HomeEpisode {
     #[serde(default)]
     pub saved: bool,
     #[serde(default)]
-    pub queued: bool, 
+    pub queued: bool,
     #[serde(default)]
     pub downloaded: bool,
 }
