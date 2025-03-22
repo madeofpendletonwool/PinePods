@@ -45,8 +45,8 @@ pub fn subscribed_people() -> Html {
     // let error = use_state(|| None);
     let (post_state, post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
+    let error_message = post_state.error_message.clone();
+    let info_message = post_state.info_message.clone();
     let loading = use_state(|| true);
     let expanded_state = use_state(|| std::collections::HashMap::<i32, bool>::new());
     let subscribed_people = use_state(|| Vec::<PersonWithEpisodes>::new());
@@ -285,12 +285,6 @@ pub fn subscribed_people() -> Html {
                 } else {
                     html! {}
                 }
-            }
-            if let Some(error) = error_message {
-                <div class="error-snackbar">{ error }</div>
-            }
-            if let Some(info) = info_message {
-                <div class="info-snackbar">{ info }</div>
             }
         </div>
         <App_drawer />

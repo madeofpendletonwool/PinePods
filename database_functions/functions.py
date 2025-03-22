@@ -3020,7 +3020,7 @@ def user_history(cnx, database_type, user_id):
     finally:
         cursor.close()
 
-def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
+def download_podcast(cnx, database_type, episode_id, user_id, task_id=None, progress_callback=None):
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
     print('download podcast is running')
@@ -3033,6 +3033,7 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
         episode_id: ID of the episode to download
         user_id: ID of the user requesting the download
         task_id: Optional Celery task ID for progress tracking
+        progress_callback: Optional callback function to report progress (fn(progress, status))
 
     Returns:
         bool: True if successful, False otherwise
@@ -3058,7 +3059,9 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
             logger.info(f"Episode {episode_id} already downloaded for user {user_id}")
             # Update task progress to 100% if task_id is provided
             if task_id:
-                download_manager.update_progress(task_id, 100.0, "SUCCESS")
+                download_manager.update_task(task_id, 100.0, "SUCCESS")
+            if progress_callback:
+                progress_callback(100.0, "SUCCESS")
             return True
 
         # Get episode details
@@ -3103,7 +3106,9 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
         if result is None:
             logger.error(f"Episode {episode_id} not found")
             if task_id:
-                download_manager.update_progress(task_id, 0.0, "FAILED")
+                download_manager.update_task(task_id, 0.0, "FAILED")
+            if progress_callback:
+                progress_callback(0.0, "FAILED")
             return False
 
         # Extract episode details
@@ -3127,7 +3132,9 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
 
         # Update task progress if task_id is provided
         if task_id:
-            download_manager.update_progress(task_id, 5.0, "STARTED")
+            download_manager.update_task(task_id, 5.0, "STARTED")
+        if progress_callback:
+            progress_callback(5.0, "STARTED")
 
         # Get user's time and date preferences
         timezone, time_format, date_format = get_time_info(database_type, cnx, user_id)
@@ -3188,7 +3195,9 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
             cnx.commit()
 
             if task_id:
-                download_manager.update_progress(task_id, 100.0, "SUCCESS")
+                download_manager.update_task(task_id, 100.0, "SUCCESS")
+            if progress_callback:
+                progress_callback(100.0, "SUCCESS")
 
             logger.info(f"File already exists, added to database: {file_path}")
             return True
@@ -3199,7 +3208,9 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
         temp_file.close()
 
         if task_id:
-            download_manager.update_progress(task_id, 10.0, "DOWNLOADING")
+            download_manager.update_task(task_id, 10.0, "DOWNLOADING")
+        if progress_callback:
+            progress_callback(10.0, "DOWNLOADING")
 
         # Download the file with progress tracking
         logger.info(f"Starting download of episode {episode_id} from {episode_url}")
@@ -3219,16 +3230,21 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
                             downloaded_bytes += len(chunk)
 
                             # Update progress every ~5% if file size is known
-                            if file_size > 0 and task_id:
+                            if file_size > 0:
                                 progress = (downloaded_bytes / file_size) * 100
                                 # Only update at certain intervals to reduce overhead
                                 if downloaded_bytes % (file_size // 20 + 1) < 8192:  # ~5% intervals
                                     download_progress = 10.0 + (progress * 0.8)  # Scale to 10-90%
-                                    download_manager.update_progress(task_id, download_progress, "DOWNLOADING")
+                                    if task_id:
+                                        download_manager.update_task(task_id, download_progress, "DOWNLOADING")
+                                    if progress_callback:
+                                        progress_callback(download_progress, "DOWNLOADING")
         except Exception as e:
             logger.error(f"Failed to download episode {episode_id}: {str(e)}")
             if task_id:
-                download_manager.update_progress(task_id, 0.0, "FAILED")
+                download_manager.update_task(task_id, 0.0, "FAILED")
+            if progress_callback:
+                progress_callback(0.0, "FAILED")
 
             # Clean up temp file
             if os.path.exists(temp_path):
@@ -3237,7 +3253,9 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
             raise
 
         if task_id:
-            download_manager.update_progress(task_id, 90.0, "FINALIZING")
+            download_manager.update_task(task_id, 90.0, "FINALIZING")
+        if progress_callback:
+            progress_callback(90.0, "FINALIZING")
 
         # Move the temporary file to the final location
         shutil.move(temp_path, file_path)
@@ -3286,7 +3304,9 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
         cnx.commit()
 
         if task_id:
-            download_manager.update_progress(task_id, 100.0, "SUCCESS")
+            download_manager.update_task(task_id, 100.0, "SUCCESS")
+        if progress_callback:
+            progress_callback(100.0, "SUCCESS")
 
         logger.info(f"Successfully downloaded episode {episode_id} to {file_path}")
         return True
@@ -3296,14 +3316,18 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
         if cursor:
             cnx.rollback()
         if task_id:
-            download_manager.update_progress(task_id, 0.0, "FAILED")
+            download_manager.update_task(task_id, 0.0, "FAILED")
+        if progress_callback:
+            progress_callback(0.0, "FAILED")
         return False
     except Exception as e:
         logger.error(f"Error downloading episode {episode_id}: {e}", exc_info=True)
         if cursor:
             cnx.rollback()
         if task_id:
-            download_manager.update_progress(task_id, 0.0, "FAILED")
+            download_manager.update_task(task_id, 0.0, "FAILED")
+        if progress_callback:
+            progress_callback(0.0, "FAILED")
         return False
     finally:
         if cursor:
@@ -3316,19 +3340,83 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None):
                 pass
 
 def get_episode_ids_for_podcast(cnx, database_type, podcast_id):
+    """
+    Get episode IDs and titles for a podcast.
+    Handles both PostgreSQL and MariaDB/MySQL return types.
+    PostgreSQL uses lowercase column names, MariaDB uses uppercase.
+    """
     cursor = cnx.cursor()
-    if database_type == "postgresql":
-        query = 'SELECT EpisodeID FROM "Episodes" WHERE PodcastID = %s'
-    else:  # MySQL or MariaDB
-        query = "SELECT EpisodeID FROM Episodes WHERE PodcastID = %s"
+    print(f"Database type: {database_type}")
 
+    if database_type == "postgresql":
+        # In PostgreSQL, table names are capitalized but column names are lowercase
+        query = 'SELECT "episodeid", "episodetitle" FROM "Episodes" WHERE "podcastid" = %s'
+    else:  # MySQL or MariaDB
+        query = "SELECT EpisodeID, EpisodeTitle FROM Episodes WHERE PodcastID = %s"
+
+    print(f"Executing query: {query} with podcast_id: {podcast_id}")
     cursor.execute(query, (podcast_id,))
     results = cursor.fetchall()
-    cursor.close()
+    print(f"Raw query results (first 3): {results[:3]}")
 
-    # Extract episode IDs from the results
-    episode_ids = [row[0] if isinstance(row, tuple) else row.get('episodeid') for row in results]
-    return episode_ids
+    episodes = []
+    for row in results:
+        # Handle different return types from different database drivers
+        if isinstance(row, dict):
+            # Dictionary return (sometimes from MariaDB)
+            if "episodeid" in row:  # PostgreSQL lowercase keys
+                episode_id = row["episodeid"]
+                episode_title = row.get("episodetitle", "")
+            else:  # MariaDB uppercase keys
+                episode_id = row["EpisodeID"]
+                episode_title = row.get("EpisodeTitle", "")
+        else:
+            # Tuple return (most common from PostgreSQL)
+            episode_id = row[0]
+            episode_title = row[1] if len(row) > 1 else ""
+
+        # Check for None, empty string, or 'None' string
+        if not episode_title or episode_title == 'None':
+            # Get a real episode title from the database if possible
+            title_query = (
+                'SELECT "episodetitle" FROM "Episodes" WHERE "episodeid" = %s'
+                if database_type == "postgresql"
+                else "SELECT EpisodeTitle FROM Episodes WHERE EpisodeID = %s"
+            )
+            cursor.execute(title_query, (episode_id,))
+            title_result = cursor.fetchone()
+
+            if title_result and title_result[0]:
+                episode_title = title_result[0]
+            else:
+                # Look up the title by podcast name + episode number if we can
+                ordinal_query = (
+                    'SELECT p."podcastname", COUNT(*) as episode_num FROM "Episodes" e '
+                    'JOIN "Podcasts" p ON e."podcastid" = p."podcastid" '
+                    'WHERE p."podcastid" = %s AND e."episodeid" <= %s '
+                    'GROUP BY p."podcastname"'
+                    if database_type == "postgresql"
+                    else "SELECT p.PodcastName, COUNT(*) as episode_num FROM Episodes e "
+                         "JOIN Podcasts p ON e.PodcastID = p.PodcastID "
+                         "WHERE p.PodcastID = %s AND e.EpisodeID <= %s "
+                         "GROUP BY p.PodcastName"
+                )
+                cursor.execute(ordinal_query, (podcast_id, episode_id))
+                ordinal_result = cursor.fetchone()
+
+                if ordinal_result and len(ordinal_result) >= 2:
+                    podcast_name = ordinal_result[0]
+                    episode_num = ordinal_result[1]
+                    episode_title = f"{podcast_name} - Episode {episode_num}"
+                else:
+                    # Last resort fallback
+                    episode_title = f"Episode #{episode_id}"
+
+        episodes.append({"id": episode_id, "title": episode_title})
+
+    print(f"Processed episodes (first 3): {episodes[:3]}")
+    cursor.close()
+    return episodes
 
 def get_video_ids_for_podcast(cnx, database_type, podcast_id):
     cursor = cnx.cursor()
@@ -3409,12 +3497,12 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
             logger.info(f"Video {video_id} already downloaded for user {user_id}")
             # Update task progress to 100% if task_id is provided
             if task_id:
-                download_manager.update_progress(task_id, 100.0, "SUCCESS")
+                download_manager.update_task(task_id, 100.0, "SUCCESS")
             return True
 
         # Update progress if task_id is provided
         if task_id:
-            download_manager.update_progress(task_id, 5.0, "STARTED")
+            download_manager.update_task(task_id, 5.0, "STARTED")
 
         # Get video details
         if database_type == "postgresql":
@@ -3458,7 +3546,7 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
         if result is None:
             logger.error(f"Video {video_id} not found")
             if task_id:
-                download_manager.update_progress(task_id, 0.0, "FAILED")
+                download_manager.update_task(task_id, 0.0, "FAILED")
             return False
 
         # Extract values
@@ -3476,7 +3564,7 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
             author = result[9]           # Author
 
         if task_id:
-            download_manager.update_progress(task_id, 10.0, "PROCESSING")
+            download_manager.update_task(task_id, 10.0, "PROCESSING")
 
         # Get user's time/date preferences and format date
         timezone, time_format, date_format = get_time_info(database_type, cnx, user_id)
@@ -3504,11 +3592,11 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
             if not os.path.exists(source_path):
                 logger.error(f"Source file not found for YouTube video {youtube_video_id}")
                 if task_id:
-                    download_manager.update_progress(task_id, 0.0, "FAILED")
+                    download_manager.update_task(task_id, 0.0, "FAILED")
                 return False
 
         if task_id:
-            download_manager.update_progress(task_id, 30.0, "PREPARING_DESTINATION")
+            download_manager.update_task(task_id, 30.0, "PREPARING_DESTINATION")
 
         # Create destination directory
         download_dir = os.path.join("/opt/pinepods/downloads", channel_name)
@@ -3524,7 +3612,7 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
         dest_path = os.path.join(download_dir, filename)
 
         if task_id:
-            download_manager.update_progress(task_id, 50.0, "COPYING")
+            download_manager.update_task(task_id, 50.0, "COPYING")
 
         # Copy file with progress tracking
         try:
@@ -3547,21 +3635,21 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
                     if task_id and source_size > 0:
                         # Calculate progress (50-80% range for copying)
                         copy_progress = (copied / source_size) * 30.0
-                        download_manager.update_progress(task_id, 50.0 + copy_progress, "COPYING")
+                        download_manager.update_task(task_id, 50.0 + copy_progress, "COPYING")
 
         except Exception as e:
             logger.error(f"Error copying file for video {video_id}: {str(e)}")
             if os.path.exists(dest_path):
                 os.unlink(dest_path)  # Clean up incomplete file
             if task_id:
-                download_manager.update_progress(task_id, 0.0, "FAILED")
+                download_manager.update_task(task_id, 0.0, "FAILED")
             raise
 
         # Set proper permissions on destination file
         os.chown(dest_path, uid, gid)
 
         if task_id:
-            download_manager.update_progress(task_id, 80.0, "ADDING_METADATA")
+            download_manager.update_task(task_id, 80.0, "ADDING_METADATA")
 
         # Update metadata
         try:
@@ -3578,7 +3666,7 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
             # Continue despite metadata failure
 
         if task_id:
-            download_manager.update_progress(task_id, 90.0, "UPDATING_DATABASE")
+            download_manager.update_task(task_id, 90.0, "UPDATING_DATABASE")
 
         # Record in database
         file_size = os.path.getsize(dest_path)
@@ -3609,7 +3697,7 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
         cnx.commit()
 
         if task_id:
-            download_manager.update_progress(task_id, 100.0, "SUCCESS")
+            download_manager.update_task(task_id, 100.0, "SUCCESS")
 
         logger.info(f"Successfully downloaded YouTube video {video_id} to {dest_path}")
         return True
@@ -3619,7 +3707,7 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
         if cursor:
             cnx.rollback()
         if task_id:
-            download_manager.update_progress(task_id, 0.0, "FAILED")
+            download_manager.update_task(task_id, 0.0, "FAILED")
         return False
     finally:
         if cursor:

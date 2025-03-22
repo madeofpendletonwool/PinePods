@@ -10,14 +10,8 @@ use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
 use crate::requests::search_pods::{call_search_database, SearchRequest, SearchResponse};
-use gloo_events::EventListener;
-use yew::prelude::*;
-use yew::{function_component, html, use_node_ref, Callback, Html, MouseEvent, Properties};
-use yew_router::history::BrowserHistory;
-use yewdux::prelude::*;
-// use crate::components::gen_funcs::check_auth;
-use crate::components::episodes_layout::UIStateMsg;
 use async_std::task::sleep;
+use gloo_events::EventListener;
 use std::time::Duration;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
@@ -25,6 +19,10 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use web_sys::HtmlElement;
 use web_sys::HtmlInputElement;
+use yew::prelude::*;
+use yew::{function_component, html, use_node_ref, Callback, Html, MouseEvent, Properties};
+use yew_router::history::BrowserHistory;
+use yewdux::prelude::*;
 
 #[derive(Properties, Clone, PartialEq)]
 pub struct SearchProps {
@@ -48,36 +46,9 @@ pub fn search(_props: &SearchProps) -> Html {
     // let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
+    let error_message = post_state.error_message.clone();
+    let info_message = post_state.info_message.clone();
     let history = BrowserHistory::new();
-
-    {
-        let ui_dispatch = audio_dispatch.clone();
-        use_effect(move || {
-            let window = window().unwrap();
-            let document = window.document().unwrap();
-
-            let closure = Closure::wrap(Box::new(move |_event: Event| {
-                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
-                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
-            }) as Box<dyn Fn(_)>);
-
-            document
-                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                .unwrap();
-
-            // Return cleanup function
-            move || {
-                document
-                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                    .unwrap();
-                closure.forget(); // Prevents the closure from being dropped
-            }
-        });
-    }
-    // let search_results = use_state(|| Vec::new());
-    // let search_results_clone = search_results.clone();
 
     let input_ref = use_node_ref();
     let input_ref_clone1 = input_ref.clone();
@@ -373,12 +344,6 @@ pub fn search(_props: &SearchProps) -> Html {
                 } else {
                     html! {}
                 }
-            }
-            if let Some(error) = error_message {
-                <div class="error-snackbar">{ error }</div>
-            }
-            if let Some(info) = info_message {
-                <div class="info-snackbar">{ info }</div>
             }
         </div>
         </>

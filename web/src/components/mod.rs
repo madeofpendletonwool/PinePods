@@ -6,6 +6,7 @@ pub(crate) mod home;
 pub(crate) mod host_component;
 pub mod misc_func;
 pub(crate) mod navigation;
+pub(crate) mod notification_center;
 pub(crate) mod oauth_callback;
 pub(crate) mod playlist_detail;
 pub(crate) mod playlists;

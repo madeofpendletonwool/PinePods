@@ -2921,7 +2921,7 @@ input[type="range"]::-moz-range-thumb {
 /* Episode list container that will be shown/hidden */
 .podcast-episodes-container {
     max-height: 0;
-    overflow: hidden;
+    overflow: visible;
     transition: max-height 0.3s ease-out;
 }
 
@@ -4411,6 +4411,263 @@ button.item-container-action-button.item-container-action-button {
 
 .auth-error-button:hover {
     background-color: var(--primary-color-dark);
+}
+
+
+/* Add these styles to your main.css or create a new notification_center.css file */
+/* Add to your existing CSS */
+/* Toast Container */
+.toast-container {
+  position: fixed;
+  top: 5rem;
+  right: 1rem;
+  max-width: 24rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  pointer-events: none;
+}
+
+/* Individual Toast Item */
+.toast-item {
+  transform-origin: top right;
+  pointer-events: auto;
+  transition: transform 0.3s ease-in-out,
+              opacity 0.3s ease-in-out,
+              max-height 0.3s ease-in-out,
+              margin-bottom 0.3s ease-in-out;
+  will-change: transform, opacity;
+}
+
+/* Toast Visibility States with Explicit Animations */
+.toast-visible {
+  opacity: 1;
+  transform: translateX(0);
+  max-height: 200px;
+  margin-bottom: 0.75rem;
+  animation: slideIn 0.3s ease-in-out forwards;
+}
+
+.toast-hidden {
+  opacity: 0;
+  transform: translateX(100%);
+  max-height: 0;
+  margin-bottom: 0;
+  animation: slideOut 0.3s ease-in-out forwards;
+}
+
+/* Toast Styling */
+.toast {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+  background-color: var(--container-background);
+  width: 100%;
+}
+
+.toast-info {
+  border-left: 4px solid #3b82f6; /* Blue accent */
+}
+
+.toast-error {
+  border-left: 4px solid #ef4444; /* Red accent */
+}
+
+.toast-message {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--text-color);
+  word-break: break-word;
+}
+
+/* Toast Dismiss Button */
+.toast-dismiss {
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+  margin-left: auto;
+  padding-left: 0.5rem;
+  background: transparent;
+  border: none;
+  color: var(--text-color);
+}
+
+.toast-dismiss:hover {
+  opacity: 1;
+}
+
+/* Define explicit keyframe animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+/* Notification bell styling */
+.notification-bell {
+    color: var(--text-color);
+    background-color: var(--container-button-color);
+    transition: background-color 0.2s ease;
+}
+
+.notification-bell:hover {
+    background-color: var(--hover-color);
+    opacity: 0.8;
+}
+
+/* Notification badge */
+.notification-badge {
+    background-color: var(--alert-color);
+    color: var(--text-color);
+    min-width: 18px;
+    height: 18px;
+}
+
+/* Notification dropdown */
+.notification-dropdown {
+    background-color: var(--container-background);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    animation: slideDown 0.2s ease-out forwards;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Notification header */
+.notification-header {
+    background-color: var(--secondary-background);
+    color: var(--text-color);
+    border-bottom: 1px solid var(--border-color);
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+/* Notification items */
+.notification-item {
+    background-color: var(--background-color);
+    border-left: 3px solid var(--accent-color);
+    margin-bottom: 8px;
+    transition: background-color 0.2s ease;
+}
+
+.notification-item:hover {
+    background-color: var(--secondary-background);
+}
+
+/* Status styles */
+.notification-status {
+    font-weight: 500;
+}
+
+.status-pending {
+    background-color: var(--accent-color);
+    color: var(--text-color);
+}
+
+.status-started {
+    background-color: var(--prog-bar-color);
+    color: var(--text-color);
+}
+
+.status-success {
+    background-color: var(--success-color);
+    color: var(--text-color);
+}
+
+.status-failed {
+    background-color: var(--error-color);
+    color: var(--text-color);
+}
+
+/* Progress bar */
+.notification-progress-bar-container {
+    background-color: var(--secondary-background);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    background-color: var(--prog-bar-color);
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    color: var(--text-color);
+    font-size: 0.75rem;
+}
+
+/* Message notifications */
+.notification-error {
+    border-left-color: var(--error-color);
+}
+
+.notification-error i {
+    color: var(--error-color);
+}
+
+.notification-info {
+    border-left-color: var(--success-color);
+}
+
+.notification-info i {
+    color: var(--success-color);
+}
+
+/* Empty state */
+.notification-empty {
+    color: var(--accent-color);
+    font-style: italic;
+}
+
+/* Scrollbar styling for notification dropdown */
+.notification-dropdown::-webkit-scrollbar {
+    width: 6px;
+}
+
+.notification-dropdown::-webkit-scrollbar-track {
+    background: var(--secondary-background);
+    border-radius: 8px;
+}
+
+.notification-dropdown::-webkit-scrollbar-thumb {
+    background-color: var(--accent-color);
+    border-radius: 8px;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 640px) {
+    .notification-dropdown {
+        width: 100%;
+        max-width: calc(100vw - 20px);
+        right: -5px;
+    }
 }
 
 @keyframes spinner-rotate {

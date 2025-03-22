@@ -6,7 +6,6 @@ use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg;
-use crate::components::episodes_layout::UIStateMsg;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
@@ -41,8 +40,8 @@ pub fn saved() -> Html {
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
+    let error_message = post_state.error_message.clone();
+    let info_message = post_state.info_message.clone();
     let dropdown_open = use_state(|| false);
     let active_modal = use_state(|| None::<i32>);
     let active_modal_clone = active_modal.clone();
@@ -66,31 +65,6 @@ pub fn saved() -> Html {
             dropdown_open.set(!*dropdown_open);
         })
     };
-
-    {
-        let ui_dispatch = audio_dispatch.clone();
-        use_effect(move || {
-            let window = window().unwrap();
-            let document = window.document().unwrap();
-
-            let closure = Closure::wrap(Box::new(move |_event: Event| {
-                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
-                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
-            }) as Box<dyn Fn(_)>);
-
-            document
-                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                .unwrap();
-
-            // Return cleanup function
-            move || {
-                document
-                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                    .unwrap();
-                closure.forget(); // Prevents the closure from being dropped
-            }
-        });
-    }
 
     // Fetch episodes on component mount
     let loading_ep = loading.clone();
@@ -581,13 +555,6 @@ pub fn saved() -> Html {
                     }
                 }
             }
-        // Conditional rendering for the error banner
-        if let Some(error) = error_message {
-            <div class="error-snackbar">{ error }</div>
-        }
-        if let Some(info) = info_message {
-            <div class="info-snackbar">{ info }</div>
-        }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
                 html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }

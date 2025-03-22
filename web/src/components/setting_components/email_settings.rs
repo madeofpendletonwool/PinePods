@@ -1,9 +1,12 @@
+use crate::components::context::{AppState, UIState};
+use crate::requests::setting_reqs::{
+    call_get_email_settings, call_save_email_settings, call_send_email, call_send_test_email,
+    EmailSettingsResponse, SendEmailSettings, TestEmailSettings,
+};
+use std::ops::Deref;
+use yew::platform::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
-use crate::components::context::{AppState, UIState};
-use yew::platform::spawn_local;
-use crate::requests::setting_reqs::{call_get_email_settings, EmailSettingsResponse, SendEmailSettings, call_save_email_settings, call_send_test_email, call_send_email, TestEmailSettings};
-use std::ops::Deref;
 // use crate::gen_components::_ErrorMessageProps::error_message;
 
 #[function_component(EmailSettings)]
@@ -14,48 +17,55 @@ pub fn email_settings() -> Html {
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let _user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let user_email = state.user_details.as_ref().map(|ud| ud.Email.clone());
-    let _error_message = audio_state.error_message.clone();
-    let _info_message = audio_state.info_message.clone();
+    let _error_message = state.error_message.clone();
+    let _info_message = state.info_message.clone();
     let auth_required = use_state(|| false);
 
     let toggle_auth_required = {
         let auth_required = auth_required.clone();
         Callback::from(move |_| auth_required.set(!*auth_required))
     };
-        // Define the type of user in the Vec
-    let email_values: UseStateHandle<EmailSettingsResponse> = use_state(EmailSettingsResponse::default);
-    let audio_dispatch_effect = audio_dispatch.clone();
+    // Define the type of user in the Vec
+    let email_values: UseStateHandle<EmailSettingsResponse> =
+        use_state(EmailSettingsResponse::default);
+    let dispatch_effect = _dispatch.clone();
 
     {
         let email_values = email_values.clone();
-        use_effect_with((api_key.clone(), server_name.clone()), move |(api_key, server_name)| {
-            let email_values = email_values.clone();
-            let api_key = api_key.clone();
-            let server_name = server_name.clone();
-            let future = async move {
-                if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
-                    let response = call_get_email_settings(server_name, api_key.unwrap()).await;
-                    match response {
-                        Ok(email_info) => {
-                            email_values.set(email_info);
-                        },
-                        Err(e) => {
-                            audio_dispatch_effect.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error getting user info: {}", e)));
-                        },
+        use_effect_with(
+            (api_key.clone(), server_name.clone()),
+            move |(api_key, server_name)| {
+                let email_values = email_values.clone();
+                let api_key = api_key.clone();
+                let server_name = server_name.clone();
+                let future = async move {
+                    if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
+                        let response = call_get_email_settings(server_name, api_key.unwrap()).await;
+                        match response {
+                            Ok(email_info) => {
+                                email_values.set(email_info);
+                            }
+                            Err(e) => {
+                                dispatch_effect.reduce_mut(|audio_state| {
+                                    audio_state.error_message =
+                                        Option::from(format!("Error getting user info: {}", e))
+                                });
+                            }
+                        }
                     }
-                }
-            };
-            spawn_local(future);
-            // Return cleanup function
-            || {}
-        });
+                };
+                spawn_local(future);
+                // Return cleanup function
+                || {}
+            },
+        );
     }
 
     let server_name_ref = use_state(|| "".to_string());
     let server_port_ref = use_state(|| "".to_string());
     let from_email_ref = use_state(|| "".to_string());
     let send_mode_ref = use_state(|| "SMTP".to_string());
-    let encryption_ref = use_state(|| "none".to_string());    
+    let encryption_ref = use_state(|| "none".to_string());
     let username_ref = use_state(|| "".to_string());
     let password_ref = use_state(|| "".to_string());
 
@@ -70,55 +80,73 @@ pub fn email_settings() -> Html {
     let page_state = use_state(|| PageState::Hidden);
     let page_state_edit = page_state.clone();
 
-
     let on_server_name_change = {
         let server_name_ref = server_name_ref.clone();
         Callback::from(move |e: InputEvent| {
-            server_name_ref.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            server_name_ref.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
-    
+
     let on_server_port_change = {
         let server_port_ref = server_port_ref.clone();
         Callback::from(move |e: InputEvent| {
-            server_port_ref.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            server_port_ref.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
-    
+
     let on_from_email_change = {
         let from_email_ref = from_email_ref.clone();
         Callback::from(move |e: InputEvent| {
-            from_email_ref.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            from_email_ref.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
-    
+
     let on_send_mode_change = {
         let send_mode_ref = send_mode_ref.clone();
         Callback::from(move |e: InputEvent| {
-            let value = e.target_unchecked_into::<web_sys::HtmlInputElement>().value();
+            let value = e
+                .target_unchecked_into::<web_sys::HtmlInputElement>()
+                .value();
             send_mode_ref.set(value);
         })
     };
-    
-    
+
     let on_encryption_change = {
         let encryption_ref = encryption_ref.clone();
         Callback::from(move |e: InputEvent| {
-            encryption_ref.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            encryption_ref.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
-    
+
     let on_username_change = {
         let username_ref = username_ref.clone();
         Callback::from(move |e: InputEvent| {
-            username_ref.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            username_ref.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
-    
+
     let on_password_change = {
         let password_ref = password_ref.clone();
         Callback::from(move |e: InputEvent| {
-            password_ref.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            password_ref.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
 
@@ -142,7 +170,7 @@ pub fn email_settings() -> Html {
         let password_ref = password_ref.clone();
         let auth_required = auth_required.clone();
         let page_state = page_state.clone();
-        let audio_dispatch_call = audio_dispatch.clone();
+        let dispatch_call = _dispatch.clone();
         Callback::from(move |_: MouseEvent| {
             let server_name = edit_server_name.clone();
             let server_name_ref = server_name_ref.clone().deref().to_string();
@@ -168,11 +196,18 @@ pub fn email_settings() -> Html {
             // let server_name = server_name_ref.deref().clone();
             let api_key = edit_api_key.clone().unwrap_or_default();
             let future = async move {
-                let _ = call_save_email_settings(server_name.unwrap(), api_key.unwrap().clone(), email_settings).await;
+                let _ = call_save_email_settings(
+                    server_name.unwrap(),
+                    api_key.unwrap().clone(),
+                    email_settings,
+                )
+                .await;
             };
             spawn_local(future);
             page_state.set(PageState::Hidden);
-            audio_dispatch_call.reduce_mut(|audio_state| audio_state.info_message = Option::from("Email Settings Saved!".to_string()));
+            dispatch_call.reduce_mut(|audio_state| {
+                audio_state.info_message = Option::from("Email Settings Saved!".to_string())
+            });
         })
     };
 
@@ -205,7 +240,7 @@ pub fn email_settings() -> Html {
             </div>
         </div>
     };
-    let audio_send_test = audio_dispatch.clone();
+    let audio_send_test = _dispatch.clone();
     let api_test = api_key.clone();
     let submit_email = user_email.clone();
     let on_submit = {
@@ -219,7 +254,7 @@ pub fn email_settings() -> Html {
         let auth_required = auth_required.clone();
         let page_state = page_state_edit.clone();
         Callback::from(move |_: MouseEvent| {
-            let audio_dispatch_call = audio_send_test.clone();
+            let dispatch_call = audio_send_test.clone();
             let server_name = server_name.clone();
             let server_name_ref = server_name_ref.clone().deref().to_string();
             let server_port = server_port_ref.clone().deref().to_string();
@@ -245,13 +280,20 @@ pub fn email_settings() -> Html {
             let server_name = server_name.clone();
             let api_key = api_test.clone().unwrap_or_default();
             let future = async move {
-                let send_email_result = call_send_test_email(server_name.clone().unwrap(), api_key.clone().unwrap(), test_email_settings.clone()).await;
+                let send_email_result = call_send_test_email(
+                    server_name.clone().unwrap(),
+                    api_key.clone().unwrap(),
+                    test_email_settings.clone(),
+                )
+                .await;
                 match send_email_result {
                     Ok(_) => {
                         page_state.set(PageState::Shown);
-                    },
+                    }
                     Err(e) => {
-                        audio_dispatch_call.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error: {}", e)));
+                        dispatch_call.reduce_mut(|audio_state| {
+                            audio_state.error_message = Option::from(format!("Error: {}", e))
+                        });
                         // Handle the error, e.g., by showing an error message to the user
                     }
                 }
@@ -263,32 +305,44 @@ pub fn email_settings() -> Html {
     let on_test_email_send = {
         let server_name = server_name.clone(); // Assuming you have these values in your component's state
         let api_key = api_key.clone(); // Assuming you have API key in your component's state
-        let audio_dispatch_call = audio_dispatch.clone();
-        
+        let dispatch_call = _dispatch.clone();
+
         Callback::from(move |_: MouseEvent| {
             let api_key = api_key.clone();
             let server_name = server_name.clone().unwrap_or_default(); // Ensure server_name has a default value if it's an Option
-            let audio_dispatch_call = audio_dispatch_call.clone();
+            let dispatch_call = dispatch_call.clone();
             // Setting up the email settings. Adjust these values as necessary.
             let email_settings = SendEmailSettings {
                 to_email: user_email.clone().unwrap().unwrap(), // This should be dynamically set based on your application's needs
                 subject: "Test Pinepods Email".to_string(),
-                message: "This is an email from Pinepods. If you got this your email setup works!".to_string(),
+                message: "This is an email from Pinepods. If you got this your email setup works!"
+                    .to_string(),
             };
-    
+
             let future = async move {
-                match call_send_email(server_name, api_key.unwrap_or_default().unwrap(), email_settings).await {
+                match call_send_email(
+                    server_name,
+                    api_key.unwrap_or_default().unwrap(),
+                    email_settings,
+                )
+                .await
+                {
                     Ok(_) => {
-                        audio_dispatch_call.reduce_mut(|audio_state| audio_state.info_message = Option::from("Email sent successfully!".to_string()));
+                        dispatch_call.reduce_mut(|audio_state| {
+                            audio_state.info_message =
+                                Option::from("Email sent successfully!".to_string())
+                        });
                         // Optionally, use dispatch_callback to update a global state or trigger other app-wide effects
-                    },
+                    }
                     Err(e) => {
-                        audio_dispatch_call.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error: {}", e)));
+                        dispatch_call.reduce_mut(|audio_state| {
+                            audio_state.error_message = Option::from(format!("Error: {}", e))
+                        });
                         // Handle the error, e.g., by updating a state with the error message
                     }
                 }
             };
-    
+
             spawn_local(future);
         })
     };
@@ -338,7 +392,7 @@ pub fn email_settings() -> Html {
             <button onclick={on_test_email_send} class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline mr-2">
                 {"Test Current Settings"}
             </button>
-        
+
         </div>
         <p class="item_container-text text-lg font-bold mb-4">{"Update Settings:"}</p>
 

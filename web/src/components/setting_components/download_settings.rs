@@ -1,9 +1,9 @@
-use yew::prelude::*;
-use yewdux::prelude::*;
 use crate::components::context::{AppState, UIState};
-use yew::platform::spawn_local;
 use crate::requests::setting_reqs::{call_download_status, call_enable_disable_downloads};
 use std::borrow::Borrow;
+use yew::platform::spawn_local;
+use yew::prelude::*;
+use yewdux::prelude::*;
 
 #[function_component(DownloadSettings)]
 pub fn download_settings() -> Html {
@@ -14,33 +14,39 @@ pub fn download_settings() -> Html {
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let _error_message = state.error_message.clone();
     let download_status = use_state(|| false);
-    let audio_dispatch_effect = audio_dispatch.clone();
+    let dispatch_effect = _dispatch.clone();
 
     {
         let download_status = download_status.clone();
-        use_effect_with((api_key.clone(), server_name.clone()), move |(api_key, server_name)| {
-            let download_status = download_status.clone();
-            let api_key = api_key.clone();
-            let server_name = server_name.clone();
-            let future = async move {
-                if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
-                    let response = call_download_status(server_name, api_key.unwrap()).await;
-                    match response {
-                        Ok(download_status_response) => {
-                            download_status.set(download_status_response);
-                        },
-                        Err(e) => {
-                            audio_dispatch_effect.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error getting download status: {}", e)));
-
-
-                        },
+        use_effect_with(
+            (api_key.clone(), server_name.clone()),
+            move |(api_key, server_name)| {
+                let download_status = download_status.clone();
+                let api_key = api_key.clone();
+                let server_name = server_name.clone();
+                let future = async move {
+                    if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
+                        let response = call_download_status(server_name, api_key.unwrap()).await;
+                        match response {
+                            Ok(download_status_response) => {
+                                download_status.set(download_status_response);
+                            }
+                            Err(e) => {
+                                dispatch_effect.reduce_mut(|audio_state| {
+                                    audio_state.error_message = Option::from(format!(
+                                        "Error getting download status: {}",
+                                        e
+                                    ))
+                                });
+                            }
+                        }
                     }
-                }
-            };
-            spawn_local(future);
-            // Return cleanup function
-            || {}
-        });
+                };
+                spawn_local(future);
+                // Return cleanup function
+                || {}
+            },
+        );
     }
     let html_download = download_status.clone();
     let loading = use_state(|| false);
@@ -54,7 +60,7 @@ pub fn download_settings() -> Html {
                 let api_key = api_key.clone();
                 let server_name = server_name.clone();
                 let download_status = html_download.clone();
-                let audio_dispatch = audio_dispatch.clone();
+                let _dispatch = _dispatch.clone();
                 let loading = loading.clone();
                 let future = async move {
                     loading.set(true);
@@ -66,7 +72,7 @@ pub fn download_settings() -> Html {
                                 download_status.set(!*current_status);
                             },
                             Err(e) => {
-                                audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling downloads: {}", e)));
+                                _dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from(format!("Error enabling/disabling downloads: {}", e)));
 
                             },
                         }
@@ -81,5 +87,3 @@ pub fn download_settings() -> Html {
         </div>
     }
 }
-
-

@@ -724,13 +724,6 @@ pub fn downloads() -> Html {
                 html! {}
             }
         }
-        // Conditional rendering for the error banner
-        if let Some(error) = error_message {
-            <div class="error-snackbar">{ error }</div>
-        }
-        if let Some(info) = info_message {
-            <div class="info-snackbar">{ info }</div>
-        }
         </div>
         {drawer_options}
         </>

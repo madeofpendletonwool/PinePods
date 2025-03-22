@@ -1,7 +1,8 @@
 use crate::components::context::{AppState, UIState};
-use crate::components::episodes_layout::UIStateMsg;
 use crate::components::gen_components::{AdminSetupData, FirstAdminModal};
+use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{encode_password, validate_user_input, ValidationError};
+use crate::components::notification_center::ToastNotification;
 use crate::components::setting_components::theme_options::initialize_default_theme;
 use crate::requests::login_requests::{self, call_check_mfa_enabled, call_create_first_admin};
 use crate::requests::login_requests::{call_add_login_user, AddUserRequest};
@@ -48,7 +49,7 @@ pub fn login() -> Html {
     let (app_state, dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
     let _error_message = app_state.error_message.clone();
-    let error_message = _state.error_message.clone();
+    let error_message = app_state.error_message.clone();
     let time_zone = use_state(|| "".to_string());
     let date_format = use_state(|| "".to_string());
     let time_pref = use_state(|| 12);
@@ -56,7 +57,7 @@ pub fn login() -> Html {
     let temp_api_key = use_state(|| "".to_string());
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
-    let info_message = _state.info_message.clone();
+    let info_message = app_state.info_message.clone();
     let loading = use_state(|| true);
     // Define the initial state
     let page_state = use_state(|| PageState::Default);
@@ -122,31 +123,6 @@ pub fn login() -> Html {
         });
         || ()
     });
-
-    {
-        let ui_dispatch = _dispatch.clone();
-        use_effect(move || {
-            let window = window().unwrap();
-            let document = window.document().unwrap();
-
-            let closure = Closure::wrap(Box::new(move |_event: Event| {
-                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
-                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
-            }) as Box<dyn Fn(_)>);
-
-            document
-                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                .unwrap();
-
-            // Return cleanup function
-            move || {
-                document
-                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                    .unwrap();
-                closure.forget(); // Prevents the closure from being dropped
-            }
-        });
-    }
     let effect_displatch = dispatch.clone();
     let effect_loading = loading.clone();
     // User Auto Login with saved state
@@ -415,7 +391,7 @@ pub fn login() -> Html {
     let call_server_name = temp_server_name.clone();
     let call_api_key = temp_api_key.clone();
     let call_user_id = temp_user_id.clone();
-    let submit_post_state = _dispatch.clone();
+    let submit_post_state = dispatch.clone();
     let on_submit = {
         let submit_dispatch = dispatch.clone();
         Callback::from(move |_| {
@@ -723,7 +699,7 @@ pub fn login() -> Html {
     let password_error = use_state(|| password_error_notice::Hidden);
     let username_error = use_state(|| username_error_notice::Hidden);
 
-    let create_state = _dispatch.clone();
+    let create_state = dispatch.clone();
     let on_create_submit = {
         let page_state = page_state.clone();
         let fullname = fullname.clone().to_string();
@@ -802,8 +778,10 @@ pub fn login() -> Html {
                         });
                     }
                     Err(e) => {
+                        let formatted_error = format_error_message(&e.to_string());
                         create_state.reduce_mut(|state| {
-                            state.error_message = Some(format!("Error creating account: {}", e))
+                            state.error_message =
+                                Some(format!("Error creating account: {}", formatted_error))
                         });
                     }
                 }
@@ -933,9 +911,10 @@ pub fn login() -> Html {
                     }
                     Err(e) => {
                         page_state.set(PageState::Default);
+                        let formatted_error = format_error_message(&e.to_string());
                         dispatch.reduce_mut(|state| {
                             state.error_message =
-                                Option::from(format!("Error sending reset: {:?}", e))
+                                Option::from(format!("Error sending reset: {:?}", formatted_error))
                         });
                     }
                 }
@@ -1041,18 +1020,24 @@ pub fn login() -> Html {
                             }
                             Err(e) => {
                                 page_state.set(PageState::Default);
+                                let formatted_error = format_error_message(&e.to_string());
                                 dispatch.reduce_mut(|state| {
-                                    state.error_message =
-                                        Option::from(format!("Error Resetting Password: {:?}", e))
+                                    state.error_message = Option::from(format!(
+                                        "Error Resetting Password: {:?}",
+                                        formatted_error
+                                    ))
                                 });
                             }
                         }
                     });
                 }
                 Err(e) => {
+                    let formatted_error = format_error_message(&e.to_string());
                     dispatch.reduce_mut(|state| {
-                        state.error_message =
-                            Option::from(format!("Unable to hash new password: {:?}", e))
+                        state.error_message = Option::from(format!(
+                            "Unable to hash new password: {:?}",
+                            formatted_error
+                        ))
                     });
                     page_state.set(PageState::Default);
                 }
@@ -1142,7 +1127,6 @@ pub fn login() -> Html {
         // let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: MouseEvent| {
-            let post_state = _dispatch.clone();
             let dispatch = dispatch_wasm.clone();
             e.prevent_default();
             let server_name = (*temp_server_name).clone();
@@ -1213,14 +1197,14 @@ pub fn login() -> Html {
                                     }
                                 }
                                 Err(_) => {
-                                    post_state.reduce_mut(|state| {
+                                    dispatch.reduce_mut(|state| {
                                         state.error_message =
                                             Option::from("Error Checking MFA Status".to_string())
                                     });
                                 }
                             }
                         } else {
-                            post_state.reduce_mut(|state| {
+                            dispatch.reduce_mut(|state| {
                                 state.error_message =
                                     Option::from("Error Setting up Time Zone".to_string())
                             });
@@ -1233,9 +1217,12 @@ pub fn login() -> Html {
                     }
                     Err(e) => {
                         page_state.set(PageState::Default);
+                        let formatted_error = format_error_message(&e.to_string());
                         dispatch.reduce_mut(|state| {
-                            state.error_message =
-                                Option::from(format!("Error setting up time zone: {:?}", e))
+                            state.error_message = Option::from(format!(
+                                "Error setting up time zone: {:?}",
+                                formatted_error
+                            ))
                         });
                     }
                 }
@@ -1464,9 +1451,12 @@ pub fn login() -> Html {
                     }
                     Err(e) => {
                         page_state.set(PageState::Default);
+                        let formatted_error = format_error_message(&e.to_string());
                         dispatch.reduce_mut(|state| {
-                            state.error_message =
-                                Option::from(format!("Error setting up time zone: {:?}", e))
+                            state.error_message = Option::from(format!(
+                                "Error setting up time zone: {:?}",
+                                formatted_error
+                            ))
                         });
                     }
                 }
@@ -1511,8 +1501,10 @@ pub fn login() -> Html {
                         history.push("/"); // Redirect to login
                     }
                     Err(e) => {
+                        let formatted_error = format_error_message(&e.to_string());
                         audio_dispatch.reduce_mut(|state| {
-                            state.error_message = Some(format!("Failed to create admin: {}", e));
+                            state.error_message =
+                                Some(format!("Failed to create admin: {}", formatted_error));
                         });
                     }
                 }
@@ -1586,7 +1578,7 @@ pub fn login() -> Html {
         }
         {modal_content}
 
-            <div class="flex justify-center items-center h-screen">
+            <div class="flex justify-center items-start pt-[10vh] h-screen">
                 <div class="modal-container flex flex-col space-y-4 w-full max-w-xs p-8 border rounded-lg shadow-lg">
                     <div class="flex justify-center items-center">
                         <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
@@ -1750,13 +1742,7 @@ pub fn login() -> Html {
                         html! {}
                     }
                 }
-                        // Conditional rendering for the error banner
-                if let Some(error) = error_message {
-                    <div class="error-snackbar">{ error }</div>
-                }
-                if let Some(info) = info_message {
-                    <div class="info-snackbar">{ info }</div>
-                }
+                <ToastNotification />
                 // Connect to Different Server button at bottom right
                 <div class="fixed bottom-4 right-4">
                     <button
@@ -1784,7 +1770,7 @@ pub fn login() -> Html {
     let password = use_state(|| "".to_string());
     let (_app_state, dispatch) = use_store::<AppState>();
     let _error_message = app_state.error_message.clone();
-    let error_message = _state.error_message.clone();
+    let error_message = app_state.error_message.clone();
     let time_zone = use_state(|| "".to_string());
     let date_format = use_state(|| "".to_string());
     let time_pref = use_state(|| 12);
@@ -1792,33 +1778,8 @@ pub fn login() -> Html {
     let temp_api_key = use_state(|| "".to_string());
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
-    let info_message = _state.info_message.clone();
+    let info_message = app_state.info_message.clone();
     let page_state = use_state(|| PageState::Default);
-
-    {
-        let ui_dispatch = _dispatch.clone();
-        use_effect(move || {
-            let window = window().unwrap();
-            let document = window.document().unwrap();
-
-            let closure = Closure::wrap(Box::new(move |_event: Event| {
-                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
-                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
-            }) as Box<dyn Fn(_)>);
-
-            document
-                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                .unwrap();
-
-            // Return cleanup function
-            move || {
-                document
-                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                    .unwrap();
-                closure.forget(); // Prevents the closure from being dropped
-            }
-        });
-    }
 
     // This effect runs only once when the component mounts
     let background_image_url = use_state(|| String::new());
@@ -1874,7 +1835,7 @@ pub fn login() -> Html {
     let call_server_name = temp_server_name.clone();
     let call_api_key = temp_api_key.clone();
     let call_user_id = temp_user_id.clone();
-    let submit_post_state = _dispatch.clone();
+    let submit_post_state = _app_dispatch.clone();
     let on_submit = {
         let submit_dispatch = dispatch.clone();
         Callback::from(move |_| {
@@ -2128,7 +2089,7 @@ pub fn login() -> Html {
             df.set(select_element.value());
         })
     };
-    let time_state_error = _dispatch.clone();
+    let time_state_error = _app_dispatch.clone();
     let on_time_pref_change = {
         let time_pref = time_pref.clone();
         Callback::from(move |e: InputEvent| {
@@ -2143,7 +2104,7 @@ pub fn login() -> Html {
             }
         })
     };
-    let dispatch_time = _dispatch.clone();
+    let dispatch_time = _app_dispatch.clone();
     let on_time_zone_submit = {
         // let (state, dispatch) = use_store::<AppState>();
         let page_state = page_state.clone();
@@ -2246,9 +2207,12 @@ pub fn login() -> Html {
                     Err(e) => {
                         page_state.set(PageState::Default);
                         // dispatch.reduce_mut(|state| state.error_message = Option::from(format!("Error setting up time zone: {:?}", e)));
+                        let formatted_error = format_error_message(&e.to_string());
                         post_state.reduce_mut(|state| {
-                            state.error_message =
-                                Option::from(format!("Error setting up time zone: {:?}", e))
+                            state.error_message = Option::from(format!(
+                                "Error setting up time zone: {:?}",
+                                formatted_error
+                            ))
                         });
                     }
                 }
@@ -2357,7 +2321,7 @@ pub fn login() -> Html {
             );
         })
     };
-    let post_state = _dispatch.clone();
+    let post_state = _app_dispatch.clone();
     let on_mfa_submit = {
         let (state, dispatch) = use_store::<AppState>();
         let page_state = page_state.clone();
@@ -2481,9 +2445,12 @@ pub fn login() -> Html {
                     }
                     Err(e) => {
                         page_state.set(PageState::Default);
+                        let formatted_error = format_error_message(&e.to_string());
                         post_state.reduce_mut(|state| {
-                            state.error_message =
-                                Option::from(format!("Error setting up time zone: {:?}", e))
+                            state.error_message = Option::from(format!(
+                                "Error setting up time zone: {:?}",
+                                formatted_error
+                            ))
                         });
                     }
                 }
@@ -2562,13 +2529,7 @@ pub fn login() -> Html {
                     {"Login"}
                 </button>
             </div>
-            // Conditional rendering for the error banner
-            if let Some(error) = error_message {
-                <div class="error-snackbar">{ error }</div>
-            }
-            if let Some(info) = info_message {
-                <div class="info-snackbar">{ info }</div>
-            }
+            <ToastNotification />
 
             // Connect to Different Server button at bottom right
             <div class="fixed bottom-4 right-4">

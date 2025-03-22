@@ -4,7 +4,9 @@ use crate::components::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
 };
 use crate::components::episodes_layout::SafeHtml;
+use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{format_time, strip_images_from_html};
+use crate::components::notification_center::{NotificationCenter, ToastNotification};
 use crate::requests::people_req::PersonEpisode;
 use crate::requests::pod_req::{
     call_download_episode, call_mark_episode_completed, call_mark_episode_uncompleted,
@@ -170,6 +172,7 @@ pub fn error_message(props: &ErrorMessageProps) -> Html {
         html! {}
     }
 }
+
 #[allow(non_camel_case_types)]
 #[function_component(Search_nav)]
 pub fn search_bar() -> Html {
@@ -255,9 +258,12 @@ pub fn search_bar() -> Html {
                                     history.push("/youtube_layout");
                                 }
                                 Err(e) => {
+                                    let formatted_error = format_error_message(&e.to_string());
                                     dispatch.reduce_mut(|state| {
-                                        state.error_message =
-                                            Some(format!("YouTube search error: {}", e));
+                                        state.error_message = Some(format!(
+                                            "YouTube search error: {}",
+                                            formatted_error
+                                        ));
                                         state.is_loading = Some(false);
                                     });
                                 }
@@ -493,7 +499,12 @@ pub fn search_bar() -> Html {
                         html! {}
                     }
                 }
+                // Add the NotificationCenter component here
+                <div class="ml-2">
+                    <NotificationCenter />
+                </div>
             </form>
+            <ToastNotification />
         </div>
     }
 }
@@ -835,8 +846,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         });
                     }
                     Err(e) => {
+                        let formatted_error = format_error_message(&e.to_string());
                         queue_post.reduce_mut(|state| {
-                            state.error_message = Option::from(format!("{}", e))
+                            state.error_message = Option::from(format!("{}", formatted_error))
                         });
                         // Handle error, e.g., display the error message
                     }
@@ -892,8 +904,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         });
                     }
                     Err(e) => {
-                        queue_post.reduce_mut(|state| {
-                            state.error_message = Option::from(format!("{}", e))
+                        let formatted_error = format_error_message(&e.to_string());
+                        post_dispatch.reduce_mut(|state| {
+                            state.error_message = Option::from(format!("{}", formatted_error))
                         });
                         // Handle error, e.g., display the error message
                     }
@@ -952,8 +965,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         });
                     }
                     Err(e) => {
+                        let formatted_error = format_error_message(&e.to_string());
                         post_state.reduce_mut(|state| {
-                            state.error_message = Option::from(format!("{}", e))
+                            state.error_message = Option::from(format!("{}", formatted_error))
                         });
                         // Handle error, e.g., display the error message
                     }
@@ -1004,8 +1018,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         });
                     }
                     Err(e) => {
-                        post_state.reduce_mut(|state| {
-                            state.error_message = Option::from(format!("{}", e))
+                        let formatted_error = format_error_message(&e.to_string());
+                        post_dispatch.reduce_mut(|state| {
+                            state.error_message = Option::from(format!("{}", formatted_error))
                         });
                         // Handle error, e.g., display the error message
                     }
@@ -1072,8 +1087,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         });
                     }
                     Err(e) => {
+                        let formatted_error = format_error_message(&e.to_string());
                         post_state.reduce_mut(|state| {
-                            state.error_message = Option::from(format!("{}", e))
+                            state.error_message = Option::from(format!("{}", formatted_error))
                         });
                         // Handle error, e.g., display the error message
                     }
@@ -1132,8 +1148,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         });
                     }
                     Err(e) => {
-                        post_state.reduce_mut(|state| {
-                            state.error_message = Option::from(format!("{}", e))
+                        let formatted_error = format_error_message(&e.to_string());
+                        post_dispatch.reduce_mut(|state| {
+                            state.error_message = Option::from(format!("{}", formatted_error))
                         });
                         // Handle error, e.g., display the error message
                     }
@@ -1204,9 +1221,10 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             Ok(_) => {}
                             Err(e) => {
                                 post_state.reduce_mut(|state| {
+                                    let formatted_error = format_error_message(&e.to_string());
                                     state.error_message = Some(format!(
                                         "Failed to download episode audio: {:?}",
-                                        e.clone()
+                                        formatted_error.clone()
                                     ))
                                 });
                                 web_sys::console::log_1(&format!("audio fail: {:?}", e).into());
@@ -1216,9 +1234,10 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         // Download artwork
                         if let Err(e) = download_file(artwork_url, artwork_filename.clone()).await {
                             post_state.reduce_mut(|state| {
+                                let formatted_error = format_error_message(&e.to_string());
                                 state.error_message = Some(format!(
                                     "Failed to download episode artwork: {:?}",
-                                    e.clone()
+                                    formatted_error.clone()
                                 ))
                             });
                             web_sys::console::log_1(&format!("art fail: {:?}", e).into());
@@ -1227,9 +1246,10 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         // Update local JSON database
                         if let Err(e) = update_local_database(episode_info).await {
                             post_state.reduce_mut(|state| {
+                                let formatted_error = format_error_message(&e.to_string());
                                 state.error_message = Some(format!(
                                     "Failed to update local database: {:?}",
-                                    e.clone()
+                                    formatted_error.clone()
                                 ))
                             });
                             web_sys::console::log_1(
@@ -1249,24 +1269,30 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             Ok(podcast_details) => {
                                 if let Err(e) = update_podcast_database(podcast_details).await {
                                     post_state.reduce_mut(|state| {
+                                        let formatted_error = format_error_message(&e.to_string());
                                         state.error_message = Some(format!(
                                             "Failed to update podcast database: {:?}",
-                                            e
+                                            formatted_error
                                         ))
                                     });
                                 }
                             }
                             Err(e) => {
                                 post_state.reduce_mut(|state| {
-                                    state.error_message =
-                                        Some(format!("Failed to fetch podcast metadata: {:?}", e))
+                                    let formatted_error = format_error_message(&e.to_string());
+                                    state.error_message = Some(format!(
+                                        "Failed to fetch podcast metadata: {:?}",
+                                        formatted_error
+                                    ))
                                 });
                             }
                         }
                     }
                     Err(e) => {
-                        post_state
-                            .reduce_mut(|state| state.error_message = Some(format!("s {:?}", e)));
+                        let formatted_error = format_error_message(&e.to_string());
+                        post_state.reduce_mut(|state| {
+                            state.error_message = Some(format!("s {:?}", formatted_error))
+                        });
                     }
                 }
             };
@@ -1301,9 +1327,12 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         });
                     }
                     Err(e) => {
+                        let formatted_error = format_error_message(&e.to_string());
                         post_state.reduce_mut(|state| {
-                            state.error_message =
-                                Some(format!("Failed to download episode audio: {:?}", e))
+                            state.error_message = Some(format!(
+                                "Failed to download episode audio: {:?}",
+                                formatted_error
+                            ))
                         });
                     }
                 }
@@ -1360,7 +1389,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         });
                     }
                     Err(e) => {
-                        post_state.reduce_mut(|state| {
+                        post_dispatch.reduce_mut(|state| {
                             state.error_message = Option::from(format!("{}", e))
                         });
                         // Handle error, e.g., display the error message
@@ -1419,8 +1448,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         });
                     }
                     Err(e) => {
-                        post_state.reduce_mut(|state| {
-                            state.error_message = Option::from(format!("{}", e))
+                        let formatted_error = format_error_message(&e.to_string());
+                        post_dispatch.reduce_mut(|state| {
+                            state.error_message = Option::from(format!("{}", formatted_error))
                         });
                         // Handle error, e.g., display the error message
                     }

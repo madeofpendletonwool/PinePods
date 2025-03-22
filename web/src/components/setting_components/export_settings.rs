@@ -1,4 +1,5 @@
 use crate::components::context::{AppState, UIState};
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::call_backup_user;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
@@ -20,7 +21,7 @@ pub fn export_options() -> Html {
     let onclick = {
         let blob_property_bag = blob_property_bag.clone();
         Callback::from(move |_| {
-            let audio_dispatch = audio_dispatch.clone();
+            let _dispatch = _dispatch.clone();
             let bloberty_bag = blob_property_bag.clone();
             let api_key = api_key.clone();
             let server_name = server_name.clone();
@@ -59,9 +60,10 @@ pub fn export_options() -> Html {
                         }
                     }
                     Err(e) => {
-                        audio_dispatch.reduce_mut(|audio_state| {
+                        let formatted_error = format_error_message(&e.to_string());
+                        _dispatch.reduce_mut(|audio_state| {
                             audio_state.error_message =
-                                Option::from(format!("Error exporting OPML: {}", e))
+                                Option::from(format!("Error exporting OPML: {}", formatted_error))
                         });
                     }
                 }

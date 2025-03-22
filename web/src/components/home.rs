@@ -1,5 +1,5 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::{empty_message, Search_nav, FallbackImage, UseScrollToTop};
+use super::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use super::routes::Route;
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
@@ -66,8 +66,8 @@ pub fn home() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
+    let error_message = state.error_message.clone();
+    let info_message = state.info_message.clone();
     let history = BrowserHistory::new();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -355,14 +355,6 @@ pub fn home() -> Html {
                     offline={audio_props.offline.clone()}
                     is_youtube={audio_props.is_youtube.clone()}
                 />
-            }
-
-            // Error/Info Messages
-            if let Some(error) = error_message {
-                <div class="error-snackbar">{ error }</div>
-            }
-            if let Some(info) = info_message {
-                <div class="info-snackbar">{ info }</div>
             }
         </div>
         <App_drawer />

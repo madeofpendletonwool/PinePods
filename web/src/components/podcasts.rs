@@ -4,6 +4,7 @@ use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, ExpandedDescriptions, FilterState, UIState};
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req;
 use crate::requests::pod_req::PodcastExtra;
 use crate::requests::pod_req::{call_remove_podcasts, PodcastResponseExtra, RemovePodcastValues};
@@ -457,9 +458,10 @@ pub fn podcasts() -> Html {
                             }
                         }
                         Err(e) => {
+                            let formatted_error = format_error_message(&e.to_string());
                             dispatch_call.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Error removing content: {:?}", e))
+                                    Some(format!("Error removing content: {:?}", formatted_error))
                             });
                         }
                     }

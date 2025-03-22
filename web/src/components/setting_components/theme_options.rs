@@ -1,4 +1,5 @@
 use crate::components::context::{AppState, UIState};
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{call_get_theme, call_set_theme, SetThemeRequest};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
@@ -63,7 +64,7 @@ pub fn theme() -> Html {
         let state = state.clone();
 
         Callback::from(move |_| {
-            let audio_dispatch = audio_dispatch.clone();
+            let _dispatch = _dispatch.clone();
             let theme = (*selected_theme).clone();
 
             if theme.is_empty() {
@@ -97,9 +98,10 @@ pub fn theme() -> Html {
                     match call_set_theme(&Some(server_name), &Some(api_key), &request).await {
                         Ok(_) => {}
                         Err(e) => {
-                            audio_dispatch.reduce_mut(|state| {
+                            let formatted_error = format_error_message(&e.to_string());
+                            _dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Failed to update theme: {}", e));
+                                    Some(format!("Failed to update theme: {}", formatted_error));
                             });
                         }
                     }

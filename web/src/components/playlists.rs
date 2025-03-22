@@ -3,6 +3,7 @@ use super::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollT
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
 // use crate::components::feed::PlaylistCard;
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{self, CreatePlaylistRequest, Playlist, Podcast};
 use gloo_events::EventListener;
 use wasm_bindgen::JsCast;
@@ -530,8 +531,6 @@ pub fn playlists() -> Html {
     let (audio_state, _) = use_store::<UIState>();
     let modal_state = use_state(|| ModalState::Hidden);
     let selected_playlist_id = use_state(|| None::<i32>);
-    let error_message = use_state(|| None::<String>);
-    let info_message = use_state(|| None::<String>);
 
     // Form states
     let name = use_state(String::new);
@@ -673,8 +672,6 @@ pub fn playlists() -> Html {
         let modal_state = modal_state.clone();
         let loading = loading.clone();
         let dispatch = dispatch.clone();
-        let error_message = error_message.clone();
-        let info_message = info_message.clone();
         let play_progress_min = play_progress_min.clone();
         let play_progress_max = play_progress_max.clone();
         let time_filter_hours = time_filter_hours.clone();
@@ -719,8 +716,6 @@ pub fn playlists() -> Html {
                 };
 
                 let dispatch = dispatch.clone();
-                let error_message = error_message.clone();
-                let info_message = info_message.clone();
                 let modal_state = modal_state.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
@@ -744,11 +739,18 @@ pub fn playlists() -> Html {
                                     state.playlists = Some(playlists.playlists);
                                 });
                             }
-                            info_message.set(Some("Playlist created successfully".to_string()));
+                            dispatch.reduce_mut(|state| {
+                                state.info_message =
+                                    Some("Playlist created successfully".to_string());
+                            });
                             modal_state.set(ModalState::Hidden);
                         }
                         Err(e) => {
-                            error_message.set(Some(format!("Failed to create playlist: {}", e)));
+                            let formatted_error = format_error_message(&e.to_string());
+                            dispatch.reduce_mut(|state| {
+                                state.error_message =
+                                    Some(format!("Failed to create playlist: {}", formatted_error));
+                            });
                         }
                     }
                     loading_clone.set(false);
@@ -762,8 +764,6 @@ pub fn playlists() -> Html {
         let selected_playlist_id = selected_playlist_id.clone();
         let modal_state = modal_state.clone();
         let dispatch = dispatch.clone();
-        let error_message = error_message.clone();
-        let info_message = info_message.clone();
 
         let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -777,8 +777,6 @@ pub fn playlists() -> Html {
                 server_name.clone(),
             ) {
                 let dispatch = dispatch.clone();
-                let error_message = error_message.clone();
-                let info_message = info_message.clone();
                 let modal_state = modal_state.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
@@ -803,11 +801,18 @@ pub fn playlists() -> Html {
                                     state.playlists = Some(playlists.playlists);
                                 });
                             }
-                            info_message.set(Some("Playlist deleted successfully".to_string()));
+                            dispatch.reduce_mut(|state| {
+                                state.info_message =
+                                    Some("Playlist deleted successfully".to_string());
+                            });
                             modal_state.set(ModalState::Hidden);
                         }
                         Err(e) => {
-                            error_message.set(Some(format!("Failed to delete playlist: {}", e)));
+                            let formatted_error = format_error_message(&e.to_string());
+                            dispatch.reduce_mut(|state| {
+                                state.error_message =
+                                    Some(format!("Failed to delete playlist: {}", formatted_error));
+                            });
                         }
                     }
                 });
@@ -1267,14 +1272,6 @@ pub fn playlists() -> Html {
                         ModalState::Delete => delete_modal,
                         ModalState::Hidden => html! {},
                     }
-                }
-
-                // Messages
-                if let Some(error) = &*error_message {
-                    <div class="error-snackbar">{ error }</div>
-                }
-                if let Some(info) = &*info_message {
-                    <div class="info-snackbar">{ info }</div>
                 }
 
                 // Audio player if something is playing

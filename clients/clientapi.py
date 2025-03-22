@@ -73,23 +73,26 @@ import database_functions.import_progress
 import database_functions.oidc_state_manager
 import database_functions.valkey_client
 import database_functions.youtube
+import database_functions.tasks
 from database_functions.db_client import create_database_connection, close_database_connection
 
-# Use a try-except to handle potential import errors
-try:
-    from database_functions.tasks import (
-        download_podcast_task,
-        download_youtube_video_task,
-        queue_podcast_downloads,
-        download_manager,
-        debug_task
-    )
-    CELERY_AVAILABLE = True
-    print('celery tasks imported')
-except ImportError as e:
-    logger.error(f"Failed to import Celery tasks: {e}")
-    CELERY_AVAILABLE = False
-    # Define fallback functions if needed
+# # Use a try-except to handle potential import errors
+# try:
+#     from database_functions.tasks import (
+#         download_podcast_task,
+#         download_youtube_video_task,
+#         queue_podcast_downloads,
+#         task_manager,  # Changed from download_manager to task_manager
+#         download_manager,  # Keep this for backward compatibility
+#         get_all_active_tasks,  # Add this new function
+#         debug_task
+#     )
+#     CELERY_AVAILABLE = True
+#     print('celery tasks imported')
+# except ImportError as e:
+#     print(f"Failed to import Celery tasks: {e}")
+#     CELERY_AVAILABLE = False
+#     # Define fallback functions if needed
 
 
 database_type = str(os.getenv('DB_TYPE', 'mariadb'))
@@ -1768,10 +1771,10 @@ async def api_download_podcast(
             return {"detail": "Content already downloaded."}
         # Queue the appropriate download task
         if data.is_youtube:
-            task = download_youtube_video_task.delay(data.episode_id, data.user_id, database_type)
+            task = database_functions.tasks.download_youtube_video_task.delay(data.episode_id, data.user_id, database_type)
             content_type = "YouTube video"
         else:
-            task = download_podcast_task.delay(data.episode_id, data.user_id, database_type)
+            task = database_functions.tasks.download_podcast_task.delay(data.episode_id, data.user_id, database_type)
             content_type = "Podcast episode"
         return {
             "detail": f"{content_type} download has been queued and will process in the background.",
@@ -1846,7 +1849,7 @@ async def api_download_all_podcast(
                 return {"detail": "No episodes found for the given podcast."}
 
         # Queue the download task using Celery
-        task = queue_podcast_downloads.delay(
+        task = database_functions.tasks.queue_podcast_downloads.delay(
             data.podcast_id,
             data.user_id,
             database_type,
@@ -1894,7 +1897,7 @@ async def api_download_status(
 
     try:
         # Get all active downloads for the user
-        downloads = download_manager.get_user_downloads(user_id)
+        downloads = database_functions.tasks.download_manager.get_user_downloads(user_id)
 
         # Return the downloads
         return {
@@ -5686,6 +5689,196 @@ async def store_oidc_state(
     except Exception as e:
         logging.error(f"Error storing OIDC state: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to store state")
+
+
+# Store active connections
+class ConnectionManager:
+    def __init__(self):
+        # Map of user_id to list of websocket connections
+        self.active_connections: Dict[int, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, user_id: int):
+        await websocket.accept()
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = []
+        self.active_connections[user_id].append(websocket)
+
+    def disconnect(self, websocket: WebSocket, user_id: int):
+        if user_id in self.active_connections:
+            if websocket in self.active_connections[user_id]:
+                self.active_connections[user_id].remove(websocket)
+            if not self.active_connections[user_id]:
+                del self.active_connections[user_id]
+
+    async def broadcast_to_user(self, user_id: int, message: Dict[str, Any]):
+        if user_id in self.active_connections:
+            # Convert to JSON once for efficiency
+            json_message = json.dumps(message)
+            disconnected = []
+
+            # Send to all connections for this user
+            for websocket in self.active_connections[user_id]:
+                try:
+                    await websocket.send_text(json_message)
+                except Exception:
+                    disconnected.append(websocket)
+
+            # Clean up any failed connections
+            for websocket in disconnected:
+                self.disconnect(websocket, user_id)
+
+# Initialize connection manager
+manager = ConnectionManager()
+
+# Define the broadcast message model
+class BroadcastMessage(BaseModel):
+    user_id: int
+    message: Dict[str, Any]
+
+@app.post("/api/tasks/broadcast")
+async def broadcast_task_update(
+    data: BroadcastMessage,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Endpoint to broadcast a task update to a user via WebSocket"""
+
+    # Verify API key
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+    # Check if manager has the user in active connections
+    user_id = data.user_id
+    has_connections = user_id in manager.active_connections
+    print(f"Broadcasting to user {user_id}, has connections: {has_connections}")
+
+    if has_connections:
+        # Broadcast the message
+        await manager.broadcast_to_user(user_id, data.message)
+        return {"success": True, "message": f"Broadcast sent to user {user_id}"}
+    else:
+        print(f"No active connections for user {user_id}")
+        return {"success": False, "message": f"No active connections for user {user_id}"}
+
+# Model for task query parameters
+class TaskQueryParams(BaseModel):
+    user_id: int
+
+# Extract API key from WebSocket query parameters
+async def get_api_key_from_websocket(websocket: WebSocket) -> str:
+    query_params = websocket.query_params
+    api_key = query_params.get("api_key")
+
+    if not api_key:
+        raise ValueError("API key is required")
+
+    return api_key
+
+@app.get("/api/tasks/active")
+async def get_active_tasks(
+    user_id: int,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    # Verify API key
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+    # Check if user has permission to access these tasks
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    is_web_key = api_key == base_webkey.web_key
+
+    if key_id != user_id and not is_web_key:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only view your own tasks"
+        )
+
+    # Get all active tasks for the user - this needs to be expanded
+    # to include all types of tasks, not just downloads
+    active_tasks = database_functions.tasks.get_all_active_tasks(user_id)
+
+    return {"tasks": active_tasks}
+
+# Add this DEBUG logging to your FastAPI WebSocket endpoint in clientapi.py
+@app.websocket("/ws/api/tasks/{user_id}")
+async def websocket_endpoint(
+    websocket: WebSocket,
+    user_id: int,
+    cnx=Depends(get_database_connection)
+):
+    print(f"WebSocket connection request received for user {user_id}")
+    # Get API key from websocket query params
+    try:
+        api_key = await get_api_key_from_websocket(websocket)
+        print(f"WebSocket API key validated for user {user_id}")
+
+        # Verify API key
+        is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+        if not is_valid_key:
+            print(f"Invalid API key for WebSocket connection, user {user_id}")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        # Check if user has permission
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        is_web_key = api_key == base_webkey.web_key
+
+        if key_id != user_id and not is_web_key:
+            print(f"Permission denied for WebSocket connection, user {user_id}")
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
+        # Accept the connection
+        await manager.connect(websocket, user_id)
+        print(f"WebSocket connection accepted for user {user_id}")
+
+        # Send initial task list with all types of tasks
+        active_tasks = database_functions.tasks.get_all_active_tasks(user_id)
+        print(f"Found {len(active_tasks)} active tasks for user {user_id}")
+        await websocket.send_text(json.dumps({
+            "event": "initial",
+            "tasks": active_tasks
+        }))
+
+        # Keep connection alive and handle messages
+        try:
+            while True:
+                # Handle any incoming messages (client might request refresh)
+                message = await websocket.receive_text()
+                data = json.loads(message)
+                print(f"Received WebSocket message from user {user_id}: {data}")
+
+                if data.get("action") == "refresh":
+                    # Send updated task list with all tasks
+                    active_tasks = database_functions.tasks.get_all_active_tasks(user_id)
+                    await websocket.send_text(json.dumps({
+                        "event": "refresh",
+                        "tasks": active_tasks
+                    }))
+
+                # Wait a short while before next iteration
+                await asyncio.sleep(0.1)
+
+        except WebSocketDisconnect:
+            print(f"WebSocket disconnected for user {user_id}")
+            manager.disconnect(websocket, user_id)
+
+    except Exception as e:
+        print(f"WebSocket error for user {user_id}: {str(e)}")
+        try:
+            await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
+        except:
+            pass
+
 
 @app.get("/api/auth/callback")
 async def oidc_callback(

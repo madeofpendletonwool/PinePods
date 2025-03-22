@@ -1,5 +1,6 @@
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::SafeHtml;
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_disable_mfa, call_generate_mfa_secret, call_mfa_settings, call_verify_temp_mfa,
 };
@@ -23,7 +24,7 @@ pub fn mfa_options() -> Html {
     let effect_user_id = user_id.clone();
     let effect_api_key = api_key.clone();
     let effect_server_name = server_name.clone();
-    let audio_dispatch_effect = audio_dispatch.clone();
+    let dispatch_effect = _dispatch.clone();
     {
         let mfa_status = mfa_status.clone();
         use_effect_with(
@@ -43,9 +44,12 @@ pub fn mfa_options() -> Html {
                                 mfa_status.set(mfa_settings_response);
                             }
                             Err(e) => {
-                                audio_dispatch_effect.reduce_mut(|audio_state| {
-                                    audio_state.error_message =
-                                        Option::from(format!("Error getting MFA status: {}", e))
+                                let formatted_error = format_error_message(&e.to_string());
+                                dispatch_effect.reduce_mut(|audio_state| {
+                                    audio_state.error_message = Option::from(format!(
+                                        "Error getting MFA status: {}",
+                                        formatted_error
+                                    ))
                                 });
                             }
                         }
@@ -57,7 +61,7 @@ pub fn mfa_options() -> Html {
             },
         );
     }
-    let audio_dispatch_refresh = audio_dispatch.clone();
+    let dispatch_refresh = _dispatch.clone();
     // Re-fetch MFA status after setup is complete
     {
         let mfa_status = mfa_status.clone();
@@ -78,9 +82,12 @@ pub fn mfa_options() -> Html {
                             mfa_status.set(mfa_settings_response);
                         }
                         Err(e) => {
-                            audio_dispatch_refresh.reduce_mut(|audio_state| {
-                                audio_state.error_message =
-                                    Option::from(format!("Error getting MFA status: {}", e))
+                            let formatted_error = format_error_message(&e.to_string());
+                            dispatch_refresh.reduce_mut(|audio_state| {
+                                audio_state.error_message = Option::from(format!(
+                                    "Error getting MFA status: {}",
+                                    formatted_error
+                                ))
                             });
                         }
                     }
@@ -205,7 +212,7 @@ pub fn mfa_options() -> Html {
             let server_name = server_name.clone();
             let page_state = page_state.clone();
             let code = code.clone();
-            let audio_dispatch = audio_dispatch.clone();
+            let _dispatch = _dispatch.clone();
             let mfa_status_update = mfa_status_clone.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
@@ -224,7 +231,7 @@ pub fn mfa_options() -> Html {
                             mfa_status_update.set(true); // Update MFA status
                                                          // refresh_mfa_status.emit(());
                         } else {
-                            audio_dispatch.reduce_mut(|audio_state| {
+                            _dispatch.reduce_mut(|audio_state| {
                                 audio_state.error_message =
                                     Option::from("MFA code verification failed".to_string())
                             });
@@ -232,9 +239,12 @@ pub fn mfa_options() -> Html {
                         }
                     }
                     Err(e) => {
-                        audio_dispatch.reduce_mut(|audio_state| {
-                            audio_state.error_message =
-                                Option::from(format!("Failed to verify MFA code: {}", e))
+                        let formatted_error = format_error_message(&e.to_string());
+                        _dispatch.reduce_mut(|audio_state| {
+                            audio_state.error_message = Option::from(format!(
+                                "Failed to verify MFA code: {}",
+                                formatted_error
+                            ))
                         });
                         // Handle error appropriately, e.g., showing an error message
                     }

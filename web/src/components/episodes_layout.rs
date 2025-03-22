@@ -1,8 +1,9 @@
 use super::app_drawer::App_drawer;
-use super::gen_components::{Search_nav, UseScrollToTop, FallbackImage};
+use super::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
+use crate::components::gen_funcs::format_error_message;
 use crate::components::host_component::HostDropdown;
 use crate::components::podcast_layout::ClickedFeedURL;
 use crate::components::virtual_list::PodcastEpisodeVirtualList;
@@ -165,28 +166,6 @@ impl Reducer<AppState> for AppStateMsg {
 
         // Return the Rc itself, not a reference to it
         state
-    }
-}
-
-pub enum UIStateMsg {
-    ClearErrorMessage,
-    ClearInfoMessage,
-}
-
-impl Reducer<UIState> for UIStateMsg {
-    fn apply(self, mut state: Rc<UIState>) -> Rc<UIState> {
-        let state = Rc::make_mut(&mut state);
-
-        match self {
-            UIStateMsg::ClearErrorMessage => {
-                state.error_message = None;
-            }
-            UIStateMsg::ClearInfoMessage => {
-                state.info_message = None;
-            }
-        }
-
-        (*state).clone().into()
     }
 }
 
@@ -713,34 +692,9 @@ pub fn episode_layout() -> Html {
         || ()
     });
 
-    {
-        let dispatch = _dispatch.clone();
-        use_effect(move || {
-            let window = window().unwrap();
-            let document = window.document().unwrap();
-
-            let closure = Closure::wrap(Box::new(move |_event: Event| {
-                dispatch.apply(UIStateMsg::ClearErrorMessage);
-                dispatch.apply(UIStateMsg::ClearInfoMessage);
-            }) as Box<dyn Fn(_)>);
-
-            document
-                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                .unwrap();
-
-            // Return cleanup function
-            move || {
-                document
-                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                    .unwrap();
-                closure.forget(); // Prevents the closure from being dropped
-            }
-        });
-    }
-
     let delete_history = history.clone();
     let delete_all_click = {
-        let add_dispatch = _dispatch.clone();
+        let add_dispatch = _search_dispatch.clone();
         let pod_values = clicked_podcast_info.clone();
 
         let user_id_og = user_id.clone();
@@ -835,8 +789,10 @@ pub fn episode_layout() -> Html {
                         page_state.set(PageState::Hidden);
                     }
                     Err(e) => {
+                        let formatted_error = format_error_message(&e.to_string());
                         dispatch_wasm.reduce_mut(|state| {
-                            state.error_message = Some(format!("Error removing content: {:?}", e))
+                            state.error_message =
+                                Some(format!("Error removing content: {:?}", formatted_error))
                         });
                         app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                     }
@@ -847,7 +803,7 @@ pub fn episode_layout() -> Html {
 
     let download_server_name = server_name.clone();
     let download_api_key = api_key.clone();
-    let download_dispatch = _dispatch.clone();
+    let download_dispatch = _search_dispatch.clone();
     let app_state = search_state.clone();
 
     let download_all_click = {
@@ -920,16 +876,21 @@ pub fn episode_layout() -> Html {
                                 });
                             }
                             Err(e) => {
+                                let formatted_error = format_error_message(&e.to_string());
                                 call_down_dispatch.reduce_mut(|state| {
-                                    state.error_message = Option::from(format!("{}", e))
+                                    state.error_message =
+                                        Option::from(format!("{}", formatted_error))
                                 });
                             }
                         }
                     }
                     Err(e) => {
                         call_down_dispatch.reduce_mut(|state| {
-                            state.error_message =
-                                Option::from(format!("Failed to get podcast ID: {}", e))
+                            let formatted_error = format_error_message(&e.to_string());
+                            state.error_message = Option::from(format!(
+                                "Failed to get podcast ID: {}",
+                                formatted_error
+                            ))
                         });
                     }
                 }
@@ -1076,7 +1037,7 @@ pub fn episode_layout() -> Html {
     let end_skip_call = end_skip.clone();
     let start_skip_call_button = start_skip.clone();
     let end_skip_call_button = end_skip.clone();
-    let skip_dispatch = _dispatch.clone();
+    let skip_dispatch = _search_dispatch.clone();
 
     // Save the skip times to the server
     let save_skip_times = {
@@ -1567,7 +1528,7 @@ pub fn episode_layout() -> Html {
     };
 
     let toggle_podcast = {
-        let add_dispatch = _dispatch.clone();
+        let add_dispatch = _search_dispatch.clone();
         let pod_values = clicked_podcast_info.clone();
         let user_id_og = user_id.clone();
 
@@ -1701,9 +1662,12 @@ pub fn episode_layout() -> Html {
                             }
                         }
                         Err(e) => {
+                            let formatted_error = format_error_message(&e.to_string());
                             dispatch_wasm.reduce_mut(|state| {
-                                state.error_message =
-                                    Option::from(format!("Error adding podcast: {:?}", e))
+                                state.error_message = Option::from(format!(
+                                    "Error adding podcast: {:?}",
+                                    formatted_error
+                                ))
                             });
                             app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                         }
@@ -2334,21 +2298,6 @@ pub fn episode_layout() -> Html {
                 }
             }
         <App_drawer />
-        // Conditional rendering for the error banner
-        {
-            if state.error_message.as_ref().map_or(false, |msg| !msg.is_empty()) {
-                html! { <div class="error-snackbar">{ &state.error_message }</div> }
-            } else {
-                html! {}
-            }
-        }
-        {
-        if state.info_message.as_ref().map_or(false, |msg| !msg.is_empty()) {
-                html! { <div class="info-snackbar">{ &state.info_message }</div> }
-            } else {
-                html! {}
-            }
-        }
         {
             if let Some(audio_props) = &state.currently_playing {
                 html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }

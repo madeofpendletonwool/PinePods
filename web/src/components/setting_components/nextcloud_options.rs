@@ -1,4 +1,5 @@
 use crate::components::context::{AppState, UIState};
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::connect_to_episode_websocket;
 use crate::requests::setting_reqs::{
     call_add_gpodder_server, call_add_nextcloud_server, call_check_nextcloud_server,
@@ -45,8 +46,8 @@ pub fn nextcloud_options() -> Html {
     let server_pass = use_state(|| String::new());
     let auth_status = use_state(|| String::new());
     let nextcloud_url = use_state(|| String::new()); // State to hold the Nextcloud server URL
-    let _error_message = audio_state.error_message.clone();
-    let _info_message = audio_state.info_message.clone();
+    let _error_message = state.error_message.clone();
+    let _info_message = state.info_message.clone();
 
     // Handler for server URL input change
     let on_server_url_change = {
@@ -121,6 +122,7 @@ pub fn nextcloud_options() -> Html {
         let auth_status = auth_status.clone();
         let audio_dispatch_call = audio_dispatch.clone();
         Callback::from(move |_| {
+            let app_dispatch = app_dispatch.clone();
             let audio_dispatch = audio_dispatch_call.clone();
             let auth_status = auth_status.clone();
             let server = (*server_url_initiate).clone().trim().to_string();
@@ -172,7 +174,7 @@ pub fn nextcloud_options() -> Html {
                                             Ok(response) => {
                                                 if response.data {
                                                     log::info!("gPodder settings have been set up");
-                                                    audio_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from("Nextcloud server has been authenticated successfully".to_string()));
+                                                    app_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from("Nextcloud server has been authenticated successfully".to_string()));
 
                                                     // Set `is_refreshing` to true and start the WebSocket refresh
                                                     let server_name_call = server_name.clone();
@@ -229,10 +231,14 @@ pub fn nextcloud_options() -> Html {
                                 }
                                 Err(e) => {
                                     log::error!("Error calling add_nextcloud_server: {:?}", e);
-                                    audio_dispatch.reduce_mut(|audio_state| {
+                                    let formatted_error = format_error_message(&e.to_string());
+                                    app_dispatch.reduce_mut(|audio_state| {
                                         audio_state.error_message = Option::from(
-                                            format!("Error calling add_nextcloud_server: {}", e)
-                                                .to_string(),
+                                            format!(
+                                                "Error calling add_nextcloud_server: {}",
+                                                formatted_error
+                                            )
+                                            .to_string(),
                                         )
                                     });
                                 }
@@ -243,7 +249,7 @@ pub fn nextcloud_options() -> Html {
                                 "Failed to initiate Nextcloud login: {:?}",
                                 e
                             )));
-                            audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Failed to initiate Nextcloud login. Please check the server URL.".to_string()));
+                            app_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Failed to initiate Nextcloud login. Please check the server URL.".to_string()));
                             auth_status.set(
                                 "Failed to initiate Nextcloud login. Please check the server URL."
                                     .to_string(),
@@ -253,7 +259,7 @@ pub fn nextcloud_options() -> Html {
                 });
             } else {
                 auth_status.set("Please enter a Nextcloud server URL.".to_string());
-                audio_dispatch.reduce_mut(|audio_state| {
+                app_dispatch.reduce_mut(|audio_state| {
                     audio_state.error_message =
                         Option::from("Please enter a Nextcloud Server URL".to_string())
                 });
@@ -316,7 +322,7 @@ pub fn nextcloud_options() -> Html {
                                         log::info!(
                                             "Gpodder server now added and podcasts syncing!"
                                         );
-                                        audio_dispatch.reduce_mut(|audio_state| {
+                                        dispatch_clone.reduce_mut(|audio_state| {
                                             audio_state.info_message = Option::from(
                                                 "Gpodder server now added and podcasts syncing!"
                                                     .to_string(),
@@ -367,9 +373,10 @@ pub fn nextcloud_options() -> Html {
                                             "Failed to add Gpodder server: {:?}",
                                             e
                                         )));
-                                        audio_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Failed to add Gpodder server. Please check the server URL.".to_string()));
+                                        let formatted_error = format_error_message(&e.to_string());
+                                        dispatch_clone.reduce_mut(|audio_state| audio_state.error_message = Option::from("Failed to add Gpodder server. Please check the server URL.".to_string()));
                                         auth_status.set(
-                                            format!("Failed to add Gpodder server. Please check the server URL and credentials. {:?}", e)
+                                            format!("Failed to add Gpodder server. Please check the server URL and credentials. {:?}", formatted_error)
                                                 .to_string(),
                                         );
                                     }
@@ -378,7 +385,7 @@ pub fn nextcloud_options() -> Html {
                                 web_sys::console::log_1(&JsValue::from_str(
                                     "Authentication failed.",
                                 ));
-                                audio_dispatch.reduce_mut(|audio_state| {
+                                dispatch_clone.reduce_mut(|audio_state| {
                                     audio_state.error_message = Option::from(
                                         "Authentication failed. Please check your credentials."
                                             .to_string(),
@@ -395,7 +402,7 @@ pub fn nextcloud_options() -> Html {
                                 "Failed to verify Gpodder auth: {:?}",
                                 e
                             )));
-                            audio_dispatch.reduce_mut(|audio_state| {
+                            dispatch_clone.reduce_mut(|audio_state| {
                                 audio_state.error_message = Option::from(
                                     "Failed to verify Gpodder auth. Please check the server URL."
                                         .to_string(),
@@ -410,7 +417,7 @@ pub fn nextcloud_options() -> Html {
                 });
             } else {
                 auth_status.set("Please enter a Gpodder server URL.".to_string());
-                audio_dispatch.reduce_mut(|audio_state| {
+                dispatch_clone.reduce_mut(|audio_state| {
                     audio_state.error_message =
                         Option::from("Please enter a Gpodder Server URL".to_string())
                 });

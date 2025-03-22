@@ -10,6 +10,20 @@ Major Version:
 - [ ] Make sure youtube entirely works on homepage
 - [ ] Fix Virtual Line Spacing on Playlist Page
 
+0.7.6
+- [] Add ability to delete playlsits
+- [x] Notification system
+- [] Ability to delete nextcloud
+- [] Finalize OIDC errors
+- [x] Fix context menu on downloads page
+- [x] adjust login screen component to be set amount down
+- [] Implement download_youtube_video_task
+
+- [x] Fade out animation for toast
+- [x] Check for and remove other on page notifications
+- [x] Ensure pooling fixed
+- [x] Put toast ssytem on login
+
 Pre 0.7.4
 
 - [x] Implement specific podcasts to pass to playlist creation. So you can choose specific ones

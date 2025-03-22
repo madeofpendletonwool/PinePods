@@ -1,4 +1,5 @@
 use crate::components::context::{AppState, UIState};
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::call_backup_server;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
@@ -21,14 +22,14 @@ pub fn backup_server() -> Html {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let blob_property_bag = blob_property_bag.clone();
-        let audio_dispatch_call = audio_dispatch.clone();
+        let dispatch_call = _dispatch.clone();
         let is_loading = is_loading.clone();
 
         Callback::from(move |_| {
-            let audio_dispatch_call = audio_dispatch_call.clone();
+            let dispatch_call = dispatch_call.clone();
             let db_pass = (*database_password).trim().to_string();
             if db_pass.is_empty() {
-                audio_dispatch.reduce_mut(|audio_state| {
+                dispatch_call.reduce_mut(|audio_state| {
                     audio_state.error_message =
                         Option::from("Database password cannot be empty.".to_string())
                 });
@@ -67,10 +68,14 @@ pub fn backup_server() -> Html {
                         is_loading_clone.set(false);
                     }
                     Err(e) => {
-                        audio_dispatch_call.reduce_mut(|audio_state| {
+                        let formatted_error = format_error_message(&e.to_string());
+                        dispatch_call.reduce_mut(|audio_state| {
                             audio_state.error_message = Option::from(
-                                format!("Error backing up server - Maybe wrong password?: {}", e)
-                                    .to_string(),
+                                format!(
+                                    "Error backing up server - Maybe wrong password?: {}",
+                                    formatted_error
+                                )
+                                .to_string(),
                             )
                         });
                         is_loading_clone.set(false);

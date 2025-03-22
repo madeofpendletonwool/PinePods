@@ -1,4 +1,5 @@
 use crate::components::audio::AudioPlayerProps;
+use crate::components::notification_center::TaskProgress;
 use crate::components::podcast_layout::ClickedFeedURL;
 use crate::components::podcasts::PodcastLayout;
 use crate::requests::login_requests::AddUserRequest;
@@ -151,6 +152,7 @@ pub struct AppState {
     pub playlists: Option<Vec<Playlist>>,
     pub current_playlist_info: Option<PlaylistInfo>,
     pub current_playlist_episodes: Option<Vec<Episode>>,
+    pub active_tasks: Option<Vec<TaskProgress>>,
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
@@ -173,8 +175,8 @@ pub struct UIState {
     pub current_time_formatted: String,
     pub duration: f64,
     pub duration_formatted: String,
-    pub error_message: Option<String>,
-    pub info_message: Option<String>,
+    // pub error_message: Option<String>,
+    // pub info_message: Option<String>,
     pub is_expanded: bool,
     pub episode_in_db: Option<bool>,
     pub playback_speed: f64,
