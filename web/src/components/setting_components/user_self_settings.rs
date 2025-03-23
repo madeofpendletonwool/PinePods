@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{encode_password, validate_email, validate_username};
 use crate::requests::setting_reqs::{call_get_my_user_info, MyUserInfo};
@@ -12,7 +12,6 @@ use yewdux::prelude::*;
 #[function_component(UserSelfSettings)]
 pub fn user_self_settings() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
-    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID);

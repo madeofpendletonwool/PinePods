@@ -11,7 +11,6 @@ use yewdux::prelude::*;
 
 #[function_component(UserStats)]
 pub fn user_stats() -> Html {
-    let (_state, dispatch) = use_store::<AppState>();
     let (stat_state, stat_dispatch) = use_store::<UserStatsStore>();
     let user_stats = stat_state.stats.as_ref();
     let pinepods_version = stat_state.pinepods_version.as_ref();

@@ -4761,6 +4761,30 @@ def refresh_nextcloud_subscription_for_user(c, user_id, gpodder_url, gpodder_tok
     finally:
         close_database_connection(cnx)
 
+class RemoveSyncRequest(BaseModel):
+    user_id: int
+
+@app.delete("/api/data/remove_podcast_sync")
+async def remove_podcast_sync(data: RemoveSyncRequest, cnx=Depends(get_database_connection),
+                             api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                            detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the user has permission to modify this user's data
+    elevated_access = await has_elevated_access(api_key, cnx)
+    if not elevated_access:
+        user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        if data.user_id != user_id_from_api_key:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="You are not authorized to modify these user settings")
+
+    # Remove the sync settings
+    database_functions.functions.remove_gpodder_settings(database_type, cnx, data.user_id)
+
+    return {"success": True, "message": "Podcast sync settings removed successfully"}
+
 def check_valid_feed(feed_url: str, username: Optional[str] = None, password: Optional[str] = None):
     """
     Check if the provided URL points to a valid podcast feed.
@@ -5690,6 +5714,196 @@ async def store_oidc_state(
         logging.error(f"Error storing OIDC state: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to store state")
 
+@app.get("/api/auth/callback")
+async def oidc_callback(
+    request: Request,
+    code: str,
+    state: str = None,
+    cnx=Depends(get_database_connection)
+):
+    try:
+        base_url = str(request.base_url)[:-1]
+        # Force HTTPS if running in production
+        if not base_url.startswith('http://localhost'):
+            if base_url.startswith('http:'):
+                base_url = 'https:' + base_url[5:]
+
+        print(f"Base URL: {base_url}")
+        frontend_base = base_url.replace('/api', '')
+
+        # Get client_id from query parameters
+        client_id = database_functions.oidc_state_manager.oidc_state_manager.get_client_id(state)
+        if not client_id:
+            return RedirectResponse(
+                url=f"{frontend_base}/oauth/callback?error=invalid_state"
+            )
+
+        registered_redirect_uri = f"{base_url}/api/auth/callback"
+        print(f"Using redirect_uri: {registered_redirect_uri}")
+
+        # Get OIDC provider details
+        provider = database_functions.functions.get_oidc_provider(cnx, database_type, client_id)
+        if not provider:
+            return RedirectResponse(
+                url=f"{frontend_base}/oauth/callback?error=invalid_provider"
+            )
+
+        # Unpack provider details
+        provider_id, client_id, client_secret, token_url, userinfo_url = provider
+
+        # Exchange authorization code for access token
+        async with httpx.AsyncClient() as client:
+            try:
+                token_response = await client.post(
+                    token_url,
+                    data={
+                        "grant_type": "authorization_code",
+                        "code": code,
+                        "redirect_uri": registered_redirect_uri,
+                        "client_id": client_id,
+                        "client_secret": client_secret,
+                    },
+                    headers={
+                        "Accept": "application/json"
+                    }
+                )
+
+                if token_response.status_code != 200:
+                    return RedirectResponse(
+                        url=f"{frontend_base}/oauth/callback?error=token_exchange_failed"
+                    )
+
+                token_data = token_response.json()
+                print(f"Token response: {token_data}")
+                access_token = token_data.get("access_token")
+
+                # Get user info from OIDC provider
+                headers = {
+                    "Authorization": f"Bearer {access_token}",
+                    "User-Agent": "PinePods/1.0",  # Add a meaningful user agent
+                    "Accept": "application/json"
+                }
+                userinfo_response = await client.get(userinfo_url, headers=headers)
+
+                if userinfo_response.status_code != 200:
+                    error_content = userinfo_response.text
+                    print(f"GitHub API error: {error_content}")
+                    return RedirectResponse(
+                        url=f"{frontend_base}/oauth/callback?error=userinfo_failed"
+                    )
+
+                user_info = userinfo_response.json()
+                print(f"User info response: {user_info}")
+                email = user_info.get("email")
+
+                parsed_url = urlparse(userinfo_url)
+                if not email and parsed_url.hostname == 'api.github.com':
+                    # For GitHub, we may need to make a separate request for emails
+                    # because GitHub doesn't include email in user info if it's private
+                    emails_response = await client.get(
+                        'https://api.github.com/user/emails',
+                        headers=headers
+                    )
+
+                    if emails_response.status_code == 200:
+                        emails = emails_response.json()
+                        # Find the primary email
+                        for email_obj in emails:
+                            if email_obj.get('primary') and email_obj.get('verified'):
+                                email = email_obj.get('email')
+                                break
+
+                        # If no primary found, take the first verified one
+                        if not email:
+                            for email_obj in emails:
+                                if email_obj.get('verified'):
+                                    email = email_obj.get('email')
+                                    break
+
+                if not email:
+                    return RedirectResponse(
+                        url=f"{frontend_base}/oauth/callback?error=email_required"
+                    )
+
+            except httpx.RequestError:
+                return RedirectResponse(
+                    url=f"{frontend_base}/oauth/callback?error=network_error"
+                )
+
+            # Check if user exists
+            user = database_functions.functions.get_user_by_email(cnx, database_type, email)
+
+            # In your OIDC callback function, replace the user creation section with:
+
+            if not user:
+                # Create new user
+                print(f"User with email {email} not found, creating new user")
+                fullname = user_info.get("name", "")
+                username = email.split("@")[0].lower()
+                base_username = username
+                counter = 1
+                max_attempts = 10
+
+                while counter <= max_attempts:
+                    try:
+                        print(f"Attempt {counter} to create user with base username: {base_username}")
+                        user_id = database_functions.functions.create_oidc_user(
+                            cnx, database_type, email, fullname, username
+                        )
+                        print(f"User created successfully with ID: {user_id}")
+
+                        if not user_id:
+                            print(f"ERROR: Invalid user_id returned: {user_id}")
+                            return RedirectResponse(
+                                url=f"{frontend_base}/oauth/callback?error=invalid_user_id"
+                            )
+
+                        print(f"Creating API key for user_id: {user_id}")
+                        api_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
+                        print(f"API key created: {api_key[:5]}... (truncated for security)")
+                        break
+                    except UniqueViolation:
+                        print(f"Username conflict with {username}, trying next variation")
+                        username = f"{base_username}{counter}"
+                        counter += 1
+                        if counter > max_attempts:
+                            print(f"Failed to create user after {max_attempts} attempts due to username conflicts")
+                            return RedirectResponse(
+                                url=f"{frontend_base}/oauth/callback?error=username_conflict"
+                            )
+                    except Exception as e:
+                        print(f"Error during user creation: {str(e)}")
+                        import traceback
+                        print(f"Traceback: {traceback.format_exc()}")
+                        return RedirectResponse(
+                            url=f"{frontend_base}/oauth/callback?error=user_creation_failed&details={str(e)[:50]}"
+                        )
+                else:
+                    print("Failed to create user after maximum attempts")
+                    return RedirectResponse(
+                        url=f"{frontend_base}/oauth/callback?error=user_creation_failed"
+                    )
+
+            else:
+                # Existing user - retrieve their API key
+                print(f"User with email {email} found, retrieving API key")
+                user_id = user[0] if isinstance(user, tuple) else user['userid']  # Adjust based on your DB return format
+
+                api_key = database_functions.functions.get_user_api_key(cnx, database_type, user_id)
+                if not api_key:
+                    print(f"No API key found for user_id: {user_id}, creating a new one")
+                    api_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
+
+                print(f"API key retrieved: {api_key[:5]}... (truncated for security)")
+
+            # Success case - redirect with API key
+            return RedirectResponse(url=f"{frontend_base}/oauth/callback?api_key={api_key}")
+
+    except Exception as e:
+        logging.error(f"OIDC callback error: {str(e)}")
+        return RedirectResponse(
+            url=f"{frontend_base}/oauth/callback?error=authentication_failed"
+        )
 
 # Store active connections
 class ConnectionManager:
@@ -5879,185 +6093,6 @@ async def websocket_endpoint(
         except:
             pass
 
-
-@app.get("/api/auth/callback")
-async def oidc_callback(
-    request: Request,
-    code: str,
-    state: str = None,
-    cnx=Depends(get_database_connection)
-):
-    try:
-        base_url = str(request.base_url)[:-1]
-        # Force HTTPS if running in production
-        if not base_url.startswith('http://localhost'):
-            if base_url.startswith('http:'):
-                base_url = 'https:' + base_url[5:]
-
-        print(f"Base URL: {base_url}")
-        frontend_base = base_url.replace('/api', '')
-
-        # Get client_id from query parameters
-        client_id = database_functions.oidc_state_manager.oidc_state_manager.get_client_id(state)
-        if not client_id:
-            return RedirectResponse(
-                url=f"{frontend_base}/oauth/callback?error=invalid_state"
-            )
-
-        registered_redirect_uri = f"{base_url}/api/auth/callback"
-        print(f"Using redirect_uri: {registered_redirect_uri}")
-
-        # Get OIDC provider details
-        provider = database_functions.functions.get_oidc_provider(cnx, database_type, client_id)
-        if not provider:
-            return RedirectResponse(
-                url=f"{frontend_base}/oauth/callback?error=invalid_provider"
-            )
-
-        # Unpack provider details
-        provider_id, client_id, client_secret, token_url, userinfo_url = provider
-
-        # Exchange authorization code for access token
-        async with httpx.AsyncClient() as client:
-            try:
-                token_response = await client.post(
-                    token_url,
-                    data={
-                        "grant_type": "authorization_code",
-                        "code": code,
-                        "redirect_uri": registered_redirect_uri,
-                        "client_id": client_id,
-                        "client_secret": client_secret,
-                    },
-                    headers={
-                        "Accept": "application/json"
-                    }
-                )
-
-                if token_response.status_code != 200:
-                    return RedirectResponse(
-                        url=f"{frontend_base}/oauth/callback?error=token_exchange_failed"
-                    )
-
-                token_data = token_response.json()
-                print(f"Token response: {token_data}")
-                access_token = token_data.get("access_token")
-
-                # Get user info from OIDC provider
-                headers = {
-                    "Authorization": f"Bearer {access_token}",
-                    "User-Agent": "PinePods/1.0",  # Add a meaningful user agent
-                    "Accept": "application/json"
-                }
-                userinfo_response = await client.get(userinfo_url, headers=headers)
-
-                if userinfo_response.status_code != 200:
-                    error_content = userinfo_response.text
-                    print(f"GitHub API error: {error_content}")
-                    return RedirectResponse(
-                        url=f"{frontend_base}/oauth/callback?error=userinfo_failed"
-                    )
-
-                user_info = userinfo_response.json()
-                print(f"User info response: {user_info}")
-                email = user_info.get("email")
-
-                parsed_url = urlparse(userinfo_url)
-                if not email and parsed_url.hostname == 'api.github.com':
-                    # For GitHub, we may need to make a separate request for emails
-                    # because GitHub doesn't include email in user info if it's private
-                    emails_response = await client.get(
-                        'https://api.github.com/user/emails',
-                        headers=headers
-                    )
-
-                    if emails_response.status_code == 200:
-                        emails = emails_response.json()
-                        # Find the primary email
-                        for email_obj in emails:
-                            if email_obj.get('primary') and email_obj.get('verified'):
-                                email = email_obj.get('email')
-                                break
-
-                        # If no primary found, take the first verified one
-                        if not email:
-                            for email_obj in emails:
-                                if email_obj.get('verified'):
-                                    email = email_obj.get('email')
-                                    break
-
-                if not email:
-                    return RedirectResponse(
-                        url=f"{frontend_base}/oauth/callback?error=email_required"
-                    )
-
-            except httpx.RequestError:
-                return RedirectResponse(
-                    url=f"{frontend_base}/oauth/callback?error=network_error"
-                )
-
-            # Check if user exists
-            user = database_functions.functions.get_user_by_email(cnx, database_type, email)
-
-            # In your OIDC callback function, replace the user creation section with:
-
-            if not user:
-                # Create new user
-                print(f"User with email {email} not found, creating new user")
-                fullname = user_info.get("name", "")
-                username = email.split("@")[0].lower()
-                base_username = username
-                counter = 1
-                max_attempts = 10
-
-                while counter <= max_attempts:
-                    try:
-                        print(f"Attempt {counter} to create user with base username: {base_username}")
-                        user_id = database_functions.functions.create_oidc_user(
-                            cnx, database_type, email, fullname, username
-                        )
-                        print(f"User created successfully with ID: {user_id}")
-
-                        if not user_id:
-                            print(f"ERROR: Invalid user_id returned: {user_id}")
-                            return RedirectResponse(
-                                url=f"{frontend_base}/oauth/callback?error=invalid_user_id"
-                            )
-
-                        print(f"Creating API key for user_id: {user_id}")
-                        api_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
-                        print(f"API key created: {api_key[:5]}... (truncated for security)")
-                        break
-                    except UniqueViolation:
-                        print(f"Username conflict with {username}, trying next variation")
-                        username = f"{base_username}{counter}"
-                        counter += 1
-                        if counter > max_attempts:
-                            print(f"Failed to create user after {max_attempts} attempts due to username conflicts")
-                            return RedirectResponse(
-                                url=f"{frontend_base}/oauth/callback?error=username_conflict"
-                            )
-                    except Exception as e:
-                        print(f"Error during user creation: {str(e)}")
-                        import traceback
-                        print(f"Traceback: {traceback.format_exc()}")
-                        return RedirectResponse(
-                            url=f"{frontend_base}/oauth/callback?error=user_creation_failed&details={str(e)[:50]}"
-                        )
-                else:
-                    print("Failed to create user after maximum attempts")
-                    return RedirectResponse(
-                        url=f"{frontend_base}/oauth/callback?error=user_creation_failed"
-                    )
-
-            # Success case - redirect with API key
-            return RedirectResponse(url=f"{frontend_base}/oauth/callback?api_key={api_key}")
-
-    except Exception as e:
-        logging.error(f"OIDC callback error: {str(e)}")
-        return RedirectResponse(
-            url=f"{frontend_base}/oauth/callback?error=authentication_failed"
-        )
 
 class InitRequest(BaseModel):
     api_key: str

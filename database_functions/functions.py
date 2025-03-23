@@ -3463,7 +3463,7 @@ def get_podcast_index_id(cnx, database_type, podcast_id):
         cursor.close()
 
 
-def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
+def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None, progress_callback=None):
     """
     Download a YouTube video with progress tracking.
 
@@ -3473,6 +3473,7 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
         video_id: ID of the video to download
         user_id: ID of the user requesting the download
         task_id: Optional Celery task ID for progress tracking
+        progress_callback: Optional callback function to report progress (fn(progress, status))
 
     Returns:
         bool: True if successful, False otherwise
@@ -3482,7 +3483,7 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
     try:
         # Import task-specific modules inside function to avoid circular imports
         if task_id:
-            from tasks import download_manager
+            from database_functions.tasks import download_manager
 
         cursor = cnx.cursor()
 
@@ -3494,15 +3495,18 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
 
         cursor.execute(query, (video_id, user_id))
         if cursor.fetchone():
-            logger.info(f"Video {video_id} already downloaded for user {user_id}")
             # Update task progress to 100% if task_id is provided
             if task_id:
                 download_manager.update_task(task_id, 100.0, "SUCCESS")
+            if progress_callback:
+                progress_callback(100.0, "SUCCESS")
             return True
 
         # Update progress if task_id is provided
         if task_id:
             download_manager.update_task(task_id, 5.0, "STARTED")
+        if progress_callback:
+            progress_callback(5.0, "STARTED")
 
         # Get video details
         if database_type == "postgresql":
@@ -3544,9 +3548,10 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
         result = cursor.fetchone()
 
         if result is None:
-            logger.error(f"Video {video_id} not found")
             if task_id:
                 download_manager.update_task(task_id, 0.0, "FAILED")
+            if progress_callback:
+                progress_callback(0.0, "FAILED")
             return False
 
         # Extract values
@@ -3565,6 +3570,8 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
 
         if task_id:
             download_manager.update_task(task_id, 10.0, "PROCESSING")
+        if progress_callback:
+            progress_callback(10.0, "PROCESSING")
 
         # Get user's time/date preferences and format date
         timezone, time_format, date_format = get_time_info(database_type, cnx, user_id)
@@ -3590,13 +3597,16 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
         if not os.path.exists(source_path):
             source_path = f"{source_path}.mp3"  # Try with double extension
             if not os.path.exists(source_path):
-                logger.error(f"Source file not found for YouTube video {youtube_video_id}")
                 if task_id:
                     download_manager.update_task(task_id, 0.0, "FAILED")
+                if progress_callback:
+                    progress_callback(0.0, "FAILED")
                 return False
 
         if task_id:
             download_manager.update_task(task_id, 30.0, "PREPARING_DESTINATION")
+        if progress_callback:
+            progress_callback(30.0, "PREPARING_DESTINATION")
 
         # Create destination directory
         download_dir = os.path.join("/opt/pinepods/downloads", channel_name)
@@ -3612,7 +3622,9 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
         dest_path = os.path.join(download_dir, filename)
 
         if task_id:
-            download_manager.update_task(task_id, 50.0, "COPYING")
+            download_manager.update_task(task_id, 50.0, "DOWNLOADING")
+        if progress_callback:
+            progress_callback(50.0, "DOWNLOADING")
 
         # Copy file with progress tracking
         try:
@@ -3632,24 +3644,33 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
                     dest_file.write(buffer)
                     copied += len(buffer)
 
-                    if task_id and source_size > 0:
+                    if source_size > 0:
                         # Calculate progress (50-80% range for copying)
-                        copy_progress = (copied / source_size) * 30.0
-                        download_manager.update_task(task_id, 50.0 + copy_progress, "COPYING")
+                        copy_progress = 50.0 + ((copied / source_size) * 30.0)
+
+                        # Update progress every ~5% to reduce overhead
+                        if copied % (source_size // 20 + 1) < buffer_size:
+                            if task_id:
+                                download_manager.update_task(task_id, copy_progress, "DOWNLOADING")
+                            if progress_callback:
+                                progress_callback(copy_progress, "DOWNLOADING")
 
         except Exception as e:
-            logger.error(f"Error copying file for video {video_id}: {str(e)}")
             if os.path.exists(dest_path):
                 os.unlink(dest_path)  # Clean up incomplete file
             if task_id:
                 download_manager.update_task(task_id, 0.0, "FAILED")
+            if progress_callback:
+                progress_callback(0.0, "FAILED")
             raise
 
         # Set proper permissions on destination file
         os.chown(dest_path, uid, gid)
 
         if task_id:
-            download_manager.update_task(task_id, 80.0, "ADDING_METADATA")
+            download_manager.update_task(task_id, 80.0, "FINALIZING")
+        if progress_callback:
+            progress_callback(80.0, "FINALIZING")
 
         # Update metadata
         try:
@@ -3659,14 +3680,16 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
                 'album': channel_name,
                 'date': pub_date_str
             }
-            import mp3_metadata
+            from database_functions import mp3_metadata
             mp3_metadata.add_podcast_metadata(dest_path, metadata)
         except Exception as e:
-            logger.warning(f"Failed to add metadata to {dest_path}: {e}")
+            print(f"Failed to add metadata to {dest_path}: {e}")
             # Continue despite metadata failure
 
         if task_id:
             download_manager.update_task(task_id, 90.0, "UPDATING_DATABASE")
+        if progress_callback:
+            progress_callback(90.0, "UPDATING_DATABASE")
 
         # Record in database
         file_size = os.path.getsize(dest_path)
@@ -3698,16 +3721,20 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None):
 
         if task_id:
             download_manager.update_task(task_id, 100.0, "SUCCESS")
+        if progress_callback:
+            progress_callback(100.0, "SUCCESS")
 
-        logger.info(f"Successfully downloaded YouTube video {video_id} to {dest_path}")
+        print(f"Successfully downloaded YouTube video {video_id} to {dest_path}")
         return True
 
     except Exception as e:
-        logger.error(f"Error downloading YouTube video {video_id}: {str(e)}", exc_info=True)
+        print(f"Error downloading YouTube video {video_id}: {str(e)}", exc_info=True)
         if cursor:
             cnx.rollback()
         if task_id:
             download_manager.update_task(task_id, 0.0, "FAILED")
+        if progress_callback:
+            progress_callback(0.0, "FAILED")
         return False
     finally:
         if cursor:
@@ -8770,12 +8797,29 @@ def create_playlist(cnx, database_type, playlist_data):
         min_duration = playlist_data.min_duration * 60 if playlist_data.min_duration is not None else None
         max_duration = playlist_data.max_duration * 60 if playlist_data.max_duration is not None else None
 
+        # Convert podcast_ids list to appropriate format based on database type
+        if database_type == "postgresql":
+            podcast_ids = playlist_data.podcast_ids  # PostgreSQL can handle list directly
+        else:  # MySQL
+            # Always ensure podcast_ids is a list before processing
+            if playlist_data.podcast_ids is None:
+                podcast_ids = ""
+            elif isinstance(playlist_data.podcast_ids, (list, tuple)):
+                if len(playlist_data.podcast_ids) == 0:
+                    podcast_ids = ""
+                else:
+                    # Convert list to comma-separated string
+                    podcast_ids = ','.join(str(id) for id in playlist_data.podcast_ids)
+            else:
+                # Handle single value case
+                podcast_ids = str(playlist_data.podcast_ids)
+
         # Create tuple of values for insert and log them
         insert_values = (
             playlist_data.user_id,
             playlist_data.name,
             playlist_data.description,
-            playlist_data.podcast_ids,
+            podcast_ids,
             playlist_data.include_unplayed,
             playlist_data.include_partially_played,
             playlist_data.include_played,
@@ -8830,13 +8874,20 @@ def create_playlist(cnx, database_type, playlist_data):
                     cnx.commit()
 
                     # Get the newly created playlist details to update it
+                    # Make sure podcast_ids is always a list for update_playlist_contents
+                    update_podcast_ids = playlist_data.podcast_ids
+                    if update_podcast_ids is None:
+                        update_podcast_ids = []
+                    elif not isinstance(update_podcast_ids, (list, tuple)):
+                        update_podcast_ids = [update_podcast_ids]
+
                     playlist_dict = {
                         'playlistid': playlist_id,
                         'userid': playlist_data.user_id,
                         'name': playlist_data.name,
                         'description': playlist_data.description,
                         'issystemplaylist': False,
-                        'podcastids': playlist_data.podcast_ids,
+                        'podcastids': update_podcast_ids,
                         'includeunplayed': playlist_data.include_unplayed,
                         'includepartiallyplayed': playlist_data.include_partially_played,
                         'includeplayed': playlist_data.include_played,
@@ -8890,13 +8941,20 @@ def create_playlist(cnx, database_type, playlist_data):
                 cnx.commit()
 
                 # Get the newly created playlist details to update it
+                # Make sure podcast_ids is always a list for update_playlist_contents
+                update_podcast_ids = playlist_data.podcast_ids
+                if update_podcast_ids is None:
+                    update_podcast_ids = []
+                elif not isinstance(update_podcast_ids, (list, tuple)):
+                    update_podcast_ids = [update_podcast_ids]
+
                 playlist_dict = {
                     'playlistid': playlist_id,
                     'userid': playlist_data.user_id,
                     'name': playlist_data.name,
                     'description': playlist_data.description,
                     'issystemplaylist': False,
-                    'podcastids': playlist_data.podcast_ids,
+                    'podcastids': update_podcast_ids,
                     'includeunplayed': playlist_data.include_unplayed,
                     'includepartiallyplayed': playlist_data.include_partially_played,
                     'includeplayed': playlist_data.include_played,
@@ -9132,6 +9190,53 @@ def get_playlists(cnx, database_type, user_id):
 
         playlist_list = []
         for playlist_record in playlists:
+            # Get the podcast_ids field
+            raw_podcast_ids = playlist_record.get('podcastids', playlist_record.get('PodcastIDs'))
+
+            # Process podcast_ids based on the data type and database
+            processed_podcast_ids = None
+            if raw_podcast_ids is not None:
+                if database_type == "postgresql":
+                    # PostgreSQL returns a list directly
+                    processed_podcast_ids = raw_podcast_ids
+                else:
+                    # MySQL: Handle different formats
+                    import json
+
+                    # If it's a single integer, wrap it in a list
+                    if isinstance(raw_podcast_ids, int):
+                        processed_podcast_ids = [raw_podcast_ids]
+                    # If it's a single string that can be parsed as an integer
+                    elif isinstance(raw_podcast_ids, str) and raw_podcast_ids.strip().isdigit():
+                        processed_podcast_ids = [int(raw_podcast_ids.strip())]
+                    # If it's a string, try to parse it
+                    elif isinstance(raw_podcast_ids, str):
+                        try:
+                            # Try to parse as JSON string
+                            processed_podcast_ids = json.loads(raw_podcast_ids)
+                        except json.JSONDecodeError:
+                            # If that fails, try to handle quoted strings
+                            try:
+                                # Strip quotes if present
+                                cleaned = raw_podcast_ids.strip('"\'')
+                                # Manual parsing for array-like strings
+                                if cleaned.startswith('[') and cleaned.endswith(']'):
+                                    items = cleaned[1:-1].split(',')
+                                    processed_podcast_ids = [int(item.strip()) for item in items if item.strip()]
+                                else:
+                                    # For comma-separated list without brackets
+                                    processed_podcast_ids = [int(item.strip()) for item in cleaned.split(',') if item.strip()]
+                            except (ValueError, AttributeError):
+                                # Last resort: empty list
+                                processed_podcast_ids = []
+                    else:
+                        # If it's none of the above, keep as is
+                        processed_podcast_ids = raw_podcast_ids
+
+                # Make sure we always return a list
+                if processed_podcast_ids is not None and not isinstance(processed_podcast_ids, list):
+                    processed_podcast_ids = [processed_podcast_ids]
+
             # Normalize field names to handle both PostgreSQL's lowercase and MySQL's capitalized names
             playlist_dict = {
                 'playlist_id': playlist_record.get('playlistid', playlist_record.get('PlaylistID')),
@@ -9139,7 +9244,7 @@ def get_playlists(cnx, database_type, user_id):
                 'name': playlist_record.get('name', playlist_record.get('Name')),
                 'description': playlist_record.get('description', playlist_record.get('Description')),
                 'is_system_playlist': bool(playlist_record.get('issystemplaylist', playlist_record.get('IsSystemPlaylist'))),
-                'podcast_ids': playlist_record.get('podcastids', playlist_record.get('PodcastIDs')),
+                'podcast_ids': processed_podcast_ids,  # Use our processed value
                 'include_unplayed': bool(playlist_record.get('includeunplayed', playlist_record.get('IncludeUnplayed'))),
                 'include_partially_played': bool(playlist_record.get('includepartiallyplayed', playlist_record.get('IncludePartiallyPlayed'))),
                 'include_played': bool(playlist_record.get('includeplayed', playlist_record.get('IncludePlayed'))),

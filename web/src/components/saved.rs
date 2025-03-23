@@ -12,8 +12,6 @@ use crate::components::gen_funcs::{
 use crate::requests::pod_req;
 use crate::requests::pod_req::SavedEpisodesResponse;
 use gloo_events::EventListener;
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
 use web_sys::window;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
@@ -40,8 +38,6 @@ pub fn saved() -> Html {
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let error_message = post_state.error_message.clone();
-    let info_message = post_state.info_message.clone();
     let dropdown_open = use_state(|| false);
     let active_modal = use_state(|| None::<i32>);
     let active_modal_clone = active_modal.clone();

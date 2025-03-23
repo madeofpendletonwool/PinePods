@@ -5,9 +5,6 @@ use crate::components::context::{AppState, UIState};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::setting_components;
 use crate::requests::setting_reqs::call_user_admin_check;
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
-use web_sys::window;
 use yew::prelude::*;
 use yewdux::prelude::*;
 // use crate::components::gen_funcs::check_auth;
@@ -105,14 +102,8 @@ pub fn accordion_item(
 
 #[function_component(Settings)]
 pub fn settings() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
-    let effect_dispatch = dispatch.clone();
-
     let (_post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
-
-    let error_message = _post_state.error_message.clone();
-    let info_message = _post_state.info_message.clone();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let active_tab = use_state(|| "user");
 
     let api_key = _post_state

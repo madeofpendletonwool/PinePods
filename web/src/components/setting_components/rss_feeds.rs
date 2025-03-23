@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{call_rss_feed_status, call_toggle_rss_feeds};
 use std::borrow::Borrow;
@@ -10,7 +10,6 @@ use yewdux::prelude::*;
 #[function_component(RSSFeedSettings)]
 pub fn rss_feed_settings() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
-    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());

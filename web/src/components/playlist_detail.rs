@@ -15,7 +15,7 @@ pub struct Props {
 #[function_component(PlaylistDetail)]
 pub fn playlist_detail(props: &Props) -> Html {
     let (state, dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
     let error = use_state(|| None::<String>);
 

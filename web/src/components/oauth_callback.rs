@@ -1,12 +1,10 @@
 use crate::components::context::AppState;
 use crate::requests::login_requests::{
-    call_check_mfa_enabled, call_first_login_done, call_get_api_config, call_get_time_info,
-    call_get_user_details, call_get_user_id, call_setup_timezone_info, call_verify_key,
-    LoginServerRequest, TimeZoneInfo,
+    call_first_login_done, call_get_api_config, call_get_time_info, call_get_user_details,
+    call_get_user_id, call_setup_timezone_info, call_verify_key, LoginServerRequest, TimeZoneInfo,
 };
 use crate::requests::setting_reqs::call_get_theme;
 use chrono_tz::{Tz, TZ_VARIANTS};
-use gloo::console;
 use gloo::utils::window;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlSelectElement;
@@ -199,13 +197,6 @@ pub fn oauth_callback() -> Html {
                                             Ok(user_details) => {
                                                 let gravatar_url =
                                                     generate_gravatar_url(&user_details.Email, 80);
-
-                                                let auth_details = LoginServerRequest {
-                                                    server_name: server_name.clone(),
-                                                    username: None,
-                                                    password: None,
-                                                    api_key: Some(api_key.to_string()),
-                                                };
 
                                                 // Get server details
                                                 match call_get_api_config(&server_name, &api_key)

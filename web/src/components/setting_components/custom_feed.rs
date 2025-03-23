@@ -123,14 +123,6 @@ pub fn custom_feed() -> Html {
                 <div>
                     <input id="password" type="password" oninput={update_pod_pass.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder="Password (optional)" />
                 </div>
-                // Display error message inline right below the text input
-                if let Some(error) = &*error_message {
-                    <span class="text-red-600 text-xs">{ error }</span>
-                }
-                // Display informational message inline right below the text input
-                if let Some(info) = &*info_message {
-                    <span class="text-green-600 text-xs">{ info }</span>
-                }
             </div>
             <button onclick={add_custom_feed} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" disabled={*is_loading}>
             {"Add Feed"}

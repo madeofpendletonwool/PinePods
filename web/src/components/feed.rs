@@ -13,7 +13,6 @@ use crate::requests::pod_req;
 use crate::requests::pod_req::Episode as EpisodeData;
 use crate::requests::pod_req::RecentEps;
 use gloo::events::EventListener;
-use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
 use web_sys::{Element, HtmlElement};
@@ -30,9 +29,7 @@ pub fn feed() -> Html {
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let error_message = post_state.error_message.clone();
-    let info_message = post_state.info_message.clone();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
 
     // Fetch episodes on component mount

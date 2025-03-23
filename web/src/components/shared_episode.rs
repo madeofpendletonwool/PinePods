@@ -37,12 +37,6 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
 
     let (_post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    // let server_name = post_state
-    //     .auth_details
-    //     .as_ref()
-    //     .map(|ud| ud.server_name.clone());
-    let error_message = _post_state.error_message.clone();
-    let info_message = _post_state.info_message.clone();
     let loading = use_state(|| true); // Initial loading state set to true
 
     {

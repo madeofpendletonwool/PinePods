@@ -1485,6 +1485,44 @@ pub async fn call_get_nextcloud_server(
     }
 }
 
+#[derive(Serialize)]
+pub struct RemoveSyncRequest {
+    pub user_id: i32,
+}
+
+#[derive(Deserialize)]
+struct RemoveSyncResponse {
+    success: bool,
+    message: String,
+}
+
+// Function to remove podcast sync settings (Nextcloud or gPodder)
+pub async fn call_remove_podcast_sync(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/remove_podcast_sync", server_name);
+
+    let request_data = RemoveSyncRequest { user_id };
+
+    let response = Request::delete(&url)
+        .header("Api-Key", api_key)
+        .json(&request_data)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_data: RemoveSyncResponse = response.json().await?;
+        Ok(response_data.success)
+    } else {
+        Err(Error::msg(format!(
+            "Failed to remove podcast sync settings: {}",
+            response.status_text()
+        )))
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct AdminCheckResponse {
     pub is_admin: bool,
@@ -1905,6 +1943,7 @@ pub struct SetStartPageRequest {
 
 // Struct for the set startpage response
 #[derive(Deserialize)]
+#[allow(non_snake_case)]
 struct SetStartPageResponse {
     success: bool,
     message: String,

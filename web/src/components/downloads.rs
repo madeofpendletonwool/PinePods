@@ -16,10 +16,7 @@ use crate::requests::pod_req::{
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::rc::Rc;
-use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
-use wasm_bindgen::JsCast;
-use web_sys::window;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
@@ -52,8 +49,6 @@ pub fn downloads() -> Html {
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let error_message = post_state.error_message.clone();
-    let info_message = post_state.info_message.clone();
     let page_state = use_state(|| PageState::Normal);
     let api_key = post_state
         .auth_details

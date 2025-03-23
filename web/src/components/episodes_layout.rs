@@ -31,9 +31,7 @@ use web_sys::Element;
 use web_sys::{window, Event, HtmlInputElement, MouseEvent, UrlSearchParams};
 use yew::prelude::*;
 use yew::Properties;
-use yew::{
-    function_component, html, use_effect, use_effect_with, use_node_ref, Callback, Html, TargetCast,
-};
+use yew::{function_component, html, use_effect_with, use_node_ref, Callback, Html, TargetCast};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 

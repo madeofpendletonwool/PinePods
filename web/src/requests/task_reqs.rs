@@ -3,7 +3,7 @@ use anyhow::{Error, Result};
 use futures::{SinkExt, StreamExt};
 use gloo::net::http::Request;
 use gloo::net::websocket::{futures::WebSocket, Message};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::HashMap;

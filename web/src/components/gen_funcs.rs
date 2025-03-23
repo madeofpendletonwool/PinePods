@@ -5,7 +5,6 @@ use argon2::{
 };
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
-use gloo::events::EventListener;
 use gloo_timers::callback::Timeout;
 use std::collections::HashMap;
 use std::str::FromStr;

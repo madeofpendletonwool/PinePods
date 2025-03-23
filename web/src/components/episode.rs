@@ -253,8 +253,6 @@ pub fn epsiode() -> Html {
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
-    let error_message = post_state.error_message.clone();
-    let info_message = post_state.info_message.clone();
     let history = BrowserHistory::new();
     let episode_id = state.selected_episode_id.clone();
     let ep_in_db = use_state(|| false);

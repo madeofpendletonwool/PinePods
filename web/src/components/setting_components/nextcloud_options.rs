@@ -1,10 +1,10 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::connect_to_episode_websocket;
 use crate::requests::setting_reqs::{
     call_add_gpodder_server, call_add_nextcloud_server, call_check_nextcloud_server,
-    call_get_nextcloud_server, call_verify_gpodder_auth, initiate_nextcloud_login,
-    GpodderAuthRequest, GpodderCheckRequest, NextcloudAuthRequest,
+    call_get_nextcloud_server, call_remove_podcast_sync, call_verify_gpodder_auth,
+    initiate_nextcloud_login, GpodderAuthRequest, GpodderCheckRequest, NextcloudAuthRequest,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -37,7 +37,6 @@ async fn open_nextcloud_login(url: &str) -> Result<(), JsValue> {
 #[function_component(NextcloudOptions)]
 pub fn nextcloud_options() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -48,6 +47,9 @@ pub fn nextcloud_options() -> Html {
     let nextcloud_url = use_state(|| String::new()); // State to hold the Nextcloud server URL
     let _error_message = state.error_message.clone();
     let _info_message = state.info_message.clone();
+
+    let is_sync_configured = use_state(|| false); // Track if sync is configured
+    let is_loading = use_state(|| false); // Track loading state for remove button
 
     // Handler for server URL input change
     let on_server_url_change = {
@@ -83,6 +85,7 @@ pub fn nextcloud_options() -> Html {
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+        let configured_effect = is_sync_configured.clone();
 
         use_effect_with(&(), move |_| {
             let nextcloud_url = nextcloud_url.clone();
@@ -97,11 +100,21 @@ pub fn nextcloud_options() -> Html {
                 .await
                 {
                     Ok(server) => {
-                        nextcloud_url.set(server);
+                        if !server.is_empty()
+                            && server != "Not currently syncing with Nextcloud server"
+                            && server != "Not currently syncing with any server"
+                        {
+                            nextcloud_url.set(server);
+                            configured_effect.set(true);
+                        } else {
+                            nextcloud_url
+                                .set(String::from("Not currently syncing with any server"));
+                            configured_effect.set(false);
+                        }
                     }
                     Err(_) => {
-                        nextcloud_url
-                            .set(String::from("Not currently syncing with Nextcloud server"));
+                        nextcloud_url.set(String::from("Not currently syncing with any server"));
+                        configured_effect.set(false);
                     }
                 }
             });
@@ -120,10 +133,8 @@ pub fn nextcloud_options() -> Html {
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let auth_status = auth_status.clone();
-        let audio_dispatch_call = audio_dispatch.clone();
         Callback::from(move |_| {
             let app_dispatch = app_dispatch.clone();
-            let audio_dispatch = audio_dispatch_call.clone();
             let auth_status = auth_status.clone();
             let server = (*server_url_initiate).clone().trim().to_string();
             let server_name = server_name.clone();
@@ -267,6 +278,63 @@ pub fn nextcloud_options() -> Html {
         })
     };
 
+    let on_remove_sync_click = {
+        let dispatch = _dispatch.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let nextcloud_url = nextcloud_url.clone();
+        let is_sync_configured = is_sync_configured.clone();
+        let is_loading = is_loading.clone();
+
+        Callback::from(move |_| {
+            let dispatch = dispatch.clone();
+            let server_name = server_name.clone();
+            let api_key = api_key.clone();
+            let user_id = user_id.clone();
+            let nextcloud_url = nextcloud_url.clone();
+            let is_sync_configured = is_sync_configured.clone();
+            let is_loading = is_loading.clone();
+
+            is_loading.set(true);
+
+            wasm_bindgen_futures::spawn_local(async move {
+                match call_remove_podcast_sync(
+                    &server_name.clone().unwrap(),
+                    &api_key.clone().unwrap().unwrap(),
+                    user_id.clone().unwrap(),
+                )
+                .await
+                {
+                    Ok(success) => {
+                        if success {
+                            nextcloud_url
+                                .set(String::from("Not currently syncing with any server"));
+                            is_sync_configured.set(false);
+                            dispatch.reduce_mut(|state| {
+                                state.info_message =
+                                    Some("Podcast sync settings removed successfully".to_string());
+                            });
+                        } else {
+                            dispatch.reduce_mut(|state| {
+                                state.error_message =
+                                    Some("Failed to remove sync settings".to_string());
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        let formatted_error = format_error_message(&e.to_string());
+                        dispatch.reduce_mut(|state| {
+                            state.error_message =
+                                Some(format!("Error removing sync settings: {}", formatted_error));
+                        });
+                    }
+                }
+                is_loading.set(false);
+            });
+        })
+    };
+
     // Handler for initiating authentication
     let on_authenticate_server_click = {
         let server_url = server_url.clone();
@@ -279,7 +347,6 @@ pub fn nextcloud_options() -> Html {
         let user_id = user_id.clone();
         let auth_status = auth_status.clone();
         Callback::from(move |_| {
-            let audio_dispatch = audio_dispatch.clone();
             let auth_status = auth_status.clone();
             let server = (*server_url_initiate).clone().trim().to_string();
             let server_user = server_user.clone();
@@ -429,7 +496,30 @@ pub fn nextcloud_options() -> Html {
         <div class="p-4"> // You can adjust the padding as needed
             <p class="item_container-text text-lg font-bold mb-4">{"Nextcloud Podcast Sync:"}</p> // Styled paragraph
             <p class="item_container-text text-md mb-4">{"With this option you can authenticate with a Nextcloud or Gpodder server to use as a podcast sync client. This option works great with AntennaPod on Android so you can have the same exact feed there while on mobile. In addition, if you're already using AntennaPod with Nextcloud Podcast sync you can connect your existing sync feed to quickly import everything right into Pinepods! You'll only enter information for one of the below options. Nextcloud requires that you have the gpodder sync add-on in nextcloud and the gpodder option requires you to have an external gpodder podcast sync server that authenticates via user and pass. Such as this: https://github.com/kd2org/opodsync."}</p> // Styled paragraph
-            <p class="item_container-text text-md mb-4">{"Current Podcast Sync Server: "}<span class="item_container-text font-bold">{(*nextcloud_url).clone()}</span></p> // Styled paragraph
+            <div class="flex items-center mb-4">
+                <p class="item_container-text text-md mr-4">{"Current Podcast Sync Server: "}<span class="item_container-text font-bold">{(*nextcloud_url).clone()}</span></p>
+                {
+                    if *is_sync_configured {
+                        html! {
+                            <button
+                                onclick={on_remove_sync_click}
+                                disabled={*is_loading}
+                                class="ml-4 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                            >
+                            {
+                                if *is_loading {
+                                    html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Removing..."}</span> }
+                                } else {
+                                    html! { "Remove Sync" }
+                                }
+                            }
+                            </button>
+                        }
+                    } else {
+                        html! {}
+                    }
+                }
+            </div>
             <br/>
             <label for="server_url" class="item_container-text block mb-2 text-sm font-medium">{ "New Nextcloud Server" }</label>
             <div class="flex items-center">

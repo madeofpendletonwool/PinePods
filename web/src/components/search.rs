@@ -13,8 +13,6 @@ use crate::requests::search_pods::{call_search_database, SearchRequest, SearchRe
 use async_std::task::sleep;
 use gloo_events::EventListener;
 use std::time::Duration;
-use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use web_sys::HtmlElement;
@@ -45,8 +43,6 @@ pub fn search(_props: &SearchProps) -> Html {
 
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let error_message = post_state.error_message.clone();
-    let info_message = post_state.info_message.clone();
     let history = BrowserHistory::new();
     let input_ref = use_node_ref();
     let input_ref_clone1 = input_ref.clone();

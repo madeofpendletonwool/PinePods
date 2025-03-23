@@ -16,7 +16,6 @@ use crate::requests::setting_reqs::{call_get_startpage, call_get_theme};
 use chrono_tz::{Tz, TZ_VARIANTS};
 use md5;
 use rand::Rng;
-use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::{console, window};
 use yew::prelude::*;
@@ -46,10 +45,8 @@ pub fn login() -> Html {
     let new_password = use_state(|| "".to_string());
     let email = use_state(|| "".to_string());
     let fullname = use_state(|| "".to_string());
-    let (app_state, dispatch) = use_store::<AppState>();
+    let (_app_state, dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
-    let _error_message = app_state.error_message.clone();
-    let error_message = app_state.error_message.clone();
     let time_zone = use_state(|| "".to_string());
     let date_format = use_state(|| "".to_string());
     let time_pref = use_state(|| 12);
@@ -57,7 +54,6 @@ pub fn login() -> Html {
     let temp_api_key = use_state(|| "".to_string());
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
-    let info_message = app_state.info_message.clone();
     let loading = use_state(|| true);
     // Define the initial state
     let page_state = use_state(|| PageState::Default);
@@ -1735,13 +1731,6 @@ pub fn login() -> Html {
 
 
                 </div>
-                {
-                    if app_state.error_message.as_ref().map_or(false, |msg| !msg.is_empty()) {
-                        html! { <div class="error-snackbar">{ &app_state.error_message }</div> }
-                    } else {
-                        html! {}
-                    }
-                }
                 <ToastNotification />
                 // Connect to Different Server button at bottom right
                 <div class="fixed bottom-4 right-4">
@@ -1762,15 +1751,13 @@ pub fn login() -> Html {
 
 #[function_component(ChangeServer)]
 pub fn login() -> Html {
-    let (app_state, _app_dispatch) = use_store::<AppState>();
+    let (_app_state, _app_dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
     let history = BrowserHistory::new();
     let server_name = use_state(|| "".to_string());
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
     let (_app_state, dispatch) = use_store::<AppState>();
-    let _error_message = app_state.error_message.clone();
-    let error_message = app_state.error_message.clone();
     let time_zone = use_state(|| "".to_string());
     let date_format = use_state(|| "".to_string());
     let time_pref = use_state(|| 12);
@@ -1778,7 +1765,6 @@ pub fn login() -> Html {
     let temp_api_key = use_state(|| "".to_string());
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
-    let info_message = app_state.info_message.clone();
     let page_state = use_state(|| PageState::Default);
 
     // This effect runs only once when the component mounts

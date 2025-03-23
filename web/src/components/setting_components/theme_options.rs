@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{call_get_theme, call_set_theme, SetThemeRequest};
 use wasm_bindgen::prelude::*;
@@ -11,7 +11,6 @@ use yewdux::prelude::*;
 #[function_component(ThemeOptions)]
 pub fn theme() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
-    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     // Use state to manage the selected theme
     let selected_theme = use_state(|| "".to_string());
     let loading = use_state(|| true);

@@ -2,10 +2,10 @@ use super::app_drawer::App_drawer;
 use super::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
-// use crate::components::feed::PlaylistCard;
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{self, CreatePlaylistRequest, Playlist, Podcast};
 use gloo_events::EventListener;
+use std::collections::HashSet;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlElement, HtmlInputElement};
 use yew::prelude::*;
@@ -18,6 +18,7 @@ enum ModalState {
     Hidden,
     Create,
     Delete,
+    BulkDelete,
 }
 
 #[derive(Properties, PartialEq, Clone)]
@@ -25,17 +26,59 @@ struct PlaylistCardProps {
     playlist: Playlist,
     on_delete: Callback<MouseEvent>,
     on_select: Callback<MouseEvent>,
+    is_selectable: bool,
+    is_selected: bool,
+    on_toggle_select: Callback<i32>,
 }
 
 #[function_component(PlaylistCard)]
 fn playlist_card(props: &PlaylistCardProps) -> Html {
+    let on_checkbox_change = {
+        let playlist_id = props.playlist.playlist_id;
+        let on_toggle_select = props.on_toggle_select.clone();
+
+        Callback::from(move |e: Event| {
+            e.stop_propagation();
+            on_toggle_select.emit(playlist_id);
+        })
+    };
+
     html! {
-        <div class="playlist-card">
+        <div class={classes!(
+            "playlist-card",
+            if props.is_selected { "playlist-card-selected" } else { "" },
+            if props.playlist.is_system_playlist { "system-playlist" } else { "" }
+        )}>
             <div class="playlist-card-stack" onclick={props.on_select.clone()}>
                 <div class="playlist-card-content">
+                    {
+                        if props.is_selectable {
+                            html! {
+                                <div class="absolute top-2 left-2 z-10" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                                    <input
+                                        type="checkbox"
+                                        checked={props.is_selected}
+                                        onchange={on_checkbox_change}
+                                        class="w-5 h-5 text-blue-600 rounded focus:ring-blue-500"
+                                    />
+                                </div>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
                     <i class={classes!("ph", props.playlist.icon_name.clone(), "playlist-icon")}></i>
                     <div class="playlist-info">
-                        <h3 class="playlist-title">{&props.playlist.name}</h3>
+                        <h3 class="playlist-title">
+                            {&props.playlist.name}
+                            {
+                                if props.playlist.is_system_playlist {
+                                    html! { <span class="text-xs ml-2 text-gray-400">{"(System)"}</span> }
+                                } else {
+                                    html! {}
+                                }
+                            }
+                        </h3>
                         <span class="playlist-count">{format!("{} episodes", props.playlist.episode_count.unwrap_or(0))}</span>
                         if let Some(description) = &props.playlist.description {
                             <p class="playlist-description">{description}</p>
@@ -43,12 +86,20 @@ fn playlist_card(props: &PlaylistCardProps) -> Html {
                     </div>
                 </div>
             </div>
-            <button
-                onclick={props.on_delete.clone()}
-                class="delete-button absolute top-2 right-2 item-container-button selector-button rounded-full p-2"
-            >
-                <i class="ph ph-trash text-xl"></i>
-            </button>
+            {
+                if !props.is_selectable && !props.playlist.is_system_playlist {
+                    html! {
+                        <button
+                            onclick={props.on_delete.clone()}
+                            class="delete-button absolute top-2 right-2 item-container-button selector-button rounded-full p-2"
+                        >
+                            <i class="ph ph-trash text-xl"></i>
+                        </button>
+                    }
+                } else {
+                    html! {}
+                }
+            }
         </div>
     }
 }
@@ -531,8 +582,11 @@ pub fn playlists() -> Html {
     let (audio_state, _) = use_store::<UIState>();
     let modal_state = use_state(|| ModalState::Hidden);
     let selected_playlist_id = use_state(|| None::<i32>);
+    let is_selection_mode = use_state(|| false);
+    let selected_playlists = use_state(|| HashSet::<i32>::new());
+    let is_loading_delete = use_state(|| false);
 
-    // Form states
+    // Form states for creating playlists
     let name = use_state(String::new);
     let description = use_state(String::new);
     let include_unplayed = use_state(|| true);
@@ -590,7 +644,7 @@ pub fn playlists() -> Html {
     let available_podcasts = use_state(|| Vec::<Podcast>::new());
     let loading_podcasts = use_state(|| false);
 
-    // Add after the existing modal create click handler:
+    // Load podcasts when creating a playlist
     {
         let available_podcasts = available_podcasts.clone();
         let loading_podcasts = loading_podcasts.clone();
@@ -631,6 +685,56 @@ pub fn playlists() -> Html {
         })
     };
 
+    let toggle_selection_mode = {
+        let is_selection_mode = is_selection_mode.clone();
+        let selected_playlists = selected_playlists.clone();
+
+        Callback::from(move |_| {
+            is_selection_mode.set(!*is_selection_mode);
+            if *is_selection_mode {
+                selected_playlists.set(HashSet::new());
+            }
+        })
+    };
+
+    let on_toggle_select_playlist = {
+        let selected_playlists = selected_playlists.clone();
+        let playlists = state.playlists.clone();
+
+        Callback::from(move |playlist_id: i32| {
+            // Only toggle selection for non-system playlists
+            if let Some(playlists_vec) = &playlists {
+                if let Some(playlist) = playlists_vec.iter().find(|p| p.playlist_id == playlist_id)
+                {
+                    if playlist.is_system_playlist {
+                        return; // Don't allow selection of system playlists
+                    }
+                }
+            }
+
+            selected_playlists.set({
+                let mut set = (*selected_playlists).clone();
+                if set.contains(&playlist_id) {
+                    set.remove(&playlist_id);
+                } else {
+                    set.insert(playlist_id);
+                }
+                set
+            });
+        })
+    };
+
+    let on_delete_selected = {
+        let selected_playlists = selected_playlists.clone();
+        let modal_state = modal_state.clone();
+
+        Callback::from(move |_| {
+            if !selected_playlists.is_empty() {
+                modal_state.set(ModalState::BulkDelete);
+            }
+        })
+    };
+
     let on_modal_close = {
         let modal_state = modal_state.clone();
         Callback::from(move |_| {
@@ -655,6 +759,158 @@ pub fn playlists() -> Html {
         e.prevent_default();
         e.stop_propagation();
     });
+
+    // Single playlist delete handler
+    let on_delete_confirm = {
+        let selected_playlist_id = selected_playlist_id.clone();
+        let modal_state = modal_state.clone();
+        let dispatch = dispatch.clone();
+
+        let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+        Callback::from(move |_| {
+            if let (Some(playlist_id), Some(api_key), Some(user_id), Some(server_name)) = (
+                *selected_playlist_id,
+                api_key.clone(),
+                user_id.clone(),
+                server_name.clone(),
+            ) {
+                let dispatch = dispatch.clone();
+                let modal_state = modal_state.clone();
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    match pod_req::call_delete_playlist(
+                        &server_name,
+                        &api_key.clone().unwrap(),
+                        user_id,
+                        playlist_id,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            // Refresh playlist list
+                            if let Ok(playlists) = pod_req::call_get_playlists(
+                                &server_name,
+                                &api_key.unwrap(),
+                                user_id,
+                            )
+                            .await
+                            {
+                                dispatch.reduce_mut(move |state| {
+                                    state.playlists = Some(playlists.playlists);
+                                });
+                            }
+                            dispatch.reduce_mut(|state| {
+                                state.info_message =
+                                    Some("Playlist deleted successfully".to_string());
+                            });
+                            modal_state.set(ModalState::Hidden);
+                        }
+                        Err(e) => {
+                            let formatted_error = format_error_message(&e.to_string());
+                            dispatch.reduce_mut(|state| {
+                                state.error_message =
+                                    Some(format!("Failed to delete playlist: {}", formatted_error));
+                            });
+                        }
+                    }
+                });
+            }
+        })
+    };
+
+    // Bulk delete selected playlists handler
+    let on_bulk_delete_confirm = {
+        let selected_playlists = selected_playlists.clone();
+        let modal_state = modal_state.clone();
+        let dispatch = dispatch.clone();
+        let is_loading_delete = is_loading_delete.clone();
+        let is_selection_mode = is_selection_mode.clone();
+
+        let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+        Callback::from(move |_| {
+            if let (Some(api_key), Some(user_id), Some(server_name)) =
+                (api_key.clone(), user_id.clone(), server_name.clone())
+            {
+                let selected_playlists_vec: Vec<i32> =
+                    (*selected_playlists).iter().cloned().collect();
+                if selected_playlists_vec.is_empty() {
+                    return;
+                }
+
+                let dispatch = dispatch.clone();
+                let modal_state = modal_state.clone();
+                let is_loading_delete = is_loading_delete.clone();
+                let is_selection_mode = is_selection_mode.clone();
+                is_loading_delete.set(true);
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    let mut success_count = 0;
+                    let mut error_count = 0;
+
+                    for playlist_id in &selected_playlists_vec {
+                        match pod_req::call_delete_playlist(
+                            &server_name,
+                            &api_key.clone().unwrap(),
+                            user_id,
+                            *playlist_id,
+                        )
+                        .await
+                        {
+                            Ok(_) => {
+                                success_count += 1;
+                            }
+                            Err(_) => {
+                                error_count += 1;
+                            }
+                        }
+                    }
+
+                    // Refresh playlist list
+                    if let Ok(playlists) =
+                        pod_req::call_get_playlists(&server_name, &api_key.unwrap(), user_id).await
+                    {
+                        dispatch.reduce_mut(move |state| {
+                            state.playlists = Some(playlists.playlists);
+                        });
+                    }
+
+                    // Show result message
+                    if error_count == 0 {
+                        dispatch.reduce_mut(|state| {
+                            state.info_message = Some(format!(
+                                "{} playlist{} deleted successfully",
+                                success_count,
+                                if success_count == 1 { "" } else { "s" }
+                            ));
+                        });
+                    } else if success_count == 0 {
+                        dispatch.reduce_mut(|state| {
+                            state.error_message = Some("Failed to delete playlists".to_string());
+                        });
+                    } else {
+                        dispatch.reduce_mut(|state| {
+                            state.info_message = Some(format!(
+                                "{} playlist{} deleted, {} failed",
+                                success_count,
+                                if success_count == 1 { "" } else { "s" },
+                                error_count
+                            ));
+                        });
+                    }
+
+                    modal_state.set(ModalState::Hidden);
+                    is_loading_delete.set(false);
+                    is_selection_mode.set(false);
+                });
+            }
+        })
+    };
 
     // Create playlist handler
     let on_create_submit = {
@@ -757,105 +1013,6 @@ pub fn playlists() -> Html {
                 });
             }
         })
-    };
-
-    // Delete playlist handler
-    let on_delete_confirm = {
-        let selected_playlist_id = selected_playlist_id.clone();
-        let modal_state = modal_state.clone();
-        let dispatch = dispatch.clone();
-
-        let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
-        let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-
-        Callback::from(move |_| {
-            if let (Some(playlist_id), Some(api_key), Some(user_id), Some(server_name)) = (
-                *selected_playlist_id,
-                api_key.clone(),
-                user_id.clone(),
-                server_name.clone(),
-            ) {
-                let dispatch = dispatch.clone();
-                let modal_state = modal_state.clone();
-
-                wasm_bindgen_futures::spawn_local(async move {
-                    match pod_req::call_delete_playlist(
-                        &server_name,
-                        &api_key.clone().unwrap(),
-                        user_id,
-                        playlist_id,
-                    )
-                    .await
-                    {
-                        Ok(_) => {
-                            // Refresh playlist list
-                            if let Ok(playlists) = pod_req::call_get_playlists(
-                                &server_name,
-                                &api_key.unwrap(),
-                                user_id,
-                            )
-                            .await
-                            {
-                                dispatch.reduce_mut(move |state| {
-                                    state.playlists = Some(playlists.playlists);
-                                });
-                            }
-                            dispatch.reduce_mut(|state| {
-                                state.info_message =
-                                    Some("Playlist deleted successfully".to_string());
-                            });
-                            modal_state.set(ModalState::Hidden);
-                        }
-                        Err(e) => {
-                            let formatted_error = format_error_message(&e.to_string());
-                            dispatch.reduce_mut(|state| {
-                                state.error_message =
-                                    Some(format!("Failed to delete playlist: {}", formatted_error));
-                            });
-                        }
-                    }
-                });
-            }
-        })
-    };
-
-    let unplayed_status = use_state(|| false);
-    let on_unplayed_change = Callback::from(move |_| {
-        web_sys::console::log_1(&"DEFINITELY TRIGGERED".into());
-    });
-
-    let checks_only = html! {
-        <div
-            id="create-playlist-modal"
-            tabindex="-1"
-            aria-hidden="true"
-            class="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-25"
-            onclick={on_modal_background_click.clone()}
-        >
-            <div class="flex min-h-full items-center justify-center p-4">
-                <div
-                    class="modal-container relative w-full max-w-md rounded-lg shadow"
-                    onclick={stop_propagation.clone()}
-                >
-                    <div class="flex items-center">
-                        <input
-                            onchange={on_unplayed_change.clone()}
-                            onclick={Callback::from(move |e: MouseEvent| {
-                                e.stop_propagation(); // Explicitly stop propagation for this input
-                            })}
-                            checked={*unplayed_status}
-                            type="checkbox"
-                            id="admin"
-                            name="admin"
-                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white"
-                            required=true
-                        />
-                        <span>{"Include Unplayed"}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
     };
 
     let create_modal = html! {
@@ -1171,6 +1328,7 @@ pub fn playlists() -> Html {
         </div>
     };
 
+    // Define modals
     let delete_modal = html! {
         <div class="modal-background fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onclick={on_modal_background_click.clone()}>
             <div class="modal-container relative rounded-lg shadow-lg max-w-md w-full mx-4" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
@@ -1196,73 +1354,195 @@ pub fn playlists() -> Html {
         </div>
     };
 
+    let bulk_delete_modal = html! {
+        <div class="modal-background fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onclick={on_modal_background_click.clone()}>
+            <div class="modal-container relative rounded-lg shadow-lg max-w-md w-full mx-4" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
+                <div class="item-container rounded-lg p-6">
+                    <div class="flex flex-col space-y-4">
+                        <h2 class="text-2xl font-bold item_container-text">{"Delete Playlists"}</h2>
+
+                        <p class="item_container-text">
+                            {format!("Are you sure you want to delete {} selected playlist{}?",
+                                selected_playlists.len(),
+                                if selected_playlists.len() == 1 { "" } else { "s" }
+                            )}
+                        </p>
+
+                        <div class="flex justify-end space-x-4 mt-4">
+                            <button
+                                class="item-container-button py-2 px-4 rounded"
+                                onclick={on_modal_close.clone()}
+                                disabled={*is_loading_delete}
+                            >
+                                {"Cancel"}
+                            </button>
+                            <button
+                                class="item-container-button py-2 px-4 rounded"
+                                onclick={on_bulk_delete_confirm.clone()}
+                                disabled={*is_loading_delete}
+                            >
+                                {
+                                    if *is_loading_delete {
+                                        html! {
+                                            <div class="flex items-center justify-center">
+                                                <i class="ph ph-circle-notch animate-spin mr-2"></i>
+                                                {"Deleting..."}
+                                            </div>
+                                        }
+                                    } else {
+                                        html! { "Delete" }
+                                    }
+                                }
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
     let history = BrowserHistory::new();
 
+    let tog_state = state.clone();
     html! {
         <>
             <div class="main-container">
                 <Search_nav />
                 <UseScrollToTop />
 
-                // Header with create button
-                <div class="flex justify-between items-center mb-6">
+                // Header with action buttons - responsive layout
+                <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
                     <h1 class="text-2xl font-bold item_container-text">{"Smart Playlists"}</h1>
-                    <button
-                        class="item-container-button py-2 px-4 rounded flex items-center"
-                        onclick={on_create_click}
-                    >
-                        <i class="ph ph-plus text-xl mr-2"></i>
-                        {"Create Playlist"}
-                    </button>
+                    <div class="flex flex-wrap gap-2">
+                        {
+                            if *is_selection_mode {
+                                html! {
+                                    <>
+                                        <button
+                                            class="item-container-button py-2 px-4 rounded flex items-center"
+                                            onclick={toggle_selection_mode.clone()}
+                                        >
+                                            <i class="ph ph-x text-xl mr-2"></i>
+                                            {"Cancel"}
+                                        </button>
+                                        <button
+                                            class="item-container-button py-2 px-4 rounded flex items-center"
+                                            onclick={on_delete_selected.clone()}
+                                            disabled={selected_playlists.is_empty()}
+                                        >
+                                            <i class="ph ph-trash text-xl mr-2"></i>
+                                            {format!("Delete ({})", selected_playlists.len())}
+                                        </button>
+                                    </>
+                                }
+                            } else {
+                                html! {
+                                    <>
+                                        <button
+                                            class="item-container-button py-2 px-4 rounded flex items-center"
+                                            onclick={toggle_selection_mode.clone()}
+                                        >
+                                            <i class="ph ph-selection-plus text-xl mr-2"></i>
+                                            {"Select"}
+                                        </button>
+                                        <button
+                                            class="item-container-button py-2 px-4 rounded flex items-center"
+                                            onclick={on_create_click}
+                                        >
+                                            <i class="ph ph-plus text-xl mr-2"></i>
+                                            {"Create Playlist"}
+                                        </button>
+                                    </>
+                                }
+                            }
+                        }
+                    </div>
                 </div>
 
-                // Playlists grid
-                if let Some(playlists) = &state.playlists {
-                    if playlists.is_empty() {
-                        { empty_message(
-                            "No Playlists",
-                            "Create a new playlist to get started"
-                        )}
+                // Info banner for selection mode
+                {
+                    if *is_selection_mode {
+                        html! {
+                            <div class="mb-4 p-3 bg-blue-100 text-blue-800 rounded-lg flex items-center">
+                                <i class="ph ph-info text-xl mr-2"></i>
+                                <span>{"System playlists cannot be deleted and are not selectable."}</span>
+                            </div>
+                        }
                     } else {
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            {
-                                playlists.iter().map(|playlist| {
-                                    let history_clone = history.clone();
-                                    let playlist_id = playlist.playlist_id;
-                                    let selected_playlist_id = selected_playlist_id.clone();
-                                    let modal_state = modal_state.clone();
-
-                                    let on_delete = Callback::from(move |e: MouseEvent| {
-                                        e.stop_propagation();
-                                        selected_playlist_id.set(Some(playlist_id));
-                                        modal_state.set(ModalState::Delete);
-                                    });
-
-                                    let on_select = Callback::from(move |_| {
-                                        let route = format!("/playlist/{}", playlist_id);
-                                        history_clone.push(route);
-                                    });
-
-                                    html! {
-                                        <PlaylistCard
-                                            playlist={playlist.clone()}
-                                            {on_delete}
-                                            {on_select}
-                                        />
-                                    }
-                                }).collect::<Html>()
-                            }
-                        </div>
+                        html! {}
                     }
-                } else {
-                    <div class="loading-animation">
-                        <div class="frame1"></div>
-                        <div class="frame2"></div>
-                        <div class="frame3"></div>
-                        <div class="frame4"></div>
-                        <div class="frame5"></div>
-                        <div class="frame6"></div>
-                    </div>
+                }
+
+                // Playlists grid
+                {
+                    if let Some(playlists) = &tog_state.playlists {
+                        if playlists.is_empty() {
+                            empty_message(
+                                "No Playlists",
+                                "Create a new playlist to get started"
+                            )
+                        } else {
+                            let playlists_snapshot = playlists.clone();
+                            html! {
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                    {
+                                        playlists_snapshot.iter().map(|playlist| {
+                                            let history_clone = history.clone();
+                                            let playlist_id = playlist.playlist_id;
+                                            let selected_playlist_id = selected_playlist_id.clone();
+                                            let modal_state = modal_state.clone();
+                                            let is_selected = selected_playlists.contains(&playlist_id);
+                                            let on_toggle_select = on_toggle_select_playlist.clone();
+                                            let playlist_clone = playlist.clone();
+
+                                            let on_delete = Callback::from(move |e: MouseEvent| {
+                                                e.stop_propagation();
+                                                // Don't allow deletion of system playlists
+                                                if !playlist_clone.is_system_playlist {
+                                                    selected_playlist_id.set(Some(playlist_id));
+                                                    modal_state.set(ModalState::Delete);
+                                                }
+                                            });
+
+                                            let is_selection_mode_clone = is_selection_mode.clone();
+                                            let on_tog = on_toggle_select.clone();
+                                            let on_select = Callback::from(move |_| {
+                                                if !*is_selection_mode_clone {
+                                                    let route = format!("/playlist/{}", playlist_id);
+                                                    history_clone.push(route);
+                                                } else {
+                                                    // In selection mode, clicking the card toggles selection
+                                                    on_tog.emit(playlist_id);
+                                                }
+                                            });
+
+                                            html! {
+                                                <PlaylistCard
+                                                    playlist={playlist.clone()}
+                                                    {on_delete}
+                                                    {on_select}
+                                                    is_selectable={*is_selection_mode && !playlist.is_system_playlist}
+                                                    is_selected={is_selected}
+                                                    on_toggle_select={on_toggle_select.clone()}
+                                                />
+                                            }
+                                        }).collect::<Html>()
+                                    }
+                                </div>
+                            }
+                        }
+                    } else {
+                        html! {
+                            <div class="loading-animation">
+                                <div class="frame1"></div>
+                                <div class="frame2"></div>
+                                <div class="frame3"></div>
+                                <div class="frame4"></div>
+                                <div class="frame5"></div>
+                                <div class="frame6"></div>
+                            </div>
+                        }
+                    }
                 }
 
                 // Modals
@@ -1270,6 +1550,7 @@ pub fn playlists() -> Html {
                     match *modal_state {
                         ModalState::Create => create_modal,
                         ModalState::Delete => delete_modal,
+                        ModalState::BulkDelete => bulk_delete_modal,
                         ModalState::Hidden => html! {},
                     }
                 }

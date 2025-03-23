@@ -78,8 +78,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
-    let error_message = state.error_message.clone();
-    let info_message = state.info_message.clone();
     let history = BrowserHistory::new();
     let history_clone = history.clone();
     let is_expanded = use_state(|| true); // Start expanded by default
