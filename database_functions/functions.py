@@ -3155,7 +3155,9 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None, prog
         }
 
         date_format_str = date_format_map.get(date_format, "%Y-%m-%d")
-        pub_date_str = pub_date.strftime(date_format_str)
+        filename_date_format_str = date_format_str.replace('/', '-').replace('\\', '-')
+        pub_date_str = pub_date.strftime(filename_date_format_str)
+
 
         # Clean filenames of invalid characters
         podcast_name = "".join(c for c in podcast_name if c.isalnum() or c in (' ', '-', '_')).strip()
