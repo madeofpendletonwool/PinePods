@@ -17,17 +17,17 @@ database_type = str(os.getenv('DB_TYPE', 'mariadb'))
 class DatabaseConnectionPool:
     _instance = None
     _pool = None
-    
+
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
             cls._instance = DatabaseConnectionPool()
         return cls._instance
-    
+
     def __init__(self):
         if self._pool is None:
             self._pool = self._create_pool()
-    
+
     def _create_pool(self):
         """Create a new connection pool based on the database type"""
         db_host = os.environ.get("DB_HOST", "127.0.0.1")
@@ -35,17 +35,20 @@ class DatabaseConnectionPool:
         db_user = os.environ.get("DB_USER", "root")
         db_password = os.environ.get("DB_PASSWORD", "password")
         db_name = os.environ.get("DB_NAME", "pypods_database")
-        
+
         print(f"Creating new database connection pool for {database_type}")
-        
+
         if database_type == "postgresql":
             conninfo = f"host={db_host} port={db_port} user={db_user} password={db_password} dbname={db_name}"
             return ConnectionPool(conninfo=conninfo, min_size=1, max_size=32, open=True)
-        else:  # Default to MariaDB/MySQL
+        else:
+            # Add the autocommit and consume_results options to MySQL
             return pooling.MySQLConnectionPool(
                 pool_name="pinepods_api_pool",
                 pool_size=32,
                 pool_reset_session=True,
+                autocommit=True,  # Add this to prevent transaction issues
+                consume_results=True,  # Add this to automatically consume unread results
                 collation="utf8mb4_general_ci",
                 host=db_host,
                 port=db_port,
@@ -53,20 +56,30 @@ class DatabaseConnectionPool:
                 password=db_password,
                 database=db_name,
             )
-    
+
     def get_connection(self):
         """Get a connection from the pool"""
         if database_type == "postgresql":
             return self._pool.getconn()
         else:
             return self._pool.get_connection()
-    
+
     def return_connection(self, cnx):
         """Return a connection to the pool"""
         if database_type == "postgresql":
-            self._pool.putconn(cnx)
+            self._pool.putconn(cnx)  # PostgreSQL path unchanged
         else:
-            cnx.close()
+            # MySQL-specific cleanup
+            try:
+                # Clear any unread results before returning to pool
+                if hasattr(cnx, 'unread_result') and cnx.unread_result:
+                    cursor = cnx.cursor()
+                    cursor.fetchall()
+                    cursor.close()
+            except Exception as e:
+                logger.warning(f"Failed to clean up MySQL connection: {str(e)}")
+            finally:
+                cnx.close()
 
 # Initialize the singleton pool
 pool = DatabaseConnectionPool.get_instance()

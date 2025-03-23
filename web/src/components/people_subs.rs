@@ -45,8 +45,6 @@ pub fn subscribed_people() -> Html {
     // let error = use_state(|| None);
     let (post_state, post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let error_message = post_state.error_message.clone();
-    let info_message = post_state.info_message.clone();
     let loading = use_state(|| true);
     let expanded_state = use_state(|| std::collections::HashMap::<i32, bool>::new());
     let subscribed_people = use_state(|| Vec::<PersonWithEpisodes>::new());

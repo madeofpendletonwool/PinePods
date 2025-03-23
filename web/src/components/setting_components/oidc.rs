@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_add_oidc_provider, call_list_oidc_providers, call_remove_oidc_provider,
@@ -371,7 +371,6 @@ fn detect_provider(auth_url: &str, token_url: &str, user_info_url: &str) -> Prov
 #[function_component(OIDCSettings)]
 pub fn oidc_settings() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
-    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     let page_state = use_state(|| PageState::Hidden);
     let providers = use_state(|| Vec::<OIDCProvider>::new());
     let update_trigger = use_state(|| false);
@@ -383,7 +382,6 @@ pub fn oidc_settings() -> Html {
     let auth_url = use_state(|| String::new());
     let token_url = use_state(|| String::new());
     let user_info_url = use_state(|| String::new());
-    let redirect_url = use_state(|| String::new());
     let button_text = use_state(|| String::new());
     let button_color = use_state(|| String::from("#000000"));
     let button_text_color = use_state(|| String::from("#000000"));
@@ -554,14 +552,6 @@ pub fn oidc_settings() -> Html {
         Callback::from(move |e: InputEvent| {
             let target = e.target_unchecked_into::<HtmlInputElement>();
             user_info_url.set(target.value());
-        })
-    };
-
-    let on_redirect_url_change = {
-        let redirect_url = redirect_url.clone();
-        Callback::from(move |e: InputEvent| {
-            let target = e.target_unchecked_into::<HtmlInputElement>();
-            redirect_url.set(target.value());
         })
     };
 

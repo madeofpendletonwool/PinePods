@@ -21,8 +21,6 @@ pub struct YouTubeChannelItemProps {
 pub fn youtube_layout() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
-    let error_message = state.error_message.clone();
-    let info_message = state.info_message.clone();
 
     html! {
         <>

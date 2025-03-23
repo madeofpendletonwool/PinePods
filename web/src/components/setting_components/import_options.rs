@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::AppState;
 use crate::components::gen_funcs::parse_opml;
 use gloo::timers::callback::Interval;
 use wasm_bindgen::closure::Closure;
@@ -27,7 +27,6 @@ pub fn import_options() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let import_pods = use_state(|| Vec::new());
     let show_verification = use_state(|| false);
-    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     let import_progress = use_state(|| 0);
     let total_podcasts = use_state(|| 0);
     let current_podcast = use_state(String::default);
@@ -81,7 +80,6 @@ pub fn import_options() -> Html {
 
         Callback::from(move |_| {
             let dispatch_wasm_call = dispatch_wasm_conf.clone();
-            let audio_dispatch_call = audio_dispatch.clone();
             dispatch_wasm_call.reduce_mut(|state| state.is_loading = Some(true));
             let selected_podcasts: Vec<String> = (*import_pods)
                 .iter()
@@ -118,7 +116,6 @@ pub fn import_options() -> Html {
 
                                 let callback = Closure::wrap(Box::new(move || {
                                     let dispatch_wasm = dispatch_wasm_call.clone();
-                                    let audio_dispatch = audio_dispatch_call.clone();
                                     let server_name = server_name.clone();
                                     let api_key = api_key.clone();
                                     let user_id = user_id;

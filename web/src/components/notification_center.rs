@@ -5,7 +5,6 @@ use gloo_timers::callback::Interval;
 use gloo_timers::callback::Timeout;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
@@ -34,7 +33,7 @@ pub struct TaskProgress {
 
 // Custom serde module to handle both string and integer values for item_id
 mod item_id_string_or_int {
-    use serde::{self, Deserialize, Deserializer, Serializer};
+    use serde::{self, Deserializer, Serializer};
     use std::fmt;
 
     // A custom deserialize implementation that accepts either a string or an integer
@@ -135,7 +134,6 @@ pub fn notification_center() -> Html {
     // Auto-hide completed tasks after delay
     {
         let dispatch = dispatch.clone();
-        let show_completed = show_completed.clone();
 
         use_effect_with((), move |_| {
             let interval = gloo_timers::callback::Interval::new(5000, move || {
@@ -804,7 +802,7 @@ pub fn toast_notification() -> Html {
                             <div class={classes!("toast", toast_class)}>
                                 <div class="flex items-center justify-between">
                                     <div class="item_conatiner-text flex items-center">
-                                        <i class={classes!(icon_class, "text-xl", "mr-2")}></i>
+                                        <i class={classes!(icon_class, "item_container-text", "text-xl", "mr-2")}></i>
                                         <p class="toast-message">
                                             {toast.content.clone()}
                                         </p>

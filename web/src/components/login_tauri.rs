@@ -1,5 +1,5 @@
 use crate::components::context::{AppState, UIState};
-use crate::components::episodes_layout::UIStateMsg;
+use crate::components::gen_funcs::format_error_message;
 use crate::components::notification_center::ToastNotification;
 use crate::requests::login_requests::{self, call_check_mfa_enabled};
 use crate::requests::login_requests::{
@@ -35,7 +35,7 @@ pub fn login() -> Html {
     let (app_state, dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
     let _error_message = app_state.error_message.clone();
-    let error_message = _state.error_message.clone();
+    let error_message = app_state.error_message.clone();
     let time_zone = use_state(|| "".to_string());
     let date_format = use_state(|| "".to_string());
     let time_pref = use_state(|| 12);
@@ -44,7 +44,7 @@ pub fn login() -> Html {
     let temp_api_key = use_state(|| "".to_string());
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
-    let info_message = _state.info_message.clone();
+    let info_message = app_state.info_message.clone();
     // Define the initial state
     // Define states for both self-service and first admin
     let page_state = use_state(|| PageState::Default);
@@ -82,30 +82,6 @@ pub fn login() -> Html {
         || ()
     });
 
-    {
-        let ui_dispatch = _dispatch.clone();
-        use_effect(move || {
-            let window = window().unwrap();
-            let document = window.document().unwrap();
-
-            let closure = Closure::wrap(Box::new(move |_event: Event| {
-                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
-                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
-            }) as Box<dyn Fn(_)>);
-
-            document
-                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                .unwrap();
-
-            // Return cleanup function
-            move || {
-                document
-                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                    .unwrap();
-                closure.forget(); // Prevents the closure from being dropped
-            }
-        });
-    }
     let effect_displatch = dispatch.clone();
     // User Auto Login with saved state
     use_effect_with((), {
@@ -339,7 +315,7 @@ pub fn login() -> Html {
     let call_server_name = temp_server_name.clone();
     let call_api_key = temp_api_key.clone();
     let call_user_id = temp_user_id.clone();
-    let submit_post_state = _dispatch.clone();
+    let submit_post_state = dispatch.clone();
     let on_submit = {
         let submit_dispatch = dispatch.clone();
         Callback::from(move |_| {
@@ -557,7 +533,7 @@ pub fn login() -> Html {
             df.set(select_element.value());
         })
     };
-    let time_state_error = _dispatch.clone();
+    let time_state_error = dispatch.clone();
     let on_time_pref_change = {
         let time_pref = time_pref.clone();
         Callback::from(move |e: InputEvent| {
@@ -572,7 +548,7 @@ pub fn login() -> Html {
             }
         })
     };
-    let dispatch_time = _dispatch.clone();
+    let dispatch_time = dispatch.clone();
     let on_time_zone_submit = {
         // let (state, dispatch) = use_store::<AppState>();
         let page_state = page_state.clone();
@@ -728,7 +704,7 @@ pub fn login() -> Html {
             );
         })
     };
-    let post_state = _dispatch.clone();
+    let post_state = dispatch.clone();
     let on_mfa_submit = {
         let (state, dispatch) = use_store::<AppState>();
         let page_state = page_state.clone();

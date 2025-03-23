@@ -64,10 +64,8 @@ fn playlist_card(props: &PlaylistCardProps) -> Html {
 #[function_component(Home)]
 pub fn home() -> Html {
     let (state, dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
-    let error_message = state.error_message.clone();
-    let info_message = state.info_message.clone();
     let history = BrowserHistory::new();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -293,7 +291,6 @@ pub fn home() -> Html {
                                             let history_clone = history.clone();
                                             let playlist_id = playlist.playlist_id;
                                             let onclick = Callback::from(move |_| {
-                                                let route = Route::PlaylistDetail { id: playlist_id };
                                                 let url = format!("/playlist/{}", playlist_id);
                                                 history_clone.push(url);
                                             });
@@ -405,16 +402,6 @@ pub fn home_episode_item(props: &HomeEpisodeItemProps) -> Html {
     } else {
         None
     };
-
-    // Check if this episode is currently playing
-    let is_current_episode = audio_state
-        .currently_playing
-        .as_ref()
-        .map_or(false, |current| {
-            current.episode_id == props.episode.episodeid
-        });
-
-    let is_playing = audio_state.audio_playing.unwrap_or(false);
 
     let date_format = match_date_format(state.date_format.as_deref());
     let datetime = parse_date(&props.episode.episodepubdate, &state.user_tz);

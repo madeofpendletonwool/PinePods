@@ -1,7 +1,7 @@
 use super::app_drawer::App_drawer;
 use super::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, ExpandedDescriptions, PodcastState, UIState};
+use crate::components::context::{AppState, PodcastState, UIState};
 use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{
@@ -12,9 +12,7 @@ use crate::requests::search_pods::{call_parse_podcast_url, UnifiedPodcast};
 use gloo::events::EventListener;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use wasm_bindgen::prelude::*;
 use web_sys::MouseEvent;
-use web_sys::{window, HtmlElement};
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
@@ -61,11 +59,9 @@ impl ClickedFeedURL {
 
 #[function_component(PodLayout)]
 pub fn pod_layout() -> Html {
-    let (state, dispatch) = use_store::<AppState>();
+    let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let search_results = state.search_results.clone();
-    let error_message = state.error_message.clone();
-    let info_message = state.info_message.clone();
 
     // Track window width to apply responsive columns
     let columns = use_state(|| 2); // Default to 2 columns
@@ -182,7 +178,6 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     let podcast_title = podcast.title.clone();
 
     let (state, dispatch) = use_store::<AppState>();
-    let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let (podcast_state, podcast_dispatch) = use_store::<PodcastState>();
 
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());

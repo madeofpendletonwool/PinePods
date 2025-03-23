@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::AppState;
 use crate::requests::setting_reqs::{call_enable_disable_guest, call_guest_status};
 use std::borrow::Borrow;
 use yew::platform::spawn_local;
@@ -8,7 +8,6 @@ use yewdux::prelude::*;
 #[function_component(GuestSettings)]
 pub fn guest_settings() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
-    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let _user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());

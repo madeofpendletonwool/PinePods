@@ -24,15 +24,14 @@ Major Version:
 - [x] adjust login screen component to be set amount down
 - [x] Implement download_youtube_video_task
 - [x] Fix specific issue with playlist creation
-- [] mysql tests
-- [] Go from 0.7.3 to 0.7.5 check startpage
+- [x] mysql tests
+- [x] Go from 0.7.3 to 0.7.5 check startpage
+- [x] Clean warnings
+- [x] Check tauri
+- [x] Update packages
+- [] Automation implements correct SHA in the deb files
 - [] release
 - [] flatpak
-
-- [x] Fade out animation for toast
-- [x] Check for and remove other on page notifications
-- [x] Ensure pooling fixed
-- [x] Put toast ssytem on login
 
 Pre 0.7.4
 

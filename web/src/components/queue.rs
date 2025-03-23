@@ -12,7 +12,6 @@ use crate::components::gen_funcs::{
 use crate::requests::pod_req;
 use crate::requests::pod_req::QueuedEpisodesResponse;
 use gloo_utils::document;
-use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::Element;
 use web_sys::{window, DragEvent, HtmlElement};
@@ -44,8 +43,6 @@ pub fn queue() -> Html {
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let error_message = post_state.error_message.clone();
-    let info_message = post_state.info_message.clone();
 
     let loading = use_state(|| true);
     let dragging = use_state(|| None);

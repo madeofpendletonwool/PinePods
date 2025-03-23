@@ -1,4 +1,4 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::connect_to_episode_websocket;
 use crate::requests::setting_reqs::{
@@ -37,7 +37,6 @@ async fn open_nextcloud_login(url: &str) -> Result<(), JsValue> {
 #[function_component(NextcloudOptions)]
 pub fn nextcloud_options() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -134,10 +133,8 @@ pub fn nextcloud_options() -> Html {
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let auth_status = auth_status.clone();
-        let audio_dispatch_call = audio_dispatch.clone();
         Callback::from(move |_| {
             let app_dispatch = app_dispatch.clone();
-            let audio_dispatch = audio_dispatch_call.clone();
             let auth_status = auth_status.clone();
             let server = (*server_url_initiate).clone().trim().to_string();
             let server_name = server_name.clone();
@@ -350,7 +347,6 @@ pub fn nextcloud_options() -> Html {
         let user_id = user_id.clone();
         let auth_status = auth_status.clone();
         Callback::from(move |_| {
-            let audio_dispatch = audio_dispatch.clone();
             let auth_status = auth_status.clone();
             let server = (*server_url_initiate).clone().trim().to_string();
             let server_user = server_user.clone();

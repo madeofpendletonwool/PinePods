@@ -214,9 +214,6 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
             let window_clone = window.clone();
 
             let onpopstate = Closure::wrap(Box::new(move |_: web_sys::Event| {
-                let path = window_clone.location().pathname().unwrap_or_default();
-                let search = window_clone.location().search().unwrap_or_default();
-
                 if let Ok(Some(session_storage)) = window_clone.session_storage() {
                     // Check if we're already handling a double-back
                     let is_double_back = session_storage

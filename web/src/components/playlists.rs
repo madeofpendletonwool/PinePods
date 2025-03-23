@@ -847,8 +847,6 @@ pub fn playlists() -> Html {
                 let modal_state = modal_state.clone();
                 let is_loading_delete = is_loading_delete.clone();
                 let is_selection_mode = is_selection_mode.clone();
-                let playlist_count = selected_playlists_vec.len();
-
                 is_loading_delete.set(true);
 
                 wasm_bindgen_futures::spawn_local(async move {

@@ -1943,6 +1943,7 @@ pub struct SetStartPageRequest {
 
 // Struct for the set startpage response
 #[derive(Deserialize)]
+#[allow(non_snake_case)]
 struct SetStartPageResponse {
     success: bool,
     message: String,

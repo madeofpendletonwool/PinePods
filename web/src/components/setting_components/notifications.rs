@@ -1,6 +1,5 @@
 // notifications.rs
-
-use crate::components::context::{AppState, UIState};
+use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_get_notification_settings, call_test_notification, call_update_notification_settings,
@@ -13,8 +12,6 @@ use yewdux::prelude::*;
 #[function_component(NotificationOptions)]
 pub fn notification_settings() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
-    let (_audio_state, audio_dispatch) = use_store::<UIState>();
-
     // Form states
     let platform = use_state(|| "ntfy".to_string());
     let enabled = use_state(|| false);
@@ -202,7 +199,6 @@ pub fn notification_settings() -> Html {
         let _dispatch = _dispatch.clone();
 
         Callback::from(move |_| {
-            let aud_call = audio_dispatch.clone();
             let dispatch = _dispatch.clone();
             let platform_value = (*platform).clone();
             let test_server = server_name.clone();

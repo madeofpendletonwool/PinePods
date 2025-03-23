@@ -56,7 +56,7 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     let src_state = use_state(|| props.src.clone());
     let has_error = use_state(|| false);
 
-    let (state, dispatch) = use_store::<AppState>();
+    let (state, _dispatch) = use_store::<AppState>();
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let server_name_str = server_name.unwrap();
     // Create a proxied URL from the original source
@@ -685,7 +685,7 @@ pub struct ContextButtonProps {
 pub fn context_button(props: &ContextButtonProps) -> Html {
     let dropdown_open = use_state(|| false);
     let (post_state, post_dispatch) = use_store::<AppState>();
-    let (_audio_state, audio_dispatch) = use_store::<UIState>();
+    let (ui_state, ui_dispatch) = use_store::<UIState>();
     let api_key = post_state
         .auth_details
         .as_ref()
@@ -861,7 +861,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     let remove_queue_api_key = api_key.clone();
     let remove_queue_server_name = server_name.clone();
-    let remove_queue_post = audio_dispatch.clone();
     let dispatch_clone = post_dispatch.clone();
     // let server_name = server_name.clone();
     let on_remove_queued_episode = {
@@ -871,7 +870,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let post_dispatch = dispatch_clone.clone();
             let server_name_copy = remove_queue_server_name.clone();
             let api_key_copy = remove_queue_api_key.clone();
-            let queue_post = remove_queue_post.clone();
             let request = QueuePodcastRequest {
                 episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(), // replace with the actual user ID
@@ -888,6 +886,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 .await
                 {
                     Ok(success_message) => {
+                        let formatted_info = format_error_message(&success_message.to_string());
+
                         // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
                         post_dispatch.reduce_mut(|state| {
                             // Here, you should remove the episode from the queued_episodes
@@ -900,7 +900,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                                 queued_episode_ids.retain(|&id| id != episode_id);
                             }
                             // Optionally, you can update the info_message with success message
-                            state.info_message = Some(format!("{}", success_message).to_string());
+                            state.info_message = Some(format!("{}", formatted_info).to_string());
                         });
                     }
                     Err(e) => {
@@ -957,8 +957,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 // post_state.reduce_mut(|state| state.info_message = Option::from(format!("Episode saved successfully")));
                 match call_save_episode(&server_name.unwrap(), &api_key.flatten(), &request).await {
                     Ok(success_message) => {
+                        let formatted_info = format_error_message(&success_message.to_string());
                         post_state.reduce_mut(|state| {
-                            state.info_message = Option::from(format!("{}", success_message));
+                            state.info_message = Option::from(format!("{}", formatted_info));
                             if let Some(ref mut saved_episodes) = state.saved_episode_ids {
                                 saved_episodes.push(episode_clone.get_episode_id(Some(0)));
                             }
@@ -980,7 +981,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     let remove_saved_api_key = api_key.clone();
     let remove_saved_server_name = server_name.clone();
-    let remove_save_post = audio_dispatch.clone();
     let dispatch_clone = post_dispatch.clone();
     let on_remove_saved_episode = {
         let episode = props.episode.clone();
@@ -989,7 +989,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let post_dispatch = dispatch_clone.clone();
             let server_name_copy = remove_saved_server_name.clone();
             let api_key_copy = remove_saved_api_key.clone();
-            let post_state = remove_save_post.clone();
             let request = SavePodcastRequest {
                 episode_id: episode.get_episode_id(Some(0)),
                 user_id: user_id.unwrap(),
@@ -1002,6 +1001,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     .await
                 {
                     Ok(success_message) => {
+                        let formatted_info = format_error_message(&success_message.to_string());
+
                         // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
                         post_dispatch.reduce_mut(|state| {
                             // Here, you should remove the episode from the saved_episodes
@@ -1014,7 +1015,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                                 saved_episode_ids.retain(|&id| id != episode_id);
                             }
                             // Optionally, you can update the info_message with success message
-                            state.info_message = Some(format!("{}", success_message).to_string());
+                            state.info_message = Some(format!("{}", formatted_info).to_string());
                         });
                     }
                     Err(e) => {
@@ -1102,14 +1103,12 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     let remove_download_api_key = api_key.clone();
     let remove_download_server_name = server_name.clone();
-    let remove_download_post = audio_dispatch.clone();
     let dispatch_clone = post_dispatch.clone();
     let on_remove_downloaded_episode = {
         let episode = props.episode.clone();
         let episode_id = props.episode.get_episode_id(Some(0));
         Callback::from(move |_| {
             let post_dispatch = dispatch_clone.clone();
-            let post_state = remove_download_post.clone();
             let server_name_copy = remove_download_server_name.clone();
             let api_key_copy = remove_download_api_key.clone();
             let request = DownloadEpisodeRequest {
@@ -1130,6 +1129,8 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 .await
                 {
                     Ok(success_message) => {
+                        let formatted_info = format_error_message(&success_message.to_string());
+
                         // queue_post.reduce_mut(|state| state.info_message = Option::from(format!("{}", success_message)));
                         post_dispatch.reduce_mut(|state| {
                             // Here, you should remove the episode from the downloaded_episodes
@@ -1144,7 +1145,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                                 downloaded_episode_ids.retain(|&id| id != episode_id);
                             }
                             // Optionally, you can update the info_message with success message
-                            state.info_message = Some(format!("{}", success_message).to_string());
+                            state.info_message = Some(format!("{}", formatted_info).to_string());
                         });
                     }
                     Err(e) => {
@@ -1187,7 +1188,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     #[cfg(not(feature = "server_build"))]
     let on_local_episode_download = {
         let episode = props.episode.clone();
-        let download_local_post = audio_dispatch.clone();
+        let download_local_post = post_dispatch.clone();
         let server_name_copy = server_name.clone();
         let api_key_copy = api_key.clone();
         let user_id_copy = user_id.clone();
@@ -1221,9 +1222,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             Ok(_) => {}
                             Err(e) => {
                                 post_state.reduce_mut(|state| {
-                                    let formatted_error = format_error_message(&e.to_string());
+                                    let formatted_error = format_error_message(&format!("{:?}", e));
                                     state.error_message = Some(format!(
-                                        "Failed to download episode audio: {:?}",
+                                        "Failed to download episode audio: {}",
                                         formatted_error.clone()
                                     ))
                                 });
@@ -1234,9 +1235,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         // Download artwork
                         if let Err(e) = download_file(artwork_url, artwork_filename.clone()).await {
                             post_state.reduce_mut(|state| {
-                                let formatted_error = format_error_message(&e.to_string());
+                                let formatted_error = format_error_message(&format!("{:?}", e));
                                 state.error_message = Some(format!(
-                                    "Failed to download episode artwork: {:?}",
+                                    "Failed to download episode artwork: {}",
                                     formatted_error.clone()
                                 ))
                             });
@@ -1246,9 +1247,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         // Update local JSON database
                         if let Err(e) = update_local_database(episode_info).await {
                             post_state.reduce_mut(|state| {
-                                let formatted_error = format_error_message(&e.to_string());
+                                let formatted_error = format_error_message(&format!("{:?}", e));
                                 state.error_message = Some(format!(
-                                    "Failed to update local database: {:?}",
+                                    "Failed to update local database: {}",
                                     formatted_error.clone()
                                 ))
                             });
@@ -1269,9 +1270,10 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                             Ok(podcast_details) => {
                                 if let Err(e) = update_podcast_database(podcast_details).await {
                                     post_state.reduce_mut(|state| {
-                                        let formatted_error = format_error_message(&e.to_string());
+                                        let formatted_error =
+                                            format_error_message(&format!("{:?}", e));
                                         state.error_message = Some(format!(
-                                            "Failed to update podcast database: {:?}",
+                                            "Failed to update podcast database: {}",
                                             formatted_error
                                         ))
                                     });
@@ -1304,10 +1306,12 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     #[cfg(not(feature = "server_build"))]
     let on_remove_locally_downloaded_episode = {
         let episode = props.episode.clone();
-        let download_local_post = audio_dispatch.clone();
+        let download_ui_dispatch = ui_dispatch.clone();
+        let download_local_post = post_dispatch.clone();
 
         Callback::from(move |_: MouseEvent| {
             let post_state = download_local_post.clone();
+            let ui_state = download_ui_dispatch.clone();
             let episode_id = episode.get_episode_id(Some(0));
 
             let future = async move {
@@ -1316,9 +1320,14 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 // Download audio
                 match remove_episode_from_local_db(episode_id).await {
                     Ok(_) => {
+                        // Update info_message in post_state
                         post_state.reduce_mut(|state| {
                             state.info_message =
                                 Some(format!("Episode {} downloaded locally!", filename));
+                        });
+
+                        // Update local_download_increment in ui_state
+                        ui_state.reduce_mut(|state| {
                             if let Some(increment) = state.local_download_increment.as_mut() {
                                 *increment += 1;
                             } else {
@@ -1327,10 +1336,10 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         });
                     }
                     Err(e) => {
-                        let formatted_error = format_error_message(&e.to_string());
+                        let formatted_error = format_error_message(&format!("{:?}", e));
                         post_state.reduce_mut(|state| {
                             state.error_message = Some(format!(
-                                "Failed to download episode audio: {:?}",
+                                "Failed to download episode audio: {}",
                                 formatted_error
                             ))
                         });
@@ -1344,14 +1353,12 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     let uncomplete_api_key = api_key.clone();
     let uncomplete_server_name = server_name.clone();
-    let uncomplete_download_post = audio_dispatch.clone();
     let uncomplete_dispatch_clone = post_dispatch.clone();
     let on_uncomplete_episode = {
         let episode = props.episode.clone();
         let episode_id = props.episode.get_episode_id(Some(0));
         Callback::from(move |_| {
             let post_dispatch = uncomplete_dispatch_clone.clone();
-            let post_state = uncomplete_download_post.clone();
             let server_name_copy = uncomplete_server_name.clone();
             let api_key_copy = uncomplete_api_key.clone();
             let request = MarkEpisodeCompletedRequest {
@@ -1403,14 +1410,12 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
 
     let complete_api_key = api_key.clone();
     let complete_server_name = server_name.clone();
-    let complete_download_post = audio_dispatch.clone();
     let dispatch_clone = post_dispatch.clone();
     let on_complete_episode = {
         let episode = props.episode.clone();
         let episode_id = props.episode.get_episode_id(Some(0));
         Callback::from(move |_| {
             let post_dispatch = dispatch_clone.clone();
-            let post_state = complete_download_post.clone();
             let server_name_copy = complete_server_name.clone();
             let api_key_copy = complete_api_key.clone();
             let request = MarkEpisodeCompletedRequest {

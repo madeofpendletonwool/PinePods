@@ -14,13 +14,6 @@ use crate::requests::pod_req::{
     call_remove_downloaded_episode, DownloadEpisodeRequest, EpisodeDownload,
     EpisodeDownloadResponse, EpisodeInfo, Podcast, PodcastDetails, PodcastResponse,
 };
-use yew::prelude::*;
-use yew::{function_component, html, Html};
-use yew_router::history::{BrowserHistory, History};
-use yewdux::prelude::*;
-// use crate::components::gen_funcs::check_auth;
-use crate::components::episodes_layout::UIStateMsg;
-use crate::requests::login_requests::use_check_authentication;
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -30,6 +23,10 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use web_sys::window;
+use yew::prelude::*;
+use yew::{function_component, html, Html};
+use yew_router::history::{BrowserHistory, History};
+use yewdux::prelude::*;
 
 fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec<EpisodeDownload>> {
     let mut grouped: HashMap<i32, Vec<EpisodeDownload>> = HashMap::new();
@@ -309,8 +306,6 @@ pub fn downloads() -> Html {
     let error = use_state(|| None::<String>);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let error_message = audio_state.error_message.clone();
-    let info_message = audio_state.info_message.clone();
     let app_offline_mode = audio_state.app_offline_mode;
     let page_state = use_state(|| PageState::Normal);
     let api_key = post_state
@@ -323,31 +318,6 @@ pub fn downloads() -> Html {
         .as_ref()
         .map(|ud| ud.server_name.clone());
     let loading = use_state(|| true);
-
-    {
-        let ui_dispatch = audio_dispatch.clone();
-        use_effect(move || {
-            let window = window().unwrap();
-            let document = window.document().unwrap();
-
-            let closure = Closure::wrap(Box::new(move |_event: Event| {
-                ui_dispatch.apply(UIStateMsg::ClearErrorMessage);
-                ui_dispatch.apply(UIStateMsg::ClearInfoMessage);
-            }) as Box<dyn Fn(_)>);
-
-            document
-                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                .unwrap();
-
-            // Return cleanup function
-            move || {
-                document
-                    .remove_event_listener_with_callback("click", closure.as_ref().unchecked_ref())
-                    .unwrap();
-                closure.forget(); // Prevents the closure from being dropped
-            }
-        });
-    }
 
     // Fetch episodes on component mount
     let loading_ep = loading.clone();
@@ -777,6 +747,8 @@ pub fn render_podcast_with_episodes(
         })
     };
 
+    let html_dispatch = dispatch.clone();
+
     html! {
         <div key={podcast.podcastid}>
             {if is_delete_mode {
@@ -816,7 +788,7 @@ pub fn render_podcast_with_episodes(
                         { for episodes.into_iter().map(|episode| {
                             let id_string = &episode.episodeid.to_string();
 
-                            let dispatch = dispatch.clone();
+                            let app_dispatch = html_dispatch.clone();
 
                             let episode_url_clone = episode.episodeurl.clone();
                             let episode_duration_clone = episode.episodeduration.clone();
@@ -863,11 +835,11 @@ pub fn render_podcast_with_episodes(
                             let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
 
 
-                            let on_play_pause = on_play_pause_offline(episode.clone(), audio_dispatch, audio_state);
+                            let on_play_pause = on_play_pause_offline(episode.clone(), audio_dispatch, audio_state, app_dispatch.clone());
 
                             let on_shownotes_click = on_shownotes_click(
                                 history_clone.clone(),
-                                dispatch.clone(),
+                                app_dispatch.clone(),
                                 Some(episode_id_for_closure.clone()),
                                 Some(String::from("Not needed")),
                                 Some(String::from("Not needed")),

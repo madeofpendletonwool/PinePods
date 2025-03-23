@@ -357,52 +357,95 @@ try:
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
                 WHERE table_schema = 'public'
-                AND table_name = 'usersettings'
+                AND lower(table_name) = 'usersettings'
             );
         """)
         table_exists = cursor.fetchone()[0]
 
         if not table_exists:
             # Fresh install - create the table with all columns
-            cursor.execute("""CREATE TABLE IF NOT EXISTS "UserSettings" (
-                            UserSettingID SERIAL PRIMARY KEY,
-                            UserID INT UNIQUE,
-                            Theme VARCHAR(255) DEFAULT 'Nordic',
-                            StartPage VARCHAR(255) DEFAULT 'home',
-                            FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
-                        )""")
-            print("UserSettings table created with StartPage column included")
-        else:
-            # Existing table - check for column with exact data type and constraints
             cursor.execute("""
-                SELECT column_name, data_type, column_default
-                FROM information_schema.columns
-                WHERE table_name = 'usersettings'
+                CREATE TABLE IF NOT EXISTS "usersettings" (
+                    usersettingid SERIAL PRIMARY KEY,
+                    userid INT UNIQUE,
+                    theme VARCHAR(255) DEFAULT 'Nordic',
+                    startpage VARCHAR(255) DEFAULT 'home',
+                    FOREIGN KEY (userid) REFERENCES "users"(userid)
+                )
             """)
-            columns = cursor.fetchall()
+            print("usersettings table created with startpage column included")
+        else:
+            # Get the actual table name (might be mixed case)
+            cursor.execute("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                AND lower(table_name) = 'usersettings'
+            """)
+            actual_table_name = cursor.fetchone()[0]
+            print(f"Found existing usersettings table as: {actual_table_name}")
 
-            # Check if "startpage" already exists (case-insensitive)
-            startpage_exists = any(col[0].lower() == 'startpage' for col in columns)
+            # Get all column names with their actual case
+            cursor.execute(f"""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                AND lower(table_name) = 'usersettings'
+            """)
+            columns = [col[0] for col in cursor.fetchall()]
+            print(f"Existing columns: {columns}")
 
-            if not startpage_exists:
-                try:
-                    # Column doesn't exist - add it
-                    cursor.execute("""
-                        ALTER TABLE "UserSettings"
-                        ADD COLUMN "startpage" VARCHAR(255) DEFAULT 'home'
-                    """)
-                    print("StartPage column added to existing UserSettings table")
-                except Exception as column_error:
-                    # Log the specific error and continue
-                    print(f"Error adding StartPage column: {column_error}")
+            # Check if any variation of 'startpage' exists (case-insensitive)
+            startpage_column_exists = False
+            startpage_column_name = None
+            for col in columns:
+                if col.lower() == 'startpage':
+                    startpage_column_exists = True
+                    startpage_column_name = col
+                    break
+
+            if not startpage_column_exists:
+                # The column doesn't exist, add it
+                cursor.execute(f"""
+                    ALTER TABLE "{actual_table_name}"
+                    ADD COLUMN startpage VARCHAR(255) DEFAULT 'home'
+                """)
+                print("startpage column added to existing usersettings table")
             else:
-                print("StartPage column already exists in UserSettings table")
+                print(f"startpage column exists as: {startpage_column_name}")
+
+                # IMPORTANT: The API is trying to access 'startpage' but the column is 'StartPage'
+                # Check if we need to fix this by checking the error from the log
+                cursor.execute(f"""
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                    AND table_name = '{actual_table_name.lower()}'
+                    AND column_name = 'startpage'
+                """)
+                lowercase_exists = cursor.fetchone()
+
+                if not lowercase_exists and startpage_column_name != 'startpage':
+                    print(f"Column exists as {startpage_column_name} but code tries to access 'startpage'. Adding alias column...")
+                    try:
+                        # Add a new column and copy data from the existing one
+                        cursor.execute(f"""
+                            ALTER TABLE "{actual_table_name}"
+                            ADD COLUMN startpage VARCHAR(255) DEFAULT 'home'
+                        """)
+                        cursor.execute(f"""
+                            UPDATE "{actual_table_name}"
+                            SET startpage = "{startpage_column_name}"
+                        """)
+                        print("Added lowercase startpage column for compatibility")
+                    except Exception as e:
+                        print(f"Error adding compatibility column: {e}")
 
         # Always commit the transaction
         cnx.commit()
     except Exception as e:
         # Log the general error and rollback
-        print(f"Error handling UserSettings table: {e}")
+        print(f"Error handling usersettings table: {e}")
         cnx.rollback()
 
     admin_created = False

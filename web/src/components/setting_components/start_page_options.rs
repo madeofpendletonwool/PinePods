@@ -1,6 +1,6 @@
-use crate::components::context::{AppState, UIState};
+use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
-use crate::requests::setting_reqs::{call_get_startpage, call_set_startpage, SetStartPageRequest};
+use crate::requests::setting_reqs::{call_get_startpage, call_set_startpage};
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlSelectElement;
 use yew::prelude::*;
@@ -9,7 +9,6 @@ use yewdux::prelude::*;
 #[function_component(StartPageOptions)]
 pub fn startpage() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
-    let (_audio_state, audio_dispatch) = use_store::<UIState>();
     // Use state to manage the selected start page
     let selected_startpage = use_state(|| "".to_string());
     let loading = use_state(|| true);
@@ -61,7 +60,6 @@ pub fn startpage() -> Html {
         let state = state.clone();
 
         Callback::from(move |_| {
-            let audio_dispatch = audio_dispatch.clone();
             let dispatch = _dispatch.clone();
             let startpage = (*selected_startpage).clone();
 
@@ -167,27 +165,5 @@ pub fn startpage() -> Html {
                 </button>
             }
         </div>
-    }
-}
-
-pub fn initialize_default_startpage() {
-    if let Some(window) = web_sys::window() {
-        if let Ok(Some(storage)) = window.local_storage() {
-            // Check if a start page is already set
-            match storage.get_item("selected_startpage") {
-                Ok(Some(startpage)) => {
-                    // Use existing start page
-                    storage
-                        .set_item("selected_startpage", &startpage)
-                        .unwrap_or_default();
-                }
-                _ => {
-                    // No start page found, set home as default
-                    storage
-                        .set_item("selected_startpage", "home")
-                        .unwrap_or_default();
-                }
-            }
-        }
     }
 }

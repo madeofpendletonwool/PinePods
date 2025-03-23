@@ -1898,10 +1898,12 @@ pub fn on_play_pause_offline(
     episode_info: EpisodeDownload,
     audio_dispatch: Dispatch<UIState>,
     audio_state: Rc<UIState>,
+    app_state: Dispatch<AppState>,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
         let episode_info_for_closure = episode_info.clone();
         let audio_dispatch = audio_dispatch.clone();
+        let app_state = app_state.clone();
 
         let is_current = audio_state
             .currently_playing
@@ -1923,7 +1925,7 @@ pub fn on_play_pause_offline(
                 }
             });
         } else {
-            on_play_click_offline(episode_info_for_closure, audio_dispatch)
+            on_play_click_offline(episode_info_for_closure, audio_dispatch, app_state)
                 .emit(MouseEvent::new("click").unwrap());
         }
     })
@@ -1933,17 +1935,19 @@ pub fn on_play_pause_offline(
 pub fn on_play_click_offline(
     episode_info: EpisodeDownload,
     audio_dispatch: Dispatch<UIState>,
+    app_dispatch: Dispatch<AppState>,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
         let episode_info_for_closure = episode_info.clone();
         let audio_dispatch = audio_dispatch.clone();
+        let app_dispatch = app_dispatch.clone();
 
         // Early return if downloadedlocation is None
         let file_path = match episode_info_for_closure.downloadedlocation {
             Some(path) => path,
             None => {
                 // Maybe dispatch an error message here if needed
-                audio_dispatch.reduce_mut(|state| {
+                app_dispatch.reduce_mut(|state| {
                     state.error_message = Some("Episode file location not found".to_string());
                 });
                 return;
