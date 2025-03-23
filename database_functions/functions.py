@@ -3257,6 +3257,12 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None, prog
         if progress_callback:
             progress_callback(90.0, "FINALIZING")
 
+        print(f"DEBUG - Moving temp file from: {temp_path}")
+        print(f"DEBUG - Moving to destination: {file_path}")
+        print(f"DEBUG - Directory exists check: {os.path.exists(os.path.dirname(file_path))}")
+        print(f"DEBUG - Date format being used: {date_format} -> {date_format_str}")
+        print(f"DEBUG - Formatted date: {pub_date_str}")
+
         # Move the temporary file to the final location
         shutil.move(temp_path, file_path)
 
