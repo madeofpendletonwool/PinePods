@@ -3592,7 +3592,8 @@ def download_youtube_video(cnx, database_type, video_id, user_id, task_id=None, 
             "YMD": "%Y-%m-%d",
         }
         date_format_str = date_format_map.get(date_format, "%Y-%m-%d")
-        pub_date_str = pub_date.strftime(date_format_str)
+        filename_date_format_str = date_format_str.replace('/', '-').replace('\\', '-')
+        pub_date_str = pub_date.strftime(filename_date_format_str)
 
         # Clean filenames
         channel_name = "".join(c for c in channel_name if c.isalnum() or c in (' ', '-', '_')).strip()
