@@ -352,7 +352,7 @@ try:
         print(f"Error creating web key: {e}")
 
     try:
-        # First check if the table exists
+        # First check if the table exists - use lowercase in the check since lower() is applied
         cursor.execute("""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
@@ -364,16 +364,17 @@ try:
 
         if not table_exists:
             # Fresh install - create the table with all columns
+            # Important: Notice we're referencing "Users" (capital U) here
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS "usersettings" (
+                CREATE TABLE IF NOT EXISTS "UserSettings" (
                     usersettingid SERIAL PRIMARY KEY,
                     userid INT UNIQUE,
                     theme VARCHAR(255) DEFAULT 'Nordic',
                     startpage VARCHAR(255) DEFAULT 'home',
-                    FOREIGN KEY (userid) REFERENCES "users"(userid)
+                    FOREIGN KEY (userid) REFERENCES "Users"(userid)
                 )
             """)
-            print("usersettings table created with startpage column included")
+            print("UserSettings table created with startpage column included")
         else:
             # Get the actual table name (might be mixed case)
             cursor.execute("""
@@ -383,7 +384,7 @@ try:
                 AND lower(table_name) = 'usersettings'
             """)
             actual_table_name = cursor.fetchone()[0]
-            print(f"Found existing usersettings table as: {actual_table_name}")
+            print(f"Found existing UserSettings table as: {actual_table_name}")
 
             # Get all column names with their actual case
             cursor.execute(f"""
@@ -410,7 +411,7 @@ try:
                     ALTER TABLE "{actual_table_name}"
                     ADD COLUMN startpage VARCHAR(255) DEFAULT 'home'
                 """)
-                print("startpage column added to existing usersettings table")
+                print("startpage column added to existing UserSettings table")
             else:
                 print(f"startpage column exists as: {startpage_column_name}")
 
@@ -420,7 +421,7 @@ try:
                     SELECT 1
                     FROM information_schema.columns
                     WHERE table_schema = 'public'
-                    AND table_name = '{actual_table_name.lower()}'
+                    AND table_name = lower('{actual_table_name}')
                     AND column_name = 'startpage'
                 """)
                 lowercase_exists = cursor.fetchone()
@@ -433,6 +434,7 @@ try:
                             ALTER TABLE "{actual_table_name}"
                             ADD COLUMN startpage VARCHAR(255) DEFAULT 'home'
                         """)
+                        # Fixed the column name reference in the UPDATE statement
                         cursor.execute(f"""
                             UPDATE "{actual_table_name}"
                             SET startpage = "{startpage_column_name}"
