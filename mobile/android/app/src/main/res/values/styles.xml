@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ~ Copyright 2020-2022 Ben Hills. All rights reserved.
+  ~ Use of this source code is governed by a BSD-style license that can be
+  ~ found in the LICENSE file.
+  -->
+
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+        <!-- Show a splash screen on the activity. Automatically removed when
+             Flutter draws its first frame -->
+        <item name="android:windowBackground">@drawable/launch_background</item>
+        <!-- The below value sets the navigation bar colour; however, this
+             causes issues with Android 6 & 7 as the Flutter control over
+             this colour only works on 8 upwards. Commented out for now -->
+        <!--<item name="android:navigationBarColor">@color/splash</item>-->
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:statusBarColor">@color/splash</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+</resources>
