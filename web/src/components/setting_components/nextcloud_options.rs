@@ -3,8 +3,11 @@ use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::connect_to_episode_websocket;
 use crate::requests::setting_reqs::{
     call_add_gpodder_server, call_add_nextcloud_server, call_check_nextcloud_server,
-    call_get_nextcloud_server, call_remove_podcast_sync, call_verify_gpodder_auth,
-    initiate_nextcloud_login, GpodderAuthRequest, GpodderCheckRequest, NextcloudAuthRequest,
+    call_create_gpodder_device, call_force_full_sync, call_get_gpodder_devices,
+    call_get_nextcloud_server, call_remove_podcast_sync, call_sync_with_gpodder,
+    call_test_gpodder_connection, call_verify_gpodder_auth, initiate_nextcloud_login,
+    CreateDeviceRequest, GpodderAuthRequest, GpodderCheckRequest, GpodderDevice,
+    NextcloudAuthRequest,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -13,7 +16,515 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::use_store;
-// use wasm_timer;
+
+#[function_component(GpodderAdvancedOptions)]
+pub fn gpodder_advanced_options() -> Html {
+    let (state, dispatch) = use_store::<AppState>();
+    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+    // State for the devices list
+    let devices = use_state(|| Vec::<GpodderDevice>::new());
+
+    // State for new device form
+    let new_device_name = use_state(|| String::new());
+    let new_device_type = use_state(|| "desktop".to_string());
+    let new_device_caption = use_state(|| String::new());
+
+    // Loading states
+    let is_loading_devices = use_state(|| false);
+    let is_creating_device = use_state(|| false);
+    let is_syncing = use_state(|| false);
+    let is_pushing = use_state(|| false);
+
+    // Selected device for operations
+    let selected_device_id = use_state(|| None::<i32>);
+
+    // Load devices on component mount
+    {
+        let devices = devices.clone();
+        let is_loading_devices = is_loading_devices.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let dispatch = dispatch.clone();
+        let selected_device_id = selected_device_id.clone();
+
+        use_effect_with((), move |_| {
+            if let (Some(server_name), Some(api_key), Some(user_id)) =
+                (server_name, api_key.clone(), user_id)
+            {
+                is_loading_devices.set(true);
+
+                spawn_local(async move {
+                    match call_get_gpodder_devices(&server_name, &api_key.unwrap(), user_id).await {
+                        Ok(fetched_devices) => {
+                            // If devices exist, select the first one by default
+                            if !fetched_devices.is_empty() {
+                                selected_device_id.set(Some(fetched_devices[0].id));
+                            }
+                            devices.set(fetched_devices);
+                        }
+                        Err(e) => {
+                            let error_msg = format!("Failed to load GPodder devices: {}", e);
+                            dispatch.reduce_mut(|state| {
+                                state.error_message = Some(error_msg);
+                            });
+                        }
+                    }
+
+                    is_loading_devices.set(false);
+                });
+            }
+
+            || ()
+        });
+    }
+
+    // Handler for device name input change
+    let on_device_name_change = {
+        let new_device_name = new_device_name.clone();
+
+        Callback::from(move |e: InputEvent| {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                new_device_name.set(input.value());
+            }
+        })
+    };
+
+    // Handler for device type selection change
+    let on_device_type_change = {
+        let new_device_type = new_device_type.clone();
+
+        Callback::from(move |e: Event| {
+            if let Some(select) = e.target_dyn_into::<HtmlInputElement>() {
+                new_device_type.set(select.value());
+            }
+        })
+    };
+
+    // Handler for device caption input change
+    let on_device_caption_change = {
+        let new_device_caption = new_device_caption.clone();
+
+        Callback::from(move |e: InputEvent| {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                new_device_caption.set(input.value());
+            }
+        })
+    };
+
+    // Handler for device selection change
+    let on_device_select_change = {
+        let selected_device_id = selected_device_id.clone();
+
+        Callback::from(move |e: Event| {
+            if let Some(select) = e.target_dyn_into::<HtmlInputElement>() {
+                let value = select.value();
+                if value.is_empty() {
+                    selected_device_id.set(None);
+                } else {
+                    if let Ok(id) = value.parse::<i32>() {
+                        selected_device_id.set(Some(id));
+                    }
+                }
+            }
+        })
+    };
+
+    // Handler for creating a new device
+    let on_create_device = {
+        let new_device_name = new_device_name.clone();
+        let new_device_type = new_device_type.clone();
+        let new_device_caption = new_device_caption.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let devices = devices.clone();
+        let is_creating_device = is_creating_device.clone();
+        let pushing = is_pushing.clone();
+        let dispatch = dispatch.clone();
+
+        Callback::from(move |_| {
+            let device_name = (*new_device_name).clone();
+            let device_type = (*new_device_type).clone();
+            let device_caption = (*new_device_caption).clone();
+            let create_device = is_creating_device.clone();
+
+            if device_name.is_empty() {
+                dispatch.reduce_mut(|state| {
+                    state.error_message = Some("Device name cannot be empty".to_string());
+                });
+                return;
+            }
+
+            if let (Some(server_name), Some(api_key), Some(user_id)) =
+                (server_name.clone(), api_key.clone(), user_id)
+            {
+                is_creating_device.set(true);
+
+                let request = CreateDeviceRequest {
+                    user_id,
+                    device_name,
+                    device_type,
+                    device_caption: if device_caption.is_empty() {
+                        None
+                    } else {
+                        Some(device_caption)
+                    },
+                };
+
+                let devices_clone = devices.clone();
+                let new_device_name_clone = new_device_name.clone();
+                let new_device_caption_clone = new_device_caption.clone();
+                let dispatch_clone = dispatch.clone();
+
+                spawn_local(async move {
+                    match call_create_gpodder_device(&server_name, &api_key.unwrap(), request).await
+                    {
+                        Ok(new_device) => {
+                            // Add the new device to the list
+                            let mut updated_devices = (*devices_clone).clone();
+                            updated_devices.push(new_device);
+                            devices_clone.set(updated_devices);
+
+                            // Clear the form
+                            new_device_name_clone.set(String::new());
+                            new_device_caption_clone.set(String::new());
+
+                            dispatch_clone.reduce_mut(|state| {
+                                state.info_message =
+                                    Some("Device created successfully".to_string());
+                            });
+                        }
+                        Err(e) => {
+                            let error_msg = format!("Failed to create device: {}", e);
+                            dispatch_clone.reduce_mut(|state| {
+                                state.error_message = Some(error_msg);
+                            });
+                        }
+                    }
+
+                    create_device.set(false);
+                });
+            }
+        })
+    };
+
+    // Handler for syncing with GPodder
+    let on_sync_click = {
+        let selected_device_id = selected_device_id.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let is_syncing = is_syncing.clone();
+        let dispatch = dispatch.clone();
+        let pushing = is_pushing.clone();
+
+        Callback::from(move |_| {
+            let pushing = pushing.clone();
+            if let (Some(server_name), Some(api_key), Some(user_id)) =
+                (server_name.clone(), api_key.clone(), user_id)
+            {
+                is_syncing.set(true);
+
+                let device_id = *selected_device_id;
+                let dispatch_clone = dispatch.clone();
+
+                spawn_local(async move {
+                    match call_sync_with_gpodder(
+                        &server_name,
+                        &api_key.clone().unwrap(),
+                        user_id,
+                        device_id,
+                    )
+                    .await
+                    {
+                        Ok(response) => {
+                            if response.success {
+                                dispatch_clone.reduce_mut(|state| {
+                                    state.info_message = Some(response.message);
+                                    state.is_refreshing = Some(true);
+                                });
+
+                                // Optionally refresh podcasts via websocket
+                                if let Err(e) = connect_to_episode_websocket(
+                                    &server_name,
+                                    &user_id,
+                                    &api_key.clone().unwrap(),
+                                    true,
+                                    dispatch_clone.clone(),
+                                )
+                                .await
+                                {
+                                    web_sys::console::log_1(
+                                        &format!("Failed to connect to WebSocket:  {:?}", e).into(),
+                                    );
+                                }
+
+                                dispatch_clone.reduce_mut(|state| {
+                                    state.is_refreshing = Some(false);
+                                });
+                            } else {
+                                dispatch_clone.reduce_mut(|state| {
+                                    state.error_message = Some(response.message);
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            let error_msg = format!("Failed to sync with GPodder: {}", e);
+                            dispatch_clone.reduce_mut(|state| {
+                                state.error_message = Some(error_msg);
+                            });
+                        }
+                    }
+
+                    pushing.set(false);
+                });
+            }
+        })
+    };
+
+    // Handler for pushing all podcasts to GPodder
+    let on_push_click = {
+        let selected_device_id = selected_device_id.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let is_pushing = is_pushing.clone();
+        let dispatch = dispatch.clone();
+
+        Callback::from(move |_| {
+            let is_pushing = is_pushing.clone();
+            if let (Some(server_name), Some(api_key), Some(user_id)) =
+                (server_name.clone(), api_key.clone(), user_id)
+            {
+                is_pushing.set(true);
+
+                let device_id = *selected_device_id;
+                let dispatch_clone = dispatch.clone();
+
+                spawn_local(async move {
+                    match call_force_full_sync(&server_name, &api_key.unwrap(), user_id, device_id)
+                        .await
+                    {
+                        Ok(response) => {
+                            if response.success {
+                                dispatch_clone.reduce_mut(|state| {
+                                    state.info_message = Some(response.message);
+                                });
+                            } else {
+                                dispatch_clone.reduce_mut(|state| {
+                                    state.error_message = Some(response.message);
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            let error_msg = format!("Failed to push podcasts to GPodder: {}", e);
+                            dispatch_clone.reduce_mut(|state| {
+                                state.error_message = Some(error_msg);
+                            });
+                        }
+                    }
+
+                    is_pushing.set(false);
+                });
+            }
+        })
+    };
+
+    // Render the component
+    html! {
+        <div class="p-4">
+            <h2 class="item_container-text text-lg font-bold mb-4">{"GPodder Advanced Settings"}</h2>
+
+            <div class="mb-6">
+                <p class="item_container-text text-md mb-4">
+                    {"GPodder synchronization allows you to manage your podcast subscriptions across multiple devices. Here you can manage devices registered with your GPodder account and control synchronization."}
+                </p>
+            </div>
+
+            // Devices section
+            <div class="mb-8 p-4 border rounded-lg">
+                <h3 class="item_container-text text-md font-bold mb-4">{"Your GPodder Devices"}</h3>
+
+                {
+                    if *is_loading_devices {
+                        html! { <div class="flex items-center mb-4"><i class="ph ph-spinner animate-spin mr-2"></i><span>{"Loading devices..."}</span></div> }
+                    } else if devices.is_empty() {
+                        html! { <p class="text-md mb-4">{"No devices found. Create your first device below."}</p> }
+                    } else {
+                        html! {
+                            <>
+                                <div class="mb-4">
+                                    <label for="device-select" class="block text-sm font-medium mb-2">{"Select device for operations:"}</label>
+                                    <select
+                                        id="device-select"
+                                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                        onchange={on_device_select_change}
+                                    >
+                                        <option value="">{"-- Select a device --"}</option>
+                                        {
+                                            devices.iter().map(|device| {
+                                                let caption = match &device.caption {
+                                                    Some(c) => format!(" ({})", c),
+                                                    None => String::new()
+                                                };
+                                                let selected = match *selected_device_id {
+                                                    Some(id) if id == device.id => true,
+                                                    _ => false
+                                                };
+
+                                                html! {
+                                                    <option value={device.id.to_string()} selected={selected}>
+                                                        {format!("{}{} - {}", device.name, caption, device.r#type)}
+                                                    </option>
+                                                }
+                                            }).collect::<Html>()
+                                        }
+                                    </select>
+                                </div>
+
+                                <div class="flex space-x-4 mb-4">
+                                    <button
+                                        onclick={on_sync_click}
+                                        disabled={*is_syncing || selected_device_id.is_none()}
+                                        class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                    >
+                                        {
+                                            if *is_syncing {
+                                                html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Syncing..."}</span> }
+                                            } else {
+                                                html! { <span class="flex items-center"><i class="ph ph-arrow-down-from-line mr-2"></i>{"Sync from GPodder"}</span> }
+                                            }
+                                        }
+                                    </button>
+
+                                    <button
+                                        onclick={on_push_click}
+                                        disabled={*is_pushing || selected_device_id.is_none()}
+                                        class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                    >
+                                        {
+                                            if *is_pushing {
+                                                html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Pushing..."}</span> }
+                                            } else {
+                                                html! { <span class="flex items-center"><i class="ph ph-arrow-up-from-line mr-2"></i>{"Push to GPodder"}</span> }
+                                            }
+                                        }
+                                    </button>
+                                </div>
+
+                                <table class="w-full text-sm text-left">
+                                    <thead class="text-xs uppercase">
+                                        <tr>
+                                            <th class="py-3 px-6">{"Name"}</th>
+                                            <th class="py-3 px-6">{"Type"}</th>
+                                            <th class="py-3 px-6">{"Last Sync"}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {
+                                            devices.iter().map(|device| {
+                                                html! {
+                                                    <tr class="border-b">
+                                                        <td class="py-4 px-6">
+                                                            {&device.name}
+                                                            {
+                                                                if let Some(caption) = &device.caption {
+                                                                    html! { <span class="text-gray-500 ml-2">{"("}{caption}{")"}</span> }
+                                                                } else {
+                                                                    html! {}
+                                                                }
+                                                            }
+                                                        </td>
+                                                        <td class="py-4 px-6">{&device.r#type}</td>
+                                                        <td class="py-4 px-6">
+                                                            {
+                                                                if let Some(last_sync) = &device.last_sync {
+                                                                    html! { {last_sync} }
+                                                                } else {
+                                                                    html! { {"Never"} }
+                                                                }
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            }).collect::<Html>()
+                                        }
+                                    </tbody>
+                                </table>
+                            </>
+                        }
+                    }
+                }
+            </div>
+
+            // Create device section
+            <div class="p-4 border rounded-lg">
+                <h3 class="item_container-text text-md font-bold mb-4">{"Add New Device"}</h3>
+
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div>
+                        <label for="device-name" class="block text-sm font-medium mb-2">{"Device Name (required)"}</label>
+                        <input
+                            type="text"
+                            id="device-name"
+                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                            placeholder="my-phone"
+                            value={(*new_device_name).clone()}
+                            oninput={on_device_name_change}
+                        />
+                    </div>
+
+                    <div>
+                        <label for="device-type" class="block text-sm font-medium mb-2">{"Device Type"}</label>
+                        <select
+                            id="device-type"
+                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                            onchange={on_device_type_change}
+                        >
+                            <option value="desktop" selected={*new_device_type == "desktop"}>{"Desktop"}</option>
+                            <option value="laptop" selected={*new_device_type == "laptop"}>{"Laptop"}</option>
+                            <option value="mobile" selected={*new_device_type == "mobile"}>{"Mobile"}</option>
+                            <option value="server" selected={*new_device_type == "server"}>{"Server"}</option>
+                            <option value="other" selected={*new_device_type == "other"}>{"Other"}</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="device-caption" class="block text-sm font-medium mb-2">{"Caption (optional)"}</label>
+                        <input
+                            type="text"
+                            id="device-caption"
+                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                            placeholder="My Android Phone"
+                            value={(*new_device_caption).clone()}
+                            oninput={on_device_caption_change}
+                        />
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <button
+                        onclick={on_create_device}
+                        disabled={*is_creating_device || (*new_device_name).is_empty()}
+                        class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        {
+                            if *is_creating_device {
+                                html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Creating..."}</span> }
+                            } else {
+                                html! { <span class="flex items-center"><i class="ph ph-plus mr-2"></i>{"Add Device"}</span> }
+                            }
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
 
 // Assume this struct is for handling the response of the initial login request
 #[derive(Serialize, Deserialize)]
@@ -34,9 +545,9 @@ async fn open_nextcloud_login(url: &str) -> Result<(), JsValue> {
     Ok(())
 }
 
-#[function_component(NextcloudOptions)]
-pub fn nextcloud_options() -> Html {
-    let (state, _dispatch) = use_store::<AppState>();
+#[function_component(SyncOptions)]
+pub fn sync_options() -> Html {
+    let (state, dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -48,48 +559,59 @@ pub fn nextcloud_options() -> Html {
     let _error_message = state.error_message.clone();
     let _info_message = state.info_message.clone();
 
-    let is_sync_configured = use_state(|| false); // Track if sync is configured
-    let is_loading = use_state(|| false); // Track loading state for remove button
+    // State to track if sync is configured
+    let is_sync_configured = use_state(|| false);
+
+    // State to track the sync type
+    let sync_type = use_state(|| "None".to_string());
+
+    // State to determine if we should show advanced options
+    let show_advanced_options = use_state(|| false);
+
+    // Loading states
+    let is_loading = use_state(|| false);
+    let is_testing_connection = use_state(|| false);
 
     // Handler for server URL input change
     let on_server_url_change = {
         let server_url = server_url.clone();
         Callback::from(move |e: InputEvent| {
-            // Cast the event target to HtmlInputElement to access the value
             if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
                 server_url.set(input.value());
             }
         })
     };
+
     let on_username_change = {
         let server_user = server_user.clone();
         Callback::from(move |e: InputEvent| {
-            // Cast the event target to HtmlInputElement to access the value
             if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
                 server_user.set(input.value());
             }
         })
     };
+
     let on_password_change = {
         let server_pass = server_pass.clone();
         Callback::from(move |e: InputEvent| {
-            // Cast the event target to HtmlInputElement to access the value
             if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
                 server_pass.set(input.value());
             }
         })
     };
 
+    // Effect to get current sync status
     {
         let nextcloud_url = nextcloud_url.clone();
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-        let configured_effect = is_sync_configured.clone();
+        let is_sync_configured = is_sync_configured.clone();
+        let sync_type = sync_type.clone();
 
         use_effect_with(&(), move |_| {
             let nextcloud_url = nextcloud_url.clone();
-            let user_id = user_id.clone().unwrap_or_default(); // Make sure user_id is available
+            let user_id = user_id.clone().unwrap_or_default();
 
             wasm_bindgen_futures::spawn_local(async move {
                 match call_get_nextcloud_server(
@@ -105,16 +627,37 @@ pub fn nextcloud_options() -> Html {
                             && server != "Not currently syncing with any server"
                         {
                             nextcloud_url.set(server);
-                            configured_effect.set(true);
+                            is_sync_configured.set(true);
+
+                            // Get the sync type
+                            let sync_type_clone = sync_type.clone();
+                            if let (Some(server_name), Some(api_key)) =
+                                (server_name.clone(), api_key.clone())
+                            {
+                                wasm_bindgen_futures::spawn_local(async move {
+                                    // This would be a new API call to get the sync type
+                                    // For now, we'll assume we know it's either "gpodder" or "nextcloud"
+                                    // This would be replaced with the actual API call
+
+                                    // Placeholder logic - replace with actual API call
+                                    if nextcloud_url.contains("nextcloud") {
+                                        sync_type_clone.set("nextcloud".to_string());
+                                    } else {
+                                        sync_type_clone.set("gpodder".to_string());
+                                    }
+                                });
+                            }
                         } else {
                             nextcloud_url
                                 .set(String::from("Not currently syncing with any server"));
-                            configured_effect.set(false);
+                            is_sync_configured.set(false);
+                            sync_type.set("None".to_string());
                         }
                     }
                     Err(_) => {
                         nextcloud_url.set(String::from("Not currently syncing with any server"));
-                        configured_effect.set(false);
+                        is_sync_configured.set(false);
+                        sync_type.set("None".to_string());
                     }
                 }
             });
@@ -123,24 +666,33 @@ pub fn nextcloud_options() -> Html {
         });
     }
 
+    // Handler for toggling advanced options
+    let on_toggle_advanced = {
+        let show_advanced_options = show_advanced_options.clone();
+
+        Callback::from(move |_| {
+            show_advanced_options.set(!*show_advanced_options);
+        })
+    };
+
     // Handler for initiating authentication
     let on_authenticate_click = {
-        let app_dispatch = _dispatch.clone();
+        let dispatch = dispatch.clone();
         let server_url = server_url.clone();
         let server_url_initiate = server_url.clone();
-        // let audio_dispatch = audio_dispatch.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let auth_status = auth_status.clone();
+
         Callback::from(move |_| {
-            let app_dispatch = app_dispatch.clone();
+            let dispatch = dispatch.clone();
             let auth_status = auth_status.clone();
             let server = (*server_url_initiate).clone().trim().to_string();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone();
-            let dispatch_clone = app_dispatch.clone();
+            let dispatch_clone = dispatch.clone();
 
             if !server.trim().is_empty() {
                 wasm_bindgen_futures::spawn_local(async move {
@@ -185,7 +737,7 @@ pub fn nextcloud_options() -> Html {
                                             Ok(response) => {
                                                 if response.data {
                                                     log::info!("gPodder settings have been set up");
-                                                    app_dispatch.reduce_mut(|audio_state| audio_state.info_message = Option::from("Nextcloud server has been authenticated successfully".to_string()));
+                                                    dispatch.reduce_mut(|state| state.info_message = Option::from("Nextcloud server has been authenticated successfully".to_string()));
 
                                                     // Set `is_refreshing` to true and start the WebSocket refresh
                                                     let server_name_call = server_name.clone();
@@ -234,17 +786,16 @@ pub fn nextcloud_options() -> Html {
                                             ),
                                         }
 
-                                        // // Wait for a short period before polling again
+                                        // Wait for a short period before polling again
                                         let delay = std::time::Duration::from_secs(5);
                                         async_std::task::sleep(delay).await;
-                                        // let _ = wasm_timer::Delay::new(delay).await;
                                     }
                                 }
                                 Err(e) => {
                                     log::error!("Error calling add_nextcloud_server: {:?}", e);
                                     let formatted_error = format_error_message(&e.to_string());
-                                    app_dispatch.reduce_mut(|audio_state| {
-                                        audio_state.error_message = Option::from(
+                                    dispatch.reduce_mut(|state| {
+                                        state.error_message = Option::from(
                                             format!(
                                                 "Error calling add_nextcloud_server: {}",
                                                 formatted_error
@@ -260,7 +811,7 @@ pub fn nextcloud_options() -> Html {
                                 "Failed to initiate Nextcloud login: {:?}",
                                 e
                             )));
-                            app_dispatch.reduce_mut(|audio_state| audio_state.error_message = Option::from("Failed to initiate Nextcloud login. Please check the server URL.".to_string()));
+                            dispatch.reduce_mut(|state| state.error_message = Option::from("Failed to initiate Nextcloud login. Please check the server URL.".to_string()));
                             auth_status.set(
                                 "Failed to initiate Nextcloud login. Please check the server URL."
                                     .to_string(),
@@ -270,8 +821,8 @@ pub fn nextcloud_options() -> Html {
                 });
             } else {
                 auth_status.set("Please enter a Nextcloud server URL.".to_string());
-                app_dispatch.reduce_mut(|audio_state| {
-                    audio_state.error_message =
+                dispatch.reduce_mut(|state| {
+                    state.error_message =
                         Option::from("Please enter a Nextcloud Server URL".to_string())
                 });
             }
@@ -279,13 +830,14 @@ pub fn nextcloud_options() -> Html {
     };
 
     let on_remove_sync_click = {
-        let dispatch = _dispatch.clone();
+        let dispatch = dispatch.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let nextcloud_url = nextcloud_url.clone();
         let is_sync_configured = is_sync_configured.clone();
         let is_loading = is_loading.clone();
+        let sync_type = sync_type.clone();
 
         Callback::from(move |_| {
             let dispatch = dispatch.clone();
@@ -295,6 +847,7 @@ pub fn nextcloud_options() -> Html {
             let nextcloud_url = nextcloud_url.clone();
             let is_sync_configured = is_sync_configured.clone();
             let is_loading = is_loading.clone();
+            let sync_type = sync_type.clone();
 
             is_loading.set(true);
 
@@ -311,6 +864,7 @@ pub fn nextcloud_options() -> Html {
                             nextcloud_url
                                 .set(String::from("Not currently syncing with any server"));
                             is_sync_configured.set(false);
+                            sync_type.set("None".to_string());
                             dispatch.reduce_mut(|state| {
                                 state.info_message =
                                     Some("Podcast sync settings removed successfully".to_string());
@@ -335,17 +889,85 @@ pub fn nextcloud_options() -> Html {
         })
     };
 
-    // Handler for initiating authentication
+    // Handler for testing GPodder connection
+    let on_test_connection = {
+        let server_url = server_url.clone();
+        let server_user = server_user.clone();
+        let server_pass = server_pass.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let dispatch = dispatch.clone();
+        let test_connect = is_testing_connection.clone();
+
+        Callback::from(move |_| {
+            let server_url = (*server_url).clone();
+            let server_user = (*server_user).clone();
+            let server_pass = (*server_pass).clone();
+            let testing_connection = test_connect.clone();
+
+            if server_url.is_empty() || server_user.is_empty() || server_pass.is_empty() {
+                dispatch.reduce_mut(|state| {
+                    state.error_message =
+                        Some("Please enter server URL, username, and password".to_string());
+                });
+                return;
+            }
+
+            testing_connection.set(true);
+
+            let server_name = server_name.clone();
+            let api_key = api_key.clone();
+            let user_id = user_id.clone();
+            let dispatch = dispatch.clone();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                match call_test_gpodder_connection(
+                    &server_name.unwrap(),
+                    &api_key.unwrap().unwrap(),
+                    user_id.unwrap(),
+                    &server_url,
+                    &server_user,
+                    &server_pass,
+                )
+                .await
+                {
+                    Ok(response) => {
+                        if response.success {
+                            dispatch.reduce_mut(|state| {
+                                state.info_message = Some(response.message);
+                            });
+                        } else {
+                            dispatch.reduce_mut(|state| {
+                                state.error_message = Some(response.message);
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        let error_msg = format!("Failed to test GPodder connection: {}", e);
+                        dispatch.reduce_mut(|state| {
+                            state.error_message = Some(error_msg);
+                        });
+                    }
+                }
+
+                testing_connection.set(false);
+            });
+        })
+    };
+
+    // Handler for initiating authentication to a gpodder server
     let on_authenticate_server_click = {
         let server_url = server_url.clone();
         let server_user = server_user.clone();
         let server_pass = server_pass.clone();
         let server_url_initiate = server_url.clone();
-        // let audio_dispatch = audio_dispatch.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let auth_status = auth_status.clone();
+        let dispatch = dispatch.clone();
+
         Callback::from(move |_| {
             let auth_status = auth_status.clone();
             let server = (*server_url_initiate).clone().trim().to_string();
@@ -353,8 +975,8 @@ pub fn nextcloud_options() -> Html {
             let server_pass = server_pass.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
-            let dispatch_clone = _dispatch.clone();
             let user_id = user_id.clone();
+            let dispatch_clone = dispatch.clone();
             let server_user_check_deref = (*server_user).clone();
             let server_user_deref = (*server_user).clone();
             let server_pass_check_deref = (*server_pass).clone();
@@ -389,8 +1011,8 @@ pub fn nextcloud_options() -> Html {
                                         log::info!(
                                             "Gpodder server now added and podcasts syncing!"
                                         );
-                                        dispatch_clone.reduce_mut(|audio_state| {
-                                            audio_state.info_message = Option::from(
+                                        dispatch_clone.reduce_mut(|state| {
+                                            state.info_message = Option::from(
                                                 "Gpodder server now added and podcasts syncing!"
                                                     .to_string(),
                                             )
@@ -433,7 +1055,6 @@ pub fn nextcloud_options() -> Html {
                                                 state.clone() // Return the modified state
                                             });
                                         });
-                                        // Start polling the check_gpodder_settings endpoint
                                     }
                                     Err(e) => {
                                         web_sys::console::log_1(&JsValue::from_str(&format!(
@@ -441,7 +1062,7 @@ pub fn nextcloud_options() -> Html {
                                             e
                                         )));
                                         let formatted_error = format_error_message(&e.to_string());
-                                        dispatch_clone.reduce_mut(|audio_state| audio_state.error_message = Option::from("Failed to add Gpodder server. Please check the server URL.".to_string()));
+                                        dispatch_clone.reduce_mut(|state| state.error_message = Option::from("Failed to add Gpodder server. Please check the server URL.".to_string()));
                                         auth_status.set(
                                             format!("Failed to add Gpodder server. Please check the server URL and credentials. {:?}", formatted_error)
                                                 .to_string(),
@@ -452,8 +1073,8 @@ pub fn nextcloud_options() -> Html {
                                 web_sys::console::log_1(&JsValue::from_str(
                                     "Authentication failed.",
                                 ));
-                                dispatch_clone.reduce_mut(|audio_state| {
-                                    audio_state.error_message = Option::from(
+                                dispatch_clone.reduce_mut(|state| {
+                                    state.error_message = Option::from(
                                         "Authentication failed. Please check your credentials."
                                             .to_string(),
                                     )
@@ -469,8 +1090,8 @@ pub fn nextcloud_options() -> Html {
                                 "Failed to verify Gpodder auth: {:?}",
                                 e
                             )));
-                            dispatch_clone.reduce_mut(|audio_state| {
-                                audio_state.error_message = Option::from(
+                            dispatch_clone.reduce_mut(|state| {
+                                state.error_message = Option::from(
                                     "Failed to verify Gpodder auth. Please check the server URL."
                                         .to_string(),
                                 )
@@ -484,8 +1105,8 @@ pub fn nextcloud_options() -> Html {
                 });
             } else {
                 auth_status.set("Please enter a Gpodder server URL.".to_string());
-                dispatch_clone.reduce_mut(|audio_state| {
-                    audio_state.error_message =
+                dispatch_clone.reduce_mut(|state| {
+                    state.error_message =
                         Option::from("Please enter a Gpodder Server URL".to_string())
                 });
             }
@@ -493,9 +1114,10 @@ pub fn nextcloud_options() -> Html {
     };
 
     html! {
-        <div class="p-4"> // You can adjust the padding as needed
-            <p class="item_container-text text-lg font-bold mb-4">{"Nextcloud Podcast Sync:"}</p> // Styled paragraph
-            <p class="item_container-text text-md mb-4">{"With this option you can authenticate with a Nextcloud or Gpodder server to use as a podcast sync client. This option works great with AntennaPod on Android so you can have the same exact feed there while on mobile. In addition, if you're already using AntennaPod with Nextcloud Podcast sync you can connect your existing sync feed to quickly import everything right into Pinepods! You'll only enter information for one of the below options. Nextcloud requires that you have the gpodder sync add-on in nextcloud and the gpodder option requires you to have an external gpodder podcast sync server that authenticates via user and pass. Such as this: https://github.com/kd2org/opodsync."}</p> // Styled paragraph
+        <div class="p-4">
+            <p class="item_container-text text-lg font-bold mb-4">{"Podcast Sync Settings"}</p>
+            <p class="item_container-text text-md mb-4">{"With this option you can authenticate with a Nextcloud or GPodder server to use as a podcast sync client. This works great with AntennaPod on Android so you can have the same exact feed there while on mobile. In addition, if you're already using AntennaPod with Nextcloud Podcast sync you can connect your existing sync feed to quickly import everything right into Pinepods! You'll only enter information for one of the below options. Nextcloud requires that you have the gpodder sync add-on in nextcloud and the gpodder option requires you to have an external gpodder podcast sync server that authenticates via user and pass."}</p>
+
             <div class="flex items-center mb-4">
                 <p class="item_container-text text-md mr-4">{"Current Podcast Sync Server: "}<span class="item_container-text font-bold">{(*nextcloud_url).clone()}</span></p>
                 {
@@ -520,26 +1142,121 @@ pub fn nextcloud_options() -> Html {
                     }
                 }
             </div>
+
             <br/>
-            <label for="server_url" class="item_container-text block mb-2 text-sm font-medium">{ "New Nextcloud Server" }</label>
-            <div class="flex items-center">
-                <input type="text" id="first_name" oninput={on_server_url_change.clone()} class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="https://nextcloud.com" />
-                <button onclick={on_authenticate_click} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                {"Authenticate"}
-                </button>
+
+            // Nextcloud Section
+            <div class="mb-6 p-4 border rounded-lg">
+                <h3 class="item_container-text text-md font-bold mb-4">{"Nextcloud Sync"}</h3>
+                <label for="server_url" class="item_container-text block mb-2 text-sm font-medium">{ "Nextcloud Server URL" }</label>
+                <div class="flex items-center">
+                    <input
+                        type="text"
+                        id="nextcloud_url"
+                        oninput={on_server_url_change.clone()}
+                        class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                        placeholder="https://nextcloud.com"
+                    />
+                    <button
+                        onclick={on_authenticate_click}
+                        class="ml-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        {"Authenticate"}
+                    </button>
+                </div>
             </div>
 
-            <label for="server_url" class="item_container-text block mb-2 text-sm font-medium">{ "GPodder-compatible Server" }</label>
-            <div class="flex items-center">
-                <input type="text" id="url" oninput={on_server_url_change} class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="https://mypodcastsync.mydomain.com" />
-                <input type="text" id="username" oninput={on_username_change} class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="myusername" />
-                <input type="password" id="password" oninput={on_password_change} class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500" placeholder="mypassword" />
-                <button onclick={on_authenticate_server_click} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                {"Authenticate"}
-                </button>
-            </div>
-            // <input type="text" class="input" placeholder="Enter Nextcloud server URL" value={(*server_url).clone()} oninput={on_server_url_change} />
+            // GPodder Section
+            <div class="mb-6 p-4 border rounded-lg">
+                <h3 class="item_container-text text-md font-bold mb-4">{"GPodder-compatible Server"}</h3>
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div>
+                        <label for="gpodder_url" class="block text-sm font-medium mb-2">{"Server URL"}</label>
+                        <input
+                            type="text"
+                            id="gpodder_url"
+                            oninput={on_server_url_change}
+                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                            placeholder="https://mypodcastsync.mydomain.com"
+                        />
+                    </div>
+                    <div>
+                        <label for="gpodder_username" class="block text-sm font-medium mb-2">{"Username"}</label>
+                        <input
+                            type="text"
+                            id="gpodder_username"
+                            oninput={on_username_change}
+                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                            placeholder="myusername"
+                        />
+                    </div>
+                    <div>
+                        <label for="gpodder_password" class="block text-sm font-medium mb-2">{"Password"}</label>
+                        <input
+                            type="password"
+                            id="gpodder_password"
+                            oninput={on_password_change}
+                            class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                            placeholder="mypassword"
+                        />
+                    </div>
+                </div>
 
+                <div class="mt-4 flex space-x-4">
+                    <button
+                        onclick={on_test_connection}
+                        disabled={*is_testing_connection}
+                        class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        {
+                            if *is_testing_connection {
+                                html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Testing..."}</span> }
+                            } else {
+                                html! { <span class="flex items-center"><i class="ph ph-check-circle mr-2"></i>{"Test Connection"}</span> }
+                            }
+                        }
+                    </button>
+
+                    <button
+                        onclick={on_authenticate_server_click}
+                        class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                    >
+                        {"Authenticate"}
+                    </button>
+                </div>
+            </div>
+
+            {
+                // Show advanced options toggle only if sync is configured and the type is gpodder
+                if *is_sync_configured && *sync_type == "gpodder" {
+                    html! {
+                        <div class="mt-6">
+                            <button
+                                onclick={on_toggle_advanced}
+                                class="settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                            >
+                                {
+                                    if *show_advanced_options {
+                                        html! { <span class="flex items-center"><i class="ph ph-caret-up mr-2"></i>{"Hide Advanced Options"}</span> }
+                                    } else {
+                                        html! { <span class="flex items-center"><i class="ph ph-caret-down mr-2"></i>{"Show Advanced Options"}</span> }
+                                    }
+                                }
+                            </button>
+
+                            {
+                                if *show_advanced_options {
+                                    html! { <GpodderAdvancedOptions /> }
+                                } else {
+                                    html! {}
+                                }
+                            }
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
         </div>
     }
 }

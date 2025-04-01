@@ -210,6 +210,49 @@ try:
                         FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
                     )""")
 
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "GpodderDevices" (
+                DeviceID SERIAL PRIMARY KEY,
+                UserID INT NOT NULL,
+                DeviceName VARCHAR(255) NOT NULL,
+                DeviceType VARCHAR(50) DEFAULT 'desktop',
+                DeviceCaption VARCHAR(255),
+                LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                IsActive BOOLEAN DEFAULT TRUE,
+                FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                UNIQUE(UserID, DeviceName)
+            )
+        """)
+        cnx.commit()
+        print("Created GpodderDevices table")
+
+        # Create index for faster lookups
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_gpodder_devices_userid
+            ON "GpodderDevices"(UserID)
+        """)
+        cnx.commit()
+
+        # Create a table for subscription history/sync state
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "GpodderSyncState" (
+                SyncStateID SERIAL PRIMARY KEY,
+                UserID INT NOT NULL,
+                DeviceID INT NOT NULL,
+                LastTimestamp BIGINT DEFAULT 0,
+                EpisodesTimestamp BIGINT DEFAULT 0,
+                FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                UNIQUE(UserID, DeviceID)
+            )
+        """)
+        cnx.commit()
+        print("Created GpodderSyncState table")
+    except Exception as e:
+        print(f"Error creating GPodder tables: {e}")
+
     cursor.execute("""CREATE TABLE IF NOT EXISTS "UserStats" (
                         UserStatsID SERIAL PRIMARY KEY,
                         UserID INT UNIQUE,

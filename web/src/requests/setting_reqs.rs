@@ -1399,6 +1399,150 @@ pub async fn call_add_gpodder_server(
     }
 }
 
+// API structures
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GpodderDevice {
+    pub id: i32,
+    pub name: String,
+    pub r#type: String, // Using r# prefix because "type" is a reserved keyword
+    pub caption: Option<String>,
+    pub last_sync: Option<String>,
+    pub is_active: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CreateDeviceRequest {
+    pub user_id: i32,
+    pub device_name: String,
+    pub device_type: String,
+    pub device_caption: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SyncRequest {
+    pub user_id: i32,
+    pub device_id: Option<i32>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ApiResponse<T> {
+    pub success: bool,
+    pub message: String,
+    pub data: Option<T>,
+}
+
+// Get user's GPodder devices
+pub async fn call_get_gpodder_devices(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<Vec<GpodderDevice>, gloo::net::Error> {
+    let url = format!("{}/api/gpodder/devices/{}", server_name, user_id);
+
+    let response = gloo::net::http::Request::get(&url)
+        .header("X-API-Key", api_key)
+        .send()
+        .await?
+        .json::<Vec<GpodderDevice>>()
+        .await?;
+
+    Ok(response)
+}
+
+// Create a new GPodder device
+pub async fn call_create_gpodder_device(
+    server_name: &str,
+    api_key: &str,
+    request: CreateDeviceRequest,
+) -> Result<GpodderDevice, gloo::net::Error> {
+    let url = format!("{}/api/gpodder/devices", server_name);
+
+    let response = gloo::net::http::Request::post(&url)
+        .header("X-API-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request)?
+        .send()
+        .await?
+        .json::<GpodderDevice>()
+        .await?;
+
+    Ok(response)
+}
+
+// Force full sync with GPodder
+pub async fn call_force_full_sync(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    device_id: Option<i32>,
+) -> Result<ApiResponse<()>, gloo::net::Error> {
+    let url = format!("{}/api/gpodder/sync/force", server_name);
+
+    let request = SyncRequest { user_id, device_id };
+
+    let response = gloo::net::http::Request::post(&url)
+        .header("X-API-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request)?
+        .send()
+        .await?
+        .json::<ApiResponse<()>>()
+        .await?;
+
+    Ok(response)
+}
+
+// Sync from GPodder
+pub async fn call_sync_with_gpodder(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    device_id: Option<i32>,
+) -> Result<ApiResponse<()>, gloo::net::Error> {
+    let url = format!("{}/api/gpodder/sync", server_name);
+
+    let request = SyncRequest { user_id, device_id };
+
+    let response = gloo::net::http::Request::post(&url)
+        .header("X-API-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request)?
+        .send()
+        .await?
+        .json::<ApiResponse<()>>()
+        .await?;
+
+    Ok(response)
+}
+
+// Test GPodder connection
+pub async fn call_test_gpodder_connection(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    gpodder_url: &str,
+    gpodder_username: &str,
+    gpodder_password: &str,
+) -> Result<ApiResponse<serde_json::Value>, gloo::net::Error> {
+    let url = format!(
+        "{}/api/gpodder/test-connection?user_id={}&gpodder_url={}&gpodder_username={}&gpodder_password={}",
+        server_name,
+        user_id,
+        urlencoding::encode(gpodder_url),
+        urlencoding::encode(gpodder_username),
+        urlencoding::encode(gpodder_password)
+    );
+
+    let response = gloo::net::http::Request::get(&url)
+        .header("X-API-Key", api_key)
+        .send()
+        .await?
+        .json::<ApiResponse<serde_json::Value>>()
+        .await?;
+
+    Ok(response)
+}
+
 #[derive(Deserialize, Debug)]
 pub struct NextcloudCheckResponse {
     pub(crate) data: bool,
