@@ -1008,6 +1008,21 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
                             '/static/assets/default-episode.png')  # Final fallback artwork
 
         # Duration parsing
+        def estimate_duration_from_file_size(file_size_bytes, bitrate_kbps=128):
+            """
+            Estimate duration in seconds based on file size and bitrate.
+
+            Args:
+                file_size_bytes (int): Size of the media file in bytes
+                bitrate_kbps (int): Bitrate in kilobits per second (default: 128)
+
+            Returns:
+                int: Estimated duration in seconds
+            """
+            bytes_per_second = (bitrate_kbps * 1000) / 8  # Convert kbps to bytes per second
+            return int(file_size_bytes / bytes_per_second)
+
+        # Duration parsing section for the add_episodes function
         parsed_duration = 0
         duration_str = getattr(entry, 'itunes_duration', '')
         if ':' in duration_str:
@@ -1029,6 +1044,18 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
         elif hasattr(entry, 'length'):
             # If duration not specified but length is, use length (assuming it's in seconds)
             parsed_duration = int(entry.length)
+        # Check for enclosure length attribute as a last resort
+        elif entry.enclosures and len(entry.enclosures) > 0:
+            enclosure = entry.enclosures[0]
+            if hasattr(enclosure, 'length') and enclosure.length:
+                try:
+                    file_size = int(enclosure.length)
+                    # Only estimate if the size seems reasonable (to avoid errors)
+                    if file_size > 1000000:  # Only consider files larger than 1MB
+                        parsed_duration = estimate_duration_from_file_size(file_size)
+                        print(f"Estimated duration from file size {file_size} bytes: {parsed_duration} seconds")
+                except (ValueError, TypeError) as e:
+                    print(f"Error parsing enclosure length: {e}")
 
 
         # Check for existing episode
@@ -8232,54 +8259,106 @@ def cleanup_expired_shared_episodes(cnx, database_type):
 
 
 def build_playlist_query(playlist, database_type):
+    # Debug the incoming playlist data
+    print(f"DEBUG - Playlist time filter value: {playlist.get('timefilterhours')}")
+    print(f"DEBUG - Playlist keys: {list(playlist.keys())}")
+
+    # Check and print the progress threshold values
+    progress_min = playlist.get('playprogressmin')
+    progress_max = playlist.get('playprogressmax')
+    print(f"DEBUG - Progress min value: {progress_min}")
+    print(f"DEBUG - Progress max value: {progress_max}")
+
     conditions = []
     params = []
 
     # Check if this is a system playlist (owned by user 1)
     is_system_playlist = playlist['userid'] == 1 and playlist['issystemplaylist']
+    playlist_name = playlist.get('name', '')
+
+    # Special case handling for playlists that need to filter by user listening history
+    needs_user_history = playlist_name in ['Currently Listening', 'Almost Done'] or not is_system_playlist
+
+    # Ensure Fresh Releases has time filter set
+    if playlist_name == 'Fresh Releases' and playlist.get('timefilterhours') is None:
+        playlist['timefilterhours'] = 24
+        print(f"Setting default 24 hour time filter for Fresh Releases playlist")
 
     if database_type == "postgresql":
-        if is_system_playlist and playlist['includepartiallyplayed'] and not playlist['includeunplayed'] and not playlist['includeplayed']:
-            # This is a special case for "Currently Listening" or "Almost Done"
+        # Special case for playlists that filter by user listening progress
+        if playlist['includepartiallyplayed'] and not playlist['includeunplayed'] and not playlist['includeplayed']:
+            # Base query for partially played episodes - IMPORTANT: Include all ORDER BY columns in SELECT
             query = """
-                    SELECT DISTINCT e.episodeid
+                    SELECT DISTINCT e.episodeid, e.episodepubdate
                     FROM "Episodes" e
                     JOIN "Podcasts" p ON e.podcastid = p.podcastid
                     JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid
                     WHERE h.listenduration > 0
                     AND h.listenduration < e.episodeduration
                     AND e.Completed = FALSE
+                    AND e.episodeduration > 0
             """
             params = []
 
-            # Add progress constraints for "Almost Done" if needed
-            if playlist.get('playprogressmin') is not None:
-                min_decimal = float(playlist["playprogressmin"]) / 100.0
-                query += f' AND (h.listenduration::float / e.episodeduration) >= {min_decimal}'
+            # Add progress min filter if specified - this drives the Almost Done functionality
+            if progress_min is not None:
+                min_decimal = float(progress_min) / 100.0
+                # Use %s parameter placeholder for safety
+                query += ' AND (h.listenduration::float / e.episodeduration::float) >= %s'
+                params.append(min_decimal)
+                print(f"Adding progress min filter: {min_decimal} ({progress_min}% complete)")
 
-            if playlist.get('playprogressmax') is not None:
-                max_decimal = float(playlist["playprogressmax"]) / 100.0
-                query += f' AND (h.listenduration::float / e.episodeduration) <= {max_decimal}'
+            # Add progress max filter if specified
+            if progress_max is not None:
+                max_decimal = float(progress_max) / 100.0
+                query += ' AND (h.listenduration::float / e.episodeduration::float) <= %s'
+                params.append(max_decimal)
+                print(f"Adding progress max filter: {max_decimal}")
 
-            print(f"Special query for system in-progress playlist for all users")
+            print(f"Special query for in-progress playlist with filters")
+
+            # Add sort order
+            if playlist['sortorder']:
+                sort_mapping = {
+                    'date_asc': 'e.episodepubdate ASC',
+                    'date_desc': 'e.episodepubdate DESC',
+                    'duration_asc': 'e.episodeduration ASC',
+                    'duration_desc': 'e.episodeduration DESC',
+                    'listen_progress': '(h.listenduration::float / e.episodeduration::float) DESC',
+                    'completion': '(h.listenduration::float / e.episodeduration::float) DESC'
+                }
+                order_by = sort_mapping.get(playlist['sortorder'], 'e.episodepubdate DESC')
+                query += f" ORDER BY {order_by}"
+
         else:
-            # PostgreSQL version
-            # For system playlists, we want to show episodes from ALL users' podcasts
-            # For user playlists, we only show episodes from that specific user's podcasts
+            # Basic query structure depends on playlist type
             if is_system_playlist:
-                query = """
-                        SELECT e.episodeid
-                        FROM "Episodes" e
-                        JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                        LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = %s
-                        JOIN "Users" u ON u.UserID = %s
-                        WHERE 1=1
-                    """
-                # Only include history/timezone params - no user filtering on podcasts
-                params.extend([playlist['userid'], playlist['userid']])
-                print(f"System playlist detected - showing podcasts for all users")
+                if needs_user_history:
+                    # System playlist that needs user listening history (e.g., Currently Listening)
+                    query = """
+                            SELECT e.episodeid
+                            FROM "Episodes" e
+                            JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                            LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = %s
+                            JOIN "Users" u ON u.UserID = %s
+                            WHERE 1=1
+                        """
+                    params.extend([playlist['userid'], playlist['userid']])
+                else:
+                    # System playlist that doesn't need user history filtering (e.g., Fresh Releases)
+                    query = """
+                            SELECT e.episodeid
+                            FROM "Episodes" e
+                            JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                            LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid
+                            JOIN "Users" u ON u.UserID = %s
+                            WHERE 1=1
+                        """
+                    params.extend([playlist['userid']])  # Only needed for timezone
+
+                print(f"System playlist detected - showing all podcasts")
             else:
-                # Normal user playlist - only show their own podcasts
+                # User-specific playlist - only show user's podcasts
                 query = """
                         SELECT e.episodeid
                         FROM "Episodes" e
@@ -8288,7 +8367,6 @@ def build_playlist_query(playlist, database_type):
                         JOIN "Users" u ON u.UserID = %s
                         WHERE p.UserID = %s
                     """
-                # Add all params including user filtering
                 params.extend([playlist['userid'], playlist['userid'], playlist['userid']])
                 print(f"User playlist detected - only showing podcasts for user {playlist['userid']}")
 
@@ -8318,11 +8396,11 @@ def build_playlist_query(playlist, database_type):
                 # Add progress range conditions if specified
                 if playlist.get('playprogressmin') is not None:
                     min_decimal = float(playlist["playprogressmin"]) / 100.0
-                    partial_condition += f' AND (h.listenduration::float / e.episodeduration) >= {min_decimal}'
+                    partial_condition += f' AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) >= {min_decimal}'
 
                 if playlist.get('playprogressmax') is not None:
                     max_decimal = float(playlist["playprogressmax"]) / 100.0
-                    partial_condition += f' AND (h.listenduration::float / e.episodeduration) <= {max_decimal}'
+                    partial_condition += f' AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) <= {max_decimal}'
 
                 play_state_conditions.append(partial_condition)
 
@@ -8332,13 +8410,14 @@ def build_playlist_query(playlist, database_type):
             if play_state_conditions:
                 conditions.append(f"({' OR '.join(play_state_conditions)})")
 
-            # Time filter for PostgreSQL
+            # Time filter for PostgreSQL with timezone support
             if playlist.get('timefilterhours') is not None:
+                print(f"Applying time filter of {playlist['timefilterhours']} hours with timezone support")
                 conditions.append('''
                     e.episodepubdate AT TIME ZONE 'UTC'
-                    AT TIME ZONE u.TimeZone >=
+                    AT TIME ZONE COALESCE(u.TimeZone, 'UTC') >
                     (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
-                    AT TIME ZONE u.TimeZone - INTERVAL '%s hours')
+                    AT TIME ZONE COALESCE(u.TimeZone, 'UTC') - INTERVAL '%s hours')
                 ''')
                 params.append(playlist['timefilterhours'])
 
@@ -8352,8 +8431,8 @@ def build_playlist_query(playlist, database_type):
                 'date_desc': 'e.episodepubdate DESC',
                 'duration_asc': 'e.episodeduration ASC',
                 'duration_desc': 'e.episodeduration DESC',
-                'listen_progress': '(COALESCE(h.listenduration, 0)::float / e.episodeduration) DESC',
-                'completion': 'h.listenduration::float / e.episodeduration DESC'
+                'listen_progress': '(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) DESC',
+                'completion': 'COALESCE(h.listenduration::float / NULLIF(e.episodeduration, 0), 0) DESC'
             }
 
             order_by = sort_mapping.get(playlist['sortorder'], 'e.episodepubdate DESC')
@@ -8362,9 +8441,34 @@ def build_playlist_query(playlist, database_type):
 
             query += f" ORDER BY {order_by}"
 
-    else:
-        if is_system_playlist and playlist['includepartiallyplayed'] and not playlist['includeunplayed'] and not playlist['includeplayed']:
-            # This is a special case for "Currently Listening" or "Almost Done"
+    else:  # MySQL version
+        # Check for partially played episodes with progress threshold (Almost Done-like functionality)
+        if playlist['includepartiallyplayed'] and not playlist['includeunplayed'] and not playlist['includeplayed'] and playlist.get('playprogressmin') is not None and float(playlist.get('playprogressmin')) >= 75.0:
+            # This is the "Almost Done" pattern - episodes that are 75%+ complete but not finished
+            query = """
+                    SELECT DISTINCT e.episodeid
+                    FROM Episodes e
+                    JOIN Podcasts p ON e.podcastid = p.podcastid
+                    JOIN UserEpisodeHistory h ON e.episodeid = h.episodeid
+                    WHERE h.listenduration > 0
+                    AND h.listenduration < e.episodeduration
+                    AND e.Completed = 0
+                    AND (h.listenduration / NULLIF(e.episodeduration, 0)) >= %s
+            """
+            min_decimal = float(playlist["playprogressmin"]) / 100.0
+            params = [min_decimal]
+
+            # Add progress max constraint if specified
+            if playlist.get('playprogressmax') is not None:
+                max_decimal = float(playlist["playprogressmax"]) / 100.0
+                query += f' AND (h.listenduration / NULLIF(e.episodeduration, 0)) <= %s'
+                params.append(max_decimal)
+
+            print(f"Special query for playlist with high progress threshold ({playlist.get('playprogressmin')}%+)")
+
+        # Check for partially played episodes without progress threshold (Currently Listening-like functionality)
+        elif playlist['includepartiallyplayed'] and not playlist['includeunplayed'] and not playlist['includeplayed'] and (playlist.get('playprogressmin') is None or float(playlist.get('playprogressmin')) < 75.0):
+            # This is the "Currently Listening" pattern - any episode that's started but not finished
             query = """
                     SELECT DISTINCT e.episodeid
                     FROM Episodes e
@@ -8376,34 +8480,49 @@ def build_playlist_query(playlist, database_type):
             """
             params = []
 
-            # Add progress constraints for "Almost Done" if needed
+            # Add progress min constraint if specified
             if playlist.get('playprogressmin') is not None:
                 min_decimal = float(playlist["playprogressmin"]) / 100.0
-                query += f' AND (h.listenduration / e.episodeduration) >= {min_decimal}'
+                query += f' AND (h.listenduration / NULLIF(e.episodeduration, 0)) >= %s'
+                params.append(min_decimal)
 
+            # Add progress max constraint if specified
             if playlist.get('playprogressmax') is not None:
                 max_decimal = float(playlist["playprogressmax"]) / 100.0
-                query += f' AND (h.listenduration / e.episodeduration) <= {max_decimal}'
+                query += f' AND (h.listenduration / NULLIF(e.episodeduration, 0)) <= %s'
+                params.append(max_decimal)
 
-            print(f"Special query for system in-progress playlist for all users")
+            print(f"Special query for playlist with in-progress episodes")
+
         else:
-            # MySQL version
-            # For system playlists, we want to show episodes from ALL users' podcasts
-            # For user playlists, we only show episodes from that specific user's podcasts
+            # Basic query structure depends on playlist type
             if is_system_playlist:
-                query = """
-                        SELECT e.episodeid
-                        FROM Episodes e
-                        JOIN Podcasts p ON e.podcastid = p.podcastid
-                        LEFT JOIN UserEpisodeHistory h ON e.episodeid = h.episodeid AND h.userid = %s
-                        JOIN Users u ON u.UserID = %s
-                        WHERE 1=1
-                    """
-                # Only include history/timezone params - no user filtering on podcasts
-                params.extend([playlist['userid'], playlist['userid']])
-                print(f"System playlist detected - showing podcasts for all users")
+                if needs_user_history:
+                    # System playlist that needs user listening history (e.g., Currently Listening)
+                    query = """
+                            SELECT e.episodeid
+                            FROM Episodes e
+                            JOIN Podcasts p ON e.podcastid = p.podcastid
+                            LEFT JOIN UserEpisodeHistory h ON e.episodeid = h.episodeid AND h.userid = %s
+                            JOIN Users u ON u.UserID = %s
+                            WHERE 1=1
+                        """
+                    params.extend([playlist['userid'], playlist['userid']])
+                else:
+                    # System playlist that doesn't need user history filtering (e.g., Fresh Releases)
+                    query = """
+                            SELECT e.episodeid
+                            FROM Episodes e
+                            JOIN Podcasts p ON e.podcastid = p.podcastid
+                            LEFT JOIN UserEpisodeHistory h ON e.episodeid = h.episodeid
+                            JOIN Users u ON u.UserID = %s
+                            WHERE 1=1
+                        """
+                    params.extend([playlist['userid']])  # Only needed for timezone
+
+                print(f"System playlist detected - showing all podcasts")
             else:
-                # Normal user playlist - only show their own podcasts
+                # User-specific playlist - only show user's podcasts
                 query = """
                         SELECT e.episodeid
                         FROM Episodes e
@@ -8412,13 +8531,11 @@ def build_playlist_query(playlist, database_type):
                         JOIN Users u ON u.UserID = %s
                         WHERE p.UserID = %s
                     """
-                # Add all params including user filtering
                 params.extend([playlist['userid'], playlist['userid'], playlist['userid']])
                 print(f"User playlist detected - only showing podcasts for user {playlist['userid']}")
 
-            # Podcast filter for MySQL using JSON_CONTAINS
+            # Podcast filter for MySQL
             if playlist['podcastids']:
-                # In MySQL, we'd store podcast IDs as a JSON array in TEXT field
                 # Convert the PostgreSQL array to a list of integers for MySQL
                 if isinstance(playlist['podcastids'], list):
                     podcast_ids = playlist['podcastids']
@@ -8441,7 +8558,7 @@ def build_playlist_query(playlist, database_type):
                     conditions.append(f'e.podcastid IN ({placeholders})')
                     params.extend(podcast_ids)
 
-            # Duration filters (same for both databases)
+            # Duration filters
             if playlist['minduration'] is not None:
                 conditions.append('e.episodeduration >= %s')
                 params.append(playlist['minduration'])
@@ -8457,16 +8574,16 @@ def build_playlist_query(playlist, database_type):
 
             if playlist['includepartiallyplayed']:
                 # Base condition: episodes with some progress but not fully listened
-                partial_condition = '(h.listenduration > 0 AND h.listenduration < e.episodeduration AND e.Completed = FALSE)'
+                partial_condition = '(h.listenduration > 0 AND h.listenduration < e.episodeduration AND e.Completed = 0)'
 
                 # Add progress range conditions if specified
                 if playlist.get('playprogressmin') is not None:
                     min_decimal = float(playlist["playprogressmin"]) / 100.0
-                    partial_condition += f' AND (h.listenduration / e.episodeduration) >= {min_decimal}'
+                    partial_condition += f' AND (h.listenduration / NULLIF(e.episodeduration, 0)) >= {min_decimal}'
 
                 if playlist.get('playprogressmax') is not None:
                     max_decimal = float(playlist["playprogressmax"]) / 100.0
-                    partial_condition += f' AND (h.listenduration / e.episodeduration) <= {max_decimal}'
+                    partial_condition += f' AND (h.listenduration / NULLIF(e.episodeduration, 0)) <= {max_decimal}'
 
                 play_state_conditions.append(partial_condition)
 
@@ -8476,11 +8593,12 @@ def build_playlist_query(playlist, database_type):
             if play_state_conditions:
                 conditions.append(f"({' OR '.join(play_state_conditions)})")
 
-            # Time filter for MySQL
+            # Time filter for MySQL with timezone support
             if playlist.get('timefilterhours') is not None:
+                print(f"Applying time filter of {playlist['timefilterhours']} hours with timezone support")
                 conditions.append('''
-                    CONVERT_TZ(e.episodepubdate, 'UTC', u.TimeZone) >=
-                    DATE_SUB(CONVERT_TZ(NOW(), 'UTC', u.TimeZone), INTERVAL %s HOUR)
+                    CONVERT_TZ(e.episodepubdate, 'UTC', COALESCE(u.TimeZone, 'UTC')) >
+                    DATE_SUB(CONVERT_TZ(NOW(), 'UTC', COALESCE(u.TimeZone, 'UTC')), INTERVAL %s HOUR)
                 ''')
                 params.append(playlist['timefilterhours'])
 
@@ -8494,8 +8612,8 @@ def build_playlist_query(playlist, database_type):
                 'date_desc': 'e.episodepubdate DESC',
                 'duration_asc': 'e.episodeduration ASC',
                 'duration_desc': 'e.episodeduration DESC',
-                'listen_progress': '(COALESCE(h.listenduration, 0) / e.episodeduration) DESC',
-                'completion': '(h.listenduration / e.episodeduration) DESC'
+                'listen_progress': '(COALESCE(h.listenduration, 0) / NULLIF(e.episodeduration, 0)) DESC',
+                'completion': 'COALESCE(h.listenduration / NULLIF(e.episodeduration, 0), 0) DESC'
             }
 
             order_by = sort_mapping.get(playlist['sortorder'], 'e.episodepubdate DESC')
@@ -8510,6 +8628,125 @@ def build_playlist_query(playlist, database_type):
         params.append(playlist['maxepisodes'])
 
     return query, params
+
+def update_fresh_releases_playlist(cnx, database_type):
+    """
+    Special function to update the Fresh Releases playlist for all users
+    considering their individual timezones.
+    """
+    cursor = cnx.cursor()
+    try:
+        # First, identify the Fresh Releases playlist ID
+        if database_type == "postgresql":
+            cursor.execute("""
+                SELECT PlaylistID
+                FROM "Playlists"
+                WHERE Name = 'Fresh Releases' AND IsSystemPlaylist = TRUE
+            """)
+        else:  # MySQL
+            cursor.execute("""
+                SELECT PlaylistID
+                FROM Playlists
+                WHERE Name = 'Fresh Releases' AND IsSystemPlaylist = 1
+            """)
+
+        playlist_id = cursor.fetchone()[0]
+        if not playlist_id:
+            raise Exception("Fresh Releases playlist not found in system")
+
+        print(f"Updating Fresh Releases playlist (ID: {playlist_id})")
+
+        # Clear existing contents from the playlist
+        if database_type == "postgresql":
+            cursor.execute('DELETE FROM "PlaylistContents" WHERE playlistid = %s', (playlist_id,))
+        else:  # MySQL
+            cursor.execute('DELETE FROM PlaylistContents WHERE playlistid = %s', (playlist_id,))
+
+        # Get all users and their timezones
+        if database_type == "postgresql":
+            cursor.execute('SELECT UserID, TimeZone FROM "Users"')
+        else:  # MySQL
+            cursor.execute('SELECT UserID, TimeZone FROM Users')
+
+        users = cursor.fetchall()
+        added_episodes = set()  # Track episodes we've already added to avoid duplicates
+        position = 0  # For ordering episodes in the playlist
+
+        # Process each user
+        for user in users:
+            user_id = user[0]
+            timezone = user[1] or 'UTC'  # Default to UTC if timezone is not set
+
+            print(f"Processing user {user_id} with timezone {timezone}")
+
+            # Get episodes from last 24 hours based on user's timezone
+            if database_type == "postgresql":
+                query = """
+                    SELECT e.episodeid
+                    FROM "Episodes" e
+                    JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                    WHERE e.episodepubdate AT TIME ZONE 'UTC'
+                          AT TIME ZONE %s >
+                          (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+                          AT TIME ZONE %s - INTERVAL '24 hours')
+                    ORDER BY e.episodepubdate DESC
+                """
+                cursor.execute(query, (timezone, timezone))
+            else:  # MySQL
+                query = """
+                    SELECT e.episodeid
+                    FROM Episodes e
+                    JOIN Podcasts p ON e.podcastid = p.podcastid
+                    WHERE CONVERT_TZ(e.episodepubdate, 'UTC', %s) >
+                          DATE_SUB(CONVERT_TZ(NOW(), 'UTC', %s), INTERVAL 24 HOUR)
+                    ORDER BY e.episodepubdate DESC
+                """
+                cursor.execute(query, (timezone, timezone))
+
+            recent_episodes = cursor.fetchall()
+            print(f"Found {len(recent_episodes)} recent episodes for user {user_id}")
+
+            # Add episodes to playlist if not already added
+            for episode in recent_episodes:
+                episode_id = episode[0]
+                if episode_id not in added_episodes:
+                    if database_type == "postgresql":
+                        cursor.execute("""
+                            INSERT INTO "PlaylistContents" (playlistid, episodeid, position)
+                            VALUES (%s, %s, %s)
+                        """, (playlist_id, episode_id, position))
+                    else:  # MySQL
+                        cursor.execute("""
+                            INSERT INTO PlaylistContents (playlistid, episodeid, position)
+                            VALUES (%s, %s, %s)
+                        """, (playlist_id, episode_id, position))
+
+                    added_episodes.add(episode_id)
+                    position += 1
+
+        # Update LastUpdated timestamp
+        if database_type == "postgresql":
+            cursor.execute("""
+                UPDATE "Playlists"
+                SET lastupdated = CURRENT_TIMESTAMP
+                WHERE playlistid = %s
+            """, (playlist_id,))
+        else:  # MySQL
+            cursor.execute("""
+                UPDATE Playlists
+                SET lastupdated = CURRENT_TIMESTAMP
+                WHERE playlistid = %s
+            """, (playlist_id,))
+
+        cnx.commit()
+        print(f"Successfully updated Fresh Releases playlist with {len(added_episodes)} unique episodes")
+
+    except Exception as e:
+        print(f"ERROR updating Fresh Releases playlist: {str(e)}")
+        cnx.rollback()
+        raise
+    finally:
+        cursor.close()
 
 
 def update_playlist_contents(cnx, database_type, playlist):
@@ -8766,12 +9003,28 @@ def update_all_playlists(cnx, database_type):
         podcast_episode_counts = cursor.fetchall()
         print(f"First few podcast episode counts: {podcast_episode_counts[:5]}")
 
+        # Handle Fresh Releases separately
+        update_fresh_releases_playlist(cnx, database_type)
+
         for idx, playlist in enumerate(playlists, 1):
             if isinstance(playlist, tuple):
                 playlist_dict = dict(zip(columns, playlist))
+                print(f"DEBUG - Playlist dict keys: {list(playlist_dict.keys())}")
+                print(f"DEBUG - Time filter value: {playlist_dict.get('timefilterhours')}")
             else:
                 # If it's already a dict, we need to ensure keys are lowercase
                 playlist_dict = {k.lower(): v for k, v in playlist.items()}
+                print(f"DEBUG - Playlist dict keys: {list(playlist_dict.keys())}")
+                print(f"DEBUG - Time filter value: {playlist_dict.get('timefilterhours')}")
+
+            # Ensure timefilterhours is properly set
+            if 'timefilterhours' not in playlist_dict and 'TimeFilterHours' in playlist_dict:
+                playlist_dict['timefilterhours'] = playlist_dict['TimeFilterHours']
+
+            # Skip Fresh Releases as it's handled separately
+            if playlist_dict.get('name') == 'Fresh Releases' and playlist_dict.get('issystemplaylist', playlist_dict.get('issystemplaylist', False)):
+                print(f"Skipping Fresh Releases playlist (ID: {playlist_dict.get('playlistid')}) as it's handled separately")
+                continue
 
             print(f"\nProcessing playlist {idx}/{total_playlists}: {playlist_dict.get('name')} (ID: {playlist_dict.get('playlistid')})")
             print(f"UserID: {playlist_dict.get('userid')}")
@@ -9988,36 +10241,67 @@ def add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, enc
 def add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url, device_id="default"):
     from cryptography.fernet import Fernet
     from requests.auth import HTTPBasicAuth
+    import requests
 
-    encryption_key = get_encryption_key(cnx, database_type)
-    encryption_key_bytes = base64.b64decode(encryption_key)
-
-    cipher_suite = Fernet(encryption_key_bytes)
-
-    # Decrypt the token
-    if encrypted_gpodder_token is not None:
-        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
-        gpodder_token = decrypted_token_bytes.decode()
-    else:
-        gpodder_token = None
-
-    # Adjust the URL for oPodSync
-    url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
-    auth = HTTPBasicAuth(gpodder_login, gpodder_token)  # Using Basic Auth
-    data = {
-        "add": [podcast_url],
-        "remove": []
-    }
-    headers = {
-        "Content-Type": "application/json"
-    }
-    response = requests.post(url, json=data, headers=headers, auth=auth)
     try:
-        response.raise_for_status()
-        print(f"Podcast added to oPodSync successfully: {response.text}")
-    except requests.exceptions.HTTPError as e:
+        # Decrypt the token
+        encryption_key = get_encryption_key(cnx, database_type)
+        encryption_key_bytes = base64.b64decode(encryption_key)
+        cipher_suite = Fernet(encryption_key_bytes)
+
+        if encrypted_gpodder_token is not None:
+            decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+            gpodder_token = decrypted_token_bytes.decode()
+        else:
+            gpodder_token = None
+
+        # Create a session for cookie-based auth
+        session = requests.Session()
+        auth = HTTPBasicAuth(gpodder_login, gpodder_token)
+
+        # Try to establish a session first (for PodFetch)
+        try:
+            login_url = f"{gpodder_url}/api/2/auth/{gpodder_login}/login.json"
+            login_response = session.post(login_url, auth=auth)
+            login_response.raise_for_status()
+            print("Session login successful for podcast add")
+
+            # Use the session to add the podcast
+            url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
+            data = {
+                "add": [podcast_url],
+                "remove": []
+            }
+            headers = {
+                "Content-Type": "application/json"
+            }
+            response = session.post(url, json=data, headers=headers)
+            response.raise_for_status()
+            print(f"Podcast added to oPodSync successfully using session: {response.text}")
+            return response.json()
+
+        except Exception as e:
+            print(f"Session auth failed, trying basic auth: {str(e)}")
+
+            # Fall back to basic auth
+            url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
+            auth = HTTPBasicAuth(gpodder_login, gpodder_token)
+            data = {
+                "add": [podcast_url],
+                "remove": []
+            }
+            headers = {
+                "Content-Type": "application/json"
+            }
+            response = requests.post(url, json=data, headers=headers, auth=auth)
+            response.raise_for_status()
+            print(f"Podcast added to oPodSync successfully with basic auth: {response.text}")
+            return response.json()
+
+    except Exception as e:
         print(f"Failed to add podcast to oPodSync: {e}")
-        print(f"Response body: {response.text}")
+        print(f"Response body: {getattr(response, 'text', 'No response')}")
+        return None
 
 
 def remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url):
@@ -10057,36 +10341,67 @@ def remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login
 def remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url, device_id="default"):
     from cryptography.fernet import Fernet
     from requests.auth import HTTPBasicAuth
+    import requests
 
-    encryption_key = get_encryption_key(cnx, database_type)
-    encryption_key_bytes = base64.b64decode(encryption_key)
-
-    cipher_suite = Fernet(encryption_key_bytes)
-
-    # Decrypt the token
-    if encrypted_gpodder_token is not None:
-        decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
-        gpodder_token = decrypted_token_bytes.decode()
-    else:
-        gpodder_token = None
-
-    # Adjust the URL for oPodSync
-    url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
-    auth = HTTPBasicAuth(gpodder_login, gpodder_token)  # Using Basic Auth
-    data = {
-        "add": [],
-        "remove": [podcast_url]
-    }
-    headers = {
-        "Content-Type": "application/json"
-    }
-    response = requests.post(url, json=data, headers=headers, auth=auth)
     try:
-        response.raise_for_status()
-        print(f"Podcast removed from oPodSync successfully: {response.text}")
-    except requests.exceptions.HTTPError as e:
+        # Decrypt the token
+        encryption_key = get_encryption_key(cnx, database_type)
+        encryption_key_bytes = base64.b64decode(encryption_key)
+        cipher_suite = Fernet(encryption_key_bytes)
+
+        if encrypted_gpodder_token is not None:
+            decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+            gpodder_token = decrypted_token_bytes.decode()
+        else:
+            gpodder_token = None
+
+        # Create a session for cookie-based auth
+        session = requests.Session()
+        auth = HTTPBasicAuth(gpodder_login, gpodder_token)
+
+        # Try to establish a session first (for PodFetch)
+        try:
+            login_url = f"{gpodder_url}/api/2/auth/{gpodder_login}/login.json"
+            login_response = session.post(login_url, auth=auth)
+            login_response.raise_for_status()
+            print("Session login successful for podcast removal")
+
+            # Use the session to remove the podcast
+            url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
+            data = {
+                "add": [],
+                "remove": [podcast_url]
+            }
+            headers = {
+                "Content-Type": "application/json"
+            }
+            response = session.post(url, json=data, headers=headers)
+            response.raise_for_status()
+            print(f"Podcast removed from oPodSync successfully using session: {response.text}")
+            return response.json()
+
+        except Exception as e:
+            print(f"Session auth failed, trying basic auth: {str(e)}")
+
+            # Fall back to basic auth
+            url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
+            auth = HTTPBasicAuth(gpodder_login, gpodder_token)
+            data = {
+                "add": [],
+                "remove": [podcast_url]
+            }
+            headers = {
+                "Content-Type": "application/json"
+            }
+            response = requests.post(url, json=data, headers=headers, auth=auth)
+            response.raise_for_status()
+            print(f"Podcast removed from oPodSync successfully with basic auth: {response.text}")
+            return response.json()
+
+    except Exception as e:
         print(f"Failed to remove podcast from oPodSync: {e}")
-        print(f"Response body: {response.text}")
+        print(f"Response body: {getattr(response, 'text', 'No response')}")
+        return None
 
 def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login, pod_sync_type):
     # Set up logging
@@ -10317,6 +10632,8 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
     from cryptography.fernet import Fernet
     from requests.auth import HTTPBasicAuth
     import logging
+    import requests
+    from database_functions.valkey_client import valkey_client
 
     # Set up logging
     logging.basicConfig(level=logging.INFO)
@@ -10335,14 +10652,54 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
         else:
             gpodder_token = None
 
-        # Prepare for Basic Auth
+        # Create a session for cookie-based auth
+        session = requests.Session()
         auth = HTTPBasicAuth(gpodder_login, gpodder_token)
 
-        # Get gPodder subscriptions
-        response = requests.get(f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/default.json", auth=auth)
-        response.raise_for_status()
+        # Get timestamp from valkey if it exists
+        timestamp_key = f"gpodder_timestamp:{user_id}:{gpodder_url}"
+        timestamp = valkey_client.get(timestamp_key)
+        if not timestamp:
+            timestamp = "0"  # Default to 0 for first sync
 
-        gpodder_data = response.json()
+        # Try session-based authentication (for PodFetch)
+        gpodder_data = None
+        use_session = False
+
+        try:
+            # First try to login to establish a session
+            login_url = f"{gpodder_url}/api/2/auth/{gpodder_login}/login.json"
+            login_response = session.post(login_url, auth=auth)
+            login_response.raise_for_status()
+            logger.info("Session login successful")
+
+            # Use the session to get subscriptions with the since parameter
+            subscription_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/default.json?since={timestamp}"
+            response = session.get(subscription_url)
+            response.raise_for_status()
+            gpodder_data = response.json()
+            use_session = True
+            logger.info("Using session-based authentication")
+
+        except Exception as e:
+            logger.warning(f"Session-based authentication failed: {str(e)}. Falling back to basic auth.")
+            # Fall back to standard auth if session auth fails
+            try:
+                # Standard auth without since parameter (as in original code)
+                response = requests.get(f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/default.json", auth=auth)
+                response.raise_for_status()
+                gpodder_data = response.json()
+                logger.info("Using basic authentication")
+            except Exception as e2:
+                logger.error(f"Basic auth also failed: {str(e2)}")
+                raise
+
+        # Store timestamp for next sync if present
+        if gpodder_data and "timestamp" in gpodder_data:
+            valkey_client.set(timestamp_key, str(gpodder_data["timestamp"]))
+            logger.info(f"Stored timestamp: {gpodder_data['timestamp']}")
+
+        # Extract subscription data
         gpodder_podcasts_add = set(gpodder_data.get("add", []))
         gpodder_podcasts_remove = set(gpodder_data.get("remove", []))
 
@@ -10420,25 +10777,70 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
         # Only sync successfully processed changes
         if successful_additions or successful_removals:
             try:
-                sync_subscription_change_gpodder(
-                    gpodder_url,
-                    gpodder_login,
-                    auth,
-                    list(successful_additions),
-                    list(successful_removals)
-                )
+                if use_session:
+                    # Use the session for sync
+                    sync_subscription_change_gpodder_session(
+                        session,
+                        gpodder_url,
+                        gpodder_login,
+                        list(successful_additions),
+                        list(successful_removals)
+                    )
+                else:
+                    # Use the original function
+                    sync_subscription_change_gpodder(
+                        gpodder_url,
+                        gpodder_login,
+                        auth,
+                        list(successful_additions),
+                        list(successful_removals)
+                    )
             except Exception as e:
                 logger.error(f"Error syncing changes with gPodder: {str(e)}")
 
         # Process episode actions
         try:
-            process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type, user_id)
+            if use_session:
+                process_episode_actions_session(
+                    session,
+                    gpodder_url,
+                    gpodder_login,
+                    cnx,
+                    database_type,
+                    user_id
+                )
+            else:
+                process_episode_actions(
+                    gpodder_url,
+                    gpodder_login,
+                    auth,
+                    cnx,
+                    database_type,
+                    user_id
+                )
         except Exception as e:
             logger.error(f"Error processing episode actions: {str(e)}")
 
         # Sync local episode times
         try:
-            sync_local_episode_times(gpodder_url, gpodder_login, auth, cnx, database_type, user_id)
+            if use_session:
+                sync_local_episode_times_session(
+                    session,
+                    gpodder_url,
+                    gpodder_login,
+                    cnx,
+                    database_type,
+                    user_id
+                )
+            else:
+                sync_local_episode_times(
+                    gpodder_url,
+                    gpodder_login,
+                    auth,
+                    cnx,
+                    database_type,
+                    user_id
+                )
         except Exception as e:
             logger.error(f"Error syncing local episode times: {str(e)}")
 
@@ -10501,20 +10903,103 @@ def sync_local_episode_times(gpodder_url, gpodder_login, auth, cnx, database_typ
         logger.error(f"Error syncing local episode times: {str(e)}")
         raise
 
-def process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type, user_id):
-    """Process incoming episode actions from gPodder"""
+def sync_local_episode_times_session(session, gpodder_url, gpodder_login, cnx, database_type, user_id, UPLOAD_BULK_SIZE=30):
+    """Sync local episode times using session-based authentication"""
+    import json
+    from datetime import datetime
+    from database_functions.valkey_client import valkey_client
+
+    try:
+        # Get local episode times
+        local_episode_times = get_local_episode_times(cnx, database_type, user_id)
+        print(f"Found {len(local_episode_times)} local episode times to sync")
+
+        # Skip if no episodes to sync
+        if not local_episode_times:
+            print("No episodes to sync")
+            return
+
+        # Format actions with all the required fields
+        actions = []
+
+        # Format timestamp as ISO string
+        current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+
+        for episode_time in local_episode_times:
+            # Only include episodes with valid duration data
+            if episode_time.get("episode_duration") and episode_time.get("listen_duration"):
+                if not episode_time.get("podcast_url") or not episode_time.get("episode_url"):
+                    print(f"Skipping episode with missing URL data")
+                    continue
+
+                # Add all required fields including device
+                action = {
+                    "podcast": episode_time["podcast_url"],
+                    "episode": episode_time["episode_url"],
+                    "action": "play",
+                    "position": int(episode_time["listen_duration"]),
+                    "total": int(episode_time["episode_duration"]),
+                    "timestamp": current_time,
+                    "device": "pinepods_app"  # Just add a device name
+                }
+
+                actions.append(action)
+
+        if not actions:
+            print("No valid actions to send")
+            return
+
+        print(f"Prepared {len(actions)} actions to send")
+        print(f"First action: {json.dumps(actions[0])}")
+
+        # Try sending all actions
+        try:
+            response = session.post(
+                f"{gpodder_url}/api/2/episodes/{gpodder_login}.json",
+                json=actions,  # Send as array
+                headers={"Content-Type": "application/json"}
+            )
+
+            print(f"Response status: {response.status_code}")
+            if response.text:
+                print(f"Response text: {response.text}")
+
+            if response.status_code < 300:
+                print("Successfully synced episode actions!")
+
+        except Exception as e:
+            print(f"Error sending actions: {str(e)}")
+
+    except Exception as e:
+        print(f"Error in sync_local_episode_times_session: {str(e)}")
+
+def process_episode_actions_session(session, gpodder_url, gpodder_login, cnx, database_type, user_id):
+    """Process incoming episode actions from gPodder using session-based authentication"""
+    import logging
+    from database_functions.valkey_client import valkey_client
+
     logger = logging.getLogger(__name__)
 
     try:
-        episode_actions_response = requests.get(
-            f"{gpodder_url}/api/2/episodes/{gpodder_login}.json",
-            auth=auth
+        # Get timestamp for since parameter
+        episodes_timestamp_key = f"gpodder_episodes_timestamp:{user_id}:{gpodder_url}"
+        episodes_timestamp = valkey_client.get(episodes_timestamp_key)
+        if not episodes_timestamp:
+            episodes_timestamp = "0"
+
+        # Get episode actions with session and since parameter
+        episode_actions_response = session.get(
+            f"{gpodder_url}/api/2/episodes/{gpodder_login}.json?since={episodes_timestamp}"
         )
         episode_actions_response.raise_for_status()
         episode_actions = episode_actions_response.json()
 
-        cursor = cnx.cursor()
+        # Store timestamp for future requests
+        if "timestamp" in episode_actions:
+            valkey_client.set(episodes_timestamp_key, str(episode_actions["timestamp"]))
 
+        # Process each action (same as original function)
+        cursor = cnx.cursor()
         for action in episode_actions.get('actions', []):
             try:
                 if action["action"].lower() in ["play", "update_time"]:
@@ -10523,7 +11008,6 @@ def process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type
                         if episode_id:
                             # Update listen duration
                             record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
-
                             # Check for completion
                             if ("total" in action and action["total"] > 0 and
                                 action["position"] >= action["total"]):
@@ -10542,15 +11026,12 @@ def process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type
                                 cursor.execute(update_query, (episode_id,))
                                 cnx.commit()
                                 logger.info(f"Marked episode {episode_id} as completed")
-
             except Exception as e:
                 logger.error(f"Error processing episode action {action}: {str(e)}")
                 continue
-
         cursor.close()
-
     except Exception as e:
-        logger.error(f"Error fetching episode actions: {str(e)}")
+        logger.error(f"Error fetching episode actions with session: {str(e)}")
         raise
 
 def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person_name: str, person_img: str, podcast_id: int) -> tuple[bool, int]:

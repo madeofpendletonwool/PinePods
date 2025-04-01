@@ -285,7 +285,7 @@ pub fn home() -> Html {
                         <div class="section-container">
                             <h2 class="text-2xl font-bold mb-4 item_container-text">{"Smart Playlists"}</h2>
                             if let Some(playlists) = &state.playlists {
-                                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                <div class="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                     {
                                         playlists.iter().map(|playlist| {
                                             let history_clone = history.clone();

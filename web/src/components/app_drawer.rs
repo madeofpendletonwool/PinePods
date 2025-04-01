@@ -161,7 +161,7 @@ pub fn app_drawer() -> Html {
     html! {
         <div class="relative">
             // Drawer
-            <div class={classes!("fixed", "drawer-background", "top-0", "left-0", "z-20", "h-full", "transition-all", "duration-500", "transform", "shadow-lg", "md:w-64", "w-full", "border-solid", "border-b-2", "border-r-2", "border-color", (*is_drawer_open).then(|| "translate-x-0").unwrap_or("-translate-x-full"))}>
+            <div class={classes!("fixed", "drawer-background", "top-0", "left-0", "z-20", "h-full", "transition-all", "duration-400", "transform", "shadow-lg", "md:w-64", "w-less-full", "border-solid", "border-b-2", "border-r-2", "border-color", (*is_drawer_open).then(|| "translate-x-0").unwrap_or("-translate-x-full"))}>
                 <div class="flex flex-col justify-between h-full overflow-y-auto">
                     <div class="px-6 py-4 mt-16">
                         <div class="flex items-center gap-2">

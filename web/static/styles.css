@@ -2698,6 +2698,10 @@ input[type="range"]::-moz-range-thumb {
     width: 100% !important;
 }
 
+.w-less-full {
+    width: 100%;
+}
+
 .h-full {
     height: 100% !important;
 }

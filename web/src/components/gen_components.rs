@@ -53,33 +53,46 @@ pub struct FallbackImageProps {
 #[function_component(FallbackImage)]
 pub fn fallback_image(props: &FallbackImageProps) -> Html {
     let image_ref = use_node_ref();
-    let src_state = use_state(|| props.src.clone());
+    // Add a unique timestamp parameter to the src URL to prevent caching
+    let src_with_timestamp =
+        use_state(|| format!("{}?t={}", props.src.clone(), js_sys::Date::now()));
     let has_error = use_state(|| false);
-
     let (state, _dispatch) = use_store::<AppState>();
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let server_name_str = server_name.unwrap();
+
+    // Update src_with_timestamp when props.src changes
+    {
+        let src_with_timestamp = src_with_timestamp.clone();
+        let props_src = props.src.clone();
+
+        use_effect_with(props_src, move |src| {
+            src_with_timestamp.set(format!("{}?t={}", src, js_sys::Date::now()));
+            || ()
+        });
+    }
+
     // Create a proxied URL from the original source
     let proxied_url = {
         let original_url = props.src.clone();
         format!(
-            "{}/api/proxy/image?url={}",
+            "{}/api/proxy/image?url={}&t={}",
             server_name_str,
-            urlencoding::encode(&original_url)
+            urlencoding::encode(&original_url),
+            js_sys::Date::now() // Add timestamp to proxy URL too
         )
     };
 
     // Handle image load error
     let on_error = {
         let has_error = has_error.clone();
-        let src_state = src_state.clone();
+        let src_with_timestamp = src_with_timestamp.clone();
         let proxied_url = proxied_url.clone();
-
         Callback::from(move |_: Event| {
             if !*has_error {
                 // First error - switch to proxied URL
                 has_error.set(true);
-                src_state.set(proxied_url.clone());
+                src_with_timestamp.set(proxied_url.clone());
                 web_sys::console::log_1(
                     &format!("Image load failed, switching to proxy: {}", proxied_url).into(),
                 );
@@ -93,7 +106,7 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     html! {
         <img
             ref={image_ref}
-            src={(*src_state).clone()}
+            src={(*src_with_timestamp).clone()}
             alt={props.alt.clone()}
             class={props.class.clone().unwrap_or_default()}
             style={props.style.clone().unwrap_or_default()}

@@ -327,6 +327,22 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         );
     }
 
+    {
+        let current_chapter_image = current_chapter_image.clone();
+        let audio_state = audio_state.clone();
+
+        use_effect_with(
+            audio_state.currently_playing.clone(),
+            move |currently_playing| {
+                if let Some(props) = currently_playing {
+                    // Update the chapter image when a new episode starts playing
+                    current_chapter_image.set(props.artwork_url.clone());
+                }
+                || ()
+            },
+        );
+    }
+
     // Get episode chapters if available
     use_effect_with(
         (
@@ -1141,11 +1157,16 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             page_state.set(PageState::Shown);
         })
     };
+    let stop_propagation = Callback::from(|e: MouseEvent| {
+        e.stop_propagation();
+    });
     let audio_dispatch = _audio_dispatch.clone();
     let chapter_select_modal = html! {
         <div id="chapter-select-modal" tabindex="-1" aria-hidden="true"
-            class="chapter-select-modal fixed top-0 right-0 left-0 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+            class="chapter-select-modal fixed top-0 right-0 left-0 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25"
+            onclick={on_close_modal.clone()}>  // Add this onclick handler
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow"
+                onclick={stop_propagation.clone()}>  // Add this to prevent clicks inside the modal from closing it
                 <div class="modal-container relative rounded-lg shadow">
                     // Header remains the same
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
@@ -1432,7 +1453,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         <FallbackImage
                             src={audio_props.artwork_url.clone()}
                             alt={format!("Cover for audio")}
-                            class={Some(artwork_class.to_string())}  // Convert Classes to String and wrap in Some
+                            class={Some(artwork_class.to_string())}
                         />
                     </div>
                     <div class="title" onclick={title_click.clone()}>

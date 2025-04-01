@@ -105,6 +105,29 @@ def sync_subscription_change_gpodder(gpodder_url, gpodder_login, auth, add, remo
     print(f"Subscription changes synced with gPodder: {response.text}")
 
 
+def sync_subscription_change_gpodder_session(session, gpodder_url, gpodder_login, add, remove):
+    """Sync subscription changes using session-based authentication"""
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    payload = {
+        "add": add,
+        "remove": remove
+    }
+
+    try:
+        response = session.post(
+            f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/default.json",
+            json=payload
+        )
+        response.raise_for_status()
+        logger.info(f"Subscription changes synced with gPodder using session: {response.text}")
+        return True
+    except Exception as e:
+        logger.error(f"Error syncing subscription changes with session: {str(e)}")
+        return False
+
 def sync_episode_actions(nextcloud_url, headers):
     print('test')
     # Implement fetching and creating episode actions

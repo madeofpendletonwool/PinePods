@@ -1081,12 +1081,18 @@ try:
                             IncludeUnplayed,
                             IncludePartiallyPlayed,
                             IncludePlayed,
-                            IconName
+                            IconName,
+                            TimeFilterHours,
+                            PlayProgressMin,
+                            PlayProgressMax
                         ) VALUES (
                             1,
                             %s,
                             %s,
                             TRUE,
+                            %s,
+                            %s,
+                            %s,
                             %s,
                             %s,
                             %s,
@@ -1106,7 +1112,10 @@ try:
                         playlist.get('include_unplayed', True),
                         playlist.get('include_partially_played', True),
                         playlist.get('include_played', False),
-                        playlist.get('icon_name', 'ph-playlist')
+                        playlist.get('icon_name', 'ph-playlist'),
+                        playlist.get('time_filter_hours'),
+                        playlist.get('play_progress_min'),
+                        playlist.get('play_progress_max')
                     ))
                     cnx.commit()
                     print(f"Successfully added system playlist: {playlist['name']}")
