@@ -74,6 +74,7 @@ import database_functions.oidc_state_manager
 import database_functions.valkey_client
 import database_functions.youtube
 import database_functions.tasks
+from database_functions.gpodder import gpodder_router
 from database_functions.db_client import create_database_connection, close_database_connection
 
 # # Use a try-except to handle potential import errors
@@ -115,6 +116,8 @@ origins = [
     "http://127.0.0.1",
     "*"
 ]
+
+app.include_router(gpodder_router)
 
 # app.add_middleware(
 #     CORSMiddleware,
