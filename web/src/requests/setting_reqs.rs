@@ -1399,6 +1399,61 @@ pub async fn call_add_gpodder_server(
     }
 }
 
+// Get user's default GPodder device - matches the EXACT route in your backend
+pub async fn call_get_default_gpodder_device(
+    server_name: &str,
+    api_key: &str,
+) -> Result<GpodderDevice, gloo::net::Error> {
+    // Use the exact same route as defined in your backend
+    let url = format!("{}/api/gpodder/default_device", server_name);
+
+    // Log the request URL for debugging
+    web_sys::console::log_1(&format!("Fetching default device from: {}", url).into());
+
+    let response = gloo::net::http::Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await?
+        .json::<GpodderDevice>()
+        .await?;
+
+    Ok(response)
+}
+
+// Set a device as the default - with support for remote devices
+pub async fn call_set_default_gpodder_device(
+    server_name: &str,
+    api_key: &str,
+    device_id: i32,
+    device_name: Option<String>,
+    is_remote: bool,
+) -> Result<ApiResponse<()>, gloo::net::Error> {
+    let mut url = format!("{}/api/gpodder/set_default/{}", server_name, device_id);
+
+    // Add query parameters for remote devices
+    if device_id < 0 || is_remote {
+        if let Some(name) = &device_name {
+            url = format!(
+                "{}?device_name={}&is_remote=true",
+                url,
+                js_sys::encode_uri_component(name)
+            );
+        }
+    }
+
+    // Log the request URL for debugging
+    web_sys::console::log_1(&format!("Setting default device at: {}", url).into());
+
+    let response = gloo::net::http::Request::post(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await?
+        .json::<ApiResponse<()>>()
+        .await?;
+
+    Ok(response)
+}
+
 // API structures
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GpodderDevice {
@@ -1408,6 +1463,8 @@ pub struct GpodderDevice {
     pub caption: Option<String>,
     pub last_sync: Option<String>,
     pub is_active: bool,
+    pub is_remote: Option<bool>,
+    pub is_default: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1422,6 +1479,8 @@ pub struct CreateDeviceRequest {
 pub struct SyncRequest {
     pub user_id: i32,
     pub device_id: Option<i32>,
+    pub device_name: Option<String>,
+    pub is_remote: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1440,7 +1499,7 @@ pub async fn call_get_gpodder_devices(
     let url = format!("{}/api/gpodder/devices/{}", server_name, user_id);
 
     let response = gloo::net::http::Request::get(&url)
-        .header("X-API-Key", api_key)
+        .header("Api-Key", api_key)
         .send()
         .await?
         .json::<Vec<GpodderDevice>>()
@@ -1458,7 +1517,7 @@ pub async fn call_create_gpodder_device(
     let url = format!("{}/api/gpodder/devices", server_name);
 
     let response = gloo::net::http::Request::post(&url)
-        .header("X-API-Key", api_key)
+        .header("Api-Key", api_key)
         .header("Content-Type", "application/json")
         .json(&request)?
         .send()
@@ -1475,13 +1534,20 @@ pub async fn call_force_full_sync(
     api_key: &str,
     user_id: i32,
     device_id: Option<i32>,
+    device_name: Option<String>,
+    is_remote: bool,
 ) -> Result<ApiResponse<()>, gloo::net::Error> {
     let url = format!("{}/api/gpodder/sync/force", server_name);
 
-    let request = SyncRequest { user_id, device_id };
+    let request = SyncRequest {
+        user_id,
+        device_id,
+        device_name,
+        is_remote,
+    };
 
     let response = gloo::net::http::Request::post(&url)
-        .header("X-API-Key", api_key)
+        .header("Api-Key", api_key)
         .header("Content-Type", "application/json")
         .json(&request)?
         .send()
@@ -1498,13 +1564,24 @@ pub async fn call_sync_with_gpodder(
     api_key: &str,
     user_id: i32,
     device_id: Option<i32>,
+    device_name: Option<String>,
+    is_remote: bool,
 ) -> Result<ApiResponse<()>, gloo::net::Error> {
     let url = format!("{}/api/gpodder/sync", server_name);
 
-    let request = SyncRequest { user_id, device_id };
+    // Create the request with all necessary fields
+    let request = SyncRequest {
+        user_id,
+        device_id,
+        device_name,
+        is_remote,
+    };
+
+    // Log the request for debugging
+    web_sys::console::log_1(&format!("Sending sync request: {:?}", &request).into());
 
     let response = gloo::net::http::Request::post(&url)
-        .header("X-API-Key", api_key)
+        .header("Api-Key", api_key)
         .header("Content-Type", "application/json")
         .json(&request)?
         .send()
@@ -1534,7 +1611,7 @@ pub async fn call_test_gpodder_connection(
     );
 
     let response = gloo::net::http::Request::get(&url)
-        .header("X-API-Key", api_key)
+        .header("Api-Key", api_key)
         .send()
         .await?
         .json::<ApiResponse<serde_json::Value>>()

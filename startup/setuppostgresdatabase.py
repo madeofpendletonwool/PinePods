@@ -219,6 +219,7 @@ try:
                 DeviceName VARCHAR(255) NOT NULL,
                 DeviceType VARCHAR(50) DEFAULT 'desktop',
                 DeviceCaption VARCHAR(255),
+                IsDefault BOOLEAN DEFAULT FALSE,
                 LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 IsActive BOOLEAN DEFAULT TRUE,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,

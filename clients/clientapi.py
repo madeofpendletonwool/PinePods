@@ -74,7 +74,7 @@ import database_functions.oidc_state_manager
 import database_functions.valkey_client
 import database_functions.youtube
 import database_functions.tasks
-from database_functions.gpodder import gpodder_router
+from database_functions.gpodder_router import gpodder_router
 from database_functions.db_client import create_database_connection, close_database_connection
 
 # # Use a try-except to handle potential import errors
@@ -2487,15 +2487,12 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             ''', (user_id,))
         count_result = cursor.fetchone()
         print(f"Count result: {count_result}")
-
         # Handle both dictionary and tuple results
         if isinstance(count_result, dict):
             total_podcasts = count_result['count'] if count_result else 0
         else:
             total_podcasts = count_result[0] if count_result else 0
-
         print(f"Total podcasts: {total_podcasts}")
-
         await websocket.send_json({
             "progress": {
                 "current": 0,
@@ -2504,6 +2501,30 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             }
         })
 
+        # Get default device information for sync
+        default_device_id = database_functions.functions.get_or_create_default_device(cnx, database_type, user_id)
+        default_device_name = None
+
+        if default_device_id:
+            # Get the device name
+            device_cursor = cnx.cursor()
+            if database_type == "postgresql":
+                device_query = 'SELECT DeviceName FROM "GpodderDevices" WHERE DeviceID = %s'
+            else:
+                device_query = "SELECT DeviceName FROM GpodderDevices WHERE DeviceID = %s"
+
+            device_cursor.execute(device_query, (default_device_id,))
+            device_result = device_cursor.fetchone()
+            device_cursor.close()
+
+            if device_result:
+                default_device_name = device_result[0] if isinstance(device_result, tuple) else device_result["devicename"]
+                print(f"Using default device for sync: {default_device_name} (ID: {default_device_id})")
+            else:
+                print("Default device ID found but no name - will use automatic fallback")
+        else:
+            print("No default device found - will use automatic fallback")
+
         if nextcloud_refresh:
             await websocket.send_json({"detail": "Refreshing Nextcloud subscriptions..."})
             print(f"Refreshing Nextcloud subscriptions for user {user_id}")
@@ -2511,12 +2532,13 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             pod_sync_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
             if pod_sync_type == "nextcloud":
                 await asyncio.to_thread(database_functions.functions.refresh_nextcloud_subscription,
-                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type)
+                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type,
+                                      default_device_id, default_device_name, False)
             else:
                 await asyncio.to_thread(database_functions.functions.refresh_gpodder_subscription,
-                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type)
+                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type,
+                                      default_device_id, default_device_name, False)
             await websocket.send_json({"detail": "Pod Sync subscription refresh complete."})
-
         # Get list of podcast names for progress updates
         print('Getting list')
         if database_type == "postgresql":
@@ -2571,7 +2593,7 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             })
 
             # Refresh this podcast
-            print(f'is it youtube?: {is_youtube}')
+            # print(f'is it youtube?: {is_youtube}')
             try:
                 if is_youtube is True:
                     # Extract channel ID from feed URL

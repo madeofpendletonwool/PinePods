@@ -1030,7 +1030,14 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
             time_parts = list(map(int, duration_str.split(':')))
             while len(time_parts) < 3:
                 time_parts.insert(0, 0)  # Pad missing values with zeros
-            h, m, s = time_parts
+
+            # Fix for handling more than 3 time parts
+            if len(time_parts) > 3:
+                print(f"Warning: Duration string '{duration_str}' has more than 3 parts, using first 3")
+                h, m, s = time_parts[0], time_parts[1], time_parts[2]
+            else:
+                h, m, s = time_parts
+
             parsed_duration = h * 3600 + m * 60 + s
         elif duration_str.isdigit():
             # If duration is all digits (no ":"), treat as seconds directly
@@ -1053,7 +1060,7 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
                     # Only estimate if the size seems reasonable (to avoid errors)
                     if file_size > 1000000:  # Only consider files larger than 1MB
                         parsed_duration = estimate_duration_from_file_size(file_size)
-                        print(f"Estimated duration from file size {file_size} bytes: {parsed_duration} seconds")
+                        # print(f"Estimated duration from file size {file_size} bytes: {parsed_duration} seconds")
                 except (ValueError, TypeError) as e:
                     print(f"Error parsing enclosure length: {e}")
 
@@ -2562,6 +2569,12 @@ def refresh_pods(cnx, database_type):
                 channel_id = channel_id.split('/')[0].split('?')[0]
                 youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx)
             else:
+                if podcast_id == 69:
+                    print(f"DEBUG - Podcast 69 NICE data: {result}")
+                    # Log the variables right before the line that's causing the error
+                if podcast_id == 70:
+                    print(f"DEBUG - Podcast 70 data: {result}")
+                    # Log the variables right before the line that's causing the error
                 add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url,
                            auto_download, username, password, user_id)  # Added user_id here
         except Exception as e:
@@ -10055,38 +10068,49 @@ def add_gpodder_server(database_type, cnx, user_id, gpodder_url, gpodder_usernam
 
 
 def get_gpodder_settings(database_type, cnx, user_id):
-    cursor = cnx.cursor()
-    query = (
-        'SELECT GpodderUrl, GpodderToken FROM "Users" WHERE UserID = %s' if database_type == "postgresql" else
-        "SELECT GpodderUrl, GpodderToken FROM Users WHERE UserID = %s"
-    )
-    cursor.execute(query, (user_id,))
-    result = cursor.fetchone()
-    cursor.close()
+    """Get the GPodder settings for a user with improved error handling"""
+    import logging
 
-    # Ensure result is consistent
-    if result:
-        if isinstance(result, tuple):
-            # Convert tuple result to a dictionary
-            if database_type == 'postgresql':
+    logger = logging.getLogger(__name__)
+
+    # Check if cnx is a valid connection object
+    if not hasattr(cnx, 'cursor'):
+        logger.error(f"Invalid database connection object: {type(cnx)}")
+        return {}
+
+    cursor = cnx.cursor()
+    try:
+        query = (
+            'SELECT GpodderUrl, GpodderToken, GpodderLoginName FROM "Users" WHERE UserID = %s' if database_type == "postgresql" else
+            "SELECT GpodderUrl, GpodderToken, GpodderLoginName FROM Users WHERE UserID = %s"
+        )
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+
+        # Ensure result is consistent
+        if result:
+            if isinstance(result, tuple):
+                # Convert tuple result to a dictionary
                 result = {
                     "gpodderurl": result[0],
-                    "gpoddertoken": result[1]
+                    "gpoddertoken": result[1],
+                    "gpodderloginname": result[2]
                 }
-            else:
-                result = {
-                    "GpodderUrl": result[0],
-                    "GpodderToken": result[1]
-                }
-        elif isinstance(result, dict):
-            # Normalize keys to lower case if necessary
-            result = {k.lower(): v for k, v in result.items()}
-    else:
-        result = {}
+            elif isinstance(result, dict):
+                # Normalize keys to lower case if necessary
+                result = {k.lower(): v for k, v in result.items()}
+        else:
+            result = {}
 
-    lower_result = lowercase_keys(result)
-
-    return lower_result
+        # Apply lowercase keys if needed
+        if 'lowercase_keys' in globals():
+            return lowercase_keys(result)
+        return result
+    except Exception as e:
+        logger.error(f"Error in get_gpodder_settings: {str(e)}")
+        return {}
+    finally:
+        cursor.close()
 
 
 
@@ -10661,48 +10685,55 @@ def sync_nextcloud_episode_times(gpodder_url, gpodder_login, gpodder_token, cnx,
         raise
 
 def get_user_devices(cnx, database_type, user_id):
-    """Get all GPodder devices for a user"""
+    """Get all GPodder devices for a user with proper datetime conversion"""
+    import logging
+    logger = logging.getLogger(__name__)
     cursor = cnx.cursor()
     try:
         if database_type == "postgresql":
             query = '''
-                SELECT DeviceID, DeviceName, DeviceType, DeviceCaption, LastSync, IsActive
+                SELECT DeviceID, DeviceName, DeviceType, DeviceCaption, LastSync, IsActive, IsDefault
                 FROM "GpodderDevices"
                 WHERE UserID = %s
             '''
         else:
             query = '''
-                SELECT DeviceID, DeviceName, DeviceType, DeviceCaption, LastSync, IsActive
+                SELECT DeviceID, DeviceName, DeviceType, DeviceCaption, LastSync, IsActive, IsDefault
                 FROM GpodderDevices
                 WHERE UserID = %s
             '''
-
         cursor.execute(query, (user_id,))
         devices = []
-
         for row in cursor.fetchall():
             if isinstance(row, dict):
                 # Handle dict-style result (depends on the driver)
+                # Convert datetime to string
+                last_sync = row["lastsync"].isoformat() if row["lastsync"] else None
                 device = {
                     "id": row["deviceid"],
                     "name": row["devicename"],
                     "type": row["devicetype"],
                     "caption": row["devicecaption"],
-                    "last_sync": row["lastsync"],
-                    "is_active": row["isactive"]
+                    "last_sync": last_sync,
+                    "is_active": row["isactive"],
+                    "is_remote": False,
+                    "is_default": row["isdefault"]
                 }
             else:
                 # Handle tuple-style result
+                # Convert datetime to string
+                last_sync = row[4].isoformat() if row[4] else None
                 device = {
                     "id": row[0],
                     "name": row[1],
                     "type": row[2],
                     "caption": row[3],
-                    "last_sync": row[4],
-                    "is_active": row[5]
+                    "last_sync": last_sync,
+                    "is_active": row[5],
+                    "is_remote": False,
+                    "is_default": row[6] if len(row) > 6 else False
                 }
             devices.append(device)
-
         return devices
     except Exception as e:
         logger.error(f"Error getting user devices: {e}")
@@ -10710,23 +10741,114 @@ def get_user_devices(cnx, database_type, user_id):
     finally:
         cursor.close()
 
-def create_or_update_device(cnx, database_type, user_id, device_name, device_type="desktop", device_caption=None):
-    """Create a new GPodder device for a user or update existing one"""
-    cursor = cnx.cursor()
+# Add this to your database_functions/functions.py file
+
+def handle_remote_device(cnx, database_type, user_id, device_name):
+    """
+    Handles setting a remote device (with negative ID) as default by creating
+    a local representation or using an existing one.
+
+    Args:
+        cnx: Database connection
+        database_type: Type of database ('postgresql' or other)
+        user_id: User ID
+        device_name: Name of the remote device
+
+    Returns:
+        tuple: (success: bool, message: str, device_id: int)
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
-        # First check if device exists
+        # First check if device exists - if so, set it as default
+        existing_id = find_device_by_name(cnx, database_type, user_id, device_name)
+
+        if existing_id:
+            # Device exists, set it as default
+            logger.info(f"Found existing device with name {device_name}, ID: {existing_id}")
+            success = set_default_gpodder_device(cnx, database_type, user_id, existing_id)
+            return (success, "Existing device set as default", existing_id)
+
+        # Create new device
+        new_device_id = create_or_update_device(
+            cnx,
+            database_type,
+            user_id,
+            device_name,
+            "remote",  # Type for remote devices
+            f"Remote device from GPodder server"
+        )
+
+        if not new_device_id:
+            logger.error("Failed to create device for remote device")
+            return (False, "Failed to create local representation of remote device", None)
+
+        # Set as default
+        success = set_default_gpodder_device(cnx, database_type, user_id, new_device_id)
+        return (success, "Remote device created and set as default", new_device_id)
+
+    except Exception as e:
+        logger.error(f"Error handling remote device: {e}")
+        return (False, f"Error: {str(e)}", None)
+
+
+def find_device_by_name(cnx, database_type, user_id, device_name):
+    """
+    Find a device by name for a specific user
+
+    Args:
+        cnx: Database connection
+        database_type: Type of database
+        user_id: User ID
+        device_name: Device name to find
+
+    Returns:
+        int: Device ID or None if not found
+    """
+    try:
+        cursor = cnx.cursor()
         if database_type == "postgresql":
-            check_query = '''
+            query = 'SELECT DeviceID FROM "GpodderDevices" WHERE UserID = %s AND DeviceName = %s'
+        else:
+            query = 'SELECT DeviceID FROM GpodderDevices WHERE UserID = %s AND DeviceName = %s'
+
+        cursor.execute(query, (user_id, device_name))
+        result = cursor.fetchone()
+
+        if result:
+            if isinstance(result, tuple):
+                return result[0]
+            else:
+                return result["deviceid"]
+        return None
+    except Exception as e:
+        print(f"Error finding device by name: {e}")
+        return None
+    finally:
+        cursor.close()
+
+def create_or_update_device(cnx, database_type, user_id, device_name, device_type="desktop", device_caption=None, is_default=False):
+    """
+    Creates a new device or updates an existing one.
+    If is_default is True, this device will be set as the default.
+    """
+    try:
+        cursor = cnx.cursor()
+
+        # Check if device exists
+        if database_type == "postgresql":
+            query = """
                 SELECT DeviceID FROM "GpodderDevices"
                 WHERE UserID = %s AND DeviceName = %s
-            '''
+            """
         else:
-            check_query = '''
+            query = """
                 SELECT DeviceID FROM GpodderDevices
                 WHERE UserID = %s AND DeviceName = %s
-            '''
+            """
 
-        cursor.execute(check_query, (user_id, device_name))
+        cursor.execute(query, (user_id, device_name))
         result = cursor.fetchone()
 
         if result:
@@ -10734,70 +10856,97 @@ def create_or_update_device(cnx, database_type, user_id, device_name, device_typ
             device_id = result[0] if isinstance(result, tuple) else result["deviceid"]
 
             if database_type == "postgresql":
-                update_query = '''
+                query = """
                     UPDATE "GpodderDevices"
-                    SET DeviceType = %s, DeviceCaption = %s, LastSync = CURRENT_TIMESTAMP, IsActive = TRUE
+                    SET DeviceType = %s, DeviceCaption = %s, LastSync = CURRENT_TIMESTAMP
                     WHERE DeviceID = %s
-                    RETURNING DeviceID
-                '''
+                """
             else:
-                update_query = '''
+                query = """
                     UPDATE GpodderDevices
-                    SET DeviceType = %s, DeviceCaption = %s, LastSync = CURRENT_TIMESTAMP, IsActive = TRUE
+                    SET DeviceType = %s, DeviceCaption = %s, LastSync = CURRENT_TIMESTAMP
                     WHERE DeviceID = %s
-                    RETURNING DeviceID
-                '''
+                """
 
-            cursor.execute(update_query, (device_type, device_caption, device_id))
+            cursor.execute(query, (device_type, device_caption, device_id))
+
+            # If this should be the default device, set it
+            if is_default:
+                set_default_gpodder_device(cnx, database_type, user_id, device_id)
+
             cnx.commit()
             return device_id
         else:
-            # Create new device
+            # Device doesn't exist, create it
             if database_type == "postgresql":
-                insert_query = '''
-                    INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType, DeviceCaption)
-                    VALUES (%s, %s, %s, %s)
+                query = """
+                    INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType, DeviceCaption, IsDefault)
+                    VALUES (%s, %s, %s, %s, %s)
                     RETURNING DeviceID
-                '''
+                """
             else:
-                insert_query = '''
-                    INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, DeviceCaption)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING DeviceID
-                '''
+                query = """
+                    INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, DeviceCaption, IsDefault)
+                    VALUES (%s, %s, %s, %s, %s)
+                """
 
-            cursor.execute(insert_query, (user_id, device_name, device_type, device_caption))
-            result = cursor.fetchone()
-            device_id = result[0] if isinstance(result, tuple) else result["deviceid"]
+            # If this is the first device for the user, make it the default
+            if is_default:
+                cursor.execute(query, (user_id, device_name, device_type, device_caption, True))
+            else:
+                # Check if this is the first device
+                if database_type == "postgresql":
+                    count_query = 'SELECT COUNT(*) as count FROM "GpodderDevices" WHERE UserID = %s'
+                else:
+                    count_query = 'SELECT COUNT(*) as count FROM GpodderDevices WHERE UserID = %s'
 
-            # Also create sync state
+                cursor.execute(count_query, (user_id,))
+                result = cursor.fetchone()
+
+                # Handle different result formats from different database types
+                if result is None:
+                    count = 0
+                elif isinstance(result, tuple):
+                    count = result[0]
+                elif isinstance(result, dict) and "count" in result:
+                    count = result["count"]
+                else:
+                    # Try to get value safely
+                    try:
+                        count = list(result.values())[0] if result else 0
+                    except:
+                        count = 0
+
+                # If this is the first device, make it the default
+                is_first_device = count == 0
+                cursor.execute(query, (user_id, device_name, device_type, device_caption, is_first_device))
+
             if database_type == "postgresql":
-                sync_query = '''
-                    INSERT INTO "GpodderSyncState" (UserID, DeviceID)
-                    VALUES (%s, %s)
-                    ON CONFLICT (UserID, DeviceID) DO NOTHING
-                '''
+                result = cursor.fetchone()
+                device_id = result[0] if result and isinstance(result, tuple) else (result['deviceid'] if result else None)
             else:
-                sync_query = '''
-                    INSERT INTO GpodderSyncState (UserID, DeviceID)
-                    VALUES (%s, %s)
-                    ON CONFLICT (UserID, DeviceID) DO NOTHING
-                '''
+                device_id = cursor.lastrowid
 
-            cursor.execute(sync_query, (user_id, device_id))
             cnx.commit()
             return device_id
     except Exception as e:
-        logger.error(f"Error creating/updating device: {e}")
+        print(f"Error creating/updating device: {e}")
         cnx.rollback()
         return None
     finally:
         cursor.close()
 
 def get_sync_timestamps(cnx, database_type, user_id, device_id):
-    """Get the last timestamps for subscriptions and episodes sync"""
-    cursor = cnx.cursor()
+    """Get sync timestamps for a device, with default values if not found"""
     try:
+        cursor = cnx.cursor()
+
+        # Handle negative device IDs (remote devices)
+        if device_id and device_id < 0:
+            print(f"Error getting sync timestamps: Device ID {device_id} is negative (remote device)")
+            # Return default timestamps for remote devices
+            return {"last_timestamp": 0, "episodes_timestamp": 0}
+
         if database_type == "postgresql":
             query = '''
                 SELECT LastTimestamp, EpisodesTimestamp
@@ -10815,18 +10964,18 @@ def get_sync_timestamps(cnx, database_type, user_id, device_id):
         result = cursor.fetchone()
 
         if result:
-            if isinstance(result, dict):
+            if isinstance(result, tuple):
                 return {
-                    "last_timestamp": result["lasttimestamp"],
-                    "episodes_timestamp": result["episodestimestamp"]
+                    "last_timestamp": result[0] or 0,
+                    "episodes_timestamp": result[1] or 0
                 }
             else:
                 return {
-                    "last_timestamp": result[0],
-                    "episodes_timestamp": result[1]
+                    "last_timestamp": result.get("lasttimestamp", 0) or 0,
+                    "episodes_timestamp": result.get("episodestimestamp", 0) or 0
                 }
         else:
-            # No timestamps found, create default entry
+            # No timestamps found, create default record
             if database_type == "postgresql":
                 insert_query = '''
                     INSERT INTO "GpodderSyncState" (UserID, DeviceID, LastTimestamp, EpisodesTimestamp)
@@ -10840,11 +10989,17 @@ def get_sync_timestamps(cnx, database_type, user_id, device_id):
                     ON CONFLICT (UserID, DeviceID) DO NOTHING
                 '''
 
-            cursor.execute(insert_query, (user_id, device_id))
-            cnx.commit()
+            try:
+                cursor.execute(insert_query, (user_id, device_id))
+                cnx.commit()
+            except Exception as e:
+                print(f"Error creating sync timestamps: {e}")
+                # Don't let this error abort everything
+                cnx.rollback()
+
             return {"last_timestamp": 0, "episodes_timestamp": 0}
     except Exception as e:
-        logger.error(f"Error getting sync timestamps: {e}")
+        print(f"Error getting sync timestamps: {e}")
         return {"last_timestamp": 0, "episodes_timestamp": 0}
     finally:
         cursor.close()
@@ -10875,7 +11030,7 @@ def update_sync_timestamp(cnx, database_type, user_id, device_id, timestamp_type
         cnx.commit()
         return True
     except Exception as e:
-        logger.error(f"Error updating sync timestamp: {e}")
+        print(f"Error updating sync timestamp: {e}")
         cnx.rollback()
         return False
     finally:
@@ -10925,38 +11080,124 @@ def get_current_timestamp():
     """Get current timestamp in format expected by gpodder API"""
     return int(time.time())
 
-def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login, pod_sync_type):
+def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token,
+                                gpodder_login, pod_sync_type, device_id=None, device_name=None, is_remote=False):
     """Refreshes podcasts from GPodder with proper device handling"""
     from cryptography.fernet import Fernet
     import logging
     import requests
+    import base64
+    from requests.auth import HTTPBasicAuth
 
     # Set up logging
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
     try:
-        # Get or create default device
-        device_id = get_or_create_default_device(cnx, database_type, user_id)
-        if not device_id:
-            logger.error("Failed to get or create default device")
-            return False
+        # Determine which device to use for GPodder API calls
+        actual_device_name = None
 
-        # Get device name from database
-        cursor = cnx.cursor()
-        if database_type == "postgresql":
-            query = 'SELECT DeviceName FROM "GpodderDevices" WHERE DeviceID = %s'
+        # To this:
+        # Near the beginning of refresh_gpodder_subscription
+        if is_remote and device_name:
+            # If it's a remote device, use the provided device name directly
+            logger.info(f"Using remote device name: {device_name}")
+
+            # Create a local representation of the remote device
+            success, message, local_device_id = handle_remote_device(cnx, database_type, user_id, device_name)
+            if success:
+                logger.info(f"Created/found local device for remote device: {local_device_id}")
+                # Use the local device ID instead of -1
+                device_id = local_device_id
+                actual_device_name = device_name
+            else:
+                logger.error(f"Failed to handle remote device: {message}")
+                # Proceed with just the name, but device_id will still be -1 which might cause problems
+                actual_device_name = device_name
+        elif device_id:
+            # If a specific device ID is provided, look it up in the database
+            cursor = cnx.cursor()
+            if database_type == "postgresql":
+                query = 'SELECT DeviceName FROM "GpodderDevices" WHERE DeviceID = %s'
+            else:
+                query = "SELECT DeviceName FROM GpodderDevices WHERE DeviceID = %s"
+            cursor.execute(query, (device_id,))
+            result = cursor.fetchone()
+            cursor.close()
+
+            if result:
+                actual_device_name = result[0] if isinstance(result, tuple) else result["devicename"]
+                logger.info(f"Using device from database: {actual_device_name} (ID: {device_id})")
+            else:
+                logger.warning(f"Device ID {device_id} not found in database, falling back to default")
+                default_device = get_default_gpodder_device(cnx, database_type, user_id)
+                if default_device:
+                    device_id = default_device["id"]
+                    actual_device_name = default_device["name"]
+                    logger.info(f"Using default device: {actual_device_name} (ID: {device_id})")
+                else:
+                    # No default device, create one
+                    device_id = create_or_update_device(
+                        cnx,
+                        database_type,
+                        user_id,
+                        "pinepods_default",
+                        "desktop",
+                        "Pinepods Default Device",
+                        True  # Set as default
+                    )
+                    actual_device_name = "pinepods_default"
+                    logger.info(f"Created new default device: {actual_device_name} (ID: {device_id})")
         else:
-            query = "SELECT DeviceName FROM GpodderDevices WHERE DeviceID = %s"
-        cursor.execute(query, (device_id,))
-        result = cursor.fetchone()
-        device_name = result[0] if isinstance(result, tuple) else result["devicename"]
-        cursor.close()
+            # No device specified, use default
+            default_device = get_default_gpodder_device(cnx, database_type, user_id)
+            if default_device:
+                device_id = default_device["id"]
+                actual_device_name = default_device["name"]
+                logger.info(f"Using default device: {actual_device_name} (ID: {device_id})")
+            else:
+                # No devices exist, create a default one
+                device_id = create_or_update_device(
+                    cnx,
+                    database_type,
+                    user_id,
+                    "pinepods_default",
+                    "desktop",
+                    "Pinepods Default Device",
+                    True  # Set as default
+                )
+                actual_device_name = "pinepods_default"
+                logger.info(f"Created new default device: {actual_device_name} (ID: {device_id})")
 
-        # Get sync timestamps
-        timestamps = get_sync_timestamps(cnx, database_type, user_id, device_id)
 
-        # Fetch encryption key
+            # Get default device name
+            cursor = cnx.cursor()
+            if database_type == "postgresql":
+                query = 'SELECT DeviceName FROM "GpodderDevices" WHERE DeviceID = %s'
+            else:
+                query = "SELECT DeviceName FROM GpodderDevices WHERE DeviceID = %s"
+            cursor.execute(query, (device_id,))
+            result = cursor.fetchone()
+            cursor.close()
+
+            if result:
+                actual_device_name = result[0] if isinstance(result, tuple) else result["devicename"]
+                logger.info(f"Using default device: {actual_device_name} (ID: {device_id})")
+            else:
+                logger.error("Default device not found in database")
+                return False
+
+        # For remote devices, we might need to skip checking local timestamps
+        # and force a full sync from the GPodder server
+        if is_remote:
+            # Force a full sync by setting timestamp to 0
+            timestamps = {"last_timestamp": 0}
+            logger.info("Remote device selected - forcing full sync with timestamp 0")
+        else:
+            # Get sync timestamps for local device
+            timestamps = get_sync_timestamps(cnx, database_type, user_id, device_id)
+
+        # Get encryption key and decrypt the GPodder token
         encryption_key = get_encryption_key(cnx, database_type)
         encryption_key_bytes = base64.b64decode(encryption_key)
         cipher_suite = Fernet(encryption_key_bytes)
@@ -11202,21 +11443,32 @@ def get_local_episode_times(cnx, database_type, user_id):
     finally:
         cursor.close()
 
-def sync_local_episode_times_session(session, gpodder_url, gpodder_login, cnx, database_type, user_id, device_name="default", UPLOAD_BULK_SIZE=30):
+def sync_local_episode_times_session(session, gpodder_url, gpodder_login, cnx, database_type, user_id, device_name=None, UPLOAD_BULK_SIZE=30):
     """Sync local episode times using session-based authentication"""
     import logging
     import json
     from datetime import datetime
 
     logger = logging.getLogger(__name__)
+    print(f"Starting episode time sync with device_name={device_name}")
 
     try:
+        # If no device name is provided, get the user's default device
+        if not device_name:
+            default_device = get_default_gpodder_device(cnx, database_type, user_id)
+            if default_device:
+                device_name = default_device["name"]
+                print(f"Using default device for episode actions: {device_name}")
+            else:
+                print("WARNING: No devices found for user, episode actions will fail")
+                return
+
         # Get local episode times
         local_episode_times = get_local_episode_times(cnx, database_type, user_id)
 
         # Skip if no episodes to sync
         if not local_episode_times:
-            logger.info("No episodes to sync")
+            print("No episodes to sync")
             return
 
         # Format actions with all the required fields
@@ -11229,13 +11481,13 @@ def sync_local_episode_times_session(session, gpodder_url, gpodder_login, cnx, d
             # Only include episodes with valid duration data
             if episode_time.get("episode_duration") and episode_time.get("listen_duration"):
                 if not episode_time.get("podcast_url") or not episode_time.get("episode_url"):
-                    logger.info(f"Skipping episode with missing URL data")
+                    print(f"Skipping episode with missing URL data")
                     continue
 
                 # If episode is completed, set position to total duration
                 position = (episode_time["episode_duration"]
-                          if episode_time.get("completed", False)
-                          else episode_time["listen_duration"])
+                        if episode_time.get("completed", False)
+                        else episode_time["listen_duration"])
 
                 # Add all required fields including device
                 action = {
@@ -11256,10 +11508,11 @@ def sync_local_episode_times_session(session, gpodder_url, gpodder_login, cnx, d
                 actions.append(action)
 
         if not actions:
-            logger.info("No valid actions to send")
+            print("No valid actions to send")
             return
 
-        logger.info(f"Prepared {len(actions)} actions to send")
+        print(f"Prepared {len(actions)} actions to send")
+        print(f"First action device name: {actions[0]['device']}")
 
         # Split into chunks and process
         actions_chunks = [
@@ -11276,15 +11529,204 @@ def sync_local_episode_times_session(session, gpodder_url, gpodder_login, cnx, d
                 )
 
                 if response.status_code < 300:
-                    logger.info(f"Successfully synced {len(chunk)} episode actions")
+                    print(f"Successfully synced {len(chunk)} episode actions")
                 else:
-                    logger.error(f"Error syncing episode actions: {response.status_code} - {response.text}")
+                    print(f"Error syncing episode actions: {response.status_code} - {response.text}")
+
+                    # Debug the request
+                    print(f"Request URL: {gpodder_url}/api/2/episodes/{gpodder_login}.json")
+                    print(f"Request headers: {session.headers}")
+                    print(f"First few actions in chunk: {chunk[:2]}")
             except Exception as e:
-                logger.error(f"Error sending actions: {str(e)}")
+                print(f"Error sending actions: {str(e)}")
                 continue
 
     except Exception as e:
-        logger.error(f"Error in sync_local_episode_times_session: {str(e)}")
+        print(f"Error in sync_local_episode_times_session: {str(e)}")
+
+
+def set_default_gpodder_device(cnx, database_type, user_id, device_id):
+    """
+    Sets a device as the user's default GPodder device.
+    This will unset any previous default device.
+
+    Args:
+        cnx: Database connection
+        database_type: "postgresql" or "mariadb"
+        user_id: User ID
+        device_id: Device ID to set as default
+
+    Returns:
+        bool: Success or failure
+    """
+    try:
+        cursor = cnx.cursor()
+
+        # First verify the device exists and belongs to the user
+        if database_type == "postgresql":
+            query = 'SELECT DeviceID FROM "GpodderDevices" WHERE DeviceID = %s AND UserID = %s'
+        else:
+            query = 'SELECT DeviceID FROM GpodderDevices WHERE DeviceID = %s AND UserID = %s'
+
+        cursor.execute(query, (device_id, user_id))
+        if not cursor.fetchone():
+            print(f"Device ID {device_id} does not exist or doesn't belong to user {user_id}")
+            return False
+
+        # Start a transaction
+        if database_type == "postgresql":
+            # First, unset the current default device if any
+            cursor.execute("""
+                UPDATE "GpodderDevices"
+                SET IsDefault = FALSE
+                WHERE UserID = %s AND IsDefault = TRUE
+            """, (user_id,))
+
+            # Then set the new default device
+            cursor.execute("""
+                UPDATE "GpodderDevices"
+                SET IsDefault = TRUE
+                WHERE DeviceID = %s
+            """, (device_id,))
+        else:
+            # First, unset the current default device if any
+            cursor.execute("""
+                UPDATE GpodderDevices
+                SET IsDefault = FALSE
+                WHERE UserID = %s AND IsDefault = TRUE
+            """, (user_id,))
+
+            # Then set the new default device
+            cursor.execute("""
+                UPDATE GpodderDevices
+                SET IsDefault = TRUE
+                WHERE DeviceID = %s
+            """, (device_id,))
+
+        cnx.commit()
+        print(f"Set default GPodder device {device_id} for user {user_id}")
+        return True
+    except Exception as e:
+        print(f"Error setting default GPodder device: {e}")
+        cnx.rollback()
+        return False
+    finally:
+        cursor.close()
+
+def get_default_gpodder_device(cnx, database_type, user_id):
+    """
+    Gets the user's default GPodder device.
+    If no default is set, returns the oldest device.
+
+    Args:
+        cnx: Database connection
+        database_type: "postgresql" or "mariadb"
+        user_id: User ID
+
+    Returns:
+        dict: Device information or None if no devices exist
+    """
+    try:
+        cursor = cnx.cursor()
+
+        # First try to get the default device
+        if database_type == "postgresql":
+            query = """
+                SELECT DeviceID, DeviceName, DeviceType, DeviceCaption, LastSync, IsActive
+                FROM "GpodderDevices"
+                WHERE UserID = %s AND IsDefault = TRUE
+                LIMIT 1
+            """
+        else:
+            query = """
+                SELECT DeviceID, DeviceName, DeviceType, DeviceCaption, LastSync, IsActive
+                FROM GpodderDevices
+                WHERE UserID = %s AND IsDefault = TRUE
+                LIMIT 1
+            """
+
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+
+        if result:
+            # Return the default device
+            if isinstance(result, dict):
+                return {
+                    "id": result["deviceid"],
+                    "name": result["devicename"],
+                    "type": result["devicetype"],
+                    "caption": result["devicecaption"],
+                    "last_sync": result["lastsync"],
+                    "is_active": result["isactive"],
+                    "is_remote": False,
+                    "is_default": True
+                }
+            else:
+                return {
+                    "id": result[0],
+                    "name": result[1],
+                    "type": result[2],
+                    "caption": result[3],
+                    "last_sync": result[4],
+                    "is_active": result[5],
+                    "is_remote": False,
+                    "is_default": True
+                }
+
+        # If no default device is set, get the oldest device
+        if database_type == "postgresql":
+            query = """
+                SELECT DeviceID, DeviceName, DeviceType, DeviceCaption, LastSync, IsActive
+                FROM "GpodderDevices"
+                WHERE UserID = %s
+                ORDER BY DeviceID ASC
+                LIMIT 1
+            """
+        else:
+            query = """
+                SELECT DeviceID, DeviceName, DeviceType, DeviceCaption, LastSync, IsActive
+                FROM GpodderDevices
+                WHERE UserID = %s
+                ORDER BY DeviceID ASC
+                LIMIT 1
+            """
+
+        cursor.execute(query, (user_id,))
+        result = cursor.fetchone()
+
+        if result:
+            # Return the oldest device
+            if isinstance(result, dict):
+                return {
+                    "id": result["deviceid"],
+                    "name": result["devicename"],
+                    "type": result["devicetype"],
+                    "caption": result["devicecaption"],
+                    "last_sync": result["lastsync"],
+                    "is_active": result["isactive"],
+                    "is_remote": False,
+                    "is_default": False
+                }
+            else:
+                return {
+                    "id": result[0],
+                    "name": result[1],
+                    "type": result[2],
+                    "caption": result[3],
+                    "last_sync": result[4],
+                    "is_active": result[5],
+                    "is_remote": False,
+                    "is_default": False
+                }
+
+        # No devices found
+        return None
+    except Exception as e:
+        print(f"Error getting default GPodder device: {e}")
+        return None
+    finally:
+        cursor.close()
+
 
 def sync_local_episode_times(gpodder_url, gpodder_login, auth, cnx, database_type, user_id, device_name="default", UPLOAD_BULK_SIZE=30):
     """Sync local episode times using basic authentication"""
@@ -11355,11 +11797,13 @@ def sync_local_episode_times(gpodder_url, gpodder_login, auth, cnx, database_typ
 def process_episode_actions_session(session, gpodder_url, gpodder_login, cnx, database_type, user_id, device_name, device_id):
     """Process incoming episode actions from gPodder using session-based authentication"""
     logger = logging.getLogger(__name__)
+    print('running episode actions')
 
     try:
         # Get timestamp for since parameter
         timestamps = get_sync_timestamps(cnx, database_type, user_id, device_id)
         episodes_timestamp = timestamps["episodes_timestamp"]
+        print('got timestamps')
 
         # Get episode actions with session and since parameter
         episode_actions_response = session.get(
@@ -11367,14 +11811,16 @@ def process_episode_actions_session(session, gpodder_url, gpodder_login, cnx, da
         )
         episode_actions_response.raise_for_status()
         episode_actions = episode_actions_response.json()
+        print('got actions')
 
         # Store timestamp for future requests
         if "timestamp" in episode_actions:
             update_sync_timestamp(cnx, database_type, user_id, device_id, "episodes_timestamp", episode_actions["timestamp"])
-
+        print('stamp stored')
         # Process each action
         cursor = cnx.cursor()
         for action in episode_actions.get('actions', []):
+            print('processing')
             try:
                 if action["action"].lower() in ["play", "update_time"]:
                     if "position" in action and action["position"] != -1:
@@ -11399,7 +11845,7 @@ def process_episode_actions_session(session, gpodder_url, gpodder_login, cnx, da
                                     '''
                                 cursor.execute(update_query, (episode_id,))
                                 cnx.commit()
-                                logger.info(f"Marked episode {episode_id} as completed")
+                                print(f"Marked episode {episode_id} as completed")
             except Exception as e:
                 logger.error(f"Error processing episode action {action}: {str(e)}")
                 continue
@@ -11411,34 +11857,52 @@ def process_episode_actions_session(session, gpodder_url, gpodder_login, cnx, da
 def process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type, user_id, device_name, device_id):
     """Process incoming episode actions from gPodder using basic authentication"""
     logger = logging.getLogger(__name__)
-
+    print('running episode actions')
     try:
         # Get timestamp for since parameter
         timestamps = get_sync_timestamps(cnx, database_type, user_id, device_id)
         episodes_timestamp = timestamps["episodes_timestamp"]
+        print('got timestamps')
+
+        # Build the URL properly
+        url = f"{gpodder_url}/api/2/episodes/{gpodder_login}.json?since={episodes_timestamp}"
+        if device_name:
+            url += f"&device={device_name}"
+        print(f"Episode actions API URL: {url}")
 
         # Get episode actions with basic auth and since parameter
-        episode_actions_response = requests.get(
-            f"{gpodder_url}/api/2/episodes/{gpodder_login}.json?since={episodes_timestamp}&device={device_name}",
-            auth=auth
-        )
+        episode_actions_response = requests.get(url, auth=auth)
+        print(f"Episode actions response status: {episode_actions_response.status_code}")
+
         episode_actions_response.raise_for_status()
         episode_actions = episode_actions_response.json()
+        print('got actions')
+        print(f"Actions array: {episode_actions.get('actions', 'NO ACTIONS KEY!')}")
 
         # Store timestamp for future requests
         if "timestamp" in episode_actions:
-            update_sync_timestamp(cnx, database_type, user_id, device_id, "episodes_timestamp", episode_actions["timestamp"])
+            try:
+                update_sync_timestamp(cnx, database_type, user_id, device_id, "episodes_timestamp", episode_actions["timestamp"])
+                print('stamp stored')
+            except Exception as e:
+                print(f"Error updating sync timestamp: {e}")
 
         # Process each action - same as in session version
         cursor = cnx.cursor()
         for action in episode_actions.get('actions', []):
+            print('processing')
             try:
+                print(f"Processing action: {action['action']} for episode {action.get('episode', 'unknown')}")
+                print(database_type)
                 if action["action"].lower() in ["play", "update_time"]:
                     if "position" in action and action["position"] != -1:
+                        print(action["position"])
                         episode_id = get_episode_id_by_url(cnx, database_type, action["episode"])
+                        print('run result check')
                         if episode_id:
                             # Update listen duration
                             record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
+                            print('post rescd check')
                             # Check for completion
                             if ("total" in action and action["total"] > 0 and
                                 action["position"] >= action["total"]):
@@ -11456,7 +11920,7 @@ def process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type
                                     '''
                                 cursor.execute(update_query, (episode_id,))
                                 cnx.commit()
-                                logger.info(f"Marked episode {episode_id} as completed")
+                                print(f"Marked episode {episode_id} as completed")
             except Exception as e:
                 logger.error(f"Error processing episode action {action}: {str(e)}")
                 continue
@@ -11465,32 +11929,42 @@ def process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type
         logger.error(f"Error fetching episode actions with basic auth: {str(e)}")
         raise
 
-def force_full_sync_to_gpodder(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login):
+def force_full_sync_to_gpodder(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login, device_id=None, device_name=None, is_remote=False):
     """Force a full sync of all local podcasts to the GPodder server"""
     from cryptography.fernet import Fernet
     from requests.auth import HTTPBasicAuth
     import requests
     import logging
 
-    logger = logging.getLogger(__name__)
+    print(f"Starting GPodder sync with: device_id={device_id}, device_name={device_name}, is_remote={is_remote}")
 
     try:
-        # Get or create default device
-        device_id = get_or_create_default_device(cnx, database_type, user_id)
-        if not device_id:
-            logger.error("Failed to get or create default device")
-            return False
-
-        # Get device name from database
-        cursor = cnx.cursor()
-        if database_type == "postgresql":
-            query = 'SELECT DeviceName FROM "GpodderDevices" WHERE DeviceID = %s'
+        # Use provided device_id or get/create default
+        if device_id is None or device_id <= 0:  # Handle negative IDs for remote devices
+            device_id = get_or_create_default_device(cnx, database_type, user_id)
+            print(f"Using default device with ID: {device_id}")
         else:
-            query = "SELECT DeviceName FROM GpodderDevices WHERE DeviceID = %s"
-        cursor.execute(query, (device_id,))
-        result = cursor.fetchone()
-        device_name = result[0] if isinstance(result, tuple) else result["devicename"]
-        cursor.close()
+            print(f"Using provided device ID: {device_id}")
+
+        # Use provided device_name or get from database
+        if device_name is None:
+            cursor = cnx.cursor()
+            if database_type == "postgresql":
+                query = 'SELECT DeviceName FROM "GpodderDevices" WHERE DeviceID = %s'
+            else:
+                query = "SELECT DeviceName FROM GpodderDevices WHERE DeviceID = %s"
+            cursor.execute(query, (device_id,))
+            result = cursor.fetchone()
+            if result:
+                device_name = result[0] if isinstance(result, tuple) else result["devicename"]
+                print(f"Found device name from database: {device_name}")
+            else:
+                # Fallback to default name if query returns nothing
+                device_name = "pinepods_default"
+                print(f"No device name found, using default: {device_name}")
+            cursor.close()
+        else:
+            print(f"Using provided device name: {device_name}")
 
         # Fetch encryption key
         encryption_key = get_encryption_key(cnx, database_type)
@@ -11503,6 +11977,7 @@ def force_full_sync_to_gpodder(database_type, cnx, user_id, gpodder_url, encrypt
             gpodder_token = decrypted_token_bytes.decode()
         else:
             gpodder_token = None
+            print("Warning: No GPodder token provided")
 
         # Create auth
         auth = HTTPBasicAuth(gpodder_login, gpodder_token)
@@ -11522,30 +11997,63 @@ def force_full_sync_to_gpodder(database_type, cnx, user_id, gpodder_url, encrypt
             else:
                 local_podcasts.append(row[0])
 
+        print(f"Found {len(local_podcasts)} local podcasts to sync")
+
         # Create payload for PUT request
         try:
             # Try to login first to establish a session
             session = requests.Session()
             login_url = f"{gpodder_url}/api/2/auth/{gpodder_login}/login.json"
+            print(f"Logging in to GPodder at: {login_url}")
             login_response = session.post(login_url, auth=auth)
             login_response.raise_for_status()
-            logger.info("Session login successful for full sync")
+            print("Session login successful for full sync")
 
             # Use PUT request to update subscriptions
             subscription_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_name}.json"
+            print(f"Sending PUT request to: {subscription_url}")
+
+            # Debug the payload
+            print(f"Sending payload: {local_podcasts[:3]}... (showing first 3 of {len(local_podcasts)})")
+
             response = session.put(
                 subscription_url,
                 json=local_podcasts,
                 headers={"Content-Type": "application/json"}
             )
+
+            # Check response
+            print(f"PUT response status: {response.status_code}")
+            print(f"PUT response text: {response.text[:200]}...")  # Show first 200 chars
+
             response.raise_for_status()
-            logger.info(f"Successfully pushed all podcasts to GPodder: {response.text}")
+            print(f"Successfully pushed all podcasts to GPodder")
             return True
 
         except Exception as e:
-            logger.warning(f"Session-based sync failed: {str(e)}. Falling back to basic auth.")
+            print(f"Session-based sync failed: {str(e)}. Falling back to basic auth.")
             try:
-                # Fall back to basic auth
+                # Try a different method - POST with the update API
+                try:
+                    print("Trying POST to subscriptions-update API...")
+                    update_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_name}.json"
+                    payload = {
+                        "add": local_podcasts,
+                        "remove": []
+                    }
+                    response = session.post(
+                        update_url,
+                        json=payload,
+                        headers={"Content-Type": "application/json"}
+                    )
+                    response.raise_for_status()
+                    print(f"Successfully updated podcasts using POST method")
+                    return True
+                except Exception as e3:
+                    print(f"Failed with POST method: {str(e3)}")
+
+                # Fall back to basic auth with PUT
+                print("Falling back to basic auth with PUT...")
                 subscription_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_name}.json"
                 response = requests.put(
                     subscription_url,
@@ -11553,15 +12061,20 @@ def force_full_sync_to_gpodder(database_type, cnx, user_id, gpodder_url, encrypt
                     auth=auth,
                     headers={"Content-Type": "application/json"}
                 )
+
+                # Check response
+                print(f"Basic auth PUT response status: {response.status_code}")
+                print(f"Basic auth PUT response text: {response.text[:200]}...")  # Show first 200 chars
+
                 response.raise_for_status()
-                logger.info(f"Successfully pushed all podcasts to GPodder using basic auth: {response.text}")
+                print(f"Successfully pushed all podcasts to GPodder using basic auth")
                 return True
             except Exception as e2:
-                logger.error(f"Failed to push podcasts with basic auth: {str(e2)}")
+                print(f"Failed to push podcasts with basic auth: {str(e2)}")
                 return False
 
     except Exception as e:
-        logger.error(f"Error in force_full_sync_to_gpodder: {str(e)}")
+        print(f"Error in force_full_sync_to_gpodder: {str(e)}")
         return False
 
 def sync_subscription_change_gpodder_with_device(gpodder_url, gpodder_login, auth, device_name, add=None, remove=None):
