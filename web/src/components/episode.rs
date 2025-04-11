@@ -23,6 +23,7 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::{call_get_podcast_details_dynamic, call_parse_podcast_url};
 use regex::Regex;
+use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::{spawn_local, JsFuture};
@@ -32,6 +33,143 @@ use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
+
+async fn fallback_to_podcast_parsing(
+    server_name: String,
+    api_key: Option<String>,
+    episode_url_clone: String,
+    audio_url_clone: String,
+    podcast_title_clone: String,
+    podcast_index_id: i64,
+    is_youtube: bool,
+    episode_id: i32,
+    dispatch: Dispatch<AppState>,
+    error_clone: UseStateHandle<Option<String>>,
+    aud_dispatch: Dispatch<UIState>,
+    ep_2_loading_clone: UseStateHandle<bool>,
+    ui_state: Rc<AppState>,
+    window: web_sys::Window,
+    user_id: i32,
+    loading_clone: UseStateHandle<bool>,
+) {
+    match call_parse_podcast_url(server_name.clone(), &api_key, &episode_url_clone).await {
+        Ok(result) => {
+            if let Some(ep) = result
+                .episodes
+                .iter()
+                .find(|ep| ep.enclosure_url.as_ref() == Some(&audio_url_clone))
+                .cloned()
+            {
+                let time_sec = convert_time_to_seconds(ep.duration.unwrap_or_default().as_str());
+                if let Ok(episodeduration) = time_sec {
+                    let ep_url = episode_url_clone.clone();
+                    let aud_url = audio_url_clone.clone();
+                    let podcast_title = podcast_title_clone.clone();
+                    let episodeduration: i32 = episodeduration.try_into().unwrap_or(0);
+
+                    dispatch.reduce_mut(move |state| {
+                        state.fetched_episode = Some(EpisodeMetadataResponse {
+                            episode: EpisodeInfo {
+                                episodetitle: ep.title.unwrap_or_default(),
+                                podcastname: podcast_title.clone(),
+                                podcastid: 0,
+                                podcastindexid: Some(podcast_index_id),
+                                feedurl: ep_url.clone(),
+                                episodepubdate: ep.pub_date.unwrap_or_default(),
+                                // Apply sanitize_html_with_blank_target here too
+                                episodedescription: sanitize_html_with_blank_target(
+                                    &ep.description.unwrap_or_default(),
+                                ),
+                                episodeartwork: ep.artwork.unwrap_or_default(),
+                                episodeurl: aud_url.clone(),
+                                episodeduration,
+                                listenduration: Some(episodeduration),
+                                episodeid: episode_id,
+                                completed: false,
+                                is_downloaded: false,
+                                is_queued: false,
+                                is_saved: false,
+                                is_youtube: false,
+                            },
+                        });
+                        state.selected_episode_id = Some(episode_id);
+                        state.selected_episode_url = Some(ep_url.clone());
+                        state.selected_episode_audio_url = Some(aud_url.clone());
+                        state.selected_podcast_title = Some(podcast_title.clone());
+                    });
+
+                    // Handle podcast 2.0 data if needed
+                    if let Some(episode_id) = ui_state.selected_episode_id {
+                        let chap_request = FetchPodcasting2DataRequest {
+                            episode_id,
+                            user_id: user_id,
+                        };
+
+                        if !is_youtube {
+                            let server_name_clone = server_name.clone();
+                            let api_key_clone = api_key.clone();
+                            wasm_bindgen_futures::spawn_local(async move {
+                                match call_fetch_podcasting_2_data(
+                                    &server_name_clone,
+                                    &api_key_clone,
+                                    &chap_request,
+                                )
+                                .await
+                                {
+                                    Ok(response) => {
+                                        aud_dispatch.reduce_mut(|state| {
+                                            state.episode_page_transcript =
+                                                Some(response.transcripts);
+                                            state.episode_page_people = Some(response.people);
+                                        });
+                                        ep_2_loading_clone.set(false);
+                                    }
+                                    Err(e) => {
+                                        web_sys::console::log_1(
+                                            &format!("Error fetching podcast 2.0 data: {}", e)
+                                                .into(),
+                                        );
+                                        aud_dispatch.reduce_mut(|state| {
+                                            state.episode_page_transcript = None;
+                                            state.episode_page_people = None;
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                    }
+
+                    // Update the URL with the parameters
+                    let mut new_url = window.location().origin().unwrap();
+                    new_url.push_str(&window.location().pathname().unwrap());
+                    new_url.push_str("?podcast_title=");
+                    new_url.push_str(&urlencoding::encode(&podcast_title_clone));
+                    new_url.push_str("&episode_url=");
+                    new_url.push_str(&urlencoding::encode(&episode_url_clone));
+                    new_url.push_str("&audio_url=");
+                    new_url.push_str(&urlencoding::encode(&audio_url_clone));
+                    new_url.push_str("&podcast_index_id=");
+                    new_url.push_str(&podcast_index_id.to_string());
+                    new_url.push_str("&is_youtube=");
+                    new_url.push_str(&is_youtube.to_string());
+
+                    window
+                        .history()
+                        .expect("should have a history")
+                        .replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&new_url))
+                        .expect("should push state");
+
+                    loading_clone.set(false);
+                } else {
+                    error_clone.set(Some("Failed to parse duration".to_string()));
+                }
+            }
+        }
+        Err(e) => {
+            error_clone.set(Some(e.to_string()));
+        }
+    }
+}
 
 fn get_current_url() -> String {
     let window = window().expect("no global `window` exists");
@@ -359,344 +497,260 @@ pub fn epsiode() -> Html {
                         let podcast_title_clone = podcast_title.clone();
                         let episode_url_clone = episode_url.clone();
                         let audio_url_clone = audio_url.clone();
+                        let pod_title_clone2 = podcast_title.clone();
+                        let episode_url_clone2 = episode_url.clone();
+                        let audio_url_clone2 = audio_url.clone();
 
                         wasm_bindgen_futures::spawn_local(async move {
-                            match call_parse_podcast_url(
-                                server_name.clone(),
-                                &api_key,
-                                &episode_url_clone,
+                            // First, try to get the episode ID
+                            match call_get_episode_id(
+                                &server_name,
+                                &api_key.clone().unwrap(),
+                                &user_id,
+                                &podcast_title_clone,
+                                &audio_url_clone,
+                                is_youtube,
                             )
                             .await
                             {
-                                Ok(result) => {
-                                    if let Some(ep) = result
-                                        .episodes
-                                        .iter()
-                                        .find(|ep| {
-                                            ep.enclosure_url.as_ref() == Some(&audio_url_clone)
-                                        })
-                                        .cloned()
+                                Ok(fetched_episode_id) => {
+                                    // If we have an episode ID, use get_episode_metadata for consistent HTML processing
+                                    let episode_request = EpisodeRequest {
+                                        episode_id: fetched_episode_id,
+                                        user_id: user_id.clone(),
+                                        person_episode: false,
+                                        is_youtube,
+                                    };
+
+                                    match pod_req::call_get_episode_metadata(
+                                        &server_name,
+                                        api_key.clone(),
+                                        &episode_request,
+                                    )
+                                    .await
                                     {
-                                        let time_sec = convert_time_to_seconds(
-                                            ep.duration.unwrap_or_default().as_str(),
-                                        );
-                                        if let Ok(episodeduration) = time_sec {
-                                            let ep_url = episode_url_clone.clone();
-                                            let aud_url = audio_url_clone.clone();
-                                            let podcast_title = podcast_title_clone.clone();
-                                            let episodeduration: i32 =
-                                                episodeduration.try_into().unwrap_or(0);
-
-                                            // Fetch the episode ID using the provided API
-                                            match call_get_episode_id(
-                                                &server_name,
-                                                &api_key.clone().unwrap(),
-                                                &user_id,
-                                                &podcast_title,
-                                                &aud_url,
-                                                is_youtube,
-                                            )
-                                            .await
-                                            {
-                                                Ok(fetched_episode_id) => {
-                                                    dispatch.reduce_mut(move |state| {
-                                                        state.fetched_episode =
-                                                            Some(EpisodeMetadataResponse {
-                                                                episode: EpisodeInfo {
-                                                                    episodetitle: ep
-                                                                        .title
-                                                                        .unwrap_or_default(),
-                                                                    podcastname: podcast_title
-                                                                        .clone(),
-                                                                    podcastid: 0,
-                                                                    podcastindexid: Some(
-                                                                        podcast_index_id,
-                                                                    ),
-                                                                    feedurl: ep_url.clone(),
-                                                                    episodepubdate: ep
-                                                                        .pub_date
-                                                                        .unwrap_or_default(),
-                                                                    episodedescription: ep
-                                                                        .description
-                                                                        .unwrap_or_default(),
-                                                                    episodeartwork: ep
-                                                                        .artwork
-                                                                        .unwrap_or_default(),
-                                                                    episodeurl: audio_url.clone(),
-                                                                    episodeduration,
-                                                                    listenduration: Some(
-                                                                        episodeduration,
-                                                                    ),
-                                                                    episodeid: fetched_episode_id, // Set the fetched episode ID here
-                                                                    completed: false,
-                                                                    is_downloaded: false,
-                                                                    is_queued: false,
-                                                                    is_saved: false,
-                                                                    is_youtube: false,
-                                                                },
-                                                            });
-                                                        state.selected_episode_id =
-                                                            Some(fetched_episode_id); // Set the episode ID here
-                                                        state.selected_episode_url =
-                                                            Some(ep_url.clone());
-                                                        state.selected_episode_audio_url =
-                                                            Some(aud_url.clone());
-                                                        state.selected_podcast_title =
-                                                            Some(podcast_title.clone());
+                                        Ok(fetched_episode) => {
+                                            // Successfully got episode metadata - this will have proper HTML
+                                            dispatch.reduce_mut(move |state| {
+                                                state.selected_episode_id =
+                                                    Some(fetched_episode_id);
+                                                state.fetched_episode =
+                                                    Some(EpisodeMetadataResponse {
+                                                        episode: fetched_episode,
                                                     });
+                                                state.selected_episode_url =
+                                                    Some(episode_url_clone2.clone());
+                                                state.selected_episode_audio_url =
+                                                    Some(audio_url_clone2.clone());
+                                                state.selected_podcast_title =
+                                                    Some(pod_title_clone2.clone());
+                                            });
 
-                                                    let user_id_clone = user_id.clone();
-                                                    let api_key_clone = api_key.clone();
-                                                    let server_name_clone = server_name.clone();
+                                            // Setup podcasting 2.0 data
+                                            let user_id_clone = user_id.clone();
+                                            let api_key_clone = api_key.clone();
+                                            let server_name_clone = server_name.clone();
 
-                                                    // Use fetched_episode_id directly since we already have it
-                                                    let chap_request =
-                                                        FetchPodcasting2DataRequest {
-                                                            episode_id: fetched_episode_id, // Use this instead of checking ui_state
-                                                            user_id: user_id_clone,
-                                                        };
+                                            // Use fetched_episode_id directly since we already have it
+                                            let chap_request = FetchPodcasting2DataRequest {
+                                                episode_id: fetched_episode_id,
+                                                user_id: user_id_clone,
+                                            };
 
-                                                    if !is_youtube {
-                                                        wasm_bindgen_futures::spawn_local(
-                                                            async move {
-                                                                match call_fetch_podcasting_2_data(
-                                                                    &server_name_clone,
-                                                                    &api_key_clone,
-                                                                    &chap_request,
-                                                                )
-                                                                .await
-                                                                {
-                                                                    Ok(response) => {
-                                                                        aud_dispatch.reduce_mut(|state| {
-                                                                        state.episode_page_transcript =
-                                                                            Some(response.transcripts);
-                                                                        state.episode_page_people =
-                                                                            Some(response.people);
-                                                                    });
-                                                                        ep_2_loading_clone
-                                                                            .set(false);
-                                                                    }
-                                                                    Err(e) => {
-                                                                        web_sys::console::log_1(&format!("Error fetching podcast 2.0 data: {}", e).into());
-                                                                        aud_dispatch.reduce_mut(|state| {
-                                                                        state.episode_page_transcript =
-                                                                            None;
-                                                                        state.episode_page_people =
-                                                                            None;
-                                                                    });
-                                                                    }
-                                                                }
-                                                            },
-                                                        );
-                                                    }
-
-                                                    // Update the URL with the parameters if they are not already there
-                                                    let mut new_url =
-                                                        window.location().origin().unwrap();
-                                                    new_url.push_str(
-                                                        &window.location().pathname().unwrap(),
-                                                    );
-                                                    new_url.push_str("?podcast_title=");
-                                                    new_url.push_str(&urlencoding::encode(
-                                                        &podcast_title_clone,
-                                                    ));
-                                                    new_url.push_str("&episode_url=");
-                                                    new_url.push_str(&urlencoding::encode(
-                                                        &episode_url_clone,
-                                                    ));
-                                                    new_url.push_str("&audio_url=");
-                                                    new_url.push_str(&urlencoding::encode(
-                                                        &audio_url_clone,
-                                                    ));
-                                                    new_url.push_str("&podcast_index_id=");
-                                                    new_url.push_str(&podcast_index_id.to_string());
-
-                                                    new_url.push_str("&is_youtube=");
-                                                    new_url.push_str(&is_youtube.to_string());
-
-                                                    window
-                                                        .history()
-                                                        .expect("should have a history")
-                                                        .replace_state_with_url(
-                                                            &wasm_bindgen::JsValue::NULL,
-                                                            "",
-                                                            Some(&new_url),
-                                                        )
-                                                        .expect("should push state");
-                                                    // setting fetched_episode url and title
-                                                    // Update the Yewdux state as needed
-                                                    dispatch.reduce_mut(move |state| {
-                                                        if let Some(episode) =
-                                                            state.fetched_episode.clone()
-                                                        {
-                                                            state.selected_episode_url = Some(
-                                                                episode.episode.episodeurl.clone(),
-                                                            );
-                                                            state.selected_podcast_title = Some(
-                                                                episode
-                                                                    .episode
-                                                                    .episodetitle
-                                                                    .clone(),
-                                                            );
-                                                        }
-                                                    });
-                                                    effect_ep_in_db.set(true);
-                                                    loading_clone.set(false);
-                                                }
-                                                Err(_) => {
-                                                    // If fetching the episode ID fails, set it to 0
-                                                    web_sys::console::log_1(
-                                                        &"Episode ID fetch failed".into(),
-                                                    );
-                                                    dispatch.reduce_mut(move |state| {
-                                                        state.fetched_episode =
-                                                            Some(EpisodeMetadataResponse {
-                                                                episode: EpisodeInfo {
-                                                                    episodetitle: ep
-                                                                        .title
-                                                                        .unwrap_or_default(),
-                                                                    podcastname: podcast_title
-                                                                        .clone(),
-                                                                    podcastid: 0,
-                                                                    podcastindexid: Some(
-                                                                        podcast_index_id,
-                                                                    ),
-                                                                    feedurl: ep_url.clone(),
-                                                                    episodepubdate: ep
-                                                                        .pub_date
-                                                                        .unwrap_or_default(),
-                                                                    episodedescription: ep
-                                                                        .description
-                                                                        .unwrap_or_default(),
-                                                                    episodeartwork: ep
-                                                                        .artwork
-                                                                        .unwrap_or_default(),
-                                                                    episodeurl: audio_url.clone(),
-                                                                    episodeduration,
-                                                                    listenduration: Some(
-                                                                        episodeduration,
-                                                                    ),
-                                                                    episodeid: 0, // Set the episode ID to 0
-                                                                    completed: false,
-                                                                    is_downloaded: false,
-                                                                    is_queued: false,
-                                                                    is_saved: false,
-                                                                    is_youtube: false,
-                                                                },
-                                                            });
-                                                        state.selected_episode_id = Some(0); // Set the episode ID to 0
-                                                        state.selected_episode_url =
-                                                            Some(ep_url.clone());
-                                                        state.selected_episode_audio_url =
-                                                            Some(aud_url.clone());
-                                                        state.selected_podcast_title =
-                                                            Some(podcast_title.clone());
-                                                    });
-
-                                                    let user_id_clone = user_id.clone();
-                                                    let api_key_clone = api_key.clone();
-                                                    let server_name_clone = server_name.clone();
-
-                                                    // After setting fetched_episode and before setting loading_clone.set(false):
-                                                    if let Some(episode_id) =
-                                                        ui_state.selected_episode_id
+                                            if !is_youtube {
+                                                wasm_bindgen_futures::spawn_local(async move {
+                                                    match call_fetch_podcasting_2_data(
+                                                        &server_name_clone,
+                                                        &api_key_clone,
+                                                        &chap_request,
+                                                    )
+                                                    .await
                                                     {
-                                                        let chap_request =
-                                                            FetchPodcasting2DataRequest {
-                                                                episode_id,
-                                                                user_id: user_id_clone,
-                                                            };
-
-                                                        if !is_youtube {
-                                                            wasm_bindgen_futures::spawn_local(
-                                                                async move {
-                                                                    match call_fetch_podcasting_2_data(
-                                                                        &server_name_clone,
-                                                                        &api_key_clone,
-                                                                        &chap_request,
-                                                                    )
-                                                                    .await
-                                                                    {
-                                                                        Ok(response) => {
-                                                                            aud_dispatch.reduce_mut(|state| {
-                                                                            state.episode_page_transcript = Some(response.transcripts);
-                                                                            state.episode_page_people = Some(response.people);
-                                                                        });
-                                                                            ep_2_loading_clone
-                                                                                .set(false);
-                                                                        }
-                                                                        Err(e) => {
-                                                                            web_sys::console::log_1(&format!("Error fetching podcast 2.0 data: {}", e).into());
-                                                                            aud_dispatch.reduce_mut(|state| {
-                                                                            state.episode_page_transcript = None;
-                                                                            state.episode_page_people = None;
-                                                                        });
-                                                                        }
-                                                                    }
-                                                                },
-                                                            );
+                                                        Ok(response) => {
+                                                            aud_dispatch.reduce_mut(|state| {
+                                                                state.episode_page_transcript =
+                                                                    Some(response.transcripts);
+                                                                state.episode_page_people =
+                                                                    Some(response.people);
+                                                            });
+                                                            ep_2_loading_clone.set(false);
+                                                        }
+                                                        Err(e) => {
+                                                            web_sys::console::log_1(&format!("Error fetching podcast 2.0 data: {}", e).into());
+                                                            aud_dispatch.reduce_mut(|state| {
+                                                                state.episode_page_transcript =
+                                                                    None;
+                                                                state.episode_page_people = None;
+                                                            });
                                                         }
                                                     }
-
-                                                    // Update the URL with the parameters if they are not already there
-                                                    let mut new_url =
-                                                        window.location().origin().unwrap();
-                                                    new_url.push_str(
-                                                        &window.location().pathname().unwrap(),
-                                                    );
-                                                    new_url.push_str("?podcast_title=");
-                                                    new_url.push_str(&urlencoding::encode(
-                                                        &podcast_title_clone,
-                                                    ));
-                                                    new_url.push_str("&episode_url=");
-                                                    new_url.push_str(&urlencoding::encode(
-                                                        &episode_url_clone,
-                                                    ));
-                                                    new_url.push_str("&audio_url=");
-                                                    new_url.push_str(&urlencoding::encode(
-                                                        &audio_url_clone,
-                                                    ));
-                                                    new_url.push_str("&podcast_index_id=");
-                                                    new_url.push_str(&podcast_index_id.to_string());
-
-                                                    new_url.push_str("&is_youtube=");
-                                                    new_url.push_str(&is_youtube.to_string());
-
-                                                    window
-                                                        .history()
-                                                        .expect("should have a history")
-                                                        .replace_state_with_url(
-                                                            &wasm_bindgen::JsValue::NULL,
-                                                            "",
-                                                            Some(&new_url),
-                                                        )
-                                                        .expect("should push state");
-                                                    dispatch.reduce_mut(move |state| {
-                                                        if let Some(episode) =
-                                                            state.fetched_episode.clone()
-                                                        {
-                                                            state.selected_episode_url = Some(
-                                                                episode.episode.episodeurl.clone(),
-                                                            );
-                                                            state.selected_podcast_title = Some(
-                                                                episode
-                                                                    .episode
-                                                                    .episodetitle
-                                                                    .clone(),
-                                                            );
-                                                        }
-                                                    });
-                                                    loading_clone.set(false);
-                                                }
+                                                });
                                             }
-                                        } else {
-                                            error_clone
-                                                .set(Some("Failed to parse duration".to_string()));
+
+                                            // Update the URL with the parameters if they are not already there
+                                            let mut new_url = window.location().origin().unwrap();
+                                            new_url
+                                                .push_str(&window.location().pathname().unwrap());
+                                            new_url.push_str("?podcast_title=");
+                                            new_url.push_str(&urlencoding::encode(
+                                                &podcast_title_clone,
+                                            ));
+                                            new_url.push_str("&episode_url=");
+                                            new_url
+                                                .push_str(&urlencoding::encode(&episode_url_clone));
+                                            new_url.push_str("&audio_url=");
+                                            new_url
+                                                .push_str(&urlencoding::encode(&audio_url_clone));
+                                            new_url.push_str("&podcast_index_id=");
+                                            new_url.push_str(&podcast_index_id.to_string());
+                                            new_url.push_str("&is_youtube=");
+                                            new_url.push_str(&is_youtube.to_string());
+
+                                            window
+                                                .history()
+                                                .expect("should have a history")
+                                                .replace_state_with_url(
+                                                    &wasm_bindgen::JsValue::NULL,
+                                                    "",
+                                                    Some(&new_url),
+                                                )
+                                                .expect("should push state");
+
+                                            effect_ep_in_db.set(true);
+                                            loading_clone.set(false);
+                                        }
+                                        Err(e) => {
+                                            // Metadata call failed, fall back to parsing from feed
+                                            web_sys::console::log_1(
+                                                &format!("Metadata call failed: {}", e).into(),
+                                            );
+                                            fallback_to_podcast_parsing(
+                                                server_name.clone(),
+                                                api_key.clone(),
+                                                episode_url_clone.clone(),
+                                                audio_url_clone.clone(),
+                                                podcast_title_clone.clone(),
+                                                podcast_index_id,
+                                                is_youtube,
+                                                fetched_episode_id,
+                                                dispatch.clone(),
+                                                error_clone.clone(),
+                                                aud_dispatch.clone(),
+                                                ep_2_loading_clone.clone(),
+                                                ui_state.clone(),
+                                                window,
+                                                user_id.clone(),
+                                                loading_clone.clone(),
+                                            )
+                                            .await;
                                         }
                                     }
                                 }
-                                Err(e) => {
-                                    error_clone.set(Some(e.to_string()));
+                                Err(_) => {
+                                    // Couldn't get episode ID, fall back to parsing podcast feed
+                                    match call_parse_podcast_url(
+                                        server_name.clone(),
+                                        &api_key,
+                                        &episode_url_clone,
+                                    )
+                                    .await
+                                    {
+                                        Ok(result) => {
+                                            if let Some(ep) = result
+                                                .episodes
+                                                .iter()
+                                                .find(|ep| {
+                                                    ep.enclosure_url.as_ref()
+                                                        == Some(&audio_url_clone)
+                                                })
+                                                .cloned()
+                                            {
+                                                let time_sec = convert_time_to_seconds(
+                                                    ep.duration.unwrap_or_default().as_str(),
+                                                );
+                                                if let Ok(episodeduration) = time_sec {
+                                                    let ep_url = episode_url_clone.clone();
+                                                    let aud_url = audio_url_clone.clone();
+                                                    let podcast_title = podcast_title_clone.clone();
+                                                    let episodeduration: i32 =
+                                                        episodeduration.try_into().unwrap_or(0);
+
+                                                    dispatch.reduce_mut(move |state| {
+                                                        state.fetched_episode = Some(EpisodeMetadataResponse {
+                                                            episode: EpisodeInfo {
+                                                                episodetitle: ep.title.unwrap_or_default(),
+                                                                podcastname: podcast_title.clone(),
+                                                                podcastid: 0,
+                                                                podcastindexid: Some(podcast_index_id),
+                                                                feedurl: ep_url.clone(),
+                                                                episodepubdate: ep.pub_date.unwrap_or_default(),
+                                                                // KEY CHANGE: Apply sanitize_html_with_blank_target here
+                                                                episodedescription: sanitize_html_with_blank_target(
+                                                                    &ep.description.unwrap_or_default()
+                                                                ),
+                                                                episodeartwork: ep.artwork.unwrap_or_default(),
+                                                                episodeurl: audio_url.clone(),
+                                                                episodeduration,
+                                                                listenduration: Some(episodeduration),
+                                                                episodeid: 0, // Set the episode ID to 0
+                                                                completed: false,
+                                                                is_downloaded: false,
+                                                                is_queued: false,
+                                                                is_saved: false,
+                                                                is_youtube: false,
+                                                            },
+                                                        });
+                                                        state.selected_episode_id = Some(0);
+                                                        state.selected_episode_url = Some(ep_url.clone());
+                                                        state.selected_episode_audio_url = Some(aud_url.clone());
+                                                        state.selected_podcast_title = Some(podcast_title.clone());
+                                                    });
+
+                                                    // Update the URL with the parameters
+                                                    let mut new_url =
+                                                        window.location().origin().unwrap();
+                                                    new_url.push_str(
+                                                        &window.location().pathname().unwrap(),
+                                                    );
+                                                    new_url.push_str("?podcast_title=");
+                                                    new_url.push_str(&urlencoding::encode(
+                                                        &podcast_title_clone,
+                                                    ));
+                                                    new_url.push_str("&episode_url=");
+                                                    new_url.push_str(&urlencoding::encode(
+                                                        &episode_url_clone,
+                                                    ));
+                                                    new_url.push_str("&audio_url=");
+                                                    new_url.push_str(&urlencoding::encode(
+                                                        &audio_url_clone,
+                                                    ));
+                                                    new_url.push_str("&podcast_index_id=");
+                                                    new_url.push_str(&podcast_index_id.to_string());
+                                                    new_url.push_str("&is_youtube=");
+                                                    new_url.push_str(&is_youtube.to_string());
+
+                                                    window
+                                                        .history()
+                                                        .expect("should have a history")
+                                                        .replace_state_with_url(
+                                                            &wasm_bindgen::JsValue::NULL,
+                                                            "",
+                                                            Some(&new_url),
+                                                        )
+                                                        .expect("should push state");
+
+                                                    loading_clone.set(false);
+                                                } else {
+                                                    error_clone.set(Some(
+                                                        "Failed to parse duration".to_string(),
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error_clone.set(Some(e.to_string()));
+                                        }
+                                    }
                                 }
                             }
                         });
@@ -867,7 +921,37 @@ pub fn epsiode() -> Html {
                                         dispatch.reduce_mut(move |state| {
                                             state.selected_episode_id = Some(real_episode_id);
                                             state.fetched_episode = Some(EpisodeMetadataResponse {
-                                                episode: fetched_episode,
+                                                episode: EpisodeInfo {
+                                                    episodetitle: fetched_episode
+                                                        .episodetitle
+                                                        .clone(),
+                                                    podcastname: fetched_episode
+                                                        .podcastname
+                                                        .clone(),
+                                                    podcastid: fetched_episode.podcastid,
+                                                    podcastindexid: fetched_episode.podcastindexid,
+                                                    feedurl: fetched_episode.feedurl.clone(),
+                                                    episodepubdate: fetched_episode
+                                                        .episodepubdate
+                                                        .clone(),
+                                                    episodedescription:
+                                                        sanitize_html_with_blank_target(
+                                                            &fetched_episode.episodedescription,
+                                                        ),
+                                                    episodeartwork: fetched_episode
+                                                        .episodeartwork
+                                                        .clone(),
+                                                    episodeurl: fetched_episode.episodeurl.clone(),
+                                                    episodeduration: fetched_episode
+                                                        .episodeduration,
+                                                    listenduration: fetched_episode.listenduration,
+                                                    episodeid: fetched_episode.episodeid,
+                                                    completed: fetched_episode.completed,
+                                                    is_downloaded: fetched_episode.is_downloaded,
+                                                    is_queued: fetched_episode.is_queued,
+                                                    is_saved: fetched_episode.is_saved,
+                                                    is_youtube: fetched_episode.is_youtube,
+                                                },
                                             });
                                         });
 
