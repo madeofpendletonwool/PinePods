@@ -4518,25 +4518,33 @@ def get_episode_id_ep_name(cnx, database_type, podcast_title, episode_url):
     cursor.close()
     return episode_id
 
-
 def get_episode_id_by_url(cnx, database_type, episode_url):
     cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'SELECT EpisodeID FROM "Episodes" WHERE EpisodeURL = %s'
+        else:
+            query = "SELECT EpisodeID FROM Episodes WHERE EpisodeURL = %s"
 
-    if database_type == "postgresql":
-        query = 'SELECT EpisodeID FROM "Episodes" WHERE EpisodeURL = %s'
-    else:
-        query = "SELECT EpisodeID FROM Episodes WHERE EpisodeURL = %s"
-    params = (episode_url,)  # Ensure this is a tuple
+        params = (episode_url,)  # Ensure this is a tuple
+        cursor.execute(query, params)
+        result = cursor.fetchone()
 
-    cursor.execute(query, params)
-    result = cursor.fetchone()
+        if result:
+            # Handle both tuple and dictionary-like results
+            if isinstance(result, dict):
+                # Try with both camelCase and lowercase keys
+                episode_id = result.get("episodeid") or result.get("EpisodeID")
+            else:  # Assume it's a tuple or tuple-like
+                episode_id = result[0]
 
-    episode_id = None  # Initialize episode_id
-    if result:
-        episode_id = result[0]
-
-    cursor.close()
-    return episode_id
+            return episode_id
+        return None  # No matching episode found
+    except Exception as e:
+        print(f"Error in get_episode_id_by_url: {e}")
+        return None
+    finally:
+        cursor.close()
 
 
 
@@ -5519,6 +5527,84 @@ def verify_api_key(cnx, database_type, passed_key):
         return True if result else False
     except Exception as e:
         logging.error(f'verify_api_key error: {str(e)}')
+        return False
+    finally:
+        cursor.close()
+
+def get_user_gpodder_status(cnx, database_type, user_id):
+    cursor = cnx.cursor()
+    try:
+        print(f"Getting status for user_id: {user_id}")
+        cursor.execute(
+            'SELECT Pod_Sync_Type, GpodderUrl, GpodderLoginName FROM "Users" WHERE UserID = %s',
+            (user_id,)
+        )
+        user_data = cursor.fetchone()
+        print(f"Raw user_data: {user_data}, type: {type(user_data)}")
+
+        if not user_data:
+            print("No user data found")
+            return None
+
+        # Handle both dict and tuple return types
+        if isinstance(user_data, dict):
+            print("Handling dict type return")
+            sync_type = user_data.get('Pod_Sync_Type')
+            print(f"Dict sync_type before default: {sync_type}")
+            sync_type = sync_type if sync_type else "None"
+            gpodder_url = user_data.get('GpodderUrl')
+            gpodder_login = user_data.get('GpodderLoginName')
+        else:
+            # It's a tuple/list
+            print("Handling tuple/list type return")
+            sync_type = user_data[0]
+            print(f"Tuple sync_type before default: {sync_type}")
+            sync_type = sync_type if sync_type else "None"
+            gpodder_url = user_data[1] if len(user_data) > 1 else None
+            gpodder_login = user_data[2] if len(user_data) > 2 else None
+
+        print(f"Final sync_type: {sync_type}")
+
+        # Create a proper structure for the result
+        result = {
+            "sync_type": sync_type,
+            "gpodder_url": gpodder_url,
+            "gpodder_login": gpodder_login
+        }
+        print(f"Returning user status: {result}")
+        return result
+    except Exception as e:
+        print(f"Database error in get_user_gpodder_status: {str(e)}")
+        return None
+    finally:
+        cursor.close()
+
+def update_user_gpodder_sync(cnx, database_type, user_id, new_sync_type):
+    cursor = cnx.cursor()
+    try:
+        print(f"Updating sync type for user_id {user_id} to {new_sync_type}")
+        cursor.execute(
+            'UPDATE "Users" SET Pod_Sync_Type = %s WHERE UserID = %s',
+            (new_sync_type, user_id)
+        )
+        rows_affected = cursor.rowcount
+        print(f"Rows affected by update: {rows_affected}")
+        cnx.commit()
+        print("Transaction committed")
+
+        # Verify the update was successful
+        verify_cursor = cnx.cursor()
+        verify_cursor.execute(
+            'SELECT Pod_Sync_Type FROM "Users" WHERE UserID = %s',
+            (user_id,)
+        )
+        updated_value = verify_cursor.fetchone()
+        verify_cursor.close()
+        print(f"Verification after update: {updated_value}")
+
+        return rows_affected > 0
+    except Exception as e:
+        print(f"Database error in update_user_gpodder_sync: {e}")
         return False
     finally:
         cursor.close()
@@ -10232,26 +10318,25 @@ def check_gpodder_settings(database_type, cnx, user_id):
 
 def get_nextcloud_users(database_type, cnx):
     cursor = cnx.cursor()
-
-    # Query to select users with set Nextcloud gPodder URLs and Tokens
+    # Query to select users with either external sync configuration OR internal gpodder API enabled
     if database_type == "postgresql":
         query = """
-            SELECT UserID, GpodderUrl, GpodderToken, GpodderLoginName
+            SELECT UserID, GpodderUrl, GpodderToken, GpodderLoginName, Pod_Sync_Type
             FROM "Users"
-            WHERE GpodderUrl <> '' AND GpodderToken <> '' AND GpodderLoginName <> ''
+            WHERE (GpodderUrl <> '' AND GpodderToken <> '' AND GpodderLoginName <> '')
+               OR Pod_Sync_Type IN ('gpodder', 'both')
         """
     else:  # MySQL or MariaDB
         query = """
-            SELECT UserID, GpodderUrl, GpodderToken, GpodderLoginName
+            SELECT UserID, GpodderUrl, GpodderToken, GpodderLoginName, Pod_Sync_Type
             FROM Users
-            WHERE GpodderUrl <> '' AND GpodderToken <> '' AND GpodderLoginName <> ''
+            WHERE (GpodderUrl <> '' AND GpodderToken <> '' AND GpodderLoginName <> '')
+               OR Pod_Sync_Type IN ('gpodder', 'both')
         """
     cursor.execute(query)
-
     # Fetch all matching records
     users = cursor.fetchall()
     cursor.close()
-
     return users
 
 
@@ -11324,7 +11409,9 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
 
         # Process episode actions using the correct device
         try:
+            print(f"Authentication method: {'session' if use_session else 'basic auth'}")
             if use_session:
+                print("Using SESSION authentication for episode actions")
                 process_episode_actions_session(
                     session,
                     gpodder_url,
@@ -11336,6 +11423,7 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
                     device_id
                 )
             else:
+                ("Using BASIC authentication for episode actions")
                 process_episode_actions(
                     gpodder_url,
                     gpodder_login,
@@ -11351,6 +11439,7 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
 
         # Sync local episode times
         try:
+            print(f"Authentication method for ep times: {'session' if use_session else 'basic auth'}")
             if use_session:
                 sync_local_episode_times_session(
                     session,
@@ -11378,6 +11467,180 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
     except Exception as e:
         logger.error(f"Major error in refresh_gpodder_subscription: {str(e)}")
         return False
+
+def refresh_internal_gpodder(database_type, cnx, user_id):
+    """
+    Sync podcasts using the internal gpodder API
+    """
+    print(f"Refreshing internal gpodder for user {user_id}")
+    cursor = cnx.cursor()
+
+    try:
+        # 1. Get all podcasts for this user
+        if database_type == "postgresql":
+            query = """
+                SELECT PodcastID, PodcastName, FeedURL, UserID
+                FROM "Podcasts"
+                WHERE UserID = %s
+            """
+        else:
+            query = """
+                SELECT PodcastID, PodcastName, FeedURL, UserID
+                FROM Podcasts
+                WHERE UserID = %s
+            """
+
+        cursor.execute(query, (user_id,))
+        podcasts = cursor.fetchall()
+
+        print(f"Found {len(podcasts)} podcasts for user {user_id}")
+
+        # 2. Get all device IDs from GpodderDevices for this user
+        if database_type == "postgresql":
+            query = """
+                SELECT DeviceID, DeviceName
+                FROM "GpodderDevices"
+                WHERE UserID = %s AND IsActive = true
+            """
+        else:
+            query = """
+                SELECT DeviceID, DeviceName
+                FROM GpodderDevices
+                WHERE UserID = %s AND IsActive = true
+            """
+
+        cursor.execute(query, (user_id,))
+        devices = cursor.fetchall()
+
+        # If no devices, create a default one
+        if not devices:
+            if database_type == "postgresql":
+                query = """
+                    INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType, DeviceCaption, IsActive)
+                    VALUES (%s, %s, %s, %s, true)
+                    RETURNING DeviceID
+                """
+            else:
+                query = """
+                    INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, DeviceCaption, IsActive)
+                    VALUES (%s, %s, %s, %s, true)
+                """
+
+            device_name = f"pinepods-internal-{user_id}"
+            device_type = "server"
+            device_caption = "Pinepods Internal Sync Device"
+
+            cursor.execute(query, (user_id, device_name, device_type, device_caption))
+
+            if database_type == "postgresql":
+                device_id = cursor.fetchone()[0]
+            else:
+                device_id = cursor.lastrowid
+
+            devices = [(device_id, device_name)]
+            cnx.commit()
+
+        # 3. For each device, ensure subscriptions are in sync
+        for device_id, device_name in devices:
+            print(f"Syncing device {device_name} (ID: {device_id})")
+
+            # Get existing subscriptions for this device
+            if database_type == "postgresql":
+                query = """
+                    SELECT PodcastURL
+                    FROM "GpodderSyncSubscriptions"
+                    WHERE UserID = %s AND DeviceID = %s AND Action = 'add'
+                    ORDER BY Timestamp DESC
+                """
+            else:
+                query = """
+                    SELECT PodcastURL
+                    FROM GpodderSyncSubscriptions
+                    WHERE UserID = %s AND DeviceID = %s AND Action = 'add'
+                    ORDER BY Timestamp DESC
+                """
+
+            cursor.execute(query, (user_id, device_id))
+            existing_urls = set()
+
+            for row in cursor.fetchall():
+                url = row[0] if isinstance(row, tuple) else row['PodcastURL']
+                existing_urls.add(url)
+
+            # Get current podcast URLs
+            current_urls = {p[2] if isinstance(p, tuple) else p['FeedURL'] for p in podcasts}
+
+            # URLs to add (in current but not in existing)
+            to_add = current_urls - existing_urls
+
+            # URLs to remove (in existing but not in current)
+            to_remove = existing_urls - current_urls
+
+            timestamp = int(time.time())
+
+            # Add new subscriptions
+            for url in to_add:
+                print(f"Adding subscription to {url} for device {device_name}")
+                if database_type == "postgresql":
+                    query = """
+                        INSERT INTO "GpodderSyncSubscriptions"
+                        (UserID, DeviceID, PodcastURL, Action, Timestamp)
+                        VALUES (%s, %s, %s, 'add', %s)
+                    """
+                else:
+                    query = """
+                        INSERT INTO GpodderSyncSubscriptions
+                        (UserID, DeviceID, PodcastURL, Action, Timestamp)
+                        VALUES (%s, %s, %s, 'add', %s)
+                    """
+
+                cursor.execute(query, (user_id, device_id, url, timestamp))
+
+            # Remove subscriptions that no longer exist
+            for url in to_remove:
+                print(f"Removing subscription to {url} for device {device_name}")
+                if database_type == "postgresql":
+                    query = """
+                        INSERT INTO "GpodderSyncSubscriptions"
+                        (UserID, DeviceID, PodcastURL, Action, Timestamp)
+                        VALUES (%s, %s, %s, 'remove', %s)
+                    """
+                else:
+                    query = """
+                        INSERT INTO GpodderSyncSubscriptions
+                        (UserID, DeviceID, PodcastURL, Action, Timestamp)
+                        VALUES (%s, %s, %s, 'remove', %s)
+                    """
+
+                cursor.execute(query, (user_id, device_id, url, timestamp))
+
+            # Update device last sync timestamp
+            if database_type == "postgresql":
+                query = """
+                    UPDATE "GpodderDevices"
+                    SET LastSync = CURRENT_TIMESTAMP
+                    WHERE DeviceID = %s
+                """
+            else:
+                query = """
+                    UPDATE GpodderDevices
+                    SET LastSync = CURRENT_TIMESTAMP
+                    WHERE DeviceID = %s
+                """
+
+            cursor.execute(query, (device_id,))
+
+        # Commit all changes
+        cnx.commit()
+        print(f"Successfully synced internal gpodder for user {user_id}")
+        return True
+
+    except Exception as e:
+        print(f"Error in refresh_internal_gpodder: {e}")
+        return False
+
+    finally:
+        cursor.close()
 
 def get_local_episode_times(cnx, database_type, user_id):
     """Get a list of all episode times for a user's podcasts"""
@@ -11857,76 +12120,96 @@ def process_episode_actions_session(session, gpodder_url, gpodder_login, cnx, da
 def process_episode_actions(gpodder_url, gpodder_login, auth, cnx, database_type, user_id, device_name, device_id):
     """Process incoming episode actions from gPodder using basic authentication"""
     logger = logging.getLogger(__name__)
-    print('running episode actions')
+    print('Running episode actions with basic auth')
     try:
         # Get timestamp for since parameter
         timestamps = get_sync_timestamps(cnx, database_type, user_id, device_id)
         episodes_timestamp = timestamps["episodes_timestamp"]
-        print('got timestamps')
+        print(f'Got timestamps: {episodes_timestamp}')
 
-        # Build the URL properly
+        # Always include device parameter, even if it's empty
         url = f"{gpodder_url}/api/2/episodes/{gpodder_login}.json?since={episodes_timestamp}"
         if device_name:
             url += f"&device={device_name}"
+
         print(f"Episode actions API URL: {url}")
 
-        # Get episode actions with basic auth and since parameter
+        # Get episode actions with basic auth
         episode_actions_response = requests.get(url, auth=auth)
         print(f"Episode actions response status: {episode_actions_response.status_code}")
 
+        # Log the raw response for debugging
+        response_text = episode_actions_response.text
+        print(f"Raw response: {response_text[:200]}...")  # Log first 200 chars
+
         episode_actions_response.raise_for_status()
+
+        # Parse the JSON response
         episode_actions = episode_actions_response.json()
-        print('got actions')
-        print(f"Actions array: {episode_actions.get('actions', 'NO ACTIONS KEY!')}")
+        print(f"Response keys: {episode_actions.keys()}")
 
         # Store timestamp for future requests
         if "timestamp" in episode_actions:
-            try:
-                update_sync_timestamp(cnx, database_type, user_id, device_id, "episodes_timestamp", episode_actions["timestamp"])
-                print('stamp stored')
-            except Exception as e:
-                print(f"Error updating sync timestamp: {e}")
+            update_sync_timestamp(cnx, database_type, user_id, device_id, "episodes_timestamp", episode_actions["timestamp"])
+            print(f'Updated timestamp to {episode_actions["timestamp"]}')
+
+        # Check if 'actions' key exists before processing
+        if 'actions' not in episode_actions:
+            print("No 'actions' key in response. Response structure: %s", episode_actions)
+            return  # Exit early if no actions to process
 
         # Process each action - same as in session version
         cursor = cnx.cursor()
         for action in episode_actions.get('actions', []):
-            print('processing')
             try:
-                print(f"Processing action: {action['action']} for episode {action.get('episode', 'unknown')}")
-                print(database_type)
+                print(f"Processing action: {action}")
+
+                if "action" not in action:
+                    print(f"Action missing 'action' key: {action}")
+                    continue
+
                 if action["action"].lower() in ["play", "update_time"]:
                     if "position" in action and action["position"] != -1:
-                        print(action["position"])
+                        # Check if episode key exists
+                        if "episode" not in action:
+                            print(f"Action missing 'episode' key: {action}")
+                            continue
+
                         episode_id = get_episode_id_by_url(cnx, database_type, action["episode"])
-                        print('run result check')
-                        if episode_id:
-                            # Update listen duration
-                            record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
-                            print('post rescd check')
-                            # Check for completion
-                            if ("total" in action and action["total"] > 0 and
-                                action["position"] >= action["total"]):
-                                if database_type == "postgresql":
-                                    update_query = '''
-                                        UPDATE "Episodes"
-                                        SET Completed = TRUE
-                                        WHERE EpisodeID = %s
-                                    '''
-                                else:
-                                    update_query = '''
-                                        UPDATE Episodes
-                                        SET Completed = TRUE
-                                        WHERE EpisodeID = %s
-                                    '''
-                                cursor.execute(update_query, (episode_id,))
-                                cnx.commit()
-                                print(f"Marked episode {episode_id} as completed")
+
+                        if not episode_id:
+                            print(f"No episode found for URL: {action['episode']}")
+                            continue
+
+                        # Update listen duration
+                        record_listen_duration(cnx, database_type, episode_id, user_id, int(action["position"]))
+                        print(f"Updated listen duration for episode {episode_id}")
+
+                        # Check for completion
+                        if ("total" in action and action["total"] > 0 and
+                            action["position"] >= action["total"]):
+                            if database_type == "postgresql":
+                                update_query = '''
+                                    UPDATE "Episodes"
+                                    SET Completed = TRUE
+                                    WHERE EpisodeID = %s
+                                '''
+                            else:
+                                update_query = '''
+                                    UPDATE Episodes
+                                    SET Completed = TRUE
+                                    WHERE EpisodeID = %s
+                                '''
+                            cursor.execute(update_query, (episode_id,))
+                            cnx.commit()
+                            print(f"Marked episode {episode_id} as completed")
             except Exception as e:
                 logger.error(f"Error processing episode action {action}: {str(e)}")
+                # Continue with next action rather than breaking
                 continue
         cursor.close()
     except Exception as e:
-        logger.error(f"Error fetching episode actions with basic auth: {str(e)}")
+        logger.error(f"Error fetching episode actions with basic auth: {str(e)}", exc_info=True)
         raise
 
 def force_full_sync_to_gpodder(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login, device_id=None, device_name=None, is_remote=False):

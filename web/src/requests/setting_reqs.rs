@@ -1592,6 +1592,60 @@ pub async fn call_sync_with_gpodder(
     Ok(response)
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GpodderApiToggleRequest {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GpodderApiStatusResponse {
+    pub sync_type: String,
+    pub gpodder_enabled: bool,
+    pub external_enabled: bool,
+    pub external_url: Option<String>,
+    pub api_url: String,
+}
+
+// Get GPodder API status
+pub async fn call_get_gpodder_api_status(
+    server_name: &str,
+    api_key: &str,
+) -> Result<GpodderApiStatusResponse, gloo::net::Error> {
+    let url = format!("{}/api/data/gpodder/status", server_name);
+
+    let response = gloo::net::http::Request::get(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await?
+        .json::<GpodderApiStatusResponse>()
+        .await?;
+
+    Ok(response)
+}
+
+// Toggle GPodder API
+pub async fn call_toggle_gpodder_api(
+    server_name: &str,
+    api_key: &str,
+    enabled: bool,
+) -> Result<GpodderApiStatusResponse, gloo::net::Error> {
+    let url = format!("{}/api/data/gpodder/toggle", server_name);
+
+    let request = GpodderApiToggleRequest { enabled };
+
+    let response = gloo::net::http::Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request)?
+        .send()
+        .await?
+        .json::<GpodderApiStatusResponse>()
+        .await?;
+
+    Ok(response)
+}
+
 // Test GPodder connection
 pub async fn call_test_gpodder_connection(
     server_name: &str,

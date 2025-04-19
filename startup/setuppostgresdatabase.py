@@ -569,6 +569,29 @@ try:
     except Exception as e:
         print(f"Error adding Podcasts table: {e}")
 
+    try:
+        # Add unique constraint on UserID and FeedURL to fix the ON CONFLICT error
+        cursor.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'podcasts_userid_feedurl_key'
+                ) THEN
+                    -- Add the constraint if it doesn't exist
+                    ALTER TABLE "Podcasts"
+                    ADD CONSTRAINT podcasts_userid_feedurl_key
+                    UNIQUE (UserID, FeedURL);
+                END IF;
+            END
+            $$;
+        """)
+        cnx.commit()
+        print("Added unique constraint on UserID and FeedURL to Podcasts table")
+    except Exception as e:
+        print(f"Error adding unique constraint to Podcasts table: {e}")
+
     def add_youtube_column_if_not_exist(cursor, cnx):
         try:
             cursor.execute("""

@@ -4756,7 +4756,6 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
         users = database_functions.functions.get_nextcloud_users(database_type, cnx)
     finally:
         close_database_connection(cnx)
-
     for user in users:
         # Handle both dictionary and tuple cases
         if isinstance(user, dict):
@@ -4765,24 +4764,52 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
                 gpodder_url = user["gpodderurl"]
                 gpodder_token = user["gpoddertoken"]
                 gpodder_login = user["gpodderloginname"]
+                sync_type = user.get("pod_sync_type", "None")
             else:
                 user_id = user["UserID"]
                 gpodder_url = user["GpodderUrl"]
                 gpodder_token = user["GpodderToken"]
                 gpodder_login = user["GpodderLoginName"]
+                sync_type = user.get("Pod_Sync_Type", "None")
         else:  # assuming tuple
-            user_id, gpodder_url, gpodder_token, gpodder_login = user
-        background_tasks.add_task(refresh_nextcloud_subscription_for_user, database_type, user_id, gpodder_url, gpodder_token, gpodder_login)
+            # Now handle 5 values instead of 4
+            if len(user) >= 5:
+                user_id, gpodder_url, gpodder_token, gpodder_login, sync_type = user
+            else:
+                user_id, gpodder_url, gpodder_token, gpodder_login = user
+                sync_type = "None"
+
+        # Pass the sync_type to the refresh function
+        background_tasks.add_task(
+            refresh_nextcloud_subscription_for_user,
+            database_type,
+            user_id,
+            gpodder_url,
+            gpodder_token,
+            gpodder_login,
+            sync_type  # Add this parameter
+        )
     return {"status": "success", "message": "Nextcloud subscriptions refresh initiated."}
 
-def refresh_nextcloud_subscription_for_user(c, user_id, gpodder_url, gpodder_token, gpodder_login):
+def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url, gpodder_token, gpodder_login, sync_type=None):
     cnx = create_database_connection()
     try:
-        gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
-        if gpod_type == "nextcloud":
-            database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
-        else:  # Assume gPodder
-            database_functions.functions.refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
+        # If sync_type wasn't passed, try to get it from the database
+        if not sync_type:
+            sync_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
+
+        # If this is an internal gpodder API (URL points to localhost or Pod_Sync_Type is 'gpodder')
+        if sync_type == "gpodder" or (gpodder_url and gpodder_url.startswith("http://localhost")):
+            print(f"Using internal gpodder API for user {user_id}")
+            # Use the internal gpodder API implementation
+            database_functions.functions.refresh_internal_gpodder(database_type, cnx, user_id)
+        # For external gpodder implementations
+        elif sync_type == "nextcloud":
+            print(f"Using nextcloud gpodder API for user {user_id}")
+            database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, sync_type)
+        else:  # Assume external gPodder
+            print(f"Using external gpodder API for user {user_id}")
+            database_functions.functions.refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, sync_type)
     finally:
         close_database_connection(cnx)
 
@@ -5354,6 +5381,168 @@ async def stream_episode(
             raise HTTPException(status_code=404, detail="Episode not found or not downloaded")
     else:
         raise HTTPException(status_code=403, detail="You do not have permission to access this episode")
+
+class UpdateGpodderSyncRequest(BaseModel):
+    enabled: bool
+
+@app.post("/api/data/gpodder/toggle")
+async def toggle_gpodder_sync(
+    request: UpdateGpodderSyncRequest,
+    background_tasks: BackgroundTasks,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Enable or disable gpodder sync for the current user"""
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+    # Get the user ID from the API key
+    user_id_result = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    print(f"User ID result: {user_id_result}")
+
+    if isinstance(user_id_result, dict):
+        user_id = user_id_result.get('userid')
+        print(f"Extracted user_id from dict: {user_id}")
+    else:
+        user_id = user_id_result[0] if isinstance(user_id_result, tuple) else user_id_result
+        print(f"Direct user_id: {user_id}")
+
+    if not user_id:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    try:
+        print(f"Request to toggle gpodder sync: {request.enabled}")
+        user_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        current_sync_type = user_data["sync_type"]
+        print(f"Current sync type: {current_sync_type}")
+        new_sync_type = current_sync_type
+
+        # Determine new sync type based on enable/disable request
+        if request.enabled:
+            if current_sync_type == "external":
+                new_sync_type = "both"
+            elif current_sync_type == "None" or current_sync_type is None:
+                new_sync_type = "gpodder"
+
+                # When enabling internal gpodder API, set the local details
+                local_gpodder_url = "http://localhost:8000"  # Use the internal API URL
+                local_gpodder_login = f"user_{user_id}"      # Create a standard username format
+                local_gpodder_token = generate_gpodder_token(user_id)  # Generate a token
+
+                # Add the gpodder settings with local details
+                database_functions.functions.add_gpodder_settings(
+                    database_type,
+                    cnx,
+                    user_id,
+                    local_gpodder_url,
+                    local_gpodder_token,
+                    local_gpodder_login,
+                    new_sync_type
+                )
+                # Add an immediate sync task
+                background_tasks.add_task(
+                    database_functions.functions.refresh_internal_gpodder,
+                    database_type,
+                    cnx,
+                    user_id
+                )
+                print(f"Set local gpodder details for internal API: URL={local_gpodder_url}, Login={local_gpodder_login}")
+        else:
+            if current_sync_type == "both":
+                new_sync_type = "external"
+            elif current_sync_type == "gpodder":
+                new_sync_type = "None"
+
+                # When disabling internal gpodder API, clear the gpodder settings
+                if user_data.get("gpodder_url") == "http://localhost:8000":
+                    database_functions.functions.add_gpodder_settings(
+                        database_type,
+                        cnx,
+                        user_id,
+                        "",  # Clear URL
+                        "",  # Clear token
+                        "",  # Clear login
+                        new_sync_type
+                    )
+                    print("Cleared local gpodder details after disabling internal API")
+
+        # Update sync type if changed (only needed if not using add_gpodder_settings above)
+        if new_sync_type != current_sync_type and not request.enabled:
+            success = database_functions.functions.update_user_gpodder_sync(cnx, database_type, user_id, new_sync_type)
+            if not success:
+                print("Update failed!")
+                raise HTTPException(status_code=500, detail="Failed to update gpodder sync settings")
+            print("Update succeeded")
+        else:
+            print("Sync type updated via add_gpodder_settings")
+
+        # Double-check the current state after update
+        current_state = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+        print(f"State after update: {current_state}")
+
+        response = {
+            "sync_type": new_sync_type,
+            "gpodder_enabled": new_sync_type in ["gpodder", "both"],
+            "external_enabled": new_sync_type in ["external", "both"],
+            "external_url": user_data["gpodder_url"] if new_sync_type != "None" else None,
+            "api_url": "http://localhost:8000"  # Internal API URL
+        }
+        print(f"Returning response: {response}")
+        return response
+    except Exception as e:
+        print(f"Error in toggle_gpodder_sync: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+# Helper function to generate a token for internal gpodder API
+def generate_gpodder_token(user_id):
+    import secrets
+    token = secrets.token_hex(16)
+    return f"internal_gpodder_{user_id}_{token}"
+
+@app.get("/api/data/gpodder/status")
+async def get_gpodder_status(
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Get the current gpodder sync status for the user"""
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+    # Get the user ID from the API key
+    user_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if not user_id:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    try:
+        user_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        sync_type = user_data["sync_type"]
+
+        return {
+            "sync_type": sync_type,
+            "gpodder_enabled": sync_type in ["gpodder", "both"],
+            "external_enabled": sync_type in ["external", "both"],
+            "external_url": user_data["gpodder_url"],
+            "api_url": "http://localhost:8000"  # Replace with actual API URL if needed
+        }
+    except Exception as e:
+        print(f"Error in get_gpodder_status: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 class BackupUser(BaseModel):
     user_id: int

@@ -396,7 +396,10 @@ pub fn app_drawer() -> Html {
                     if let Some(progress) = &state.refresh_progress {
                         if !progress.current_podcast.is_empty() {
                             html! {
-                                <span class="ml-3 text-sm item_container-text whitespace-nowrap">
+                                <span
+                                    class="ml-3 text-sm item_container-text truncate max-w-[30vw] md:max-w-[40vw] lg:max-w-[50vw] inline-block"
+                                    title={format!("Refreshing {}", progress.current_podcast)}
+                                >
                                     {format!("Refreshing {}", progress.current_podcast)}
                                 </span>
                             }
