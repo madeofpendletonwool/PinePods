@@ -14,6 +14,7 @@ import (
 	"pinepods/gpodder-api/internal/db"
 
 	"github.com/alexedwards/argon2id"
+	"github.com/fernet/fernet-go"
 	"github.com/gin-gonic/gin"
 )
 
@@ -26,7 +27,6 @@ type argon2Params struct {
 	keyLength   uint32
 }
 
-// AuthMiddleware creates a middleware for authentication
 // AuthMiddleware creates a middleware for authentication
 func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -52,7 +52,7 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 			return
 		}
 
-		// Check if the Authorization header is in the correct format
+		// Extract credentials
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != "Basic" {
 			log.Printf("[ERROR] AuthMiddleware: Invalid Authorization header format")
@@ -61,7 +61,7 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 			return
 		}
 
-		// Decode the base64-encoded credentials
+		// Decode credentials
 		decoded, err := base64.StdEncoding.DecodeString(parts[1])
 		if err != nil {
 			log.Printf("[ERROR] AuthMiddleware: Failed to decode base64 credentials: %v", err)
@@ -82,8 +82,7 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 		authUsername := credentials[0]
 		password := credentials[1]
 
-		// Verify that the username in the URL matches the one in the Authorization header
-		// Note: The gpodder API protocol expects case-insensitive comparison here
+		// Check username match
 		if strings.ToLower(username) != strings.ToLower(authUsername) {
 			log.Printf("[ERROR] AuthMiddleware: Username mismatch - URL: %s, Auth: %s",
 				strings.ToLower(username), strings.ToLower(authUsername))
@@ -92,15 +91,16 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 			return
 		}
 
-		// Check if the user exists and the password is correct
+		// Query user data with token
 		var userID int
 		var hashedPassword string
 		var podSyncType string
+		var gpodderToken sql.NullString
 
-		// Make sure to use case-insensitive username lookup
 		err = db.QueryRow(`
-            SELECT UserID, Hashed_PW, Pod_Sync_Type FROM "Users" WHERE LOWER(Username) = LOWER($1)
-        `, username).Scan(&userID, &hashedPassword, &podSyncType)
+            SELECT UserID, Hashed_PW, Pod_Sync_Type, GpodderToken FROM "Users"
+            WHERE LOWER(Username) = LOWER($1)
+        `, username).Scan(&userID, &hashedPassword, &podSyncType, &gpodderToken)
 
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -114,7 +114,7 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 			return
 		}
 
-		// Check if gpodder sync is enabled for this user
+		// Check if gpodder sync is enabled
 		if podSyncType != "gpodder" && podSyncType != "both" {
 			log.Printf("[ERROR] AuthMiddleware: Gpodder API not enabled for user: %s (sync type: %s)",
 				username, podSyncType)
@@ -123,23 +123,72 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 			return
 		}
 
-		// Verify password using Pinepods' Argon2 password method
-		if !verifyPassword(password, hashedPassword) {
-			log.Printf("[ERROR] AuthMiddleware: Invalid password for user: %s", username)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
-			c.Abort()
+		// Flag to track authentication success
+		authenticated := false
+
+		// Try password authentication first
+		if verifyPassword(password, hashedPassword) {
+			log.Printf("[DEBUG] AuthMiddleware: User authenticated with password: %s", username)
+			authenticated = true
+		}
+
+		// If password auth failed, try token authentication
+		if !authenticated && gpodderToken.Valid && gpodderToken.String != "" {
+			log.Printf("[DEBUG] AuthMiddleware: Trying to authenticate with gpodder token")
+
+			// Get the encryption key from AppSettings
+			var encryptionKey []byte
+			err := db.QueryRow(`SELECT EncryptionKey FROM "AppSettings" WHERE AppSettingsID = 1`).Scan(&encryptionKey)
+
+			if err == nil {
+				// Try to decrypt the token
+				decryptedToken, err := decryptToken(encryptionKey, gpodderToken.String)
+				if err == nil && decryptedToken == password {
+					log.Printf("[DEBUG] AuthMiddleware: User authenticated with gpodder token: %s", username)
+					authenticated = true
+				} else {
+					log.Printf("[DEBUG] AuthMiddleware: Token authentication failed: %v", err)
+				}
+			} else {
+				log.Printf("[ERROR] AuthMiddleware: Failed to get encryption key: %v", err)
+			}
+		}
+
+		// If authentication was successful, set context and continue
+		if authenticated {
+			c.Set("userID", userID)
+			c.Set("username", username)
+			c.Next()
 			return
 		}
 
-		log.Printf("[DEBUG] AuthMiddleware: Authentication successful for user: %s (ID: %d)",
-			username, userID)
-
-		// Set the user ID in the context
-		c.Set("userID", userID)
-		c.Set("username", username)
-
-		c.Next()
+		// Authentication failed
+		log.Printf("[ERROR] AuthMiddleware: Invalid credentials for user: %s", username)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		c.Abort()
 	}
+}
+
+// Helper function to decrypt token
+func decryptToken(encryptionKey []byte, encryptedToken string) (string, error) {
+	// Ensure the encryptionKey is correctly formatted for fernet
+	// Fernet requires a 32-byte key encoded in base64
+	keyStr := base64.StdEncoding.EncodeToString(encryptionKey)
+
+	// Parse the key
+	key, err := fernet.DecodeKey(keyStr)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode key: %w", err)
+	}
+
+	// Decrypt the token
+	token := []byte(encryptedToken)
+	msg := fernet.VerifyAndDecrypt(token, 0, []*fernet.Key{key})
+	if msg == nil {
+		return "", fmt.Errorf("failed to decrypt token or token invalid")
+	}
+
+	return string(msg), nil
 }
 
 // generateSessionToken generates a random token for sessions

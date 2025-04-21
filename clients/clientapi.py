@@ -5406,10 +5406,8 @@ async def toggle_gpodder_sync(
 
     if isinstance(user_id_result, dict):
         user_id = user_id_result.get('userid')
-        print(f"Extracted user_id from dict: {user_id}")
     else:
         user_id = user_id_result[0] if isinstance(user_id_result, tuple) else user_id_result
-        print(f"Direct user_id: {user_id}")
 
     if not user_id:
         raise HTTPException(status_code=403, detail="Invalid API key")
@@ -5421,80 +5419,53 @@ async def toggle_gpodder_sync(
         if not user_data:
             raise HTTPException(status_code=404, detail="User not found")
 
+        # Get initial state
         current_sync_type = user_data["sync_type"]
         print(f"Current sync type: {current_sync_type}")
-        new_sync_type = current_sync_type
 
-        # Determine new sync type based on enable/disable request
+        device_info = None
+
         if request.enabled:
-            if current_sync_type == "external":
-                new_sync_type = "both"
-            elif current_sync_type == "None" or current_sync_type is None:
-                new_sync_type = "gpodder"
+            # Enable gpodder sync
+            result = database_functions.functions.set_gpodder_internal_sync(cnx, database_type, user_id)
+            if not result:
+                raise HTTPException(status_code=500, detail="Failed to enable gpodder sync")
 
-                # When enabling internal gpodder API, set the local details
-                local_gpodder_url = "http://localhost:8000"  # Use the internal API URL
-                local_gpodder_login = f"user_{user_id}"      # Create a standard username format
-                local_gpodder_token = generate_gpodder_token(user_id)  # Generate a token
+            device_info = result
 
-                # Add the gpodder settings with local details
-                database_functions.functions.add_gpodder_settings(
-                    database_type,
-                    cnx,
-                    user_id,
-                    local_gpodder_url,
-                    local_gpodder_token,
-                    local_gpodder_login,
-                    new_sync_type
-                )
-                # Add an immediate sync task
-                background_tasks.add_task(
-                    database_functions.functions.refresh_internal_gpodder,
-                    database_type,
-                    cnx,
-                    user_id
-                )
-                print(f"Set local gpodder details for internal API: URL={local_gpodder_url}, Login={local_gpodder_login}")
+            # Add an immediate sync task
+            background_tasks.add_task(
+                database_functions.functions.refresh_internal_gpodder,
+                database_type,
+                cnx,
+                user_id
+            )
+            print(f"Added background task to sync gpodder for user: {user_id}")
+
         else:
-            if current_sync_type == "both":
-                new_sync_type = "external"
-            elif current_sync_type == "gpodder":
-                new_sync_type = "None"
-
-                # When disabling internal gpodder API, clear the gpodder settings
-                if user_data.get("gpodder_url") == "http://localhost:8000":
-                    database_functions.functions.add_gpodder_settings(
-                        database_type,
-                        cnx,
-                        user_id,
-                        "",  # Clear URL
-                        "",  # Clear token
-                        "",  # Clear login
-                        new_sync_type
-                    )
-                    print("Cleared local gpodder details after disabling internal API")
-
-        # Update sync type if changed (only needed if not using add_gpodder_settings above)
-        if new_sync_type != current_sync_type and not request.enabled:
-            success = database_functions.functions.update_user_gpodder_sync(cnx, database_type, user_id, new_sync_type)
+            # Disable gpodder sync
+            success = database_functions.functions.disable_gpodder_internal_sync(cnx, database_type, user_id)
             if not success:
-                print("Update failed!")
-                raise HTTPException(status_code=500, detail="Failed to update gpodder sync settings")
-            print("Update succeeded")
-        else:
-            print("Sync type updated via add_gpodder_settings")
+                raise HTTPException(status_code=500, detail="Failed to disable gpodder sync")
 
-        # Double-check the current state after update
-        current_state = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
-        print(f"State after update: {current_state}")
+        # Get updated state after changes
+        updated_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+        new_sync_type = updated_data["sync_type"]
+        print(f"Updated sync type: {new_sync_type}")
 
         response = {
             "sync_type": new_sync_type,
             "gpodder_enabled": new_sync_type in ["gpodder", "both"],
             "external_enabled": new_sync_type in ["external", "both"],
-            "external_url": user_data["gpodder_url"] if new_sync_type != "None" else None,
-            "api_url": "http://localhost:8000"  # Internal API URL
+            "external_url": updated_data.get("gpodder_url") if new_sync_type in ["external", "both"] else None,
+            "api_url": "http://localhost:8042" if new_sync_type in ["gpodder", "both"] else None
         }
+
+        # Add device information if available
+        if device_info and request.enabled:
+            response["device_name"] = device_info["device_name"]
+            response["device_id"] = device_info["device_id"]
+
         print(f"Returning response: {response}")
         return response
     except Exception as e:
@@ -5538,7 +5509,7 @@ async def get_gpodder_status(
             "gpodder_enabled": sync_type in ["gpodder", "both"],
             "external_enabled": sync_type in ["external", "both"],
             "external_url": user_data["gpodder_url"],
-            "api_url": "http://localhost:8000"  # Replace with actual API URL if needed
+                "api_url": "http://localhost:8042"  # Replace with actual API URL if needed
         }
     except Exception as e:
         print(f"Error in get_gpodder_status: {e}")
