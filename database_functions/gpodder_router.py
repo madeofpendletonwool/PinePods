@@ -435,63 +435,86 @@ async def sync_with_gpodder(
     api_key: str = Depends(get_api_key_from_header)
 ):
     """Sync podcasts from GPodder to local database"""
-    # Authentication checks remain the same...
-
-    # Get GPodder settings
     user_id = sync_request.user_id
-    gpodder_settings = database_functions.functions.get_gpodder_settings(database_type, cnx, user_id)
-    if not gpodder_settings or not gpodder_settings.get("gpodderurl"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="GPodder settings not configured for this user"
-        )
-
-    # Get login name and pod_sync_type
+    # Get user information
     cursor = cnx.cursor()
     if database_type == "postgresql":
-        query = 'SELECT GpodderLoginName, Pod_Sync_Type FROM "Users" WHERE UserID = %s'
+        query = '''
+            SELECT GpodderLoginName, Pod_Sync_Type, GpodderUrl, GpodderToken, Username
+            FROM "Users"
+            WHERE UserID = %s
+        '''
     else:
-        query = "SELECT GpodderLoginName, Pod_Sync_Type FROM Users WHERE UserID = %s"
+        query = '''
+            SELECT GpodderLoginName, Pod_Sync_Type, GpodderUrl, GpodderToken, Username
+            FROM Users
+            WHERE UserID = %s
+        '''
     cursor.execute(query, (user_id,))
     result = cursor.fetchone()
     cursor.close()
-
     if not result:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User not found"
         )
-
+    # Extract user data
     if isinstance(result, tuple):
         gpodder_login = result[0]
         pod_sync_type = result[1]
+        gpodder_url = result[2]
+        gpodder_token = result[3]
+        username = result[4]
     else:
         gpodder_login = result["gpodderloginname"]
         pod_sync_type = result["pod_sync_type"]
-
-    # Log what's being passed to the refresh function
-    print(f"Syncing with device_id: {sync_request.device_id}, device_name: {sync_request.device_name}, is_remote: {sync_request.is_remote}")
-
-    # Perform sync with all the necessary parameters
+        gpodder_url = result["gpodderurl"]
+        gpodder_token = result["gpoddertoken"]
+        username = result["username"]
+    # Check if GPodder sync is enabled
+    if pod_sync_type not in ["gpodder", "both", "external"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="GPodder sync not enabled for this user"
+        )
+    # Check if this is internal sync (local gpodder API)
+    is_internal = gpodder_url == "http://localhost:8042"
+    print(f"Syncing with device_id: {sync_request.device_id}, device_name: {sync_request.device_name}, "
+          f"is_remote: {sync_request.is_remote}, is_internal: {is_internal}")
+    # For external sync, use the function with the appropriate parameters
+    print(f"Using external sync method for user {user_id} with URL {gpodder_url}")
+    # Get encryption key for token handling
+    cursor = cnx.cursor()
+    if database_type == "postgresql":
+        query = 'SELECT EncryptionKey FROM "AppSettings" WHERE AppSettingsID = 1'
+    else:
+        query = "SELECT EncryptionKey FROM AppSettings WHERE AppSettingsID = 1"
+    cursor.execute(query)
+    encryption_key_result = cursor.fetchone()
+    cursor.close()
+    encryption_key = None
+    if encryption_key_result:
+        if isinstance(encryption_key_result, tuple):
+            encryption_key = encryption_key_result[0]
+        else:
+            encryption_key = encryption_key_result["encryptionkey"]
     success = database_functions.functions.refresh_gpodder_subscription(
         database_type,
         cnx,
         user_id,
-        gpodder_settings.get("gpodderurl"),
-        gpodder_settings.get("gpoddertoken"),
+        gpodder_url,
+        gpodder_token,
         gpodder_login,
         pod_sync_type,
         sync_request.device_id,
         sync_request.device_name,
         sync_request.is_remote
     )
-
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to synchronize with GPodder"
         )
-
     return ApiResponse(
         success=True,
         message="Successfully synchronized with GPodder"
