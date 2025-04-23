@@ -239,12 +239,21 @@ func uploadEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 			return
 		}
 
-		// Parse request
+		// Parse request - try both formats
 		var actions []models.EpisodeAction
+
+		// First try parsing as array directly
 		if err := c.ShouldBindJSON(&actions); err != nil {
-			log.Printf("[ERROR] uploadEpisodeActions: Error parsing request body: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: expected a JSON array of episode actions"})
-			return
+			// If that fails, try parsing as a wrapper object
+			var wrappedActions struct {
+				Actions []models.EpisodeAction `json:"actions"`
+			}
+			if err2 := c.ShouldBindJSON(&wrappedActions); err2 != nil {
+				log.Printf("[ERROR] uploadEpisodeActions: Error parsing request body: %v", err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body format"})
+				return
+			}
+			actions = wrappedActions.Actions
 		}
 
 		log.Printf("[DEBUG] uploadEpisodeActions: Received %d actions to process", len(actions))
@@ -292,19 +301,19 @@ func uploadEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 			var deviceID sql.NullInt64
 			if action.Device != "" {
 				err := tx.QueryRow(`
-					SELECT DeviceID FROM "GpodderDevices"
-					WHERE UserID = $1 AND DeviceName = $2
-				`, userID, action.Device).Scan(&deviceID.Int64)
+                    SELECT DeviceID FROM "GpodderDevices"
+                    WHERE UserID = $1 AND DeviceName = $2
+                `, userID, action.Device).Scan(&deviceID.Int64)
 
 				if err != nil {
 					if err == sql.ErrNoRows {
 						// Create the device if it doesn't exist
 						log.Printf("[DEBUG] uploadEpisodeActions: Creating new device: %s", action.Device)
 						err = tx.QueryRow(`
-							INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType, IsActive, LastSync)
-							VALUES ($1, $2, 'other', true, CURRENT_TIMESTAMP)
-							RETURNING DeviceID
-						`, userID, action.Device).Scan(&deviceID.Int64)
+                            INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType, IsActive, LastSync)
+                            VALUES ($1, $2, 'other', true, CURRENT_TIMESTAMP)
+                            RETURNING DeviceID
+                        `, userID, action.Device).Scan(&deviceID.Int64)
 
 						if err != nil {
 							log.Printf("[ERROR] uploadEpisodeActions: Error creating device: %v", err)
@@ -322,18 +331,61 @@ func uploadEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 				}
 			}
 
-			// Use provided timestamp or current time
+			// Parse timestamp from interface{} to int64
 			actionTimestamp := timestamp
-			if action.Timestamp > 0 {
-				actionTimestamp = action.Timestamp
+			if action.Timestamp != nil {
+				switch t := action.Timestamp.(type) {
+				case float64:
+					actionTimestamp = int64(t)
+				case int64:
+					actionTimestamp = t
+				case int:
+					actionTimestamp = int64(t)
+				case string:
+					// First try to parse as Unix timestamp
+					if ts, err := strconv.ParseInt(t, 10, 64); err == nil {
+						actionTimestamp = ts
+					} else {
+						// Try parsing as ISO date (2025-04-23T12:18:51)
+						if parsedTime, err := time.Parse(time.RFC3339, t); err == nil {
+							actionTimestamp = parsedTime.Unix()
+							log.Printf("[DEBUG] uploadEpisodeActions: Parsed ISO timestamp '%s' to Unix timestamp %d", t, actionTimestamp)
+						} else {
+							// Try some other common formats
+							formats := []string{
+								"2006-01-02T15:04:05Z",
+								"2006-01-02T15:04:05",
+								"2006-01-02 15:04:05",
+								"2006-01-02",
+							}
+
+							parsed := false
+							for _, format := range formats {
+								if parsedTime, err := time.Parse(format, t); err == nil {
+									actionTimestamp = parsedTime.Unix()
+									parsed = true
+									log.Printf("[DEBUG] uploadEpisodeActions: Parsed timestamp '%s' with format '%s' to Unix timestamp %d",
+										t, format, actionTimestamp)
+									break
+								}
+							}
+
+							if !parsed {
+								log.Printf("[WARNING] uploadEpisodeActions: Could not parse timestamp '%s', using current time", t)
+							}
+						}
+					}
+				default:
+					log.Printf("[WARNING] uploadEpisodeActions: Unknown timestamp type, using current time")
+				}
 			}
 
 			// Insert action
 			_, err = tx.Exec(`
-				INSERT INTO "GpodderSyncEpisodeActions"
-				(UserID, DeviceID, PodcastURL, EpisodeURL, Action, Timestamp, Started, Position, Total)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-			`,
+                INSERT INTO "GpodderSyncEpisodeActions"
+                (UserID, DeviceID, PodcastURL, EpisodeURL, Action, Timestamp, Started, Position, Total)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `,
 				userID,
 				deviceID,
 				cleanPodcastURL,
@@ -363,19 +415,19 @@ func uploadEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 				// Try to find episode ID in Episodes table
 				var episodeID int
 				err := tx.QueryRow(`
-					SELECT e.EpisodeID
-					FROM "Episodes" e
-					JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
-					WHERE p.FeedURL = $1 AND e.EpisodeURL = $2 AND p.UserID = $3
-				`, cleanPodcastURL, cleanEpisodeURL, userID).Scan(&episodeID)
+                    SELECT e.EpisodeID
+                    FROM "Episodes" e
+                    JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
+                    WHERE p.FeedURL = $1 AND e.EpisodeURL = $2 AND p.UserID = $3
+                `, cleanPodcastURL, cleanEpisodeURL, userID).Scan(&episodeID)
 
 				if err == nil { // Episode found
 					// Try to update existing history record
 					result, err := tx.Exec(`
-						UPDATE "UserEpisodeHistory"
-						SET ListenDuration = $1, ListenDate = $2
-						WHERE UserID = $3 AND EpisodeID = $4
-					`, action.Position, time.Unix(actionTimestamp, 0), userID, episodeID)
+                        UPDATE "UserEpisodeHistory"
+                        SET ListenDuration = $1, ListenDate = $2
+                        WHERE UserID = $3 AND EpisodeID = $4
+                    `, action.Position, time.Unix(actionTimestamp, 0), userID, episodeID)
 
 					if err != nil {
 						log.Printf("[WARNING] uploadEpisodeActions: Error updating episode history: %v", err)
@@ -384,12 +436,12 @@ func uploadEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 						if rowsAffected == 0 {
 							// No history exists, create it
 							_, err = tx.Exec(`
-								INSERT INTO "UserEpisodeHistory"
-								(UserID, EpisodeID, ListenDuration, ListenDate)
-								VALUES ($1, $2, $3, $4)
-								ON CONFLICT (UserID, EpisodeID) DO UPDATE
-								SET ListenDuration = $3, ListenDate = $4
-							`, userID, episodeID, action.Position, time.Unix(actionTimestamp, 0))
+                                INSERT INTO "UserEpisodeHistory"
+                                (UserID, EpisodeID, ListenDuration, ListenDate)
+                                VALUES ($1, $2, $3, $4)
+                                ON CONFLICT (UserID, EpisodeID) DO UPDATE
+                                SET ListenDuration = $3, ListenDate = $4
+                            `, userID, episodeID, action.Position, time.Unix(actionTimestamp, 0))
 
 							if err != nil {
 								log.Printf("[WARNING] uploadEpisodeActions: Error creating episode history: %v", err)

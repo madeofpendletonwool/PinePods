@@ -174,7 +174,8 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 		authenticated := false
 
 		// Check if this is a gpodder token authentication
-		if gpodderToken.Valid && gpodderToken.String == password {
+		// Check if this is a gpodder token authentication
+		if gpodderToken.Valid && (gpodderToken.String == password || gpodderToken.String == gpodderTokenHeader) {
 			log.Printf("[DEBUG] AuthMiddleware: User authenticated with gpodder token: %s", username)
 			authenticated = true
 		}
@@ -570,11 +571,25 @@ func SessionMiddleware(database *db.PostgresDB) gin.HandlerFunc {
 	}
 }
 
-// AuthenticationMiddleware combines both authentication methods
+// AuthenticationMiddleware with GPodder token handling
 func AuthenticationMiddleware(database *db.PostgresDB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log.Printf("[DEBUG] AuthenticationMiddleware processing request: %s %s",
 			c.Request.Method, c.Request.URL.Path)
+
+		if strings.Contains(c.Request.URL.Path, "/episodes/") && strings.HasSuffix(c.Request.URL.Path, ".json") {
+			// Extract username from URL path for episode actions
+			parts := strings.Split(c.Request.URL.Path, "/")
+			if len(parts) >= 3 {
+				// The path format is /episodes/username.json
+				usernameWithExt := parts[len(parts)-1]
+				// Remove .json extension
+				username := strings.TrimSuffix(usernameWithExt, ".json")
+				// Set it as the username parameter
+				c.Params = append(c.Params, gin.Param{Key: "username", Value: username})
+				log.Printf("[DEBUG] AuthenticationMiddleware: Extracted username '%s' from episode actions URL", username)
+			}
+		}
 
 		// First try session auth
 		sessionToken, err := c.Cookie("sessionid")
@@ -622,7 +637,6 @@ func AuthenticationMiddleware(database *db.PostgresDB) gin.HandlerFunc {
 		// Try basic auth if session auth failed
 		log.Printf("[DEBUG] AuthenticationMiddleware: Attempting basic auth")
 
-		// Copy from AuthMiddleware implementation
 		username := c.Param("username")
 		if username == "" {
 			log.Printf("[ERROR] AuthenticationMiddleware: Username parameter is missing in path")
@@ -630,6 +644,51 @@ func AuthenticationMiddleware(database *db.PostgresDB) gin.HandlerFunc {
 			return
 		}
 
+		// Check if this is an internal API call via X-GPodder-Token
+		gpodderTokenHeader := c.GetHeader("X-GPodder-Token")
+		if gpodderTokenHeader != "" {
+			log.Printf("[DEBUG] AuthenticationMiddleware: Found X-GPodder-Token header")
+
+			// Get user data
+			var userID int
+			var gpodderToken sql.NullString
+			var podSyncType string
+
+			err := database.QueryRow(`
+                SELECT UserID, GpodderToken, Pod_Sync_Type FROM "Users"
+                WHERE LOWER(Username) = LOWER($1)
+            `, username).Scan(&userID, &gpodderToken, &podSyncType)
+
+			if err != nil {
+				log.Printf("[ERROR] AuthenticationMiddleware: Database error: %v", err)
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or token"})
+				return
+			}
+
+			// Check if gpodder sync is enabled
+			if podSyncType != "gpodder" && podSyncType != "both" && podSyncType != "external" {
+				log.Printf("[ERROR] AuthenticationMiddleware: Gpodder API not enabled for user: %s (sync type: %s)",
+					username, podSyncType)
+				c.JSON(http.StatusForbidden, gin.H{"error": "Gpodder API not enabled for this user"})
+				return
+			}
+
+			// For internal calls with X-GPodder-Token header, validate token directly
+			if gpodderToken.Valid && gpodderToken.String == gpodderTokenHeader {
+				log.Printf("[DEBUG] AuthenticationMiddleware: X-GPodder-Token validated for user: %s", username)
+				c.Set("userID", userID)
+				c.Set("username", username)
+				c.Next()
+				return
+			}
+
+			// If token doesn't match, authentication failed
+			log.Printf("[ERROR] AuthenticationMiddleware: Invalid X-GPodder-Token for user: %s", username)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			return
+		}
+
+		// Standard basic auth handling
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			log.Printf("[ERROR] AuthenticationMiddleware: No Authorization header found")
@@ -671,10 +730,11 @@ func AuthenticationMiddleware(database *db.PostgresDB) gin.HandlerFunc {
 		var userID int
 		var hashedPassword string
 		var podSyncType string
+		var gpodderToken sql.NullString
 
 		err = database.QueryRow(`
-            SELECT UserID, Hashed_PW, Pod_Sync_Type FROM "Users" WHERE LOWER(Username) = LOWER($1)
-        `, username).Scan(&userID, &hashedPassword, &podSyncType)
+            SELECT UserID, Hashed_PW, Pod_Sync_Type, GpodderToken FROM "Users" WHERE LOWER(Username) = LOWER($1)
+        `, username).Scan(&userID, &hashedPassword, &podSyncType, &gpodderToken)
 
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -687,25 +747,39 @@ func AuthenticationMiddleware(database *db.PostgresDB) gin.HandlerFunc {
 			return
 		}
 
-		if podSyncType != "gpodder" && podSyncType != "both" {
+		if podSyncType != "gpodder" && podSyncType != "both" && podSyncType != "external" {
 			log.Printf("[ERROR] AuthenticationMiddleware: Gpodder API not enabled for user: %s (sync type: %s)",
 				username, podSyncType)
 			c.JSON(http.StatusForbidden, gin.H{"error": "Gpodder API not enabled for this user"})
 			return
 		}
 
-		if !verifyPassword(password, hashedPassword) {
-			log.Printf("[ERROR] AuthenticationMiddleware: Invalid password for user: %s", username)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+		// Flag to track authentication success
+		authenticated := false
+
+		// Check if this is a gpodder token authentication
+		if gpodderToken.Valid && gpodderToken.String == password {
+			log.Printf("[DEBUG] AuthenticationMiddleware: User authenticated with gpodder token: %s", username)
+			authenticated = true
+		}
+
+		// If token auth didn't succeed, try password authentication
+		if !authenticated && verifyPassword(password, hashedPassword) {
+			log.Printf("[DEBUG] AuthenticationMiddleware: User authenticated with password: %s", username)
+			authenticated = true
+		}
+
+		// If authentication was successful, set context and continue
+		if authenticated {
+			c.Set("userID", userID)
+			c.Set("username", username)
+			c.Next()
 			return
 		}
 
-		log.Printf("[DEBUG] AuthenticationMiddleware: Basic auth successful for user: %s (ID: %d)",
-			username, userID)
-
-		c.Set("userID", userID)
-		c.Set("username", username)
-		c.Next()
+		// Authentication failed
+		log.Printf("[ERROR] AuthenticationMiddleware: Invalid credentials for user: %s", username)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 	}
 }
 

@@ -12350,6 +12350,10 @@ def force_full_sync_to_gpodder(database_type, cnx, user_id, gpodder_url, encrypt
     print(f"Starting GPodder sync with: device_id={device_id}, device_name={device_name}, is_remote={is_remote}")
 
     try:
+        # Check if this is the internal API
+        is_internal_api = (gpodder_url == "http://localhost:8042")
+        print(f"Is internal API: {is_internal_api}")
+
         # Use provided device_id or get/create default
         if device_id is None or device_id <= 0:  # Handle negative IDs for remote devices
             device_id = get_or_create_default_device(cnx, database_type, user_id)
@@ -12377,18 +12381,33 @@ def force_full_sync_to_gpodder(database_type, cnx, user_id, gpodder_url, encrypt
         else:
             print(f"Using provided device name: {device_name}")
 
-        # Fetch encryption key
-        encryption_key = get_encryption_key(cnx, database_type)
-        encryption_key_bytes = base64.b64decode(encryption_key)
-        cipher_suite = Fernet(encryption_key_bytes)
-
-        # Decrypt the token
-        if encrypted_gpodder_token is not None:
-            decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
-            gpodder_token = decrypted_token_bytes.decode()
+        # Handle token based on whether it's internal or external API
+        gpodder_token = None
+        if is_internal_api:
+            # For internal API, use the token directly without decryption
+            gpodder_token = encrypted_gpodder_token
+            print("Using raw token for internal API")
         else:
-            gpodder_token = None
-            print("Warning: No GPodder token provided")
+            # For external API, decrypt the token
+            try:
+                # Fetch encryption key
+                encryption_key = get_encryption_key(cnx, database_type)
+                encryption_key_bytes = base64.b64decode(encryption_key)
+                cipher_suite = Fernet(encryption_key_bytes)
+
+                # Decrypt the token
+                if encrypted_gpodder_token is not None:
+                    decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
+                    gpodder_token = decrypted_token_bytes.decode()
+                    print("Successfully decrypted token for external API")
+                else:
+                    gpodder_token = None
+                    print("Warning: No GPodder token provided")
+            except Exception as e:
+                print(f"Error decrypting token: {str(e)}")
+                # Use the token as-is if decryption fails
+                gpodder_token = encrypted_gpodder_token
+                print("Using encrypted token as fallback due to decryption error")
 
         # Create auth
         auth = HTTPBasicAuth(gpodder_login, gpodder_token)

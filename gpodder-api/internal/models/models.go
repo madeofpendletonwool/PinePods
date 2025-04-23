@@ -55,18 +55,24 @@ type SubscriptionResponse struct {
 }
 
 // EpisodeAction represents an action performed on an episode
+// First, create a struct for the JSON request format
+type EpisodeActionRequest struct {
+	Actions []EpisodeAction `json:"actions"`
+}
+
+// Then modify the EpisodeAction struct to use a flexible type for timestamp
 type EpisodeAction struct {
-	ActionID  int    `json:"-"`
-	UserID    int    `json:"-"`
-	DeviceID  int    `json:"-"`
-	Podcast   string `json:"podcast"`
-	Episode   string `json:"episode"`
-	Device    string `json:"device,omitempty"` // This is the device name for API
-	Action    string `json:"action"`
-	Timestamp int64  `json:"timestamp"`
-	Started   *int   `json:"started,omitempty"`
-	Position  *int   `json:"position,omitempty"`
-	Total     *int   `json:"total,omitempty"`
+	ActionID  int         `json:"-"`
+	UserID    int         `json:"-"`
+	DeviceID  int         `json:"-"`
+	Podcast   string      `json:"podcast"`
+	Episode   string      `json:"episode"`
+	Device    string      `json:"device,omitempty"`
+	Action    string      `json:"action"`
+	Timestamp interface{} `json:"timestamp"` // Accept any type
+	Started   *int        `json:"started,omitempty"`
+	Position  *int        `json:"position,omitempty"`
+	Total     *int        `json:"total,omitempty"`
 }
 
 // EpisodeActionResponse represents a response to episode action upload

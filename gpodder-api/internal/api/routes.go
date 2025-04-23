@@ -93,6 +93,6 @@ func RegisterSimpleRoutes(router *gin.RouterGroup, database *db.PostgresDB) {
 	router.GET("/search", podcastSearch(database))
 
 	// Subscriptions (Simple API)
-	router.GET("/subscriptions/:username/:deviceid", AuthMiddleware(database), getSubscriptionsSimple(database))
-	router.PUT("/subscriptions/:username/:deviceid", AuthMiddleware(database), updateSubscriptionsSimple(database))
+	router.GET("/subscriptions/:username/:deviceid", AuthenticationMiddleware(database), getSubscriptionsSimple(database))
+	router.PUT("/subscriptions/:username/:deviceid", AuthenticationMiddleware(database), updateSubscriptionsSimple(database))
 }
