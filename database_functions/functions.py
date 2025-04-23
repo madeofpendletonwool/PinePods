@@ -11269,33 +11269,21 @@ def generate_secure_token(length=64):
 
 def set_gpodder_internal_sync(cnx, database_type, user_id):
     """
-    Set up internal gpodder sync for a user
-
-    Args:
-        cnx: Database connection
-        database_type: Type of database (postgresql or mysql)
-        user_id: User ID
-
-    Returns:
-        Dictionary with device_name and success status if successful, None if failed
+    Set up internal gpodder sync for a user with a plain, unencrypted token
     """
     try:
         # Get the username
         cursor = cnx.cursor()
-
         if database_type == "postgresql":
             query = 'SELECT Username, Pod_Sync_Type FROM "Users" WHERE UserID = %s'
         else:
             query = "SELECT Username, Pod_Sync_Type FROM Users WHERE UserID = %s"
-
         cursor.execute(query, (user_id,))
         user_info = cursor.fetchone()
         cursor.close()
-
         if not user_info:
             print(f"User not found for ID: {user_id}")
             return None
-
         username = user_info[0] if isinstance(user_info, tuple) else user_info["username"]
         current_sync_type = user_info[1] if isinstance(user_info, tuple) else user_info["pod_sync_type"]
 
@@ -11306,53 +11294,94 @@ def set_gpodder_internal_sync(cnx, database_type, user_id):
         elif current_sync_type == "None" or current_sync_type is None:
             new_sync_type = "gpodder"
 
-        # Generate a secure internal token
+        # Generate a secure internal token - PLAIN TEXT, NO ENCRYPTION
         import secrets
         import string
-
         alphabet = string.ascii_letters + string.digits
         internal_token = ''.join(secrets.choice(alphabet) for _ in range(64))
 
         # Set up the local gpodder API details
         local_gpodder_url = "http://localhost:8042"  # Internal API URL
 
-        # Store the token and URL in the database
-        success = add_gpodder_settings(
-            database_type,
-            cnx,
-            user_id,
-            local_gpodder_url,
-            internal_token,  # Store the internal token
-            username,        # Use the actual username
-            new_sync_type
-        )
+        # Store the plain token in the database
+        if database_type == "postgresql":
+            query = '''
+                UPDATE "Users"
+                SET GpodderUrl = %s, GpodderToken = %s, GpodderLoginName = %s, Pod_Sync_Type = %s
+                WHERE UserID = %s
+            '''
+        else:
+            query = '''
+                UPDATE Users
+                SET GpodderUrl = %s, GpodderToken = %s, GpodderLoginName = %s, Pod_Sync_Type = %s
+                WHERE UserID = %s
+            '''
+        cursor = cnx.cursor()
+        cursor.execute(query, (local_gpodder_url, internal_token, username, new_sync_type, user_id))
+        cnx.commit()
+        cursor.close()
 
-        if not success:
-            print(f"Failed to add gpodder settings for user: {user_id}")
-            return None
-
-        # Create a default device for this user
+        # Create a default device for this user using the gPodder API
         default_device_name = f"pinepods-internal-{user_id}"
 
-        # Create or get the device
-        device_id = create_or_get_gpodder_device(
-            cnx,
-            database_type,
-            user_id,
-            default_device_name,
-            "server",
-            f"PinePods Internal Device {user_id}"
-        )
+        # Create the device using the gPodder API
+        import requests
+        from requests.auth import HTTPBasicAuth
 
-        if not device_id:
-            print(f"Failed to create/get device for user: {user_id}")
-            return None
-
-        return {
-            "device_name": default_device_name,
-            "device_id": device_id,
-            "success": True
+        # Use the API to register a device
+        device_data = {
+            "caption": f"PinePods Internal Device {user_id}",
+            "type": "server"
         }
+
+        try:
+            # First, check if the device already exists
+            device_list_url = f"{local_gpodder_url}/api/2/devices/{username}.json"
+            response = requests.get(
+                device_list_url,
+                auth=HTTPBasicAuth(username, internal_token)
+            )
+
+            # If we can't get device list, create a new one anyway
+            existing_device_id = None
+            if response.status_code == 200:
+                devices = response.json()
+                for device in devices:
+                    if device.get("id") == default_device_name:
+                        existing_device_id = device.get("id")
+                        print(f"Found existing device with ID: {existing_device_id}")
+                        break
+
+            # If device doesn't exist, create it
+            if not existing_device_id:
+                device_url = f"{local_gpodder_url}/api/2/devices/{username}/{default_device_name}.json"
+                response = requests.post(
+                    device_url,
+                    json=device_data,
+                    auth=HTTPBasicAuth(username, internal_token)
+                )
+
+                if response.status_code in [200, 201]:
+                    print(f"Created device with ID: {default_device_name}")
+                else:
+                    print(f"Failed to create device: {response.status_code} - {response.text}")
+                    # Continue anyway - the API might create the device on first sync
+
+            # Return the device info
+            return {
+                "device_name": default_device_name,
+                "device_id": user_id,  # Use user_id as a fallback/reference
+                "success": True
+            }
+
+        except Exception as device_err:
+            print(f"Error creating device via API: {device_err}")
+            # Even if device creation fails, still return success
+            return {
+                "device_name": default_device_name,
+                "device_id": user_id,
+                "success": True
+            }
 
     except Exception as e:
         print(f"Error in set_gpodder_internal_sync: {e}")
@@ -11415,7 +11444,7 @@ def disable_gpodder_internal_sync(cnx, database_type, user_id):
         return False
 
 def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token,
-                                gpodder_login, pod_sync_type, device_id=None, device_name=None, is_remote=False):
+                              gpodder_login, pod_sync_type, device_id=None, device_name=None, is_remote=False):
     """Refreshes podcasts from GPodder with proper device handling"""
     from cryptography.fernet import Fernet
     import logging
@@ -11428,23 +11457,32 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
     logger = logging.getLogger(__name__)
 
     try:
+        # More detailed logging for debugging
+        print(f"Starting refresh with parameters: user_id={user_id}, gpodder_url={gpodder_url}, " +
+              f"pod_sync_type={pod_sync_type}, device_id={device_id}, device_name={device_name}, " +
+              f"is_remote={is_remote}")
+
+        # Flag to identify internal API calls
+        is_internal_api = (gpodder_url == "http://localhost:8042")
+        print(f"Is internal API: {is_internal_api}")
+
         # Determine which device to use for GPodder API calls
         actual_device_name = None
 
         # Handle device name/id logic
         if is_remote and device_name:
             # If it's a remote device, use the provided device name directly
-            logger.info(f"Using remote device name: {device_name}")
+            print(f"Using remote device name: {device_name}")
 
             # Create a local representation of the remote device
             success, message, local_device_id = handle_remote_device(cnx, database_type, user_id, device_name)
             if success:
-                logger.info(f"Created/found local device for remote device: {local_device_id}")
+                print(f"Created/found local device for remote device: {local_device_id}")
                 # Use the local device ID instead of -1
                 device_id = local_device_id
                 actual_device_name = device_name
             else:
-                logger.error(f"Failed to handle remote device: {message}")
+                print(f"Failed to handle remote device: {message}")
                 # Proceed with just the name, but device_id will still be -1 which might cause problems
                 actual_device_name = device_name
         elif device_id:
@@ -11467,7 +11505,7 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
                 if default_device:
                     device_id = default_device["id"]
                     actual_device_name = default_device["name"]
-                    logger.info(f"Using default device: {actual_device_name} (ID: {device_id})")
+                    print(f"Using default device: {actual_device_name} (ID: {device_id})")
                 else:
                     # No default device, create one
                     device_id = create_or_update_device(
@@ -11480,14 +11518,14 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
                         True  # Set as default
                     )
                     actual_device_name = "pinepods_default"
-                    logger.info(f"Created new default device: {actual_device_name} (ID: {device_id})")
+                    print(f"Created new default device: {actual_device_name} (ID: {device_id})")
         else:
             # No device specified, use default
             default_device = get_default_gpodder_device(cnx, database_type, user_id)
             if default_device:
                 device_id = default_device["id"]
                 actual_device_name = default_device["name"]
-                logger.info(f"Using default device: {actual_device_name} (ID: {device_id})")
+                print(f"Using default device: {actual_device_name} (ID: {device_id})")
             else:
                 # No devices exist, create a default one
                 device_id = create_or_update_device(
@@ -11500,22 +11538,41 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
                     True  # Set as default
                 )
                 actual_device_name = "pinepods_default"
-                logger.info(f"Created new default device: {actual_device_name} (ID: {device_id})")
+                print(f"Created new default device: {actual_device_name} (ID: {device_id})")
 
         # For remote devices, we might need to skip checking local timestamps
         # and force a full sync from the GPodder server
         if is_remote:
             # Force a full sync by setting timestamp to 0
             timestamps = {"last_timestamp": 0}
-            logger.info("Remote device selected - forcing full sync with timestamp 0")
+            print("Remote device selected - forcing full sync with timestamp 0")
         else:
             # Get sync timestamps for local device
             timestamps = get_sync_timestamps(cnx, database_type, user_id, device_id)
 
         # Get encryption key and decrypt the GPodder token
+        print("Getting encryption key...")
         encryption_key = get_encryption_key(cnx, database_type)
-        encryption_key_bytes = base64.b64decode(encryption_key)
-        cipher_suite = Fernet(encryption_key_bytes)
+
+        if not encryption_key:
+            logger.error("Failed to retrieve encryption key")
+            return False
+
+        try:
+            encryption_key_bytes = base64.b64decode(encryption_key)
+            cipher_suite = Fernet(encryption_key_bytes)
+            print("Successfully created cipher suite for decryption")
+        except Exception as e:
+            logger.error(f"Error preparing encryption key: {str(e)}")
+            return False
+
+        # Special handling for encrypted_gpodder_token based on input type
+        if isinstance(encrypted_gpodder_token, dict):
+            if "data" in encrypted_gpodder_token:
+                print("Extracting token from dictionary input")
+                encrypted_gpodder_token = encrypted_gpodder_token.get("data", {}).get("gpoddertoken", "")
+            else:
+                encrypted_gpodder_token = encrypted_gpodder_token.get("gpoddertoken", "")
 
         # Decrypt the token - with improved error handling
         gpodder_token = None
@@ -11525,33 +11582,85 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
                 if isinstance(encrypted_gpodder_token, bytes):
                     decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token)
                 else:
-                    decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
-                gpodder_token = decrypted_token_bytes.decode()
-                logger.info("Successfully decrypted gpodder token")
+                    # Make sure we're working with a valid token
+                    token_to_decrypt = encrypted_gpodder_token
+                    # If the token isn't in the right format for decryption, try to fix it
+                    if not (token_to_decrypt.startswith(b'gAAAAA') if isinstance(token_to_decrypt, bytes)
+                            else token_to_decrypt.startswith('gAAAAA')):
+                        print("Token doesn't appear to be in Fernet format, using raw token instead")
+                        gpodder_token = encrypted_gpodder_token
+                    else:
+                        print("Decrypting token in Fernet format")
+                        decrypted_token_bytes = cipher_suite.decrypt(token_to_decrypt.encode())
+                        gpodder_token = decrypted_token_bytes.decode()
+                        print("Successfully decrypted gpodder token")
             except Exception as e:
                 logger.error(f"Error decrypting token: {str(e)}")
                 # For non-internal servers, we might still want to continue with whatever token we have
-                if gpodder_url == "http://localhost:8042":
-                    # For internal server, token is required
-                    logger.error("Failed to decrypt token for internal gpodder server")
-                    return False
+                if is_internal_api:
+                    # For internal server, fall back to using the raw token if decryption fails
+                    logger.warning("Using raw token as fallback for internal server")
+                    gpodder_token = encrypted_gpodder_token
                 else:
                     # For external servers, continue with the encrypted token
-                    logger.warning("Using encrypted token for external server")
+                    print("Using encrypted token for external server")
                     gpodder_token = encrypted_gpodder_token
         else:
             logger.warning("No token provided")
-            if gpodder_url == "http://localhost:8042":
+            if is_internal_api:
                 logger.error("Token required for internal gpodder server")
                 return False
 
-        # Check if we're accessing the internal API and need to use the token
-        is_internal_api = (gpodder_url == "http://localhost:8000")
-        logger.info(f"Using {'internal' if is_internal_api else 'external'} gpodder API at {gpodder_url}")
+        print(f"Final token established: {'[OBSCURED FOR SECURITY]' if gpodder_token else 'None'}")
+        print(f"Using {'internal' if is_internal_api else 'external'} gpodder API at {gpodder_url}")
 
         # Create a session for cookie-based auth
         session = requests.Session()
-        auth = HTTPBasicAuth(gpodder_login, gpodder_token)
+
+        # Handle authentication for internal API calls
+        if is_internal_api:
+            print("Using token-based auth for internal API")
+            # Use the token directly with the gPodder API
+            auth = HTTPBasicAuth(gpodder_login, encrypted_gpodder_token)
+
+            # Try to access API using Basic Auth
+            try:
+                # First, create or update the device if needed
+                device_data = {
+                    "caption": f"PinePods Internal Device {user_id}",
+                    "type": "server"
+                }
+                device_url = f"{gpodder_url}/api/2/devices/{gpodder_login}/{actual_device_name}.json"
+
+                try:
+                    response = requests.post(
+                        device_url,
+                        json=device_data,
+                        auth=auth
+                    )
+                    if response.status_code in [200, 201]:
+                        print(f"Updated device: {actual_device_name}")
+                    else:
+                        print(f"Note: Device update returned {response.status_code}")
+                except Exception as device_err:
+                    print(f"Warning: Device update failed: {device_err}")
+                    # Continue anyway
+
+                # Now get subscriptions
+                subscription_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{actual_device_name}.json?since={timestamps['last_timestamp']}"
+                print(f"Requesting subscriptions from internal API at {subscription_url}")
+                response = requests.get(subscription_url, auth=auth)
+                response.raise_for_status()
+                gpodder_data = response.json()
+                print("Successfully retrieved data from internal API")
+                use_session = False
+            except Exception as e:
+                logger.error(f"Failed to get subscriptions from internal API: {str(e)}")
+                raise
+        else:
+            # For external API, use regular basic auth as before
+            print("Using regular basic auth for external API")
+            auth = HTTPBasicAuth(gpodder_login, gpodder_token)
 
         # Try session-based authentication (for PodFetch)
         gpodder_data = None
@@ -11560,10 +11669,10 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
         try:
             # First try to login to establish a session
             login_url = f"{gpodder_url}/api/2/auth/{gpodder_login}/login.json"
-            logger.info(f"Trying session-based authentication at {login_url}")
+            print(f"Trying session-based authentication at {login_url}")
             login_response = session.post(login_url, auth=auth)
             login_response.raise_for_status()
-            logger.info("Session login successful")
+            print("Session login successful")
 
             # Use the session to get subscriptions with the since parameter
             subscription_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{actual_device_name}.json?since={timestamps['last_timestamp']}"
@@ -11571,18 +11680,18 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
             response.raise_for_status()
             gpodder_data = response.json()
             use_session = True
-            logger.info("Using session-based authentication")
+            print("Using session-based authentication")
 
         except Exception as e:
             logger.warning(f"Session-based authentication failed: {str(e)}. Falling back to basic auth.")
             # Fall back to standard auth if session auth fails
             try:
                 subscription_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{actual_device_name}.json?since={timestamps['last_timestamp']}"
-                logger.info(f"Trying basic authentication at {subscription_url}")
+                print(f"Trying basic authentication at {subscription_url}")
                 response = requests.get(subscription_url, auth=auth)
                 response.raise_for_status()
                 gpodder_data = response.json()
-                logger.info("Using basic authentication")
+                print("Using basic authentication")
             except Exception as e2:
                 logger.error(f"Basic auth also failed: {str(e2)}")
                 raise
@@ -11596,8 +11705,8 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
         gpodder_podcasts_add = gpodder_data.get("add", [])
         gpodder_podcasts_remove = gpodder_data.get("remove", [])
 
-        logger.info(f"gPodder podcasts to add: {gpodder_podcasts_add}")
-        logger.info(f"gPodder podcasts to remove: {gpodder_podcasts_remove}")
+        print(f"gPodder podcasts to add: {gpodder_podcasts_add}")
+        print(f"gPodder podcasts to remove: {gpodder_podcasts_remove}")
 
         # Get local podcasts
         cursor = cnx.cursor()
@@ -11622,13 +11731,13 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
         successful_removals = set()
 
         # Add new podcasts with individual error handling
-        logger.info("Adding new podcasts...")
+        print("Adding new podcasts...")
         for feed_url in podcasts_to_add:
             try:
                 podcast_values = get_podcast_values(feed_url, user_id)
                 return_value = add_podcast(cnx, database_type, podcast_values, user_id)
                 if return_value:
-                    logger.info(f"Successfully added {feed_url}")
+                    print(f"Successfully added {feed_url}")
                     successful_additions.add(feed_url)
                 else:
                     logger.error(f"Failed to add {feed_url}")
@@ -11637,7 +11746,7 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
                 continue  # Continue with next podcast even if this one fails
 
         # Remove podcasts with individual error handling
-        logger.info("Removing podcasts...")
+        print("Removing podcasts...")
         for feed_url in podcasts_to_remove:
             try:
                 if database_type == "postgresql":
@@ -11652,7 +11761,7 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
                     podcast_name = result[0]
                     if remove_podcast(cnx, database_type, podcast_name, feed_url, user_id):
                         successful_removals.add(feed_url)
-                        logger.info(f"Successfully removed {feed_url}")
+                        print(f"Successfully removed {feed_url}")
                     else:
                         logger.error(f"Failed to remove {feed_url}")
                 else:
@@ -11666,9 +11775,9 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
 
         # Process episode actions using the correct device
         try:
-            logger.info(f"Authentication method: {'session' if use_session else 'basic auth'}")
+            print(f"Authentication method: {'session' if use_session else 'basic auth'}")
             if use_session:
-                logger.info("Using SESSION authentication for episode actions")
+                print("Using SESSION authentication for episode actions")
                 process_episode_actions_session(
                     session,
                     gpodder_url,
@@ -11680,7 +11789,7 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
                     device_id
                 )
             else:
-                logger.info("Using BASIC authentication for episode actions")
+                print("Using BASIC authentication for episode actions")
                 process_episode_actions(
                     gpodder_url,
                     gpodder_login,
@@ -11696,7 +11805,7 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
 
         # Sync local episode times
         try:
-            logger.info(f"Authentication method for ep times: {'session' if use_session else 'basic auth'}")
+            print(f"Authentication method for ep times: {'session' if use_session else 'basic auth'}")
             if use_session:
                 sync_local_episode_times_session(
                     session,
@@ -11724,70 +11833,6 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
     except Exception as e:
         logger.error(f"Major error in refresh_gpodder_subscription: {str(e)}")
         return False
-
-def get_local_episode_times(cnx, database_type, user_id):
-    """Get a list of all episode times for a user's podcasts"""
-    import logging
-
-    logger = logging.getLogger(__name__)
-    cursor = cnx.cursor()
-
-    try:
-        if database_type == "postgresql":
-            query = '''
-                SELECT e.EpisodeID, e.EpisodeTitle, e.EpisodeURL, e.EpisodeDuration, e.Completed,
-                       p.FeedURL as podcast_url, ueh.ListenDuration as listen_duration
-                FROM "Episodes" e
-                JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
-                LEFT JOIN "UserEpisodeHistory" ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = %s
-                WHERE p.UserID = %s AND ueh.ListenDuration IS NOT NULL
-                ORDER BY e.EpisodePubDate DESC
-            '''
-        else:
-            query = '''
-                SELECT e.EpisodeID, e.EpisodeTitle, e.EpisodeURL, e.EpisodeDuration, e.Completed,
-                       p.FeedURL as podcast_url, ueh.ListenDuration as listen_duration
-                FROM Episodes e
-                JOIN Podcasts p ON e.PodcastID = p.PodcastID
-                LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = %s
-                WHERE p.UserID = %s AND ueh.ListenDuration IS NOT NULL
-                ORDER BY e.EpisodePubDate DESC
-            '''
-
-        cursor.execute(query, (user_id, user_id))
-        results = []
-
-        for row in cursor.fetchall():
-            if isinstance(row, dict):
-                # Handle dict-style result
-                result = {
-                    "episode_id": row["episodeid"],
-                    "episode_title": row["episodetitle"],
-                    "episode_url": row["episodeurl"],
-                    "episode_duration": row["episodeduration"],
-                    "completed": row["completed"],
-                    "podcast_url": row["podcast_url"],
-                    "listen_duration": row["listen_duration"]
-                }
-            else:
-                # Handle tuple-style result
-                result = {
-                    "episode_id": row[0],
-                    "episode_title": row[1],
-                    "episode_url": row[2],
-                    "episode_duration": row[3],
-                    "completed": row[4],
-                    "podcast_url": row[5],
-                    "listen_duration": row[6]
-                }
-            results.append(result)
-
-        return results
-    except Exception as e:
-        logger.error(f"Error getting local episode times: {e}")
-        return []
-    finally:
-        cursor.close()
 
 def sync_local_episode_times_session(session, gpodder_url, gpodder_login, cnx, database_type, user_id, device_name=None, UPLOAD_BULK_SIZE=30):
     """Sync local episode times using session-based authentication"""

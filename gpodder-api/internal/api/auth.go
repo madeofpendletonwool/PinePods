@@ -43,11 +43,10 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 
 		log.Printf("[DEBUG] AuthMiddleware: Processing request for username: %s", username)
 
-		// First, check if this is an internal API call (from refresh_internal_gpodder)
-		// by looking for the X-GPodder-Token header
+		// Check if this is an internal API call via X-GPodder-Token
 		gpodderTokenHeader := c.GetHeader("X-GPodder-Token")
 		if gpodderTokenHeader != "" {
-			log.Printf("[DEBUG] AuthMiddleware: Found X-GPodder-Token header, validating token")
+			log.Printf("[DEBUG] AuthMiddleware: Found X-GPodder-Token header")
 
 			// Get user data
 			var userID int
@@ -60,13 +59,8 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 			`, username).Scan(&userID, &gpodderToken, &podSyncType)
 
 			if err != nil {
-				if err == sql.ErrNoRows {
-					log.Printf("[ERROR] AuthMiddleware: User not found: %s", username)
-					c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or token"})
-				} else {
-					log.Printf("[ERROR] AuthMiddleware: Database error: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
-				}
+				log.Printf("[ERROR] AuthMiddleware: Database error: %v", err)
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or token"})
 				c.Abort()
 				return
 			}
@@ -80,41 +74,23 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 				return
 			}
 
-			// Validate the token directly
+			// For internal calls with X-GPodder-Token header, validate token directly
 			if gpodderToken.Valid && gpodderToken.String == gpodderTokenHeader {
-				log.Printf("[DEBUG] AuthMiddleware: Token validated successfully for internal call: %s", username)
+				log.Printf("[DEBUG] AuthMiddleware: X-GPodder-Token validated for user: %s", username)
 				c.Set("userID", userID)
 				c.Set("username", username)
 				c.Next()
 				return
 			}
 
-			// If token doesn't match directly, try to decrypt
-			if gpodderToken.Valid {
-				var encryptionKey []byte
-				err = db.QueryRow(`SELECT EncryptionKey FROM "AppSettings" WHERE AppSettingsID = 1`).Scan(&encryptionKey)
-
-				if err == nil {
-					decryptedToken, err := decryptToken(encryptionKey, gpodderToken.String)
-					if err == nil && decryptedToken == gpodderTokenHeader {
-						log.Printf("[DEBUG] AuthMiddleware: Decrypted token validated for internal call: %s", username)
-						c.Set("userID", userID)
-						c.Set("username", username)
-						c.Next()
-						return
-					}
-				}
-			}
-
-			// If we get here, token validation failed
-			log.Printf("[ERROR] AuthMiddleware: Invalid token for user: %s", username)
+			// If token doesn't match, authentication failed
+			log.Printf("[ERROR] AuthMiddleware: Invalid X-GPodder-Token for user: %s", username)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
 		}
 
 		// If no token header found, proceed with standard authentication
-		// Get the Authorization header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			log.Printf("[ERROR] AuthMiddleware: Authorization header is missing")
@@ -162,16 +138,16 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 			return
 		}
 
-		// Query user data with token
+		// Query user data
 		var userID int
 		var hashedPassword string
 		var podSyncType string
 		var gpodderToken sql.NullString
 
 		err = db.QueryRow(`
-            SELECT UserID, Hashed_PW, Pod_Sync_Type, GpodderToken FROM "Users"
-            WHERE LOWER(Username) = LOWER($1)
-        `, username).Scan(&userID, &hashedPassword, &podSyncType, &gpodderToken)
+			SELECT UserID, Hashed_PW, Pod_Sync_Type, GpodderToken FROM "Users"
+			WHERE LOWER(Username) = LOWER($1)
+		`, username).Scan(&userID, &hashedPassword, &podSyncType, &gpodderToken)
 
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -197,79 +173,16 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 		// Flag to track authentication success
 		authenticated := false
 
-		// Check if this is a token intended for direct authentication
-		// Look for specific header or client info
-		isInternalAPICall := false
-		userAgent := c.Request.UserAgent()
-
-		// If User-Agent contains "PinePods" or similar internal identifiers,
-		// or if there's a special header, consider it an internal API call
-		if strings.Contains(userAgent, "PinePods") ||
-			strings.Contains(userAgent, "pinepods") ||
-			c.GetHeader("X-Internal-Client") != "" {
-			isInternalAPICall = true
-		}
-
-		// For known internal API calls, try token authentication first
-		if isInternalAPICall && gpodderToken.Valid && gpodderToken.String != "" {
-			log.Printf("[DEBUG] AuthMiddleware: Detected internal API call, trying token first")
-
-			// Get the encryption key from AppSettings
-			var encryptionKey []byte
-			err := db.QueryRow(`SELECT EncryptionKey FROM "AppSettings" WHERE AppSettingsID = 1`).Scan(&encryptionKey)
-
-			if err == nil {
-				// First check if the raw token matches (useful for API auth)
-				if gpodderToken.String == password {
-					log.Printf("[DEBUG] AuthMiddleware: User authenticated with raw gpodder token: %s", username)
-					authenticated = true
-				} else {
-					// Try to decrypt the token
-					decryptedToken, err := decryptToken(encryptionKey, gpodderToken.String)
-					if err == nil && decryptedToken == password {
-						log.Printf("[DEBUG] AuthMiddleware: User authenticated with decrypted gpodder token: %s", username)
-						authenticated = true
-					} else {
-						log.Printf("[DEBUG] AuthMiddleware: Token authentication failed, trying password next: %v", err)
-					}
-				}
-			} else {
-				log.Printf("[ERROR] AuthMiddleware: Failed to get encryption key: %v", err)
-			}
+		// Check if this is a gpodder token authentication
+		if gpodderToken.Valid && gpodderToken.String == password {
+			log.Printf("[DEBUG] AuthMiddleware: User authenticated with gpodder token: %s", username)
+			authenticated = true
 		}
 
 		// If token auth didn't succeed, try password authentication
 		if !authenticated && verifyPassword(password, hashedPassword) {
 			log.Printf("[DEBUG] AuthMiddleware: User authenticated with password: %s", username)
 			authenticated = true
-		}
-
-		// For non-internal calls, try token authentication as last resort
-		if !authenticated && !isInternalAPICall && gpodderToken.Valid && gpodderToken.String != "" {
-			log.Printf("[DEBUG] AuthMiddleware: Trying to authenticate with gpodder token")
-
-			// Get the encryption key from AppSettings
-			var encryptionKey []byte
-			err := db.QueryRow(`SELECT EncryptionKey FROM "AppSettings" WHERE AppSettingsID = 1`).Scan(&encryptionKey)
-
-			if err == nil {
-				// First check if the raw token matches (useful for API auth)
-				if gpodderToken.String == password {
-					log.Printf("[DEBUG] AuthMiddleware: User authenticated with raw gpodder token: %s", username)
-					authenticated = true
-				} else {
-					// Try to decrypt the token
-					decryptedToken, err := decryptToken(encryptionKey, gpodderToken.String)
-					if err == nil && decryptedToken == password {
-						log.Printf("[DEBUG] AuthMiddleware: User authenticated with decrypted gpodder token: %s", username)
-						authenticated = true
-					} else {
-						log.Printf("[DEBUG] AuthMiddleware: Token authentication failed: %v", err)
-					}
-				}
-			} else {
-				log.Printf("[ERROR] AuthMiddleware: Failed to get encryption key: %v", err)
-			}
 		}
 
 		// If authentication was successful, set context and continue

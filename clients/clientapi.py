@@ -5399,60 +5399,68 @@ async def toggle_gpodder_sync(
             status_code=403,
             detail="Your API key is either invalid or does not have correct permission"
         )
-
     # Get the user ID from the API key
     user_id_result = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
     print(f"User ID result: {user_id_result}")
-
     if isinstance(user_id_result, dict):
         user_id = user_id_result.get('userid')
     else:
         user_id = user_id_result[0] if isinstance(user_id_result, tuple) else user_id_result
-
     if not user_id:
         raise HTTPException(status_code=403, detail="Invalid API key")
-
     try:
         print(f"Request to toggle gpodder sync: {request.enabled}")
         user_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
-
         if not user_data:
             raise HTTPException(status_code=404, detail="User not found")
-
         # Get initial state
         current_sync_type = user_data["sync_type"]
         print(f"Current sync type: {current_sync_type}")
-
         device_info = None
-
         if request.enabled:
             # Enable gpodder sync
             result = database_functions.functions.set_gpodder_internal_sync(cnx, database_type, user_id)
             if not result:
                 raise HTTPException(status_code=500, detail="Failed to enable gpodder sync")
-
             device_info = result
 
-            # Add an immediate sync task
+            # Get required parameters for refresh_gpodder_subscription
+            gpodder_settings = database_functions.functions.get_gpodder_settings(database_type, cnx, user_id)
+            gpodder_token = gpodder_settings.get("gpoddertoken", "")
+            gpodder_login = gpodder_settings.get("gpodderloginname", "")
+            print(gpodder_settings)
+
+            # Get the updated sync type after enabling
+            updated_user_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+            updated_sync_type = updated_user_data["sync_type"]
+            # gpodder_login = gpodder_settings.get("gpodderloginname", "")
+            # gpodder_token = gpodder_settings.get("gpoddertoken", "")
+            device_id = device_info.get("device_id") if device_info else None
+            device_name = device_info.get("device_name") if device_info else None
+
             background_tasks.add_task(
-                database_functions.functions.refresh_internal_gpodder,
+                database_functions.functions.refresh_gpodder_subscription,
                 database_type,
                 cnx,
-                user_id
+                user_id,
+                'http://localhost:8042',
+                gpodder_token,  # Pass the raw token, don't encrypt/decrypt it
+                gpodder_login,
+                updated_sync_type,
+                device_id,
+                device_name,
+                False  # is_remote
             )
             print(f"Added background task to sync gpodder for user: {user_id}")
-
         else:
             # Disable gpodder sync
             success = database_functions.functions.disable_gpodder_internal_sync(cnx, database_type, user_id)
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to disable gpodder sync")
-
         # Get updated state after changes
         updated_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
         new_sync_type = updated_data["sync_type"]
         print(f"Updated sync type: {new_sync_type}")
-
         response = {
             "sync_type": new_sync_type,
             "gpodder_enabled": new_sync_type in ["gpodder", "both"],
@@ -5460,12 +5468,10 @@ async def toggle_gpodder_sync(
             "external_url": updated_data.get("gpodder_url") if new_sync_type in ["external", "both"] else None,
             "api_url": "http://localhost:8042" if new_sync_type in ["gpodder", "both"] else None
         }
-
         # Add device information if available
         if device_info and request.enabled:
             response["device_name"] = device_info["device_name"]
             response["device_id"] = device_info["device_id"]
-
         print(f"Returning response: {response}")
         return response
     except Exception as e:

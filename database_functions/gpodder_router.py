@@ -435,6 +435,7 @@ async def sync_with_gpodder(
     api_key: str = Depends(get_api_key_from_header)
 ):
     """Sync podcasts from GPodder to local database"""
+    print('running a sync')
     user_id = sync_request.user_id
     # Get user information
     cursor = cnx.cursor()
@@ -458,6 +459,7 @@ async def sync_with_gpodder(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User not found"
         )
+    print('grabbing user data')
     # Extract user data
     if isinstance(result, tuple):
         gpodder_login = result[0]
@@ -498,6 +500,7 @@ async def sync_with_gpodder(
             encryption_key = encryption_key_result[0]
         else:
             encryption_key = encryption_key_result["encryptionkey"]
+    print('Now doing refresh')
     success = database_functions.functions.refresh_gpodder_subscription(
         database_type,
         cnx,
@@ -510,6 +513,7 @@ async def sync_with_gpodder(
         sync_request.device_name,
         sync_request.is_remote
     )
+    print('refresh done')
     if not success:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
