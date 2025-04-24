@@ -4798,18 +4798,63 @@ def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url,
         if not sync_type:
             sync_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
 
-        # If this is an internal gpodder API (URL points to localhost or Pod_Sync_Type is 'gpodder')
-        if sync_type == "gpodder" or (gpodder_url and gpodder_url.startswith("http://localhost")):
-            print(f"Using internal gpodder API for user {user_id}")
-            # Use the internal gpodder API implementation
-            database_functions.functions.refresh_internal_gpodder(database_type, cnx, user_id)
-        # For external gpodder implementations
-        elif sync_type == "nextcloud":
+        # Determine if this is internal based on URL
+        is_internal = gpodder_url == "http://localhost:8042"
+        print(f"Using {'internal' if is_internal else 'external'} gpodder API for user {user_id}")
+
+        # Special handling for nextcloud sync
+        if sync_type == "nextcloud":
             print(f"Using nextcloud gpodder API for user {user_id}")
-            database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, sync_type)
-        else:  # Assume external gPodder
-            print(f"Using external gpodder API for user {user_id}")
-            database_functions.functions.refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, sync_type)
+            success = database_functions.functions.refresh_nextcloud_subscription(
+                database_type,
+                cnx,
+                user_id,
+                gpodder_url,
+                gpodder_token,
+                gpodder_login,
+                sync_type
+            )
+            return success
+        # For all other GPodder sync types, use the standard refresh function
+        elif sync_type in ["gpodder", "both", "external"]:
+            # Get default device ID
+            device_id = database_functions.functions.get_or_create_default_device(cnx, database_type, user_id)
+
+            # Get device name if we have a device ID
+            device_name = None
+            if device_id:
+                cursor = cnx.cursor()
+                if database_type == "postgresql":
+                    query = 'SELECT DeviceName FROM "GpodderDevices" WHERE DeviceID = %s'
+                else:
+                    query = "SELECT DeviceName FROM GpodderDevices WHERE DeviceID = %s"
+
+                cursor.execute(query, (device_id,))
+                result = cursor.fetchone()
+                cursor.close()
+
+                if result:
+                    device_name = result[0] if isinstance(result, tuple) else result["devicename"]
+
+            # Determine if this is a remote sync
+            is_remote = not is_internal and sync_type in ["external", "both"]
+
+            success = database_functions.functions.refresh_gpodder_subscription(
+                database_type,
+                cnx,
+                user_id,
+                gpodder_url,
+                gpodder_token,
+                gpodder_login,
+                sync_type,
+                device_id,
+                device_name,
+                is_remote
+            )
+            return success
+        else:
+            print(f"GPodder sync not enabled for user {user_id} (sync_type: {sync_type})")
+            return False
     finally:
         close_database_connection(cnx)
 

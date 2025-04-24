@@ -2569,12 +2569,6 @@ def refresh_pods(cnx, database_type):
                 channel_id = channel_id.split('/')[0].split('?')[0]
                 youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx)
             else:
-                if podcast_id == 69:
-                    print(f"DEBUG - Podcast 69 NICE data: {result}")
-                    # Log the variables right before the line that's causing the error
-                if podcast_id == 70:
-                    print(f"DEBUG - Podcast 70 data: {result}")
-                    # Log the variables right before the line that's causing the error
                 add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url,
                            auto_download, username, password, user_id)  # Added user_id here
         except Exception as e:
@@ -12346,6 +12340,7 @@ def force_full_sync_to_gpodder(database_type, cnx, user_id, gpodder_url, encrypt
     from requests.auth import HTTPBasicAuth
     import requests
     import logging
+    import base64  # Make sure to import base64
 
     print(f"Starting GPodder sync with: device_id={device_id}, device_name={device_name}, is_remote={is_remote}")
 
@@ -12429,62 +12424,15 @@ def force_full_sync_to_gpodder(database_type, cnx, user_id, gpodder_url, encrypt
 
         print(f"Found {len(local_podcasts)} local podcasts to sync")
 
-        # Create payload for PUT request
-        try:
-            # Try to login first to establish a session
-            session = requests.Session()
-            login_url = f"{gpodder_url}/api/2/auth/{gpodder_login}/login.json"
-            print(f"Logging in to GPodder at: {login_url}")
-            login_response = session.post(login_url, auth=auth)
-            login_response.raise_for_status()
-            print("Session login successful for full sync")
-
-            # Use PUT request to update subscriptions
+        # For internal API, skip session-based login and go straight to basic auth
+        if is_internal_api:
+            print("Internal API detected - skipping session login and using basic auth directly")
             subscription_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_name}.json"
-            print(f"Sending PUT request to: {subscription_url}")
 
-            # Debug the payload
-            print(f"Sending payload: {local_podcasts[:3]}... (showing first 3 of {len(local_podcasts)})")
-
-            response = session.put(
-                subscription_url,
-                json=local_podcasts,
-                headers={"Content-Type": "application/json"}
-            )
-
-            # Check response
-            print(f"PUT response status: {response.status_code}")
-            print(f"PUT response text: {response.text[:200]}...")  # Show first 200 chars
-
-            response.raise_for_status()
-            print(f"Successfully pushed all podcasts to GPodder")
-            return True
-
-        except Exception as e:
-            print(f"Session-based sync failed: {str(e)}. Falling back to basic auth.")
+            # Try PUT request first (standard method)
             try:
-                # Try a different method - POST with the update API
-                try:
-                    print("Trying POST to subscriptions-update API...")
-                    update_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_name}.json"
-                    payload = {
-                        "add": local_podcasts,
-                        "remove": []
-                    }
-                    response = session.post(
-                        update_url,
-                        json=payload,
-                        headers={"Content-Type": "application/json"}
-                    )
-                    response.raise_for_status()
-                    print(f"Successfully updated podcasts using POST method")
-                    return True
-                except Exception as e3:
-                    print(f"Failed with POST method: {str(e3)}")
+                print(f"Sending PUT request with basic auth to: {subscription_url}")
 
-                # Fall back to basic auth with PUT
-                print("Falling back to basic auth with PUT...")
-                subscription_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_name}.json"
                 response = requests.put(
                     subscription_url,
                     json=local_podcasts,
@@ -12492,16 +12440,109 @@ def force_full_sync_to_gpodder(database_type, cnx, user_id, gpodder_url, encrypt
                     headers={"Content-Type": "application/json"}
                 )
 
+                print(f"PUT response status: {response.status_code}")
+                response.raise_for_status()
+                print("Successfully pushed all podcasts to internal GPodder API")
+                return True
+            except Exception as e:
+                print(f"PUT request failed: {str(e)}")
+
+                # Fall back to POST with update format
+                try:
+                    print("Trying POST with update format...")
+                    payload = {
+                        "add": local_podcasts,
+                        "remove": []
+                    }
+
+                    response = requests.post(
+                        subscription_url,
+                        json=payload,
+                        auth=auth,
+                        headers={"Content-Type": "application/json"}
+                    )
+
+                    response.raise_for_status()
+                    print("Successfully updated podcasts using POST method")
+                    return True
+                except Exception as e2:
+                    print(f"POST request failed: {str(e2)}")
+                    return False
+        else:
+            # For external API, try session login first
+            try:
+                # Try to login first to establish a session
+                session = requests.Session()
+                login_url = f"{gpodder_url}/api/2/auth/{gpodder_login}/login.json"
+                print(f"Logging in to external GPodder at: {login_url}")
+                login_response = session.post(login_url, auth=auth)
+                login_response.raise_for_status()
+                print("Session login successful for full sync")
+
+                # Use PUT request to update subscriptions
+                subscription_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_name}.json"
+                print(f"Sending PUT request to: {subscription_url}")
+
+                # Debug the payload
+                print(f"Sending payload: {local_podcasts[:3]}... (showing first 3 of {len(local_podcasts)})")
+
+                response = session.put(
+                    subscription_url,
+                    json=local_podcasts,
+                    headers={"Content-Type": "application/json"}
+                )
+
                 # Check response
-                print(f"Basic auth PUT response status: {response.status_code}")
-                print(f"Basic auth PUT response text: {response.text[:200]}...")  # Show first 200 chars
+                print(f"PUT response status: {response.status_code}")
+                print(f"PUT response text: {response.text[:200]}...")  # Show first 200 chars
 
                 response.raise_for_status()
-                print(f"Successfully pushed all podcasts to GPodder using basic auth")
+                print(f"Successfully pushed all podcasts to GPodder")
                 return True
-            except Exception as e2:
-                print(f"Failed to push podcasts with basic auth: {str(e2)}")
-                return False
+
+            except Exception as e:
+                print(f"Session-based sync failed: {str(e)}. Falling back to basic auth.")
+                try:
+                    # Try a different method - POST with the update API
+                    try:
+                        print("Trying POST to subscriptions-update API...")
+                        update_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_name}.json"
+                        payload = {
+                            "add": local_podcasts,
+                            "remove": []
+                        }
+                        response = requests.post(
+                            update_url,
+                            json=payload,
+                            auth=auth,
+                            headers={"Content-Type": "application/json"}
+                        )
+                        response.raise_for_status()
+                        print(f"Successfully updated podcasts using POST method")
+                        return True
+                    except Exception as e3:
+                        print(f"Failed with POST method: {str(e3)}")
+
+                    # Fall back to basic auth with PUT
+                    print("Falling back to basic auth with PUT...")
+                    subscription_url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_name}.json"
+                    response = requests.put(
+                        subscription_url,
+                        json=local_podcasts,
+                        auth=auth,
+                        headers={"Content-Type": "application/json"}
+                    )
+
+                    # Check response
+                    print(f"Basic auth PUT response status: {response.status_code}")
+                    print(f"Basic auth PUT response text: {response.text[:200]}...")  # Show first 200 chars
+
+                    response.raise_for_status()
+                    print(f"Successfully pushed all podcasts to GPodder using basic auth")
+                    return True
+                except Exception as e2:
+                    print(f"Failed to push podcasts with basic auth: {str(e2)}")
+                    return False
 
     except Exception as e:
         print(f"Error in force_full_sync_to_gpodder: {str(e)}")

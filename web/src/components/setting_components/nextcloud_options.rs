@@ -1551,7 +1551,17 @@ pub fn sync_options() -> Html {
             <p class="item_container-text text-md mb-4">{"With this option you can authenticate with a Nextcloud or GPodder server to use as a podcast sync client. This works great with AntennaPod on Android so you can have the same exact feed there while on mobile. In addition, if you're already using AntennaPod with Nextcloud Podcast sync you can connect your existing sync feed to quickly import everything right into Pinepods! You'll only enter information for one of the below options. Nextcloud requires that you have the gpodder sync add-on in nextcloud and the gpodder option requires you to have an external gpodder podcast sync server that authenticates via user and pass."}</p>
 
             <div class="flex items-center mb-4">
-                <p class="item_container-text text-md mr-4">{"Current Podcast Sync Server: "}<span class="item_container-text font-bold">{(*nextcloud_url).clone()}</span></p>
+                <p class="item_container-text text-md mr-4">{"Current Podcast Sync Server: "}
+                    <span class="item_container-text font-bold">
+                    {
+                        if (*nextcloud_url) == "http://localhost:8042" {
+                            "Internal Sync Server".to_string()
+                        } else {
+                            (*nextcloud_url).clone()
+                        }
+                    }
+                    </span>
+                </p>
                 {
                     if *is_sync_configured {
                         html! {

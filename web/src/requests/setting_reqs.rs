@@ -1603,7 +1603,7 @@ pub struct GpodderApiStatusResponse {
     pub gpodder_enabled: bool,
     pub external_enabled: bool,
     pub external_url: Option<String>,
-    pub api_url: String,
+    pub api_url: Option<String>, // Changed to Option<String>
 }
 
 // Get GPodder API status
