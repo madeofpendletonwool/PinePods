@@ -9,9 +9,10 @@ import (
 
 // Migration represents a database migration
 type Migration struct {
-	Version     int
-	Description string
-	SQL         string
+	Version       int
+	Description   string
+	PostgreSQLSQL string
+	MySQLSQL      string
 }
 
 // MigrationRecord represents a record of an applied migration
@@ -22,15 +23,29 @@ type MigrationRecord struct {
 }
 
 // EnsureMigrationsTable creates the migrations table if it doesn't exist
-func EnsureMigrationsTable(db *sql.DB) error {
+func EnsureMigrationsTable(db *sql.DB, dbType string) error {
 	log.Println("Creating GpodderSyncMigrations table if it doesn't exist...")
-	_, err := db.Exec(`
-		CREATE TABLE IF NOT EXISTS "GpodderSyncMigrations" (
-			Version INT PRIMARY KEY,
-			Description TEXT NOT NULL,
-			AppliedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
+
+	var query string
+	if dbType == "postgresql" {
+		query = `
+			CREATE TABLE IF NOT EXISTS "GpodderSyncMigrations" (
+				Version INT PRIMARY KEY,
+				Description TEXT NOT NULL,
+				AppliedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)
+		`
+	} else {
+		query = `
+			CREATE TABLE IF NOT EXISTS GpodderSyncMigrations (
+				Version INT PRIMARY KEY,
+				Description TEXT NOT NULL,
+				AppliedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)
+		`
+	}
+
+	_, err := db.Exec(query)
 	if err != nil {
 		log.Printf("Error creating migrations table: %v", err)
 		return err
@@ -40,13 +55,25 @@ func EnsureMigrationsTable(db *sql.DB) error {
 }
 
 // GetAppliedMigrations returns a list of already applied migrations
-func GetAppliedMigrations(db *sql.DB) ([]MigrationRecord, error) {
+func GetAppliedMigrations(db *sql.DB, dbType string) ([]MigrationRecord, error) {
 	log.Println("Checking previously applied migrations...")
-	rows, err := db.Query(`
-		SELECT Version, Description, AppliedAt
-		FROM "GpodderSyncMigrations"
-		ORDER BY Version ASC
-	`)
+
+	var query string
+	if dbType == "postgresql" {
+		query = `
+			SELECT Version, Description, AppliedAt
+			FROM "GpodderSyncMigrations"
+			ORDER BY Version ASC
+		`
+	} else {
+		query = `
+			SELECT Version, Description, AppliedAt
+			FROM GpodderSyncMigrations
+			ORDER BY Version ASC
+		`
+	}
+
+	rows, err := db.Query(query)
 	if err != nil {
 		log.Printf("Error checking applied migrations: %v", err)
 		return nil, err
@@ -72,8 +99,16 @@ func GetAppliedMigrations(db *sql.DB) ([]MigrationRecord, error) {
 }
 
 // ApplyMigration applies a single migration
-func ApplyMigration(db *sql.DB, migration Migration) error {
+func ApplyMigration(db *sql.DB, migration Migration, dbType string) error {
 	log.Printf("Applying migration %d: %s", migration.Version, migration.Description)
+
+	// Select the appropriate SQL based on database type
+	var sql string
+	if dbType == "postgresql" {
+		sql = migration.PostgreSQLSQL
+	} else {
+		sql = migration.MySQLSQL
+	}
 
 	// Begin transaction
 	tx, err := db.Begin()
@@ -90,17 +125,27 @@ func ApplyMigration(db *sql.DB, migration Migration) error {
 	}()
 
 	// Execute the migration SQL
-	_, err = tx.Exec(migration.SQL)
+	_, err = tx.Exec(sql)
 	if err != nil {
 		log.Printf("Failed to apply migration %d: %v", migration.Version, err)
 		return fmt.Errorf("failed to apply migration %d: %w", migration.Version, err)
 	}
 
 	// Record the migration
-	_, err = tx.Exec(`
-		INSERT INTO "GpodderSyncMigrations" (Version, Description)
-		VALUES ($1, $2)
-	`, migration.Version, migration.Description)
+	var insertQuery string
+	if dbType == "postgresql" {
+		insertQuery = `
+			INSERT INTO "GpodderSyncMigrations" (Version, Description)
+			VALUES ($1, $2)
+		`
+	} else {
+		insertQuery = `
+			INSERT INTO GpodderSyncMigrations (Version, Description)
+			VALUES (?, ?)
+		`
+	}
+
+	_, err = tx.Exec(insertQuery, migration.Version, migration.Description)
 	if err != nil {
 		log.Printf("Failed to record migration %d: %v", migration.Version, err)
 		return fmt.Errorf("failed to record migration %d: %w", migration.Version, err)
@@ -118,16 +163,16 @@ func ApplyMigration(db *sql.DB, migration Migration) error {
 }
 
 // RunMigrations runs all pending migrations
-func RunMigrations(db *sql.DB) error {
+func RunMigrations(db *sql.DB, dbType string) error {
 	log.Println("Starting gpodder API migrations...")
 
 	// Ensure migrations table exists
-	if err := EnsureMigrationsTable(db); err != nil {
+	if err := EnsureMigrationsTable(db, dbType); err != nil {
 		return fmt.Errorf("failed to create migrations table: %w", err)
 	}
 
 	// Get applied migrations
-	appliedMigrations, err := GetAppliedMigrations(db)
+	appliedMigrations, err := GetAppliedMigrations(db, dbType)
 	if err != nil {
 		return fmt.Errorf("failed to get applied migrations: %w", err)
 	}
@@ -152,7 +197,7 @@ func RunMigrations(db *sql.DB) error {
 		}
 
 		log.Printf("Applying migration %d: %s", migration.Version, migration.Description)
-		if err := ApplyMigration(db, migration); err != nil {
+		if err := ApplyMigration(db, migration, dbType); err != nil {
 			return err
 		}
 		appliedCount++
@@ -167,13 +212,13 @@ func RunMigrations(db *sql.DB) error {
 	return nil
 }
 
-// GetMigrations returns all migrations
+// GetMigrations returns all migrations with SQL variants for both database types
 func GetMigrations() []Migration {
 	return []Migration{
 		{
 			Version:     1,
 			Description: "Initial schema creation",
-			SQL: `
+			PostgreSQLSQL: `
 				-- Device sync state for the API
 				CREATE TABLE IF NOT EXISTS "GpodderSyncDeviceState" (
 					DeviceStateID SERIAL PRIMARY KEY,
@@ -269,20 +314,119 @@ func GetMigrations() []Migration {
 				CREATE INDEX IF NOT EXISTS idx_gpodder_sync_episode_actions_userid ON "GpodderSyncEpisodeActions"(UserID);
 				CREATE INDEX IF NOT EXISTS idx_gpodder_sync_podcast_lists_userid ON "GpodderSyncPodcastLists"(UserID);
 			`,
+			MySQLSQL: `
+				-- Device sync state for the API
+				CREATE TABLE IF NOT EXISTS GpodderSyncDeviceState (
+					DeviceStateID INT AUTO_INCREMENT PRIMARY KEY,
+					UserID INT NOT NULL,
+					DeviceID INT NOT NULL,
+					SubscriptionCount INT DEFAULT 0,
+					LastUpdated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+					FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+					FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+					UNIQUE(UserID, DeviceID)
+				);
+
+				-- Subscription changes
+				CREATE TABLE IF NOT EXISTS GpodderSyncSubscriptions (
+					SubscriptionID INT AUTO_INCREMENT PRIMARY KEY,
+					UserID INT NOT NULL,
+					DeviceID INT NOT NULL,
+					PodcastURL TEXT NOT NULL,
+					Action VARCHAR(10) NOT NULL,
+					Timestamp BIGINT NOT NULL,
+					FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+					FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE
+				);
+
+				-- Episode actions
+				CREATE TABLE IF NOT EXISTS GpodderSyncEpisodeActions (
+					ActionID INT AUTO_INCREMENT PRIMARY KEY,
+					UserID INT NOT NULL,
+					DeviceID INT,
+					PodcastURL TEXT NOT NULL,
+					EpisodeURL TEXT NOT NULL,
+					Action VARCHAR(20) NOT NULL,
+					Timestamp BIGINT NOT NULL,
+					Started INT,
+					Position INT,
+					Total INT,
+					FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+					FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE
+				);
+
+				-- Podcast lists
+				CREATE TABLE IF NOT EXISTS GpodderSyncPodcastLists (
+					ListID INT AUTO_INCREMENT PRIMARY KEY,
+					UserID INT NOT NULL,
+					Name VARCHAR(255) NOT NULL,
+					Title VARCHAR(255) NOT NULL,
+					CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+					FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+					UNIQUE(UserID, Name)
+				);
+
+				-- Podcast list entries
+				CREATE TABLE IF NOT EXISTS GpodderSyncPodcastListEntries (
+					EntryID INT AUTO_INCREMENT PRIMARY KEY,
+					ListID INT NOT NULL,
+					PodcastURL TEXT NOT NULL,
+					CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+					FOREIGN KEY (ListID) REFERENCES GpodderSyncPodcastLists(ListID) ON DELETE CASCADE
+				);
+
+				-- Synchronization relationships between devices
+				CREATE TABLE IF NOT EXISTS GpodderSyncDevicePairs (
+					PairID INT AUTO_INCREMENT PRIMARY KEY,
+					UserID INT NOT NULL,
+					DeviceID1 INT NOT NULL,
+					DeviceID2 INT NOT NULL,
+					CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+					FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+					FOREIGN KEY (DeviceID1) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+					FOREIGN KEY (DeviceID2) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+					UNIQUE(UserID, DeviceID1, DeviceID2)
+				);
+
+				-- Settings storage
+				CREATE TABLE IF NOT EXISTS GpodderSyncSettings (
+					SettingID INT AUTO_INCREMENT PRIMARY KEY,
+					UserID INT NOT NULL,
+					Scope VARCHAR(20) NOT NULL,
+					DeviceID INT,
+					PodcastURL TEXT,
+					EpisodeURL TEXT,
+					SettingKey VARCHAR(255) NOT NULL,
+					SettingValue TEXT,
+					CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+					LastUpdated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+					FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+					FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE
+				);
+
+				-- Create indexes for faster queries
+				CREATE INDEX idx_gpodder_sync_subscriptions_userid ON GpodderSyncSubscriptions(UserID);
+				CREATE INDEX idx_gpodder_sync_subscriptions_deviceid ON GpodderSyncSubscriptions(DeviceID);
+				CREATE INDEX idx_gpodder_sync_episode_actions_userid ON GpodderSyncEpisodeActions(UserID);
+				CREATE INDEX idx_gpodder_sync_podcast_lists_userid ON GpodderSyncPodcastLists(UserID);
+			`,
 		},
-		// Add more migrations here as needed in the future
 		{
 			Version:     2,
 			Description: "Add API version column to GpodderSyncSettings",
-			SQL: `
+			PostgreSQLSQL: `
 				ALTER TABLE "GpodderSyncSettings"
+				ADD COLUMN IF NOT EXISTS APIVersion VARCHAR(10) DEFAULT '2.0';
+			`,
+			MySQLSQL: `
+				ALTER TABLE GpodderSyncSettings
 				ADD COLUMN IF NOT EXISTS APIVersion VARCHAR(10) DEFAULT '2.0';
 			`,
 		},
 		{
 			Version:     3,
 			Description: "Create GpodderSessions table for API sessions",
-			SQL: `
+			PostgreSQLSQL: `
 				CREATE TABLE IF NOT EXISTS "GpodderSessions" (
 					SessionID SERIAL PRIMARY KEY,
 					UserID INT NOT NULL,
@@ -300,16 +444,32 @@ func GetMigrations() []Migration {
 				CREATE INDEX IF NOT EXISTS idx_gpodder_sessions_userid ON "GpodderSessions"(UserID);
 				CREATE INDEX IF NOT EXISTS idx_gpodder_sessions_expires ON "GpodderSessions"(ExpiresAt);
 			`,
+			MySQLSQL: `
+				CREATE TABLE IF NOT EXISTS GpodderSessions (
+					SessionID INT AUTO_INCREMENT PRIMARY KEY,
+					UserID INT NOT NULL,
+					SessionToken TEXT NOT NULL,
+					CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+					ExpiresAt TIMESTAMP NOT NULL,
+					LastActive TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+					UserAgent TEXT,
+					ClientIP TEXT,
+					FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+				);
+
+				CREATE INDEX idx_gpodder_sessions_userid ON GpodderSessions(UserID);
+				CREATE INDEX idx_gpodder_sessions_expires ON GpodderSessions(ExpiresAt);
+			`,
 		},
 		{
 			Version:     4,
 			Description: "Add sync state table for tracking device sync status",
-			SQL: `
+			PostgreSQLSQL: `
 				CREATE TABLE IF NOT EXISTS "GpodderSyncState" (
 					SyncStateID SERIAL PRIMARY KEY,
 					UserID INT NOT NULL,
 					DeviceID INT NOT NULL,
-					LastTimestamp BIGINT NOT NULL DEFAULT 0,
+					LastTimestamp BIGINT DEFAULT 0,
 					LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 					FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
 					FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
@@ -318,23 +478,20 @@ func GetMigrations() []Migration {
 
 				CREATE INDEX IF NOT EXISTS idx_gpodder_syncstate_userid_deviceid ON "GpodderSyncState"(UserID, DeviceID);
 			`,
+			MySQLSQL: `
+				CREATE TABLE IF NOT EXISTS GpodderSyncState (
+					SyncStateID INT AUTO_INCREMENT PRIMARY KEY,
+					UserID INT NOT NULL,
+					DeviceID INT NOT NULL,
+					LastTimestamp BIGINT DEFAULT 0,
+					LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+					FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+					FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+					UNIQUE(UserID, DeviceID)
+				);
+
+				CREATE INDEX idx_gpodder_syncstate_userid_deviceid ON GpodderSyncState(UserID, DeviceID);
+			`,
 		},
-		// Example of a future migration (commented out for now)
-		/*
-			{
-				Version:     3,
-				Description: "Add support for episode chapters",
-				SQL: `
-					CREATE TABLE IF NOT EXISTS "GpodderSyncEpisodeChapters" (
-						ChapterID SERIAL PRIMARY KEY,
-						ActionID INT NOT NULL,
-						ChapterTitle TEXT NOT NULL,
-						StartTime INT NOT NULL,
-						EndTime INT NOT NULL,
-						FOREIGN KEY (ActionID) REFERENCES "GpodderSyncEpisodeActions"(ActionID) ON DELETE CASCADE
-					);
-				`,
-			},
-		*/
 	}
 }

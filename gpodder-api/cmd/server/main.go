@@ -10,22 +10,34 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
 	"pinepods/gpodder-api/config"
 	"pinepods/gpodder-api/internal/api"
 	"pinepods/gpodder-api/internal/db"
+
+	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 func main() {
 	// Load environment variables from .env file if it exists
 	_ = godotenv.Load()
 
+	// Debug log environment variables
+	fmt.Printf("Environment variables:\n")
+	fmt.Printf("DB_TYPE: %s\n", os.Getenv("DB_TYPE"))
+	fmt.Printf("DB_HOST: %s\n", os.Getenv("DB_HOST"))
+	fmt.Printf("DB_PORT: %s\n", os.Getenv("DB_PORT"))
+	fmt.Printf("DB_USER: %s\n", os.Getenv("DB_USER"))
+	fmt.Printf("DB_NAME: %s\n", os.Getenv("DB_NAME"))
+	fmt.Printf("DB_PASSWORD: [hidden]\n")
+
 	// Initialize configuration
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
+
+	fmt.Printf("Using database type: %s\n", cfg.Database.Type)
 
 	// Initialize database
 	database, err := db.NewPostgresDB(cfg.Database)
