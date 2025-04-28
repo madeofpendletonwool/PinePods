@@ -10,7 +10,7 @@ import (
 // Add or update in routes.go to ensure the Episode API routes are registered:
 
 // RegisterRoutes registers all API routes
-func RegisterRoutes(router *gin.RouterGroup, database *db.PostgresDB) {
+func RegisterRoutes(router *gin.RouterGroup, database *db.Database) {
 	// Authentication endpoints
 	log.Println("[INFO] Registering API routes...")
 	authGroup := router.Group("/auth/:username")
@@ -18,7 +18,6 @@ func RegisterRoutes(router *gin.RouterGroup, database *db.PostgresDB) {
 		authGroup.POST("/login.json", handleLogin(database))
 		authGroup.POST("/logout.json", handleLogout(database))
 	}
-
 	// Device API
 	log.Println("[INFO] Registering device routes")
 	router.GET("/devices/:username.json", AuthenticationMiddleware(database), listDevices(database))
@@ -85,13 +84,11 @@ func RegisterRoutes(router *gin.RouterGroup, database *db.PostgresDB) {
 }
 
 // RegisterSimpleRoutes registers routes for the Simple API (v1)
-func RegisterSimpleRoutes(router *gin.RouterGroup, database *db.PostgresDB) {
+func RegisterSimpleRoutes(router *gin.RouterGroup, database *db.Database) {
 	// Toplist
 	router.GET("/toplist/:number", getToplist(database))
-
 	// Search
 	router.GET("/search", podcastSearch(database))
-
 	// Subscriptions (Simple API)
 	router.GET("/subscriptions/:username/:deviceid", AuthenticationMiddleware(database), getSubscriptionsSimple(database))
 	router.PUT("/subscriptions/:username/:deviceid", AuthenticationMiddleware(database), updateSubscriptionsSimple(database))

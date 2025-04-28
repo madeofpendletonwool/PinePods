@@ -1,6 +1,7 @@
 package api
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
 
@@ -11,19 +12,35 @@ import (
 )
 
 // getSyncStatus handles GET /api/2/sync-devices/{username}.json
-func getSyncStatus(database *db.PostgresDB) gin.HandlerFunc {
+func getSyncStatus(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get user ID from middleware
 		userID, _ := c.Get("userID")
 
 		// Query for device sync pairs
-		rows, err := database.Query(`
-			SELECT d1.DeviceName, d2.DeviceName
-			FROM "GpodderSyncDevicePairs" p
-			JOIN "GpodderDevices" d1 ON p.DeviceID1 = d1.DeviceID
-			JOIN "GpodderDevices" d2 ON p.DeviceID2 = d2.DeviceID
-			WHERE p.UserID = $1
-		`, userID)
+		var query string
+		var rows *sql.Rows
+		var err error
+
+		if database.IsPostgreSQLDB() {
+			query = `
+				SELECT d1.DeviceName, d2.DeviceName
+				FROM "GpodderSyncDevicePairs" p
+				JOIN "GpodderDevices" d1 ON p.DeviceID1 = d1.DeviceID
+				JOIN "GpodderDevices" d2 ON p.DeviceID2 = d2.DeviceID
+				WHERE p.UserID = $1
+			`
+			rows, err = database.Query(query, userID)
+		} else {
+			query = `
+				SELECT d1.DeviceName, d2.DeviceName
+				FROM GpodderSyncDevicePairs p
+				JOIN GpodderDevices d1 ON p.DeviceID1 = d1.DeviceID
+				JOIN GpodderDevices d2 ON p.DeviceID2 = d2.DeviceID
+				WHERE p.UserID = ?
+			`
+			rows, err = database.Query(query, userID)
+		}
 
 		if err != nil {
 			log.Printf("Error querying device sync pairs: %v", err)
@@ -44,16 +61,31 @@ func getSyncStatus(database *db.PostgresDB) gin.HandlerFunc {
 		rows.Close()
 
 		// Query for devices not in any sync pair
-		rows, err = database.Query(`
-			SELECT d.DeviceName
-			FROM "GpodderDevices" d
-			WHERE d.UserID = $1
-			AND d.DeviceID NOT IN (
-				SELECT DeviceID1 FROM "GpodderSyncDevicePairs" WHERE UserID = $1
-				UNION
-				SELECT DeviceID2 FROM "GpodderSyncDevicePairs" WHERE UserID = $1
-			)
-		`, userID)
+		if database.IsPostgreSQLDB() {
+			query = `
+				SELECT d.DeviceName
+				FROM "GpodderDevices" d
+				WHERE d.UserID = $1
+				AND d.DeviceID NOT IN (
+					SELECT DeviceID1 FROM "GpodderSyncDevicePairs" WHERE UserID = $1
+					UNION
+					SELECT DeviceID2 FROM "GpodderSyncDevicePairs" WHERE UserID = $1
+				)
+			`
+			rows, err = database.Query(query, userID)
+		} else {
+			query = `
+				SELECT d.DeviceName
+				FROM GpodderDevices d
+				WHERE d.UserID = ?
+				AND d.DeviceID NOT IN (
+					SELECT DeviceID1 FROM GpodderSyncDevicePairs WHERE UserID = ?
+					UNION
+					SELECT DeviceID2 FROM GpodderSyncDevicePairs WHERE UserID = ?
+				)
+			`
+			rows, err = database.Query(query, userID, userID, userID)
+		}
 
 		if err != nil {
 			log.Printf("Error querying non-synced devices: %v", err)
@@ -82,7 +114,7 @@ func getSyncStatus(database *db.PostgresDB) gin.HandlerFunc {
 }
 
 // updateSyncStatus handles POST /api/2/sync-devices/{username}.json
-func updateSyncStatus(database *db.PostgresDB) gin.HandlerFunc {
+func updateSyncStatus(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get user ID from middleware
 		userID, _ := c.Get("userID")
@@ -115,21 +147,32 @@ func updateSyncStatus(database *db.PostgresDB) gin.HandlerFunc {
 
 			// Get device IDs
 			var device1ID, device2ID int
+			var query string
 
-			err := tx.QueryRow(`
-				SELECT DeviceID FROM "GpodderDevices"
-				WHERE UserID = $1 AND DeviceName = $2
-			`, userID, pair[0]).Scan(&device1ID)
+			if database.IsPostgreSQLDB() {
+				query = `
+					SELECT DeviceID FROM "GpodderDevices"
+					WHERE UserID = $1 AND DeviceName = $2
+				`
+				err = tx.QueryRow(query, userID, pair[0]).Scan(&device1ID)
+			} else {
+				query = `
+					SELECT DeviceID FROM GpodderDevices
+					WHERE UserID = ? AND DeviceName = ?
+				`
+				err = tx.QueryRow(query, userID, pair[0]).Scan(&device1ID)
+			}
 
 			if err != nil {
 				log.Printf("Error getting device ID for %s: %v", pair[0], err)
 				continue
 			}
 
-			err = tx.QueryRow(`
-				SELECT DeviceID FROM "GpodderDevices"
-				WHERE UserID = $1 AND DeviceName = $2
-			`, userID, pair[1]).Scan(&device2ID)
+			if database.IsPostgreSQLDB() {
+				err = tx.QueryRow(query, userID, pair[1]).Scan(&device2ID)
+			} else {
+				err = tx.QueryRow(query, userID, pair[1]).Scan(&device2ID)
+			}
 
 			if err != nil {
 				log.Printf("Error getting device ID for %s: %v", pair[1], err)
@@ -142,11 +185,20 @@ func updateSyncStatus(database *db.PostgresDB) gin.HandlerFunc {
 			}
 
 			// Insert sync pair if it doesn't exist
-			_, err = tx.Exec(`
-				INSERT INTO "GpodderSyncDevicePairs" (UserID, DeviceID1, DeviceID2)
-				VALUES ($1, $2, $3)
-				ON CONFLICT (UserID, DeviceID1, DeviceID2) DO NOTHING
-			`, userID, device1ID, device2ID)
+			if database.IsPostgreSQLDB() {
+				query = `
+					INSERT INTO "GpodderSyncDevicePairs" (UserID, DeviceID1, DeviceID2)
+					VALUES ($1, $2, $3)
+					ON CONFLICT (UserID, DeviceID1, DeviceID2) DO NOTHING
+				`
+				_, err = tx.Exec(query, userID, device1ID, device2ID)
+			} else {
+				query = `
+					INSERT IGNORE INTO GpodderSyncDevicePairs (UserID, DeviceID1, DeviceID2)
+					VALUES (?, ?, ?)
+				`
+				_, err = tx.Exec(query, userID, device1ID, device2ID)
+			}
 
 			if err != nil {
 				log.Printf("Error creating sync pair: %v", err)
@@ -159,11 +211,21 @@ func updateSyncStatus(database *db.PostgresDB) gin.HandlerFunc {
 		for _, deviceName := range req.StopSynchronize {
 			// Get device ID
 			var deviceID int
+			var query string
 
-			err := tx.QueryRow(`
-				SELECT DeviceID FROM "GpodderDevices"
-				WHERE UserID = $1 AND DeviceName = $2
-			`, userID, deviceName).Scan(&deviceID)
+			if database.IsPostgreSQLDB() {
+				query = `
+					SELECT DeviceID FROM "GpodderDevices"
+					WHERE UserID = $1 AND DeviceName = $2
+				`
+				err = tx.QueryRow(query, userID, deviceName).Scan(&deviceID)
+			} else {
+				query = `
+					SELECT DeviceID FROM GpodderDevices
+					WHERE UserID = ? AND DeviceName = ?
+				`
+				err = tx.QueryRow(query, userID, deviceName).Scan(&deviceID)
+			}
 
 			if err != nil {
 				log.Printf("Error getting device ID for %s: %v", deviceName, err)
@@ -171,10 +233,19 @@ func updateSyncStatus(database *db.PostgresDB) gin.HandlerFunc {
 			}
 
 			// Remove all sync pairs involving this device
-			_, err = tx.Exec(`
-				DELETE FROM "GpodderSyncDevicePairs"
-				WHERE UserID = $1 AND (DeviceID1 = $2 OR DeviceID2 = $2)
-			`, userID, deviceID)
+			if database.IsPostgreSQLDB() {
+				query = `
+					DELETE FROM "GpodderSyncDevicePairs"
+					WHERE UserID = $1 AND (DeviceID1 = $2 OR DeviceID2 = $2)
+				`
+				_, err = tx.Exec(query, userID, deviceID)
+			} else {
+				query = `
+					DELETE FROM GpodderSyncDevicePairs
+					WHERE UserID = ? AND (DeviceID1 = ? OR DeviceID2 = ?)
+				`
+				_, err = tx.Exec(query, userID, deviceID, deviceID)
+			}
 
 			if err != nil {
 				log.Printf("Error removing sync pairs: %v", err)

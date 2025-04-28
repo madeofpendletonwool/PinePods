@@ -16,7 +16,7 @@ import (
 )
 
 // getEpisodeActions handles GET /api/2/episodes/{username}.json
-func getEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
+func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log.Printf("[DEBUG] getEpisodeActions handling request: %s %s", c.Request.Method, c.Request.URL.Path)
 
@@ -41,10 +41,21 @@ func getEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 		var deviceID *int
 		if deviceName != "" {
 			var deviceIDInt int
-			err := database.QueryRow(`
-				SELECT DeviceID FROM "GpodderDevices"
-				WHERE UserID = $1 AND DeviceName = $2 AND IsActive = true
-			`, userID, deviceName).Scan(&deviceIDInt)
+			var query string
+
+			if database.IsPostgreSQLDB() {
+				query = `
+					SELECT DeviceID FROM "GpodderDevices"
+					WHERE UserID = $1 AND DeviceName = $2 AND IsActive = true
+				`
+			} else {
+				query = `
+					SELECT DeviceID FROM GpodderDevices
+					WHERE UserID = ? AND DeviceName = ? AND IsActive = true
+				`
+			}
+
+			err := database.QueryRow(query, userID, deviceName).Scan(&deviceIDInt)
 
 			if err != nil {
 				if err != sql.ErrNoRows {
@@ -71,11 +82,23 @@ func getEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 
 		// Get the latest timestamp for the response
 		var latestTimestamp int64
-		err := database.QueryRow(`
-			SELECT COALESCE(MAX(Timestamp), EXTRACT(EPOCH FROM NOW())::bigint)
-			FROM "GpodderSyncEpisodeActions"
-			WHERE UserID = $1
-		`, userID).Scan(&latestTimestamp)
+		var timestampQuery string
+
+		if database.IsPostgreSQLDB() {
+			timestampQuery = `
+				SELECT COALESCE(MAX(Timestamp), EXTRACT(EPOCH FROM NOW())::bigint)
+				FROM "GpodderSyncEpisodeActions"
+				WHERE UserID = $1
+			`
+		} else {
+			timestampQuery = `
+				SELECT COALESCE(MAX(Timestamp), UNIX_TIMESTAMP())
+				FROM GpodderSyncEpisodeActions
+				WHERE UserID = ?
+			`
+		}
+
+		err := database.QueryRow(timestampQuery, userID).Scan(&latestTimestamp)
 
 		if err != nil {
 			log.Printf("[ERROR] getEpisodeActions: Error getting latest timestamp: %v", err)
@@ -83,70 +106,175 @@ func getEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 		}
 
 		// Build query based on parameters
-		queryParts := []string{
-			"SELECT " +
-				"e.ActionID, e.UserID, e.DeviceID, e.PodcastURL, e.EpisodeURL, " +
-				"e.Action, e.Timestamp, e.Started, e.Position, e.Total, " +
-				"d.DeviceName " +
-				"FROM \"GpodderSyncEpisodeActions\" e " +
-				"LEFT JOIN \"GpodderDevices\" d ON e.DeviceID = d.DeviceID " +
-				"WHERE e.UserID = $1",
+		var queryParts []string
+
+		if database.IsPostgreSQLDB() {
+			queryParts = []string{
+				"SELECT " +
+					"e.ActionID, e.UserID, e.DeviceID, e.PodcastURL, e.EpisodeURL, " +
+					"e.Action, e.Timestamp, e.Started, e.Position, e.Total, " +
+					"d.DeviceName " +
+					"FROM \"GpodderSyncEpisodeActions\" e " +
+					"LEFT JOIN \"GpodderDevices\" d ON e.DeviceID = d.DeviceID " +
+					"WHERE e.UserID = $1",
+			}
+		} else {
+			queryParts = []string{
+				"SELECT " +
+					"e.ActionID, e.UserID, e.DeviceID, e.PodcastURL, e.EpisodeURL, " +
+					"e.Action, e.Timestamp, e.Started, e.Position, e.Total, " +
+					"d.DeviceName " +
+					"FROM GpodderSyncEpisodeActions e " +
+					"LEFT JOIN GpodderDevices d ON e.DeviceID = d.DeviceID " +
+					"WHERE e.UserID = ?",
+			}
 		}
 
 		args := []interface{}{userID}
 		paramCount := 2
 
-		if since > 0 {
-			queryParts = append(queryParts, fmt.Sprintf("AND e.Timestamp > $%d", paramCount))
-			args = append(args, since)
-			paramCount++
-		}
-
-		if podcastURL != "" {
-			queryParts = append(queryParts, fmt.Sprintf("AND e.PodcastURL = $%d", paramCount))
-			args = append(args, podcastURL)
-			paramCount++
-		}
-
-		if deviceID != nil {
-			queryParts = append(queryParts, fmt.Sprintf("AND e.DeviceID = $%d", paramCount))
-			args = append(args, *deviceID)
-			paramCount++
-		}
-
 		// For aggregated results, we need a more complex query
 		var query string
 		if aggregated {
-			// Build subquery to get latest action for each episode
-			subQueryParts := make([]string, len(queryParts))
-			copy(subQueryParts, queryParts)
+			if database.IsPostgreSQLDB() {
+				// Build conditions for the subquery
+				var conditions []string
 
-			query = fmt.Sprintf(`
-				WITH latest_actions AS (
+				if since > 0 {
+					conditions = append(conditions, fmt.Sprintf("AND e.Timestamp > $%d", paramCount))
+					args = append(args, since)
+					paramCount++
+				}
+
+				if podcastURL != "" {
+					conditions = append(conditions, fmt.Sprintf("AND e.PodcastURL = $%d", paramCount))
+					args = append(args, podcastURL)
+					paramCount++
+				}
+
+				if deviceID != nil {
+					conditions = append(conditions, fmt.Sprintf("AND e.DeviceID = $%d", paramCount))
+					args = append(args, *deviceID)
+					paramCount++
+				}
+
+				conditionsStr := strings.Join(conditions, " ")
+
+				query = fmt.Sprintf(`
+					WITH latest_actions AS (
+						SELECT
+							e.PodcastURL,
+							e.EpisodeURL,
+							MAX(e.Timestamp) as max_timestamp
+						FROM "GpodderSyncEpisodeActions" e
+						WHERE e.UserID = $1
+						%s
+						GROUP BY e.PodcastURL, e.EpisodeURL
+					)
 					SELECT
-						e.PodcastURL,
-						e.EpisodeURL,
-						MAX(e.Timestamp) as max_timestamp
+						e.ActionID, e.UserID, e.DeviceID, e.PodcastURL, e.EpisodeURL,
+						e.Action, e.Timestamp, e.Started, e.Position, e.Total,
+						d.DeviceName
 					FROM "GpodderSyncEpisodeActions" e
+					JOIN latest_actions la ON
+						e.PodcastURL = la.PodcastURL AND
+						e.EpisodeURL = la.EpisodeURL AND
+						e.Timestamp = la.max_timestamp
+					LEFT JOIN "GpodderDevices" d ON e.DeviceID = d.DeviceID
 					WHERE e.UserID = $1
-					%s
-					GROUP BY e.PodcastURL, e.EpisodeURL
-				)
-				SELECT
-					e.ActionID, e.UserID, e.DeviceID, e.PodcastURL, e.EpisodeURL,
-					e.Action, e.Timestamp, e.Started, e.Position, e.Total,
-					d.DeviceName
-				FROM "GpodderSyncEpisodeActions" e
-				JOIN latest_actions la ON
-					e.PodcastURL = la.PodcastURL AND
-					e.EpisodeURL = la.EpisodeURL AND
-					e.Timestamp = la.max_timestamp
-				LEFT JOIN "GpodderDevices" d ON e.DeviceID = d.DeviceID
-				WHERE e.UserID = $1
-				ORDER BY e.Timestamp DESC
-			`, strings.Join(subQueryParts[1:], " "))
+					ORDER BY e.Timestamp DESC
+				`, conditionsStr)
+			} else {
+				// For MySQL, we need to use ? placeholders and rebuild the argument list
+				args = []interface{}{userID} // Reset args to just include userID for now
+
+				// Build conditions for the subquery
+				var conditions []string
+
+				if since > 0 {
+					conditions = append(conditions, "AND e.Timestamp > ?")
+					args = append(args, since)
+				}
+
+				if podcastURL != "" {
+					conditions = append(conditions, "AND e.PodcastURL = ?")
+					args = append(args, podcastURL)
+				}
+
+				if deviceID != nil {
+					conditions = append(conditions, "AND e.DeviceID = ?")
+					args = append(args, *deviceID)
+				}
+
+				conditionsStr := strings.Join(conditions, " ")
+
+				// Need to duplicate userID in args for the second part of the query
+				mysqlArgs := make([]interface{}, len(args))
+				copy(mysqlArgs, args)
+				args = append(args, mysqlArgs...)
+
+				query = fmt.Sprintf(`
+					WITH latest_actions AS (
+						SELECT
+							e.PodcastURL,
+							e.EpisodeURL,
+							MAX(e.Timestamp) as max_timestamp
+						FROM GpodderSyncEpisodeActions e
+						WHERE e.UserID = ?
+						%s
+						GROUP BY e.PodcastURL, e.EpisodeURL
+					)
+					SELECT
+						e.ActionID, e.UserID, e.DeviceID, e.PodcastURL, e.EpisodeURL,
+						e.Action, e.Timestamp, e.Started, e.Position, e.Total,
+						d.DeviceName
+					FROM GpodderSyncEpisodeActions e
+					JOIN latest_actions la ON
+						e.PodcastURL = la.PodcastURL AND
+						e.EpisodeURL = la.EpisodeURL AND
+						e.Timestamp = la.max_timestamp
+					LEFT JOIN GpodderDevices d ON e.DeviceID = d.DeviceID
+					WHERE e.UserID = ?
+					ORDER BY e.Timestamp DESC
+				`, conditionsStr)
+			}
 		} else {
 			// Simple query with ORDER BY
+			if database.IsPostgreSQLDB() {
+				if since > 0 {
+					queryParts = append(queryParts, fmt.Sprintf("AND e.Timestamp > $%d", paramCount))
+					args = append(args, since)
+					paramCount++
+				}
+
+				if podcastURL != "" {
+					queryParts = append(queryParts, fmt.Sprintf("AND e.PodcastURL = $%d", paramCount))
+					args = append(args, podcastURL)
+					paramCount++
+				}
+
+				if deviceID != nil {
+					queryParts = append(queryParts, fmt.Sprintf("AND e.DeviceID = $%d", paramCount))
+					args = append(args, *deviceID)
+					paramCount++
+				}
+			} else {
+				if since > 0 {
+					queryParts = append(queryParts, "AND e.Timestamp > ?")
+					args = append(args, since)
+				}
+
+				if podcastURL != "" {
+					queryParts = append(queryParts, "AND e.PodcastURL = ?")
+					args = append(args, podcastURL)
+				}
+
+				if deviceID != nil {
+					queryParts = append(queryParts, "AND e.DeviceID = ?")
+					args = append(args, *deviceID)
+				}
+			}
+
 			queryParts = append(queryParts, "ORDER BY e.Timestamp DESC")
 			query = strings.Join(queryParts, " ")
 		}
@@ -227,7 +355,7 @@ func getEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 }
 
 // uploadEpisodeActions handles POST /api/2/episodes/{username}.json
-func uploadEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
+func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log.Printf("[DEBUG] uploadEpisodeActions handling request: %s %s", c.Request.Method, c.Request.URL.Path)
 
@@ -300,20 +428,55 @@ func uploadEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 			// Get or create device ID if provided
 			var deviceID sql.NullInt64
 			if action.Device != "" {
-				err := tx.QueryRow(`
-                    SELECT DeviceID FROM "GpodderDevices"
-                    WHERE UserID = $1 AND DeviceName = $2
-                `, userID, action.Device).Scan(&deviceID.Int64)
+				var query string
+
+				if database.IsPostgreSQLDB() {
+					query = `
+                        SELECT DeviceID FROM "GpodderDevices"
+                        WHERE UserID = $1 AND DeviceName = $2
+                    `
+				} else {
+					query = `
+                        SELECT DeviceID FROM GpodderDevices
+                        WHERE UserID = ? AND DeviceName = ?
+                    `
+				}
+
+				err := tx.QueryRow(query, userID, action.Device).Scan(&deviceID.Int64)
 
 				if err != nil {
 					if err == sql.ErrNoRows {
 						// Create the device if it doesn't exist
 						log.Printf("[DEBUG] uploadEpisodeActions: Creating new device: %s", action.Device)
-						err = tx.QueryRow(`
-                            INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType, IsActive, LastSync)
-                            VALUES ($1, $2, 'other', true, CURRENT_TIMESTAMP)
-                            RETURNING DeviceID
-                        `, userID, action.Device).Scan(&deviceID.Int64)
+
+						if database.IsPostgreSQLDB() {
+							query = `
+                                INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType, IsActive, LastSync)
+                                VALUES ($1, $2, 'other', true, CURRENT_TIMESTAMP)
+                                RETURNING DeviceID
+                            `
+							err = tx.QueryRow(query, userID, action.Device).Scan(&deviceID.Int64)
+						} else {
+							query = `
+                                INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsActive, LastSync)
+                                VALUES (?, ?, 'other', true, CURRENT_TIMESTAMP)
+                            `
+							result, err := tx.Exec(query, userID, action.Device, "other")
+							if err != nil {
+								log.Printf("[ERROR] uploadEpisodeActions: Error creating device: %v", err)
+								c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
+								return
+							}
+
+							lastID, err := result.LastInsertId()
+							if err != nil {
+								log.Printf("[ERROR] uploadEpisodeActions: Error getting last insert ID: %v", err)
+								c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
+								return
+							}
+
+							deviceID.Int64 = lastID
+						}
 
 						if err != nil {
 							log.Printf("[ERROR] uploadEpisodeActions: Error creating device: %v", err)
@@ -381,11 +544,23 @@ func uploadEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 			}
 
 			// Insert action
-			_, err = tx.Exec(`
-                INSERT INTO "GpodderSyncEpisodeActions"
-                (UserID, DeviceID, PodcastURL, EpisodeURL, Action, Timestamp, Started, Position, Total)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            `,
+			var insertQuery string
+
+			if database.IsPostgreSQLDB() {
+				insertQuery = `
+                    INSERT INTO "GpodderSyncEpisodeActions"
+                    (UserID, DeviceID, PodcastURL, EpisodeURL, Action, Timestamp, Started, Position, Total)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                `
+			} else {
+				insertQuery = `
+                    INSERT INTO GpodderSyncEpisodeActions
+                    (UserID, DeviceID, PodcastURL, EpisodeURL, Action, Timestamp, Started, Position, Total)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `
+			}
+
+			_, err = tx.Exec(insertQuery,
 				userID,
 				deviceID,
 				cleanPodcastURL,
@@ -414,20 +589,45 @@ func uploadEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 			if action.Action == "play" && action.Position != nil && *action.Position > 0 {
 				// Try to find episode ID in Episodes table
 				var episodeID int
-				err := tx.QueryRow(`
-                    SELECT e.EpisodeID
-                    FROM "Episodes" e
-                    JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
-                    WHERE p.FeedURL = $1 AND e.EpisodeURL = $2 AND p.UserID = $3
-                `, cleanPodcastURL, cleanEpisodeURL, userID).Scan(&episodeID)
+				var findEpisodeQuery string
+
+				if database.IsPostgreSQLDB() {
+					findEpisodeQuery = `
+                        SELECT e.EpisodeID
+                        FROM "Episodes" e
+                        JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
+                        WHERE p.FeedURL = $1 AND e.EpisodeURL = $2 AND p.UserID = $3
+                    `
+				} else {
+					findEpisodeQuery = `
+                        SELECT e.EpisodeID
+                        FROM Episodes e
+                        JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                        WHERE p.FeedURL = ? AND e.EpisodeURL = ? AND p.UserID = ?
+                    `
+				}
+
+				err := tx.QueryRow(findEpisodeQuery, cleanPodcastURL, cleanEpisodeURL, userID).Scan(&episodeID)
 
 				if err == nil { // Episode found
 					// Try to update existing history record
-					result, err := tx.Exec(`
-                        UPDATE "UserEpisodeHistory"
-                        SET ListenDuration = $1, ListenDate = $2
-                        WHERE UserID = $3 AND EpisodeID = $4
-                    `, action.Position, time.Unix(actionTimestamp, 0), userID, episodeID)
+					var updateHistoryQuery string
+
+					if database.IsPostgreSQLDB() {
+						updateHistoryQuery = `
+                            UPDATE "UserEpisodeHistory"
+                            SET ListenDuration = $1, ListenDate = $2
+                            WHERE UserID = $3 AND EpisodeID = $4
+                        `
+					} else {
+						updateHistoryQuery = `
+                            UPDATE UserEpisodeHistory
+                            SET ListenDuration = ?, ListenDate = ?
+                            WHERE UserID = ? AND EpisodeID = ?
+                        `
+					}
+
+					result, err := tx.Exec(updateHistoryQuery, action.Position, time.Unix(actionTimestamp, 0), userID, episodeID)
 
 					if err != nil {
 						log.Printf("[WARNING] uploadEpisodeActions: Error updating episode history: %v", err)
@@ -435,13 +635,27 @@ func uploadEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 						rowsAffected, _ := result.RowsAffected()
 						if rowsAffected == 0 {
 							// No history exists, create it
-							_, err = tx.Exec(`
-                                INSERT INTO "UserEpisodeHistory"
-                                (UserID, EpisodeID, ListenDuration, ListenDate)
-                                VALUES ($1, $2, $3, $4)
-                                ON CONFLICT (UserID, EpisodeID) DO UPDATE
-                                SET ListenDuration = $3, ListenDate = $4
-                            `, userID, episodeID, action.Position, time.Unix(actionTimestamp, 0))
+							var insertHistoryQuery string
+
+							if database.IsPostgreSQLDB() {
+								insertHistoryQuery = `
+                                    INSERT INTO "UserEpisodeHistory"
+                                    (UserID, EpisodeID, ListenDuration, ListenDate)
+                                    VALUES ($1, $2, $3, $4)
+                                    ON CONFLICT (UserID, EpisodeID) DO UPDATE
+                                    SET ListenDuration = $3, ListenDate = $4
+                                `
+							} else {
+								insertHistoryQuery = `
+                                    INSERT INTO UserEpisodeHistory
+                                    (UserID, EpisodeID, ListenDuration, ListenDate)
+                                    VALUES (?, ?, ?, ?)
+                                    ON DUPLICATE KEY UPDATE
+                                    ListenDuration = VALUES(ListenDuration), ListenDate = VALUES(ListenDate)
+                                `
+							}
+
+							_, err = tx.Exec(insertHistoryQuery, userID, episodeID, action.Position, time.Unix(actionTimestamp, 0))
 
 							if err != nil {
 								log.Printf("[WARNING] uploadEpisodeActions: Error creating episode history: %v", err)
@@ -470,28 +684,52 @@ func uploadEpisodeActions(database *db.PostgresDB) gin.HandlerFunc {
 }
 
 // getFavoriteEpisodes handles GET /api/2/favorites/{username}.json
-func getFavoriteEpisodes(database *db.PostgresDB) gin.HandlerFunc {
+func getFavoriteEpisodes(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get user ID from middleware
 		userID, _ := c.Get("userID")
 
 		// Query for favorite episodes
 		// Here we identify favorites by checking for episodes with the "is_favorite" setting
-		rows, err := database.Query(`
-			SELECT
-				e.EpisodeTitle, e.EpisodeURL, e.EpisodeDescription, e.EpisodeArtwork,
-				p.PodcastName, p.FeedURL, e.EpisodePubDate
-			FROM "Episodes" e
-			JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
-			JOIN "GpodderSyncSettings" s ON s.UserID = p.UserID
-									  AND s.PodcastURL = p.FeedURL
-									  AND s.EpisodeURL = e.EpisodeURL
-			WHERE s.UserID = $1
-			  AND s.Scope = 'episode'
-			  AND s.SettingKey = 'is_favorite'
-			  AND s.SettingValue = 'true'
-			ORDER BY e.EpisodePubDate DESC
-		`, userID)
+		var query string
+		var rows *sql.Rows
+		var err error
+
+		if database.IsPostgreSQLDB() {
+			query = `
+				SELECT
+					e.EpisodeTitle, e.EpisodeURL, e.EpisodeDescription, e.EpisodeArtwork,
+					p.PodcastName, p.FeedURL, e.EpisodePubDate
+				FROM "Episodes" e
+				JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
+				JOIN "GpodderSyncSettings" s ON s.UserID = p.UserID
+										  AND s.PodcastURL = p.FeedURL
+										  AND s.EpisodeURL = e.EpisodeURL
+				WHERE s.UserID = $1
+				  AND s.Scope = 'episode'
+				  AND s.SettingKey = 'is_favorite'
+				  AND s.SettingValue = 'true'
+				ORDER BY e.EpisodePubDate DESC
+			`
+			rows, err = database.Query(query, userID)
+		} else {
+			query = `
+				SELECT
+					e.EpisodeTitle, e.EpisodeURL, e.EpisodeDescription, e.EpisodeArtwork,
+					p.PodcastName, p.FeedURL, e.EpisodePubDate
+				FROM Episodes e
+				JOIN Podcasts p ON e.PodcastID = p.PodcastID
+				JOIN GpodderSyncSettings s ON s.UserID = p.UserID
+										  AND s.PodcastURL = p.FeedURL
+										  AND s.EpisodeURL = e.EpisodeURL
+				WHERE s.UserID = ?
+				  AND s.Scope = 'episode'
+				  AND s.SettingKey = 'is_favorite'
+				  AND s.SettingValue = 'true'
+				ORDER BY e.EpisodePubDate DESC
+			`
+			rows, err = database.Query(query, userID)
+		}
 
 		if err != nil {
 			log.Printf("Error querying favorite episodes: %v", err)
@@ -505,7 +743,6 @@ func getFavoriteEpisodes(database *db.PostgresDB) gin.HandlerFunc {
 		for rows.Next() {
 			var episode models.Episode
 			var pubDate time.Time
-
 			if err := rows.Scan(
 				&episode.Title,
 				&episode.URL,
@@ -518,27 +755,23 @@ func getFavoriteEpisodes(database *db.PostgresDB) gin.HandlerFunc {
 				log.Printf("Error scanning favorite episode: %v", err)
 				continue
 			}
-
 			// Format the publication date in ISO 8601
 			episode.Released = pubDate.Format(time.RFC3339)
-
 			// Set MygpoLink (just a placeholder for now)
 			episode.MygpoLink = fmt.Sprintf("/episode/%s", episode.URL)
-
 			favorites = append(favorites, episode)
 		}
-
 		c.JSON(http.StatusOK, favorites)
 	}
 }
 
 // getEpisodeData handles GET /api/2/data/episode.json
-func getEpisodeData(database *db.PostgresDB) gin.HandlerFunc {
+// getEpisodeData handles GET /api/2/data/episode.json
+func getEpisodeData(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Parse query parameters
 		podcastURL := c.Query("podcast")
 		episodeURL := c.Query("url")
-
 		if podcastURL == "" || episodeURL == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Both podcast and url parameters are required"})
 			return
@@ -547,16 +780,31 @@ func getEpisodeData(database *db.PostgresDB) gin.HandlerFunc {
 		// Query for episode data
 		var episode models.Episode
 		var pubDate time.Time
+		var query string
 
-		err := database.QueryRow(`
-			SELECT
-				e.EpisodeTitle, e.EpisodeURL, e.EpisodeDescription, e.EpisodeArtwork,
-				p.PodcastName, p.FeedURL, e.EpisodePubDate
-			FROM "Episodes" e
-			JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
-			WHERE p.FeedURL = $1 AND e.EpisodeURL = $2
-			LIMIT 1
-		`, podcastURL, episodeURL).Scan(
+		if database.IsPostgreSQLDB() {
+			query = `
+				SELECT
+					e.EpisodeTitle, e.EpisodeURL, e.EpisodeDescription, e.EpisodeArtwork,
+					p.PodcastName, p.FeedURL, e.EpisodePubDate
+				FROM "Episodes" e
+				JOIN "Podcasts" p ON e.PodcastID = p.PodcastID
+				WHERE p.FeedURL = $1 AND e.EpisodeURL = $2
+				LIMIT 1
+			`
+		} else {
+			query = `
+				SELECT
+					e.EpisodeTitle, e.EpisodeURL, e.EpisodeDescription, e.EpisodeArtwork,
+					p.PodcastName, p.FeedURL, e.EpisodePubDate
+				FROM Episodes e
+				JOIN Podcasts p ON e.PodcastID = p.PodcastID
+				WHERE p.FeedURL = ? AND e.EpisodeURL = ?
+				LIMIT 1
+			`
+		}
+
+		err := database.QueryRow(query, podcastURL, episodeURL).Scan(
 			&episode.Title,
 			&episode.URL,
 			&episode.Description,
@@ -578,10 +826,8 @@ func getEpisodeData(database *db.PostgresDB) gin.HandlerFunc {
 
 		// Format the publication date in ISO 8601
 		episode.Released = pubDate.Format(time.RFC3339)
-
 		// Set MygpoLink (just a placeholder for now)
 		episode.MygpoLink = fmt.Sprintf("/episode/%s", episode.URL)
-
 		c.JSON(http.StatusOK, episode)
 	}
 }

@@ -175,7 +175,7 @@ func validateSettingValue(scope, key string, value interface{}) (bool, string) {
 }
 
 // getSettings handles GET /api/2/settings/{username}/{scope}.json
-func getSettings(database *db.PostgresDB) gin.HandlerFunc {
+func getSettings(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get user ID from context (set by AuthMiddleware)
 		userID, exists := c.Get("userID")
@@ -224,20 +224,41 @@ func getSettings(database *db.PostgresDB) gin.HandlerFunc {
 
 		switch scope {
 		case "account":
-			query = `
-				SELECT SettingKey, SettingValue
-				FROM "GpodderSyncSettings"
-				WHERE UserID = $1 AND Scope = $2
-				AND DeviceID IS NULL AND PodcastURL IS NULL AND EpisodeURL IS NULL
-			`
-			args = append(args, userID, scope)
+			if database.IsPostgreSQLDB() {
+				query = `
+					SELECT SettingKey, SettingValue
+					FROM "GpodderSyncSettings"
+					WHERE UserID = $1 AND Scope = $2
+					AND DeviceID IS NULL AND PodcastURL IS NULL AND EpisodeURL IS NULL
+				`
+				args = append(args, userID, scope)
+			} else {
+				query = `
+					SELECT SettingKey, SettingValue
+					FROM GpodderSyncSettings
+					WHERE UserID = ? AND Scope = ?
+					AND DeviceID IS NULL AND PodcastURL IS NULL AND EpisodeURL IS NULL
+				`
+				args = append(args, userID, scope)
+			}
 		case "device":
 			// Get device ID from name
 			var deviceIDInt int
-			err := database.QueryRow(`
-				SELECT DeviceID FROM "GpodderDevices"
-				WHERE UserID = $1 AND DeviceName = $2 AND IsActive = true
-			`, userID, deviceID).Scan(&deviceIDInt)
+			var deviceQuery string
+
+			if database.IsPostgreSQLDB() {
+				deviceQuery = `
+					SELECT DeviceID FROM "GpodderDevices"
+					WHERE UserID = $1 AND DeviceName = $2 AND IsActive = true
+				`
+			} else {
+				deviceQuery = `
+					SELECT DeviceID FROM GpodderDevices
+					WHERE UserID = ? AND DeviceName = ? AND IsActive = true
+				`
+			}
+
+			err := database.QueryRow(deviceQuery, userID, deviceID).Scan(&deviceIDInt)
 
 			if err != nil {
 				if err == sql.ErrNoRows {
@@ -250,13 +271,23 @@ func getSettings(database *db.PostgresDB) gin.HandlerFunc {
 				return
 			}
 
-			query = `
-				SELECT SettingKey, SettingValue
-				FROM "GpodderSyncSettings"
-				WHERE UserID = $1 AND Scope = $2 AND DeviceID = $3
-				AND PodcastURL IS NULL AND EpisodeURL IS NULL
-			`
-			args = append(args, userID, scope, deviceIDInt)
+			if database.IsPostgreSQLDB() {
+				query = `
+					SELECT SettingKey, SettingValue
+					FROM "GpodderSyncSettings"
+					WHERE UserID = $1 AND Scope = $2 AND DeviceID = $3
+					AND PodcastURL IS NULL AND EpisodeURL IS NULL
+				`
+				args = append(args, userID, scope, deviceIDInt)
+			} else {
+				query = `
+					SELECT SettingKey, SettingValue
+					FROM GpodderSyncSettings
+					WHERE UserID = ? AND Scope = ? AND DeviceID = ?
+					AND PodcastURL IS NULL AND EpisodeURL IS NULL
+				`
+				args = append(args, userID, scope, deviceIDInt)
+			}
 		case "podcast":
 			// Validate podcast URL
 			if !isValidURL(podcastURL) {
@@ -264,13 +295,23 @@ func getSettings(database *db.PostgresDB) gin.HandlerFunc {
 				return
 			}
 
-			query = `
-				SELECT SettingKey, SettingValue
-				FROM "GpodderSyncSettings"
-				WHERE UserID = $1 AND Scope = $2 AND PodcastURL = $3
-				AND DeviceID IS NULL AND EpisodeURL IS NULL
-			`
-			args = append(args, userID, scope, podcastURL)
+			if database.IsPostgreSQLDB() {
+				query = `
+					SELECT SettingKey, SettingValue
+					FROM "GpodderSyncSettings"
+					WHERE UserID = $1 AND Scope = $2 AND PodcastURL = $3
+					AND DeviceID IS NULL AND EpisodeURL IS NULL
+				`
+				args = append(args, userID, scope, podcastURL)
+			} else {
+				query = `
+					SELECT SettingKey, SettingValue
+					FROM GpodderSyncSettings
+					WHERE UserID = ? AND Scope = ? AND PodcastURL = ?
+					AND DeviceID IS NULL AND EpisodeURL IS NULL
+				`
+				args = append(args, userID, scope, podcastURL)
+			}
 		case "episode":
 			// Validate URLs
 			if !isValidURL(podcastURL) || !isValidURL(episodeURL) {
@@ -278,13 +319,23 @@ func getSettings(database *db.PostgresDB) gin.HandlerFunc {
 				return
 			}
 
-			query = `
-				SELECT SettingKey, SettingValue
-				FROM "GpodderSyncSettings"
-				WHERE UserID = $1 AND Scope = $2 AND PodcastURL = $3 AND EpisodeURL = $4
-				AND DeviceID IS NULL
-			`
-			args = append(args, userID, scope, podcastURL, episodeURL)
+			if database.IsPostgreSQLDB() {
+				query = `
+					SELECT SettingKey, SettingValue
+					FROM "GpodderSyncSettings"
+					WHERE UserID = $1 AND Scope = $2 AND PodcastURL = $3 AND EpisodeURL = $4
+					AND DeviceID IS NULL
+				`
+				args = append(args, userID, scope, podcastURL, episodeURL)
+			} else {
+				query = `
+					SELECT SettingKey, SettingValue
+					FROM GpodderSyncSettings
+					WHERE UserID = ? AND Scope = ? AND PodcastURL = ? AND EpisodeURL = ?
+					AND DeviceID IS NULL
+				`
+				args = append(args, userID, scope, podcastURL, episodeURL)
+			}
 		}
 
 		// Query settings
@@ -349,7 +400,7 @@ func isValidURL(urlStr string) bool {
 }
 
 // saveSettings handles POST /api/2/settings/{username}/{scope}.json
-func saveSettings(database *db.PostgresDB) gin.HandlerFunc {
+func saveSettings(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get user ID from context (set by AuthMiddleware)
 		userID, exists := c.Get("userID")
@@ -422,19 +473,53 @@ func saveSettings(database *db.PostgresDB) gin.HandlerFunc {
 		var deviceID *int
 		if scope == "device" {
 			var deviceIDInt int
-			err := database.QueryRow(`
-				SELECT DeviceID FROM "GpodderDevices"
-				WHERE UserID = $1 AND DeviceName = $2 AND IsActive = true
-			`, userID, deviceName).Scan(&deviceIDInt)
+			var deviceQuery string
+
+			if database.IsPostgreSQLDB() {
+				deviceQuery = `
+					SELECT DeviceID FROM "GpodderDevices"
+					WHERE UserID = $1 AND DeviceName = $2 AND IsActive = true
+				`
+			} else {
+				deviceQuery = `
+					SELECT DeviceID FROM GpodderDevices
+					WHERE UserID = ? AND DeviceName = ? AND IsActive = true
+				`
+			}
+
+			err := database.QueryRow(deviceQuery, userID, deviceName).Scan(&deviceIDInt)
 
 			if err != nil {
 				if err == sql.ErrNoRows {
 					// Create the device if it doesn't exist
-					err = database.QueryRow(`
-						INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType, IsActive, LastSync)
-						VALUES ($1, $2, 'other', true, $3)
-						RETURNING DeviceID
-					`, userID, deviceName, time.Now()).Scan(&deviceIDInt)
+					if database.IsPostgreSQLDB() {
+						deviceQuery = `
+							INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType, IsActive, LastSync)
+							VALUES ($1, $2, 'other', true, $3)
+							RETURNING DeviceID
+						`
+						err = database.QueryRow(deviceQuery, userID, deviceName, time.Now()).Scan(&deviceIDInt)
+					} else {
+						deviceQuery = `
+							INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsActive, LastSync)
+							VALUES (?, ?, 'other', true, ?)
+						`
+						result, err := database.Exec(deviceQuery, userID, deviceName, "other", time.Now())
+						if err != nil {
+							log.Printf("Error creating device: %v", err)
+							c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
+							return
+						}
+
+						lastID, err := result.LastInsertId()
+						if err != nil {
+							log.Printf("Error getting last insert ID: %v", err)
+							c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
+							return
+						}
+
+						deviceIDInt = int(lastID)
+					}
 
 					if err != nil {
 						log.Printf("Error creating device: %v", err)
@@ -509,41 +594,77 @@ func saveSettings(database *db.PostgresDB) gin.HandlerFunc {
 
 			switch scope {
 			case "account":
-				query = `
-					INSERT INTO "GpodderSyncSettings" (UserID, Scope, SettingKey, SettingValue, LastUpdated)
-					VALUES ($1, $2, $3, $4, $5)
-					ON CONFLICT (UserID, Scope, SettingKey)
-					WHERE DeviceID IS NULL AND PodcastURL IS NULL AND EpisodeURL IS NULL
-					DO UPDATE SET SettingValue = $4, LastUpdated = $5
-				`
-				args = append(args, userID, scope, key, string(jsonValue), time.Now())
+				if database.IsPostgreSQLDB() {
+					query = `
+						INSERT INTO "GpodderSyncSettings" (UserID, Scope, SettingKey, SettingValue, LastUpdated)
+						VALUES ($1, $2, $3, $4, $5)
+						ON CONFLICT (UserID, Scope, SettingKey)
+						WHERE DeviceID IS NULL AND PodcastURL IS NULL AND EpisodeURL IS NULL
+						DO UPDATE SET SettingValue = $4, LastUpdated = $5
+					`
+					args = append(args, userID, scope, key, string(jsonValue), time.Now())
+				} else {
+					query = `
+						INSERT INTO GpodderSyncSettings (UserID, Scope, SettingKey, SettingValue, LastUpdated)
+						VALUES (?, ?, ?, ?, ?)
+						ON DUPLICATE KEY UPDATE SettingValue = VALUES(SettingValue), LastUpdated = VALUES(LastUpdated)
+					`
+					args = append(args, userID, scope, key, string(jsonValue), time.Now())
+				}
 			case "device":
-				query = `
-					INSERT INTO "GpodderSyncSettings" (UserID, Scope, DeviceID, SettingKey, SettingValue, LastUpdated)
-					VALUES ($1, $2, $3, $4, $5, $6)
-					ON CONFLICT (UserID, Scope, SettingKey, DeviceID)
-					WHERE PodcastURL IS NULL AND EpisodeURL IS NULL
-					DO UPDATE SET SettingValue = $5, LastUpdated = $6
-				`
-				args = append(args, userID, scope, deviceID, key, string(jsonValue), time.Now())
+				if database.IsPostgreSQLDB() {
+					query = `
+						INSERT INTO "GpodderSyncSettings" (UserID, Scope, DeviceID, SettingKey, SettingValue, LastUpdated)
+						VALUES ($1, $2, $3, $4, $5, $6)
+						ON CONFLICT (UserID, Scope, SettingKey, DeviceID)
+						WHERE PodcastURL IS NULL AND EpisodeURL IS NULL
+						DO UPDATE SET SettingValue = $5, LastUpdated = $6
+					`
+					args = append(args, userID, scope, deviceID, key, string(jsonValue), time.Now())
+				} else {
+					query = `
+						INSERT INTO GpodderSyncSettings (UserID, Scope, DeviceID, SettingKey, SettingValue, LastUpdated)
+						VALUES (?, ?, ?, ?, ?, ?)
+						ON DUPLICATE KEY UPDATE SettingValue = VALUES(SettingValue), LastUpdated = VALUES(LastUpdated)
+					`
+					args = append(args, userID, scope, deviceID, key, string(jsonValue), time.Now())
+				}
 			case "podcast":
-				query = `
-					INSERT INTO "GpodderSyncSettings" (UserID, Scope, PodcastURL, SettingKey, SettingValue, LastUpdated)
-					VALUES ($1, $2, $3, $4, $5, $6)
-					ON CONFLICT (UserID, Scope, SettingKey, PodcastURL)
-					WHERE DeviceID IS NULL AND EpisodeURL IS NULL
-					DO UPDATE SET SettingValue = $5, LastUpdated = $6
-				`
-				args = append(args, userID, scope, podcastURL, key, string(jsonValue), time.Now())
+				if database.IsPostgreSQLDB() {
+					query = `
+						INSERT INTO "GpodderSyncSettings" (UserID, Scope, PodcastURL, SettingKey, SettingValue, LastUpdated)
+						VALUES ($1, $2, $3, $4, $5, $6)
+						ON CONFLICT (UserID, Scope, SettingKey, PodcastURL)
+						WHERE DeviceID IS NULL AND EpisodeURL IS NULL
+						DO UPDATE SET SettingValue = $5, LastUpdated = $6
+					`
+					args = append(args, userID, scope, podcastURL, key, string(jsonValue), time.Now())
+				} else {
+					query = `
+						INSERT INTO GpodderSyncSettings (UserID, Scope, PodcastURL, SettingKey, SettingValue, LastUpdated)
+						VALUES (?, ?, ?, ?, ?, ?)
+						ON DUPLICATE KEY UPDATE SettingValue = VALUES(SettingValue), LastUpdated = VALUES(LastUpdated)
+					`
+					args = append(args, userID, scope, podcastURL, key, string(jsonValue), time.Now())
+				}
 			case "episode":
-				query = `
-					INSERT INTO "GpodderSyncSettings" (UserID, Scope, PodcastURL, EpisodeURL, SettingKey, SettingValue, LastUpdated)
-					VALUES ($1, $2, $3, $4, $5, $6, $7)
-					ON CONFLICT (UserID, Scope, SettingKey, PodcastURL, EpisodeURL)
-					WHERE DeviceID IS NULL
-					DO UPDATE SET SettingValue = $6, LastUpdated = $7
-				`
-				args = append(args, userID, scope, podcastURL, episodeURL, key, string(jsonValue), time.Now())
+				if database.IsPostgreSQLDB() {
+					query = `
+						INSERT INTO "GpodderSyncSettings" (UserID, Scope, PodcastURL, EpisodeURL, SettingKey, SettingValue, LastUpdated)
+						VALUES ($1, $2, $3, $4, $5, $6, $7)
+						ON CONFLICT (UserID, Scope, SettingKey, PodcastURL, EpisodeURL)
+						WHERE DeviceID IS NULL
+						DO UPDATE SET SettingValue = $6, LastUpdated = $7
+					`
+					args = append(args, userID, scope, podcastURL, episodeURL, key, string(jsonValue), time.Now())
+				} else {
+					query = `
+						INSERT INTO GpodderSyncSettings (UserID, Scope, PodcastURL, EpisodeURL, SettingKey, SettingValue, LastUpdated)
+						VALUES (?, ?, ?, ?, ?, ?, ?)
+						ON DUPLICATE KEY UPDATE SettingValue = VALUES(SettingValue), LastUpdated = VALUES(LastUpdated)
+					`
+					args = append(args, userID, scope, podcastURL, episodeURL, key, string(jsonValue), time.Now())
+				}
 			}
 
 			// Execute query
@@ -581,33 +702,69 @@ func saveSettings(database *db.PostgresDB) gin.HandlerFunc {
 
 			switch scope {
 			case "account":
-				query = `
-					DELETE FROM "GpodderSyncSettings"
-					WHERE UserID = $1 AND Scope = $2 AND SettingKey = $3
-					AND DeviceID IS NULL AND PodcastURL IS NULL AND EpisodeURL IS NULL
-				`
-				args = append(args, userID, scope, key)
+				if database.IsPostgreSQLDB() {
+					query = `
+						DELETE FROM "GpodderSyncSettings"
+						WHERE UserID = $1 AND Scope = $2 AND SettingKey = $3
+						AND DeviceID IS NULL AND PodcastURL IS NULL AND EpisodeURL IS NULL
+					`
+					args = append(args, userID, scope, key)
+				} else {
+					query = `
+						DELETE FROM GpodderSyncSettings
+						WHERE UserID = ? AND Scope = ? AND SettingKey = ?
+						AND DeviceID IS NULL AND PodcastURL IS NULL AND EpisodeURL IS NULL
+					`
+					args = append(args, userID, scope, key)
+				}
 			case "device":
-				query = `
-					DELETE FROM "GpodderSyncSettings"
-					WHERE UserID = $1 AND Scope = $2 AND DeviceID = $3 AND SettingKey = $4
-					AND PodcastURL IS NULL AND EpisodeURL IS NULL
-				`
-				args = append(args, userID, scope, deviceID, key)
+				if database.IsPostgreSQLDB() {
+					query = `
+						DELETE FROM "GpodderSyncSettings"
+						WHERE UserID = $1 AND Scope = $2 AND DeviceID = $3 AND SettingKey = $4
+						AND PodcastURL IS NULL AND EpisodeURL IS NULL
+					`
+					args = append(args, userID, scope, deviceID, key)
+				} else {
+					query = `
+						DELETE FROM GpodderSyncSettings
+						WHERE UserID = ? AND Scope = ? AND DeviceID = ? AND SettingKey = ?
+						AND PodcastURL IS NULL AND EpisodeURL IS NULL
+					`
+					args = append(args, userID, scope, deviceID, key)
+				}
 			case "podcast":
-				query = `
-					DELETE FROM "GpodderSyncSettings"
-					WHERE UserID = $1 AND Scope = $2 AND PodcastURL = $3 AND SettingKey = $4
-					AND DeviceID IS NULL AND EpisodeURL IS NULL
-				`
-				args = append(args, userID, scope, podcastURL, key)
+				if database.IsPostgreSQLDB() {
+					query = `
+						DELETE FROM "GpodderSyncSettings"
+						WHERE UserID = $1 AND Scope = $2 AND PodcastURL = $3 AND SettingKey = $4
+						AND DeviceID IS NULL AND EpisodeURL IS NULL
+					`
+					args = append(args, userID, scope, podcastURL, key)
+				} else {
+					query = `
+						DELETE FROM GpodderSyncSettings
+						WHERE UserID = ? AND Scope = ? AND PodcastURL = ? AND SettingKey = ?
+						AND DeviceID IS NULL AND EpisodeURL IS NULL
+					`
+					args = append(args, userID, scope, podcastURL, key)
+				}
 			case "episode":
-				query = `
-					DELETE FROM "GpodderSyncSettings"
-					WHERE UserID = $1 AND Scope = $2 AND PodcastURL = $3 AND EpisodeURL = $4 AND SettingKey = $5
-					AND DeviceID IS NULL
-				`
-				args = append(args, userID, scope, podcastURL, episodeURL, key)
+				if database.IsPostgreSQLDB() {
+					query = `
+						DELETE FROM "GpodderSyncSettings"
+						WHERE UserID = $1 AND Scope = $2 AND PodcastURL = $3 AND EpisodeURL = $4 AND SettingKey = $5
+						AND DeviceID IS NULL
+					`
+					args = append(args, userID, scope, podcastURL, episodeURL, key)
+				} else {
+					query = `
+						DELETE FROM GpodderSyncSettings
+						WHERE UserID = ? AND Scope = ? AND PodcastURL = ? AND EpisodeURL = ? AND SettingKey = ?
+						AND DeviceID IS NULL
+					`
+					args = append(args, userID, scope, podcastURL, episodeURL, key)
+				}
 			}
 
 			// Execute query
@@ -632,37 +789,77 @@ func saveSettings(database *db.PostgresDB) gin.HandlerFunc {
 
 		switch scope {
 		case "account":
-			queryAll = `
-				SELECT SettingKey, SettingValue
-				FROM "GpodderSyncSettings"
-				WHERE UserID = $1 AND Scope = $2
-				AND DeviceID IS NULL AND PodcastURL IS NULL AND EpisodeURL IS NULL
-			`
-			argsAll = append(argsAll, userID, scope)
+			if database.IsPostgreSQLDB() {
+				queryAll = `
+					SELECT SettingKey, SettingValue
+					FROM "GpodderSyncSettings"
+					WHERE UserID = $1 AND Scope = $2
+					AND DeviceID IS NULL AND PodcastURL IS NULL AND EpisodeURL IS NULL
+				`
+				argsAll = append(argsAll, userID, scope)
+			} else {
+				queryAll = `
+					SELECT SettingKey, SettingValue
+					FROM GpodderSyncSettings
+					WHERE UserID = ? AND Scope = ?
+					AND DeviceID IS NULL AND PodcastURL IS NULL AND EpisodeURL IS NULL
+				`
+				argsAll = append(argsAll, userID, scope)
+			}
 		case "device":
-			queryAll = `
-				SELECT SettingKey, SettingValue
-				FROM "GpodderSyncSettings"
-				WHERE UserID = $1 AND Scope = $2 AND DeviceID = $3
-				AND PodcastURL IS NULL AND EpisodeURL IS NULL
-			`
-			argsAll = append(argsAll, userID, scope, deviceID)
+			if database.IsPostgreSQLDB() {
+				queryAll = `
+					SELECT SettingKey, SettingValue
+					FROM "GpodderSyncSettings"
+					WHERE UserID = $1 AND Scope = $2 AND DeviceID = $3
+					AND PodcastURL IS NULL AND EpisodeURL IS NULL
+				`
+				argsAll = append(argsAll, userID, scope, deviceID)
+			} else {
+				queryAll = `
+					SELECT SettingKey, SettingValue
+					FROM GpodderSyncSettings
+					WHERE UserID = ? AND Scope = ? AND DeviceID = ?
+					AND PodcastURL IS NULL AND EpisodeURL IS NULL
+				`
+				argsAll = append(argsAll, userID, scope, deviceID)
+			}
 		case "podcast":
-			queryAll = `
-				SELECT SettingKey, SettingValue
-				FROM "GpodderSyncSettings"
-				WHERE UserID = $1 AND Scope = $2 AND PodcastURL = $3
-				AND DeviceID IS NULL AND EpisodeURL IS NULL
-			`
-			argsAll = append(argsAll, userID, scope, podcastURL)
+			if database.IsPostgreSQLDB() {
+				queryAll = `
+					SELECT SettingKey, SettingValue
+					FROM "GpodderSyncSettings"
+					WHERE UserID = $1 AND Scope = $2 AND PodcastURL = $3
+					AND DeviceID IS NULL AND EpisodeURL IS NULL
+				`
+				argsAll = append(argsAll, userID, scope, podcastURL)
+			} else {
+				queryAll = `
+					SELECT SettingKey, SettingValue
+					FROM GpodderSyncSettings
+					WHERE UserID = ? AND Scope = ? AND PodcastURL = ?
+					AND DeviceID IS NULL AND EpisodeURL IS NULL
+				`
+				argsAll = append(argsAll, userID, scope, podcastURL)
+			}
 		case "episode":
-			queryAll = `
-				SELECT SettingKey, SettingValue
-				FROM "GpodderSyncSettings"
-				WHERE UserID = $1 AND Scope = $2 AND PodcastURL = $3 AND EpisodeURL = $4
-				AND DeviceID IS NULL
-			`
-			argsAll = append(argsAll, userID, scope, podcastURL, episodeURL)
+			if database.IsPostgreSQLDB() {
+				queryAll = `
+					SELECT SettingKey, SettingValue
+					FROM "GpodderSyncSettings"
+					WHERE UserID = $1 AND Scope = $2 AND PodcastURL = $3 AND EpisodeURL = $4
+					AND DeviceID IS NULL
+				`
+				argsAll = append(argsAll, userID, scope, podcastURL, episodeURL)
+			} else {
+				queryAll = `
+					SELECT SettingKey, SettingValue
+					FROM GpodderSyncSettings
+					WHERE UserID = ? AND Scope = ? AND PodcastURL = ? AND EpisodeURL = ?
+					AND DeviceID IS NULL
+				`
+				argsAll = append(argsAll, userID, scope, podcastURL, episodeURL)
+			}
 		}
 
 		// Query all settings

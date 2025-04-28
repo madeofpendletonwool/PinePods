@@ -15,7 +15,7 @@ import (
 )
 
 // getUserLists handles GET /api/2/lists/{username}.json
-func getUserLists(database *db.PostgresDB) gin.HandlerFunc {
+func getUserLists(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get user ID from middleware (if authenticated)
 		userID, exists := c.Get("userID")
@@ -23,9 +23,15 @@ func getUserLists(database *db.PostgresDB) gin.HandlerFunc {
 
 		// If not authenticated, get user ID from username
 		if !exists {
-			err := database.QueryRow(`
-				SELECT UserID FROM "Users" WHERE Username = $1
-			`, username).Scan(&userID)
+			var query string
+
+			if database.IsPostgreSQLDB() {
+				query = `SELECT UserID FROM "Users" WHERE Username = $1`
+			} else {
+				query = `SELECT UserID FROM Users WHERE Username = ?`
+			}
+
+			err := database.QueryRow(query, username).Scan(&userID)
 
 			if err != nil {
 				if err == sql.ErrNoRows {
@@ -39,11 +45,23 @@ func getUserLists(database *db.PostgresDB) gin.HandlerFunc {
 		}
 
 		// Query for user's podcast lists
-		rows, err := database.Query(`
-			SELECT ListID, Name, Title
-			FROM "GpodderSyncPodcastLists"
-			WHERE UserID = $1
-		`, userID)
+		var query string
+
+		if database.IsPostgreSQLDB() {
+			query = `
+				SELECT ListID, Name, Title
+				FROM "GpodderSyncPodcastLists"
+				WHERE UserID = $1
+			`
+		} else {
+			query = `
+				SELECT ListID, Name, Title
+				FROM GpodderSyncPodcastLists
+				WHERE UserID = ?
+			`
+		}
+
+		rows, err := database.Query(query, userID)
 
 		if err != nil {
 			log.Printf("Error querying podcast lists: %v", err)
@@ -73,7 +91,7 @@ func getUserLists(database *db.PostgresDB) gin.HandlerFunc {
 }
 
 // createPodcastList handles POST /api/2/lists/{username}/create
-func createPodcastList(database *db.PostgresDB) gin.HandlerFunc {
+func createPodcastList(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get user ID from middleware
 		userID, _ := c.Get("userID")
@@ -139,10 +157,21 @@ func createPodcastList(database *db.PostgresDB) gin.HandlerFunc {
 
 		// Check if a list with this name already exists
 		var existingID int
-		err = tx.QueryRow(`
-			SELECT ListID FROM "GpodderSyncPodcastLists"
-			WHERE UserID = $1 AND Name = $2
-		`, userID, name).Scan(&existingID)
+		var existsQuery string
+
+		if database.IsPostgreSQLDB() {
+			existsQuery = `
+				SELECT ListID FROM "GpodderSyncPodcastLists"
+				WHERE UserID = $1 AND Name = $2
+			`
+		} else {
+			existsQuery = `
+				SELECT ListID FROM GpodderSyncPodcastLists
+				WHERE UserID = ? AND Name = ?
+			`
+		}
+
+		err = tx.QueryRow(existsQuery, userID, name).Scan(&existingID)
 
 		if err == nil {
 			// List already exists
@@ -156,11 +185,35 @@ func createPodcastList(database *db.PostgresDB) gin.HandlerFunc {
 
 		// Create new list
 		var listID int
-		err = tx.QueryRow(`
-			INSERT INTO "GpodderSyncPodcastLists" (UserID, Name, Title)
-			VALUES ($1, $2, $3)
-			RETURNING ListID
-		`, userID, name, title).Scan(&listID)
+
+		if database.IsPostgreSQLDB() {
+			err = tx.QueryRow(`
+				INSERT INTO "GpodderSyncPodcastLists" (UserID, Name, Title)
+				VALUES ($1, $2, $3)
+				RETURNING ListID
+			`, userID, name, title).Scan(&listID)
+		} else {
+			var result sql.Result
+			result, err = tx.Exec(`
+				INSERT INTO GpodderSyncPodcastLists (UserID, Name, Title)
+				VALUES (?, ?, ?)
+			`, userID, name, title)
+
+			if err != nil {
+				log.Printf("Error creating podcast list: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create podcast list"})
+				return
+			}
+
+			lastID, err := result.LastInsertId()
+			if err != nil {
+				log.Printf("Error getting last insert ID: %v", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create podcast list"})
+				return
+			}
+
+			listID = int(lastID)
+		}
 
 		if err != nil {
 			log.Printf("Error creating podcast list: %v", err)
@@ -170,10 +223,21 @@ func createPodcastList(database *db.PostgresDB) gin.HandlerFunc {
 
 		// Add podcasts to list
 		for _, url := range podcastURLs {
-			_, err = tx.Exec(`
-				INSERT INTO "GpodderSyncPodcastListEntries" (ListID, PodcastURL)
-				VALUES ($1, $2)
-			`, listID, url)
+			var insertQuery string
+
+			if database.IsPostgreSQLDB() {
+				insertQuery = `
+					INSERT INTO "GpodderSyncPodcastListEntries" (ListID, PodcastURL)
+					VALUES ($1, $2)
+				`
+			} else {
+				insertQuery = `
+					INSERT INTO GpodderSyncPodcastListEntries (ListID, PodcastURL)
+					VALUES (?, ?)
+				`
+			}
+
+			_, err = tx.Exec(insertQuery, listID, url)
 
 			if err != nil {
 				log.Printf("Error adding podcast to list: %v", err)
@@ -195,7 +259,7 @@ func createPodcastList(database *db.PostgresDB) gin.HandlerFunc {
 }
 
 // getPodcastList handles GET /api/2/lists/{username}/list/{listname}
-func getPodcastList(database *db.PostgresDB) gin.HandlerFunc {
+func getPodcastList(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get username and listname from URL
 		username := c.Param("username")
@@ -209,9 +273,15 @@ func getPodcastList(database *db.PostgresDB) gin.HandlerFunc {
 
 		// Get user ID from username
 		var userID int
-		err := database.QueryRow(`
-			SELECT UserID FROM "Users" WHERE Username = $1
-		`, username).Scan(&userID)
+		var query string
+
+		if database.IsPostgreSQLDB() {
+			query = `SELECT UserID FROM "Users" WHERE Username = $1`
+		} else {
+			query = `SELECT UserID FROM Users WHERE Username = ?`
+		}
+
+		err := database.QueryRow(query, username).Scan(&userID)
 
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -226,10 +296,20 @@ func getPodcastList(database *db.PostgresDB) gin.HandlerFunc {
 		// Get list info
 		var listID int
 		var title string
-		err = database.QueryRow(`
-			SELECT ListID, Title FROM "GpodderSyncPodcastLists"
-			WHERE UserID = $1 AND Name = $2
-		`, userID, listName).Scan(&listID, &title)
+
+		if database.IsPostgreSQLDB() {
+			query = `
+				SELECT ListID, Title FROM "GpodderSyncPodcastLists"
+				WHERE UserID = $1 AND Name = $2
+			`
+		} else {
+			query = `
+				SELECT ListID, Title FROM GpodderSyncPodcastLists
+				WHERE UserID = ? AND Name = ?
+			`
+		}
+
+		err = database.QueryRow(query, userID, listName).Scan(&listID, &title)
 
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -242,12 +322,25 @@ func getPodcastList(database *db.PostgresDB) gin.HandlerFunc {
 		}
 
 		// Get podcasts in list
-		rows, err := database.Query(`
-			SELECT e.PodcastURL, p.PodcastName, p.Description, p.Author, p.ArtworkURL, p.WebsiteURL
-			FROM "GpodderSyncPodcastListEntries" e
-			LEFT JOIN "Podcasts" p ON e.PodcastURL = p.FeedURL
-			WHERE e.ListID = $1
-		`, listID)
+		var rows *sql.Rows
+
+		if database.IsPostgreSQLDB() {
+			query = `
+				SELECT e.PodcastURL, p.PodcastName, p.Description, p.Author, p.ArtworkURL, p.WebsiteURL
+				FROM "GpodderSyncPodcastListEntries" e
+				LEFT JOIN "Podcasts" p ON e.PodcastURL = p.FeedURL
+				WHERE e.ListID = $1
+			`
+			rows, err = database.Query(query, listID)
+		} else {
+			query = `
+				SELECT e.PodcastURL, p.PodcastName, p.Description, p.Author, p.ArtworkURL, p.WebsiteURL
+				FROM GpodderSyncPodcastListEntries e
+				LEFT JOIN Podcasts p ON e.PodcastURL = p.FeedURL
+				WHERE e.ListID = ?
+			`
+			rows, err = database.Query(query, listID)
+		}
 
 		if err != nil {
 			log.Printf("Error querying podcasts in list: %v", err)
@@ -315,7 +408,8 @@ func getPodcastList(database *db.PostgresDB) gin.HandlerFunc {
 }
 
 // updatePodcastList handles PUT /api/2/lists/{username}/list/{listname}
-func updatePodcastList(database *db.PostgresDB) gin.HandlerFunc {
+// updatePodcastList handles PUT /api/2/lists/{username}/list/{listname}
+func updatePodcastList(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get user ID from middleware
 		userID, _ := c.Get("userID")
@@ -371,10 +465,21 @@ func updatePodcastList(database *db.PostgresDB) gin.HandlerFunc {
 
 		// Get list ID
 		var listID int
-		err = tx.QueryRow(`
-			SELECT ListID FROM "GpodderSyncPodcastLists"
-			WHERE UserID = $1 AND Name = $2
-		`, userID, listName).Scan(&listID)
+		var query string
+
+		if database.IsPostgreSQLDB() {
+			query = `
+				SELECT ListID FROM "GpodderSyncPodcastLists"
+				WHERE UserID = $1 AND Name = $2
+			`
+		} else {
+			query = `
+				SELECT ListID FROM GpodderSyncPodcastLists
+				WHERE UserID = ? AND Name = ?
+			`
+		}
+
+		err = tx.QueryRow(query, userID, listName).Scan(&listID)
 
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -387,10 +492,19 @@ func updatePodcastList(database *db.PostgresDB) gin.HandlerFunc {
 		}
 
 		// Remove existing entries
-		_, err = tx.Exec(`
-			DELETE FROM "GpodderSyncPodcastListEntries"
-			WHERE ListID = $1
-		`, listID)
+		if database.IsPostgreSQLDB() {
+			query = `
+				DELETE FROM "GpodderSyncPodcastListEntries"
+				WHERE ListID = $1
+			`
+		} else {
+			query = `
+				DELETE FROM GpodderSyncPodcastListEntries
+				WHERE ListID = ?
+			`
+		}
+
+		_, err = tx.Exec(query, listID)
 
 		if err != nil {
 			log.Printf("Error removing existing entries: %v", err)
@@ -400,10 +514,19 @@ func updatePodcastList(database *db.PostgresDB) gin.HandlerFunc {
 
 		// Add new entries
 		for _, url := range podcastURLs {
-			_, err = tx.Exec(`
-				INSERT INTO "GpodderSyncPodcastListEntries" (ListID, PodcastURL)
-				VALUES ($1, $2)
-			`, listID, url)
+			if database.IsPostgreSQLDB() {
+				query = `
+					INSERT INTO "GpodderSyncPodcastListEntries" (ListID, PodcastURL)
+					VALUES ($1, $2)
+				`
+			} else {
+				query = `
+					INSERT INTO GpodderSyncPodcastListEntries (ListID, PodcastURL)
+					VALUES (?, ?)
+				`
+			}
+
+			_, err = tx.Exec(query, listID, url)
 
 			if err != nil {
 				log.Printf("Error adding podcast to list: %v", err)
@@ -424,7 +547,8 @@ func updatePodcastList(database *db.PostgresDB) gin.HandlerFunc {
 }
 
 // deletePodcastList handles DELETE /api/2/lists/{username}/list/{listname}
-func deletePodcastList(database *db.PostgresDB) gin.HandlerFunc {
+// deletePodcastList handles DELETE /api/2/lists/{username}/list/{listname}
+func deletePodcastList(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get user ID from middleware
 		userID, _ := c.Get("userID")
@@ -445,10 +569,21 @@ func deletePodcastList(database *db.PostgresDB) gin.HandlerFunc {
 
 		// Get list ID
 		var listID int
-		err = tx.QueryRow(`
-			SELECT ListID FROM "GpodderSyncPodcastLists"
-			WHERE UserID = $1 AND Name = $2
-		`, userID, listName).Scan(&listID)
+		var query string
+
+		if database.IsPostgreSQLDB() {
+			query = `
+				SELECT ListID FROM "GpodderSyncPodcastLists"
+				WHERE UserID = $1 AND Name = $2
+			`
+		} else {
+			query = `
+				SELECT ListID FROM GpodderSyncPodcastLists
+				WHERE UserID = ? AND Name = ?
+			`
+		}
+
+		err = tx.QueryRow(query, userID, listName).Scan(&listID)
 
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -461,10 +596,19 @@ func deletePodcastList(database *db.PostgresDB) gin.HandlerFunc {
 		}
 
 		// Delete list entries first (cascade should handle this, but being explicit)
-		_, err = tx.Exec(`
-			DELETE FROM "GpodderSyncPodcastListEntries"
-			WHERE ListID = $1
-		`, listID)
+		if database.IsPostgreSQLDB() {
+			query = `
+				DELETE FROM "GpodderSyncPodcastListEntries"
+				WHERE ListID = $1
+			`
+		} else {
+			query = `
+				DELETE FROM GpodderSyncPodcastListEntries
+				WHERE ListID = ?
+			`
+		}
+
+		_, err = tx.Exec(query, listID)
 
 		if err != nil {
 			log.Printf("Error deleting list entries: %v", err)
@@ -473,10 +617,19 @@ func deletePodcastList(database *db.PostgresDB) gin.HandlerFunc {
 		}
 
 		// Delete list
-		_, err = tx.Exec(`
-			DELETE FROM "GpodderSyncPodcastLists"
-			WHERE ListID = $1
-		`, listID)
+		if database.IsPostgreSQLDB() {
+			query = `
+				DELETE FROM "GpodderSyncPodcastLists"
+				WHERE ListID = $1
+			`
+		} else {
+			query = `
+				DELETE FROM GpodderSyncPodcastLists
+				WHERE ListID = ?
+			`
+		}
+
+		_, err = tx.Exec(query, listID)
 
 		if err != nil {
 			log.Printf("Error deleting podcast list: %v", err)

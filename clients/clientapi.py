@@ -2637,9 +2637,47 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
     except Exception as e:
         await websocket.send_json({"detail": f"Error during refresh: {e}"})
     finally:
+        # Clear explicit reference
         if cnx:
-            if not cnx.closed:
-                cnx.close()
+            try:
+                # Get connection type
+                connection_type = type(cnx).__name__
+                print(f"Closing connection of type: {connection_type}")
+
+                # For PooledMySQLConnection
+                if connection_type == "PooledMySQLConnection":
+                    print("Detected PooledMySQLConnection - using special handling")
+                    # DO NOTHING - don't try to close or modify it
+                    # Just let it go out of scope and be garbage collected
+                    pass
+                # Regular MySQL connection
+                elif "MySQL" in connection_type:
+                    print("Detected MySQL connection - using basic close")
+                    try:
+                        cnx.close()
+                    except Exception as e:
+                        print(f"MySQL close error (ignored): {e}")
+                # PostgreSQL connection
+                elif hasattr(cnx, 'closed'):
+                    print("Detected PostgreSQL connection")
+                    if not cnx.closed:
+                        cnx.close()
+                # Generic
+                elif hasattr(cnx, 'close'):
+                    print("Using generic close method")
+                    cnx.close()
+
+                print("Connection handling complete")
+            except Exception as e:
+                print(f"Connection handling error: {e}")
+
+            # Force drop reference regardless of what happened above
+            cnx = None
+
+        # Force garbage collection
+        import gc
+        gc.collect()
+        print("Garbage collection complete")
 
 @app.get("/api/data/get_stats")
 async def api_get_stats(user_id: int, cnx=Depends(get_database_connection),

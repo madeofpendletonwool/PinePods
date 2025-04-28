@@ -415,13 +415,23 @@ func GetMigrations() []Migration {
 			Version:     2,
 			Description: "Add API version column to GpodderSyncSettings",
 			PostgreSQLSQL: `
-				ALTER TABLE "GpodderSyncSettings"
-				ADD COLUMN IF NOT EXISTS APIVersion VARCHAR(10) DEFAULT '2.0';
-			`,
+		        ALTER TABLE "GpodderSyncSettings"
+		        ADD COLUMN IF NOT EXISTS APIVersion VARCHAR(10) DEFAULT '2.0';
+		    `,
 			MySQLSQL: `
-				ALTER TABLE GpodderSyncSettings
-				ADD COLUMN IF NOT EXISTS APIVersion VARCHAR(10) DEFAULT '2.0';
-			`,
+		        -- Check if column exists first
+		        SET @s = (SELECT IF(
+		            COUNT(*) = 0,
+		            'ALTER TABLE GpodderSyncSettings ADD COLUMN APIVersion VARCHAR(10) DEFAULT "2.0"',
+		            'SELECT 1'
+		        ) FROM INFORMATION_SCHEMA.COLUMNS
+		        WHERE TABLE_NAME = 'GpodderSyncSettings'
+		        AND COLUMN_NAME = 'APIVersion');
+
+		        PREPARE stmt FROM @s;
+		        EXECUTE stmt;
+		        DEALLOCATE PREPARE stmt;
+		    `,
 		},
 		{
 			Version:     3,

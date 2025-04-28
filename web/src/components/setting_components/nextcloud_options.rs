@@ -162,7 +162,7 @@ pub fn gpodder_advanced_options() -> Html {
         let new_device_name = new_device_name.clone();
 
         Callback::from(move |e: InputEvent| {
-            if let Some(input) = e.target_dyn_into::<HtmlSelectElement>() {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
                 new_device_name.set(input.value());
             }
         })

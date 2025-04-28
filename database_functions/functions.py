@@ -4772,29 +4772,42 @@ def get_local_episode_times(cnx, database_type, user_id):
     else:  # MySQL or MariaDB
         cursor.execute("""
         SELECT
-            e.EpisodeURL,
-            p.FeedURL,
-            ueh.ListenDuration,
-            e.EpisodeDuration,
-            e.Completed
+            e.EpisodeURL as episode_url,
+            p.FeedURL as podcast_url,
+            ueh.ListenDuration as listen_duration,
+            e.EpisodeDuration as episode_duration,
+            e.Completed as completed
         FROM UserEpisodeHistory ueh
         JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
         JOIN Podcasts p ON e.PodcastID = p.PodcastID
         WHERE ueh.UserID = %s
         """, (user_id,))
 
-    # Handle psycopg3's inconsistent return types
+    # Handle different return types
     episode_times = []
     for row in cursor.fetchall():
         if isinstance(row, dict):
-            episode_times.append({
-                "episode_url": row["episodeurl"],
-                "podcast_url": row["feedurl"],
-                "listen_duration": row["listenduration"],
-                "episode_duration": row["episodeduration"],
-                "completed": row["completed"]
-            })
+            # For MySQL with dictionary=True or PostgreSQL with dict_row
+            if database_type == "postgresql":
+                # PostgreSQL keys match the original column names
+                episode_times.append({
+                    "episode_url": row["episodeurl"],
+                    "podcast_url": row["feedurl"],
+                    "listen_duration": row["listenduration"],
+                    "episode_duration": row["episodeduration"],
+                    "completed": row["completed"]
+                })
+            else:
+                # MySQL's column aliases should match our expected keys
+                episode_times.append({
+                    "episode_url": row["episode_url"],
+                    "podcast_url": row["podcast_url"],
+                    "listen_duration": row["listen_duration"],
+                    "episode_duration": row["episode_duration"],
+                    "completed": row["completed"]
+                })
         else:
+            # Handle tuple responses
             episode_times.append({
                 "episode_url": row[0],
                 "podcast_url": row[1],
@@ -4802,6 +4815,7 @@ def get_local_episode_times(cnx, database_type, user_id):
                 "episode_duration": row[3],
                 "completed": row[4]
             })
+
     cursor.close()
     return episode_times
 
@@ -5529,10 +5543,15 @@ def get_user_gpodder_status(cnx, database_type, user_id):
     cursor = cnx.cursor()
     try:
         print(f"Getting status for user_id: {user_id}")
-        cursor.execute(
-            'SELECT Pod_Sync_Type, GpodderUrl, GpodderLoginName FROM "Users" WHERE UserID = %s',
-            (user_id,)
-        )
+
+        # This is the key change - use different queries based on database type
+        if database_type == "postgresql":
+            query = 'SELECT Pod_Sync_Type, GpodderUrl, GpodderLoginName FROM "Users" WHERE UserID = %s'
+        else:
+            # MySQL version - no quotes around table name
+            query = 'SELECT Pod_Sync_Type, GpodderUrl, GpodderLoginName FROM Users WHERE UserID = %s'
+
+        cursor.execute(query, (user_id,))
         user_data = cursor.fetchone()
         print(f"Raw user_data: {user_data}, type: {type(user_data)}")
 
@@ -10373,69 +10392,72 @@ def add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, enc
         print(f"Failed to add podcast to Nextcloud: {e}")
         print(f"Response body: {response.text}")
 
-def add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url, device_id="default"):
-    from cryptography.fernet import Fernet
-    from requests.auth import HTTPBasicAuth
+def add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_url, device_id="default"):
     import requests
+    from requests.auth import HTTPBasicAuth
+
+    # Initialize response variable to None
+    response = None
 
     try:
-        # Decrypt the token
-        encryption_key = get_encryption_key(cnx, database_type)
-        encryption_key_bytes = base64.b64decode(encryption_key)
-        cipher_suite = Fernet(encryption_key_bytes)
+        # Detect if this is the internal API
+        is_internal_api = (gpodder_url == "http://localhost:8042")
 
-        if encrypted_gpodder_token is not None:
-            decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
-            gpodder_token = decrypted_token_bytes.decode()
-        else:
-            gpodder_token = None
-
-        # Create a session for cookie-based auth
-        session = requests.Session()
+        # Create auth object - this is used for both session and direct auth
         auth = HTTPBasicAuth(gpodder_login, gpodder_token)
 
-        # Try to establish a session first (for PodFetch)
+        # Create headers - add special header only for internal API
+        headers = {"Content-Type": "application/json"}
+        if is_internal_api:
+            headers["X-GPodder-Token"] = gpodder_token
+            print("Using internal API with X-GPodder-Token header")
+
+        # Prepare request data
+        data = {
+            "add": [podcast_url],
+            "remove": []
+        }
+
+        # Try session-based auth first (works with many external servers)
         try:
+            session = requests.Session()
             login_url = f"{gpodder_url}/api/2/auth/{gpodder_login}/login.json"
-            login_response = session.post(login_url, auth=auth)
+            print(f"Attempting session login at: {login_url}")
+            login_response = session.post(login_url, auth=auth, headers=headers if is_internal_api else None)
             login_response.raise_for_status()
             print("Session login successful for podcast add")
 
             # Use the session to add the podcast
             url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
-            data = {
-                "add": [podcast_url],
-                "remove": []
-            }
-            headers = {
-                "Content-Type": "application/json"
-            }
+            print(f"Sending POST request to: {url}")
             response = session.post(url, json=data, headers=headers)
             response.raise_for_status()
             print(f"Podcast added to oPodSync successfully using session: {response.text}")
             return response.json()
-
         except Exception as e:
             print(f"Session auth failed, trying basic auth: {str(e)}")
 
-            # Fall back to basic auth
+            # Fall back to direct basic auth
             url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
-            auth = HTTPBasicAuth(gpodder_login, gpodder_token)
-            data = {
-                "add": [podcast_url],
-                "remove": []
-            }
-            headers = {
-                "Content-Type": "application/json"
-            }
+            print(f"Sending direct POST request to: {url}")
+            print(f"Using headers: {headers}")
+            print(f"Using auth with username: {gpodder_login}")
+
             response = requests.post(url, json=data, headers=headers, auth=auth)
+            print(f"Response status: {response.status_code}")
             response.raise_for_status()
             print(f"Podcast added to oPodSync successfully with basic auth: {response.text}")
             return response.json()
-
     except Exception as e:
         print(f"Failed to add podcast to oPodSync: {e}")
-        print(f"Response body: {getattr(response, 'text', 'No response')}")
+        if response is not None:
+            print(f"Response body: {getattr(response, 'text', 'No response object')}")
+            print(f"Status code: {getattr(response, 'status_code', 'No status code')}")
+            # If there was a server error, try to get more information
+            if getattr(response, 'status_code', 0) >= 500:
+                print("Server returned an error. Check gpodder API logs for more details.")
+        else:
+            print("No response received (error occurred before HTTP request)")
         return None
 
 
@@ -11019,13 +11041,11 @@ def get_sync_timestamps(cnx, database_type, user_id, device_id):
     """Get sync timestamps for a device, with default values if not found"""
     try:
         cursor = cnx.cursor()
-
         # Handle negative device IDs (remote devices)
         if device_id and device_id < 0:
             print(f"Error getting sync timestamps: Device ID {device_id} is negative (remote device)")
             # Return default timestamps for remote devices
             return {"last_timestamp": 0, "episodes_timestamp": 0}
-
         if database_type == "postgresql":
             query = '''
                 SELECT LastTimestamp, EpisodesTimestamp
@@ -11038,10 +11058,8 @@ def get_sync_timestamps(cnx, database_type, user_id, device_id):
                 FROM GpodderSyncState
                 WHERE UserID = %s AND DeviceID = %s
             '''
-
         cursor.execute(query, (user_id, device_id))
         result = cursor.fetchone()
-
         if result:
             if isinstance(result, tuple):
                 return {
@@ -11062,12 +11080,11 @@ def get_sync_timestamps(cnx, database_type, user_id, device_id):
                     ON CONFLICT (UserID, DeviceID) DO NOTHING
                 '''
             else:
+                # For MySQL, use INSERT IGNORE instead of ON CONFLICT
                 insert_query = '''
-                    INSERT INTO GpodderSyncState (UserID, DeviceID, LastTimestamp, EpisodesTimestamp)
+                    INSERT IGNORE INTO GpodderSyncState (UserID, DeviceID, LastTimestamp, EpisodesTimestamp)
                     VALUES (%s, %s, 0, 0)
-                    ON CONFLICT (UserID, DeviceID) DO NOTHING
                 '''
-
             try:
                 cursor.execute(insert_query, (user_id, device_id))
                 cnx.commit()
@@ -11075,7 +11092,6 @@ def get_sync_timestamps(cnx, database_type, user_id, device_id):
                 print(f"Error creating sync timestamps: {e}")
                 # Don't let this error abort everything
                 cnx.rollback()
-
             return {"last_timestamp": 0, "episodes_timestamp": 0}
     except Exception as e:
         print(f"Error getting sync timestamps: {e}")

@@ -154,7 +154,7 @@ func (db *Database) IsPostgreSQLDB() bool {
 	return db.Type == "postgresql"
 }
 
-// In database.go, update the FormatQuery method to better handle column backticks
+// FormatQuery formats a query for the specific database type
 func (db *Database) FormatQuery(query string) string {
 	if db.Type == "postgresql" {
 		return query // PostgreSQL queries already have correct format
@@ -178,7 +178,6 @@ func (db *Database) FormatQuery(query string) string {
 	}
 
 	// Replace column quotes (double quotes to backticks)
-	// Look for patterns like "ColumnName" not at the beginning of a line
 	re := regexp.MustCompile(`"([^"]+)"`)
 	result = re.ReplaceAllString(result, "`$1`")
 

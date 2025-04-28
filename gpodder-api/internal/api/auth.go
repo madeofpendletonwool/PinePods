@@ -234,7 +234,7 @@ func generateSessionToken() (string, error) {
 }
 
 // createSession creates a new session in the database
-func createSession(db *db.PostgresDB, userID int, userAgent, clientIP string) (string, time.Time, error) {
+func createSession(db *db.Database, userID int, userAgent, clientIP string) (string, time.Time, error) {
 	// Generate a random session token
 	token, err := generateSessionToken()
 	if err != nil {
@@ -258,15 +258,19 @@ func createSession(db *db.PostgresDB, userID int, userAgent, clientIP string) (s
 }
 
 // validateSession validates a session token
-func validateSession(db *db.PostgresDB, token string) (int, bool, error) {
+func validateSession(db *db.Database, token string) (int, bool, error) {
 	var userID int
 	var expires time.Time
+	var query string
 
-	err := db.QueryRow(`
-		SELECT UserID, ExpiresAt
-		FROM "GpodderSessions"
-		WHERE SessionToken = $1
-	`, token).Scan(&userID, &expires)
+	// Format query according to database type
+	if db.IsPostgreSQLDB() {
+		query = `SELECT UserID, ExpiresAt FROM "GpodderSessions" WHERE SessionToken = $1`
+	} else {
+		query = `SELECT UserID, ExpiresAt FROM GpodderSessions WHERE SessionToken = ?`
+	}
+
+	err := db.QueryRow(query, token).Scan(&userID, &expires)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -278,7 +282,13 @@ func validateSession(db *db.PostgresDB, token string) (int, bool, error) {
 	// Check if session has expired
 	if time.Now().After(expires) {
 		// Delete expired session
-		_, err = db.Exec(`DELETE FROM "GpodderSessions" WHERE SessionToken = $1`, token)
+		if db.IsPostgreSQLDB() {
+			query = `DELETE FROM "GpodderSessions" WHERE SessionToken = $1`
+		} else {
+			query = `DELETE FROM GpodderSessions WHERE SessionToken = ?`
+		}
+
+		_, err = db.Exec(query, token)
 		if err != nil {
 			log.Printf("Failed to delete expired session: %v", err)
 		}
@@ -286,11 +296,13 @@ func validateSession(db *db.PostgresDB, token string) (int, bool, error) {
 	}
 
 	// Update last active time
-	_, err = db.Exec(`
-		UPDATE "GpodderSessions"
-		SET LastActive = CURRENT_TIMESTAMP
-		WHERE SessionToken = $1
-	`, token)
+	if db.IsPostgreSQLDB() {
+		query = `UPDATE "GpodderSessions" SET LastActive = CURRENT_TIMESTAMP WHERE SessionToken = $1`
+	} else {
+		query = `UPDATE GpodderSessions SET LastActive = CURRENT_TIMESTAMP WHERE SessionToken = ?`
+	}
+
+	_, err = db.Exec(query, token)
 
 	if err != nil {
 		log.Printf("Failed to update session last active time: %v", err)
@@ -300,7 +312,7 @@ func validateSession(db *db.PostgresDB, token string) (int, bool, error) {
 }
 
 // deleteSession removes a session from the database
-func deleteSession(db *db.PostgresDB, token string) error {
+func deleteSession(db *db.Database, token string) error {
 	_, err := db.Exec(`DELETE FROM "GpodderSessions" WHERE SessionToken = $1`, token)
 	if err != nil {
 		return fmt.Errorf("failed to delete session: %w", err)
@@ -318,7 +330,7 @@ func deleteUserSessions(db *db.PostgresDB, userID int) error {
 }
 
 // handleLogin enhanced with session management
-func handleLogin(database *db.PostgresDB) gin.HandlerFunc {
+func handleLogin(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Use the AuthMiddleware to authenticate the user
 		username := c.Param("username")
@@ -434,7 +446,7 @@ func handleLogin(database *db.PostgresDB) gin.HandlerFunc {
 }
 
 // handleLogout enhanced with session management
-func handleLogout(database *db.PostgresDB) gin.HandlerFunc {
+func handleLogout(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get username from URL
 		username := c.Param("username")
@@ -478,7 +490,7 @@ func handleLogout(database *db.PostgresDB) gin.HandlerFunc {
 }
 
 // SessionMiddleware checks if a user is logged in via session
-func SessionMiddleware(database *db.PostgresDB) gin.HandlerFunc {
+func SessionMiddleware(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log.Printf("[DEBUG] SessionMiddleware processing request: %s %s",
 			c.Request.Method, c.Request.URL.Path)
@@ -572,7 +584,7 @@ func SessionMiddleware(database *db.PostgresDB) gin.HandlerFunc {
 }
 
 // AuthenticationMiddleware with GPodder token handling
-func AuthenticationMiddleware(database *db.PostgresDB) gin.HandlerFunc {
+func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		log.Printf("[DEBUG] AuthenticationMiddleware processing request: %s %s",
 			c.Request.Method, c.Request.URL.Path)
@@ -601,10 +613,27 @@ func AuthenticationMiddleware(database *db.PostgresDB) gin.HandlerFunc {
 				log.Printf("[DEBUG] AuthenticationMiddleware: Session valid for userID: %d", userID)
 
 				var username string
-				err = database.QueryRow(`SELECT Username FROM "Users" WHERE UserID = $1`, userID).Scan(&username)
+				var query string
+
+				// Format query according to database type
+				if database.IsPostgreSQLDB() {
+					query = `SELECT Username FROM "Users" WHERE UserID = $1`
+				} else {
+					query = `SELECT Username FROM Users WHERE UserID = ?`
+				}
+
+				err = database.QueryRow(query, userID).Scan(&username)
 				if err == nil {
 					var podSyncType string
-					err = database.QueryRow(`SELECT Pod_Sync_Type FROM "Users" WHERE UserID = $1`, userID).Scan(&podSyncType)
+
+					// Format query according to database type
+					if database.IsPostgreSQLDB() {
+						query = `SELECT Pod_Sync_Type FROM "Users" WHERE UserID = $1`
+					} else {
+						query = `SELECT Pod_Sync_Type FROM Users WHERE UserID = ?`
+					}
+
+					err = database.QueryRow(query, userID).Scan(&podSyncType)
 
 					if err == nil && (podSyncType == "gpodder" || podSyncType == "both") {
 						// Check if the path username matches the session username
@@ -653,11 +682,18 @@ func AuthenticationMiddleware(database *db.PostgresDB) gin.HandlerFunc {
 			var userID int
 			var gpodderToken sql.NullString
 			var podSyncType string
+			var query string
 
-			err := database.QueryRow(`
-                SELECT UserID, GpodderToken, Pod_Sync_Type FROM "Users"
-                WHERE LOWER(Username) = LOWER($1)
-            `, username).Scan(&userID, &gpodderToken, &podSyncType)
+			// Format query according to database type
+			if database.IsPostgreSQLDB() {
+				query = `SELECT UserID, GpodderToken, Pod_Sync_Type FROM "Users"
+                         WHERE LOWER(Username) = LOWER($1)`
+			} else {
+				query = `SELECT UserID, GpodderToken, Pod_Sync_Type FROM Users
+                         WHERE LOWER(Username) = LOWER(?)`
+			}
+
+			err := database.QueryRow(query, username).Scan(&userID, &gpodderToken, &podSyncType)
 
 			if err != nil {
 				log.Printf("[ERROR] AuthenticationMiddleware: Database error: %v", err)
@@ -731,10 +767,18 @@ func AuthenticationMiddleware(database *db.PostgresDB) gin.HandlerFunc {
 		var hashedPassword string
 		var podSyncType string
 		var gpodderToken sql.NullString
+		var query string
 
-		err = database.QueryRow(`
-            SELECT UserID, Hashed_PW, Pod_Sync_Type, GpodderToken FROM "Users" WHERE LOWER(Username) = LOWER($1)
-        `, username).Scan(&userID, &hashedPassword, &podSyncType, &gpodderToken)
+		// Format query according to database type
+		if database.IsPostgreSQLDB() {
+			query = `SELECT UserID, Hashed_PW, Pod_Sync_Type, GpodderToken FROM "Users"
+                     WHERE LOWER(Username) = LOWER($1)`
+		} else {
+			query = `SELECT UserID, Hashed_PW, Pod_Sync_Type, GpodderToken FROM Users
+                     WHERE LOWER(Username) = LOWER(?)`
+		}
+
+		err = database.QueryRow(query, username).Scan(&userID, &hashedPassword, &podSyncType, &gpodderToken)
 
 		if err != nil {
 			if err == sql.ErrNoRows {
