@@ -5688,7 +5688,7 @@ def process_youtube_channel(podcast_id: int, channel_id: str, feed_cutoff: int):
 async def subscribe_to_youtube_channel(
     channel_id: str,
     user_id: int,
-    feed_cutoff: int,
+    feed_cutoff: int = 30,
     background_tasks: BackgroundTasks,
     cnx=Depends(get_database_connection),
     api_key: str = Depends(get_api_key_from_header)
@@ -5708,9 +5708,6 @@ async def subscribe_to_youtube_channel(
                 "podcast_id": existing_id,
                 "message": "Already subscribed to this channel"
             }
-
-        if not feed_cutoff:
-            feed_cutoff = 30
 
         logger.info("Getting channel info")
         channel_info = await database_functions.youtube.get_channel_info(channel_id)
