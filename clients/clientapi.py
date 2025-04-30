@@ -2231,6 +2231,39 @@ async def api_toggle_podcast_notifications(
     else:
         raise HTTPException(status_code=403, detail="You can only modify your own podcast settings")
 
+class SetPodcastFeedCutoff(BaseModel):
+    user_id: int
+    podcast_id: int
+    feed_cutoff: int
+
+@app.put("/api/data/podcast/set_feed_cutoff")
+async def api_toggle_podcast_notifications(
+    data: SetPodcastFeedCutoff,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        success = database_functions.functions.set_feed_cutoff(
+            cnx,
+            database_type,
+            data.podcast_id,
+            data.user_id,
+            data.feed_cutoff
+        )
+        if success:
+            return {"detail": "Podcast feed cutoff setting updated successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Error updating podcast nfeed cutoff")
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify your own podcast settings")
+
 class PodcastNotificationStatusData(BaseModel):
     user_id: int
     podcast_id: int
@@ -2519,14 +2552,14 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
         if database_type == "postgresql":
             cursor.execute('''
                 SELECT "podcastid", "podcastname", "feedurl", "artworkurl", "autodownload",
-                       "username", "password", "isyoutubechannel"
+                       "username", "password", "isyoutubechannel", "feedcutoffdays"
                 FROM "Podcasts"
                 WHERE "userid" = %s
             ''', (user_id,))
         else:
             cursor.execute('''
                 SELECT PodcastID, PodcastName, FeedURL, ArtworkURL, AutoDownload,
-                       Username, Password, IsYouTubeChannel
+                       Username, Password, IsYouTubeChannel, FeedCutoffDays
                 FROM Podcasts
                 WHERE UserID = %s
             ''', (user_id,))
@@ -2547,6 +2580,7 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                     username = podcast['username']
                     password = podcast['password']
                     is_youtube = podcast['isyoutubechannel']
+                    feed_cutoff = podcast['feedcutoffdays']
                 else:
                     podcast_id = podcast['PodcastID']
                     podcast_name = podcast['PodcastName']
@@ -2556,8 +2590,9 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                     username = podcast['Username']
                     password = podcast['Password']
                     is_youtube = podcast['IsYouTubeChannel']
+                    feed_cutoff = podcast['FeedCutoffDays']
             else:
-                podcast_id, podcast_name, feed_url, artwork_url, auto_download, username, password, is_youtube = podcast
+                podcast_id, podcast_name, feed_url, artwork_url, auto_download, username, password, is_youtube = podcast, feed_cutoff = 30
 
             await websocket.send_json({
                 "progress": {
@@ -2579,7 +2614,8 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                         database_type,
                         podcast_id,
                         channel_id,
-                        cnx
+                        cnx,
+                        feed_cutoff
                     )
                     if youtube_episodes:
                         for episode in youtube_episodes:
@@ -2598,6 +2634,7 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                         username,
                         password,
                         True  # websocket=True
+                        # feed_cutoff
                     )
 
                     if episodes:
@@ -5640,10 +5677,10 @@ async def search_youtube_channels(
             detail=f"Error searching YouTube channels: {str(e)}"
         )
 
-def process_youtube_channel(podcast_id: int, channel_id: str):
+def process_youtube_channel(podcast_id: int, channel_id: str, feed_cutoff: int):
     cnx = create_database_connection()
     try:
-        database_functions.youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx)
+        database_functions.youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx, feed_cutoff)
     finally:
         close_database_connection(cnx)
 
@@ -5651,6 +5688,7 @@ def process_youtube_channel(podcast_id: int, channel_id: str):
 async def subscribe_to_youtube_channel(
     channel_id: str,
     user_id: int,
+    feed_cutoff: int,
     background_tasks: BackgroundTasks,
     cnx=Depends(get_database_connection),
     api_key: str = Depends(get_api_key_from_header)
@@ -5671,14 +5709,17 @@ async def subscribe_to_youtube_channel(
                 "message": "Already subscribed to this channel"
             }
 
+        if not feed_cutoff:
+            feed_cutoff = 30
+
         logger.info("Getting channel info")
         channel_info = await database_functions.youtube.get_channel_info(channel_id)
 
         logger.info("Adding channel to database")
-        podcast_id = database_functions.functions.add_youtube_channel(cnx, database_type, channel_info, user_id)
+        podcast_id = database_functions.functions.add_youtube_channel(cnx, database_type, channel_info, user_id, feed_cutoff)
 
         logger.info(f"Starting background task for podcast_id {podcast_id}")
-        background_tasks.add_task(process_youtube_channel, podcast_id, channel_id)
+        background_tasks.add_task(process_youtube_channel, podcast_id, channel_id, feed_cutoff)
 
         logger.info("Subscription completed successfully")
         return {

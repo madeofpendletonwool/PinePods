@@ -1132,7 +1132,7 @@ def check_existing_channel_subscription(cnx, database_type: str, channel_id: str
     except Exception as e:
         raise e
 
-def add_youtube_channel(cnx, database_type: str, channel_info: dict, user_id: int) -> int:
+def add_youtube_channel(cnx, database_type: str, channel_info: dict, user_id: int, feed_cutoff: int) -> int:
     """Add YouTube channel to Podcasts table"""
     cursor = cnx.cursor()
     try:
@@ -1140,16 +1140,16 @@ def add_youtube_channel(cnx, database_type: str, channel_info: dict, user_id: in
             query = """
                 INSERT INTO "Podcasts" (
                     PodcastName, FeedURL, ArtworkURL, Author, Description,
-                    WebsiteURL, UserID, IsYouTubeChannel, Categories
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, %s)
+                    WebsiteURL, UserID, IsYouTubeChannel, Categories, FeedCutoffDays
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, %s, %s)
                 RETURNING PodcastID
             """
         else:  # MariaDB
             query = """
                 INSERT INTO Podcasts (
                     PodcastName, FeedURL, ArtworkURL, Author, Description,
-                    WebsiteURL, UserID, IsYouTubeChannel, Categories
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, 1, %s)
+                    WebsiteURL, UserID, IsYouTubeChannel, Categories, FeedCutoffDays
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, 1, %s, %s)
             """
 
         values = (
@@ -1160,7 +1160,8 @@ def add_youtube_channel(cnx, database_type: str, channel_info: dict, user_id: in
             channel_info['description'],
             f"https://www.youtube.com/channel/{channel_info['channel_id']}",
             user_id,
-            ""
+            "",
+            feed_cutoff
         )
 
         cursor.execute(query, values)
@@ -2427,14 +2428,14 @@ def refresh_pods_for_user(cnx, database_type, podcast_id):
     if database_type == "postgresql":
         select_podcast = '''
             SELECT "podcastid", "feedurl", "artworkurl", "autodownload", "username", "password",
-                   "isyoutubechannel", COALESCE("feedurl", '') as channel_id
+                   "isyoutubechannel", COALESCE("feedurl", '') as channel_id, "feedcutoffdays"
             FROM "Podcasts"
             WHERE "podcastid" = %s
         '''
     else:  # MySQL or MariaDB
         select_podcast = '''
             SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
-                   IsYouTubeChannel, COALESCE(FeedURL, '') as channel_id
+                   IsYouTubeChannel, COALESCE(FeedURL, '') as channel_id, FeedCutoffDays
             FROM Podcasts
             WHERE PodcastID = %s
         '''
@@ -2454,6 +2455,7 @@ def refresh_pods_for_user(cnx, database_type, podcast_id):
                 password = result['password']
                 is_youtube = result['isyoutubechannel']
                 channel_id = result['channel_id']
+                feed_cutoff = result['feedcutoffdays']
             else:
                 # MariaDB - uppercase keys
                 podcast_id = result['PodcastID']
@@ -2464,17 +2466,18 @@ def refresh_pods_for_user(cnx, database_type, podcast_id):
                 password = result['Password']
                 is_youtube = result['IsYouTubeChannel']
                 channel_id = result['channel_id']
+                feed_cutoff = result['FeedCutoffDays']
         else:
-            podcast_id, feed_url, artwork_url, auto_download, username, password, is_youtube, channel_id = result
+            podcast_id, feed_url, artwork_url, auto_download, username, password, is_youtube, channel_id, feed_cutoff = result
 
         print(f'Processing podcast: {podcast_id}')
         if is_youtube:
             channel_id = feed_url.split('channel/')[-1] if 'channel/' in feed_url else feed_url
             channel_id = channel_id.split('/')[0].split('?')[0]
-            youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx)
+            youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx, feed_cutoff)
         else:
             episodes = add_episodes(cnx, database_type, podcast_id, feed_url,
-                                  artwork_url, auto_download, username, password,
+                                  artwork_url, auto_download, username, password, # feed_cutoff,
                                   websocket=True)
             new_episodes.extend(episodes)
 
@@ -2488,13 +2491,13 @@ def refresh_pods(cnx, database_type):
     if database_type == "postgresql":
         select_podcasts = '''
             SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
-                   IsYouTubeChannel, UserID, COALESCE(FeedURL, '') as channel_id
+                   IsYouTubeChannel, UserID, COALESCE(FeedURL, '') as channel_id, FeedCutoffDays
             FROM "Podcasts"
         '''
     else:
         select_podcasts = '''
             SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
-                   IsYouTubeChannel, UserID, COALESCE(FeedURL, '') as channel_id
+                   IsYouTubeChannel, UserID, COALESCE(FeedURL, '') as channel_id, FeedCutoffDays
             FROM Podcasts
         '''
     cursor.execute(select_podcasts)
@@ -2503,7 +2506,7 @@ def refresh_pods(cnx, database_type):
         podcast_id = None
         try:
             if isinstance(result, tuple):
-                podcast_id, feed_url, artwork_url, auto_download, username, password, is_youtube, user_id, channel_id = result
+                podcast_id, feed_url, artwork_url, auto_download, username, password, is_youtube, user_id, channel_id, feed_cutoff = result
             elif isinstance(result, dict):
                 if database_type == "postgresql":
                     podcast_id = result["podcastid"]
@@ -2515,6 +2518,7 @@ def refresh_pods(cnx, database_type):
                     is_youtube = result["isyoutubechannel"]
                     user_id = result["userid"]
                     channel_id = result["channel_id"]
+                    feed_cutoff = result["feedcutoffdays"]
                 else:
                     podcast_id = result["PodcastID"]
                     feed_url = result["FeedURL"]
@@ -2525,6 +2529,7 @@ def refresh_pods(cnx, database_type):
                     is_youtube = result["IsYouTubeChannel"]
                     user_id = result["UserID"]
                     channel_id = result["channel_id"]
+                    feed_cutoff = result["FeedCutoffDays"]
             else:
                 raise ValueError(f"Unexpected result type: {type(result)}")
             print(f'Running for: {podcast_id}')
@@ -2533,7 +2538,7 @@ def refresh_pods(cnx, database_type):
                 channel_id = feed_url.split('channel/')[-1] if 'channel/' in feed_url else feed_url
                 # Clean up any trailing slashes or query parameters
                 channel_id = channel_id.split('/')[0].split('?')[0]
-                youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx)
+                youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx, feed_cutoff)
             else:
                 add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url,
                            auto_download, username, password, user_id)  # Added user_id here
@@ -3988,6 +3993,21 @@ def enable_auto_download(cnx, database_type, podcast_id, user_id, auto_download)
         else:  # MySQL or MariaDB
             query = "UPDATE Podcasts SET AutoDownload = %s WHERE PodcastID = %s AND UserID = %s"
         cursor.execute(query, (auto_download, podcast_id, user_id))
+        cnx.commit()
+    except Exception as e:
+        cnx.rollback()
+        raise e
+    finally:
+        cursor.close()
+
+def set_feed_cutoff(cnx, database_type, podcast_id, user_id, feed_cutoff):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'UPDATE "Podcasts" SET FeedCutoffDays = %s WHERE PodcastID = %s AND UserID = %s'
+        else:  # MySQL or MariaDB
+            query = "UPDATE Podcasts SET FeedCutoffDays = %s WHERE PodcastID = %s AND UserID = %s"
+        cursor.execute(query, (feed_cutoff, podcast_id, user_id))
         cnx.commit()
     except Exception as e:
         cnx.rollback()
