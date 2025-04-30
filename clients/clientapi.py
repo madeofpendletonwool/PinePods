@@ -2592,7 +2592,7 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                     is_youtube = podcast['IsYouTubeChannel']
                     feed_cutoff = podcast['FeedCutoffDays']
             else:
-                podcast_id, podcast_name, feed_url, artwork_url, auto_download, username, password, is_youtube = podcast, feed_cutoff = 30
+                podcast_id, podcast_name, feed_url, artwork_url, auto_download, username, password, is_youtube, feed_cutoff = podcast
 
             await websocket.send_json({
                 "progress": {
@@ -2631,10 +2631,10 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                         feed_url,
                         artwork_url,
                         auto_download,
+                        feed_cutoff,
                         username,
                         password,
-                        True  # websocket=True
-                        # feed_cutoff
+                        True # websocket
                     )
 
                     if episodes:
