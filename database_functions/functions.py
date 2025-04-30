@@ -5633,7 +5633,7 @@ class PodcastFeed(feedgenerator.Rss201rev2Feed):
                 attrs={'href': item['artwork_url']})
 
 
-def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, podcast_id: Optional[int] = None) -> str:
+def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, limit: int, podcast_id: Optional[int] = None) -> str:
     from datetime import datetime as dt, timezone
     cursor = cnx.cursor()
     logging.basicConfig(level=logging.INFO)
@@ -5675,6 +5675,23 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
                 FROM "Episodes" e
                 JOIN "Podcasts" p ON e.podcastid = p.podcastid
                 WHERE p.userid = %s
+                UNION ALL 
+                SELECT
+                    y.videoid as episodeid,
+                    y.podcastid,
+                    y.videotitle as episodetitle,
+                    y.videodescription as episodetitle,
+                    y.videourl as episodeurl,
+                    y.thumbnailurl as e.episodeartwork
+                    y.publishedat as episodepubdate,
+                    y.duration as episodeduration
+                    p.podcastname,
+                    p.author,
+                    p.artworkurl,
+                    p.description as podcastdescription
+                FROM "YouTubeVideos" y
+                JOIN "Podcasts" p on y.podcastid = p.podcastid
+                WHERE p.userid = %s
             '''
         else:
             base_query = '''
@@ -5694,15 +5711,32 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
                 FROM Episodes e
                 JOIN Podcasts p ON e.PodcastID = p.PodcastID
                 WHERE p.UserID = %s
+                UNION ALL
+                SELECT
+                    y.VideoID as EpisodeID,
+                    y.PodcastID as PodcastID,
+                    y.VideoTitle as EpisodeTitle,
+                    y.VideoDescription as EpisodeDescription,
+                    y.VideoURL as EpisodeURL,
+                    y.ThumbnailURL as e.EpisodeArtwork
+                    y.PublishedAt as EpisodePubDate,
+                    y.Duration as EpisodeDuration
+                    p.PodcastName,
+                    p.Author,
+                    p.ArtworkURL,
+                    p.Description as PodcastDescription
+                FROM YouTubeVideos y
+                JOIN Podcasts p on y.PodcastID = p.PodcastID
+                WHERE p.UserID = %s
             '''
 
-        params = [user_id]
+        params = [user_id, user_id]
         if podcast_id is not None:
             base_query += f' AND {"p.podcastid" if database_type == "postgresql" else "p.PodcastID"} = %s'
             params.append(podcast_id)
 
-        base_query += f' ORDER BY {"e.episodepubdate" if database_type == "postgresql" else "e.EpisodePubDate"} DESC LIMIT 100'
-
+        base_query += f' ORDER BY 7 DESC LIMIT %s'
+        params.append(limit)
         cursor.execute(base_query, tuple(params))
         print('q1')
         # Get column names and create result mapping

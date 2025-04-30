@@ -5480,6 +5480,7 @@ async def toggle_rss_feeds_endpoint(
 async def get_user_feed(
     user_id: int,
     api_key: str,  # Now a query parameter
+    limit: int = 100,
     podcast_id: Optional[int] = None,
     cnx=Depends(get_database_connection)
 ):
@@ -5496,6 +5497,7 @@ async def get_user_feed(
             cnx,
             user_id,
             api_key,
+            limit,
             podcast_id
         )
         return Response(
