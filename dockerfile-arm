@@ -24,7 +24,7 @@ RUN cd /tmp && \
     trunk build dummy.rs || true
 RUN cargo install --locked wasm-bindgen-cli
 # Build the Yew application in release mode
-RUN RUSTFLAGS="--cfg=web_sys_unstable_apis" trunk build --features server_build --release
+RUN RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"" trunk build --features server_build --release
 
 # Final stage for setting up runtime environment
 FROM alpine:3.19

@@ -19,7 +19,7 @@ COPY ./web/src /app/src
 COPY ./web/static /app/static
 WORKDIR /app
 # Build the Yew application in release mode
-RUN RUSTFLAGS="--cfg=web_sys_unstable_apis" trunk build --features server_build --release
+RUN RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"" trunk build --features server_build --release
 
 # Go builder stage for the gpodder API
 FROM golang:alpine AS go-builder
