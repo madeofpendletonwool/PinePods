@@ -48,6 +48,9 @@ web-sys = { version = "0.3.77", features = [
     "MediaPositionState",
     "MediaSessionPlaybackState",
     "Crypto",
+    "MouseEvent",
+    "MouseEventInit",
+    "CustomEvent",
 ] }
 log = "0.4.26"
 wasm-bindgen = "0.2.100"

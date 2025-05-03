@@ -78,7 +78,7 @@ type EpisodeAction struct {
 // EpisodeActionResponse represents a response to episode action upload
 type EpisodeActionResponse struct {
 	Timestamp  int64      `json:"timestamp"`
-	UpdateURLs [][]string `json:"update_urls,omitempty"`
+	UpdateURLs [][]string `json:"update_urls"` // Removed omitempty
 }
 
 // EpisodeActionsResponse represents a response for episode actions retrieval

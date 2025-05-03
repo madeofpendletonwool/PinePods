@@ -4,13 +4,13 @@ use crate::components::audio::on_play_click;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
-use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{
     convert_time_to_seconds, format_datetime, format_time, match_date_format, parse_date,
     sanitize_html_with_blank_target,
 };
 use crate::components::host_component::HostDropdown;
+use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req;
 use crate::requests::pod_req::{
     call_check_podcast, call_create_share_link, call_download_episode,
@@ -1750,7 +1750,7 @@ pub fn epsiode() -> Html {
                                                                         key={format!("host-{}", episode.episode.episodeid)} // Add this key prop
                                                                         title="In This Episode"
                                                                         hosts={people.clone()}
-                                                                        podcast_feed_url={episode.episode.episodeurl}
+                                                                        podcast_feed_url={episode.episode.episodeurl.clone()}
                                                                         podcast_id={episode.episode.podcastid}
                                                                         podcast_index_id={episode.episode.podcastindexid.unwrap_or(0)}
                                                                     />
@@ -1858,7 +1858,17 @@ pub fn epsiode() -> Html {
                                     <div class="episode-single-desc episode-description">
                                     // <p>{ description }</p>
                                     <div class="item_container-text episode-description-container">
-                                        <SafeHtml html={description} />
+                                        <SafeHtml
+                                            html={description}
+                                            episode_url={Some(episode.episode.episodeurl.clone())}
+                                            episode_title={Some(episode.episode.episodetitle.clone())}
+                                            episode_description={Some(episode.episode.episodedescription.clone())}
+                                            episode_release_date={Some(episode.episode.episodepubdate.clone())}
+                                            episode_artwork={Some(episode.episode.episodeartwork.clone())}
+                                            episode_duration={episode.episode.episodeduration}
+                                            episode_id={Some(episode.episode.episodeid)}
+                                            is_youtube={episode.episode.is_youtube}
+                                        />
                                     </div>
                                     </div>
                                 </div>
@@ -1934,7 +1944,7 @@ pub fn epsiode() -> Html {
                                                                         <HostDropdown
                                                                             title="In This Episode"
                                                                             hosts={people.clone()}
-                                                                            podcast_feed_url={episode.episode.episodeurl}
+                                                                            podcast_feed_url={episode.episode.episodeurl.clone()}
                                                                             podcast_id={episode.episode.podcastid}
                                                                             podcast_index_id={episode.episode.podcastindexid.unwrap_or(0)}
                                                                         />
@@ -2034,7 +2044,17 @@ pub fn epsiode() -> Html {
                                     <div class="episode-single-desc episode-description">
                                     // <p>{ description }</p>
                                     <div class="item_container-text episode-description-container">
-                                        <SafeHtml html={description} />
+                                        <SafeHtml
+                                            html={description}
+                                            episode_url={Some(episode.episode.episodeurl.clone())}
+                                            episode_title={Some(episode.episode.episodetitle.clone())}
+                                            episode_description={Some(episode.episode.episodedescription.clone())}
+                                            episode_release_date={Some(episode.episode.episodepubdate.clone())}
+                                            episode_artwork={Some(episode.episode.episodeartwork.clone())}
+                                            episode_duration={episode.episode.episodeduration}
+                                            episode_id={Some(episode.episode.episodeid)}
+                                            is_youtube={episode.episode.is_youtube}
+                                        />
                                     </div>
                                     </div>
                                 </div>

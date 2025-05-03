@@ -100,14 +100,6 @@ pub struct Props {
     pub html: String,
 }
 
-#[function_component(SafeHtml)]
-pub fn safe_html(props: &Props) -> Html {
-    let div = gloo_utils::document().create_element("div").unwrap();
-    div.set_inner_html(&props.html.clone());
-
-    Html::VRef(div.into())
-}
-
 fn sanitize_html(html: &str) -> String {
     let cleaned_html = ammonia::clean(html);
     let decoded_data = decode(cleaned_html.as_bytes());

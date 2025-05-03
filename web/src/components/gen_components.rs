@@ -3,10 +3,10 @@ use crate::components::context::{AppState, UIState};
 use crate::components::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
 };
-use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{format_time, strip_images_from_html};
 use crate::components::notification_center::{NotificationCenter, ToastNotification};
+use crate::components::safehtml::SafeHtml;
 use crate::requests::people_req::PersonEpisode;
 use crate::requests::pod_req::{
     call_download_episode, call_mark_episode_completed, call_mark_episode_uncompleted,
@@ -2012,14 +2012,16 @@ pub fn on_shownotes_click(
 #[derive(Properties, PartialEq)]
 pub struct EpisodeModalProps {
     pub episode_id: i32, // Instead of Box<dyn EpisodeTrait>
+    pub episode_url: String,
     pub episode_artwork: String,
     pub episode_title: String,
     pub description: String,
     pub format_release: String,
-    pub duration: String,
+    pub duration: i32,
     pub on_close: Callback<MouseEvent>,
     pub on_show_notes: Callback<MouseEvent>,
     pub listen_duration_percentage: f64,
+    pub is_youtube: bool,
 }
 
 #[function_component(EpisodeModal)]
@@ -2063,7 +2065,17 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                 <div class="flex-1 p-6 overflow-y-auto">
                     <div class="prose dark:prose-invert item_container-text max-w-none">
                         <div class="links-custom episode-description-container">
-                            <SafeHtml html={props.description.clone()} />
+                            <SafeHtml
+                                html={props.description.clone()}
+                                episode_url={Some(props.episode_url.clone())}
+                                episode_title={Some(props.episode_title.clone())}
+                                episode_description={Some(props.description.clone())}
+                                episode_release_date={Some(props.format_release.clone())}
+                                episode_artwork={Some(props.episode_artwork.clone())}
+                                episode_duration={Some(props.duration)}
+                                episode_id={Some(props.episode_id)}
+                                is_youtube={props.is_youtube}
+                            />
                         </div>
                     </div>
                 </div>
@@ -2331,14 +2343,16 @@ pub fn episode_item(
             if show_modal {
                 <EpisodeModal
                     episode_id={episode.get_episode_id(None)}
+                    episode_url={ep_url}
                     episode_artwork={episode.get_episode_artwork()}
                     episode_title={episode.get_episode_title()}
                     description={description.clone()}
                     format_release={format_release.to_string()}
-                    duration={formatted_duration}
+                    duration={episode_duration}
                     on_close={on_modal_close}
                     on_show_notes={on_shownotes_click}
                     listen_duration_percentage={listen_duration_percentage}
+                    is_youtube={episode.get_is_youtube()}
                 />
             }
         </div>
@@ -2551,14 +2565,16 @@ pub fn virtual_episode_item(
             if show_modal {
                 <EpisodeModal
                     episode_id={episode.get_episode_id(None)}
+                    episode_url={ep_url}
                     episode_artwork={episode.get_episode_artwork()}
                     episode_title={episode.get_episode_title()}
                     description={description.clone()}
                     format_release={format_release.to_string()}
-                    duration={formatted_duration}
+                    duration={episode_duration}
                     on_close={on_modal_close}
                     on_show_notes={on_shownotes_click}
                     listen_duration_percentage={listen_duration_percentage}
+                    is_youtube={episode.get_is_youtube()}
                 />
             }
         </div>
@@ -2724,14 +2740,16 @@ pub fn download_episode_item(
             if show_modal {
                 <EpisodeModal
                     episode_id={episode.get_episode_id(None)}
+                    episode_url={ep_url}
                     episode_artwork={episode.get_episode_artwork()}
                     episode_title={episode.get_episode_title()}
                     description={description.clone()}
                     format_release={format_release.to_string()}
-                    duration={formatted_duration}
+                    duration={episode_duration}
                     on_close={on_modal_close}
                     on_show_notes={on_shownotes_click}
                     listen_duration_percentage={listen_duration_percentage}
+                    is_youtube={episode.get_is_youtube()}
                 />
             }
         </div>
@@ -2917,14 +2935,16 @@ pub fn queue_episode_item(
             if show_modal {
                 <EpisodeModal
                     episode_id={episode.get_episode_id(None)}
+                    episode_url={ep_url}
                     episode_artwork={episode.get_episode_artwork()}
                     episode_title={episode.get_episode_title()}
                     description={description.clone()}
                     format_release={format_release.to_string()}
-                    duration={formatted_duration}
+                    duration={episode_duration}
                     on_close={on_modal_close}
                     on_show_notes={on_shownotes_click}
                     listen_duration_percentage={listen_duration_percentage}
+                    is_youtube={episode.get_is_youtube()}
                 />
             }
         </div>
@@ -3088,14 +3108,16 @@ pub fn person_episode_item(
             if show_modal {
                 <EpisodeModal
                     episode_id={episode.get_episode_id(None)}
+                    episode_url={ep_url}
                     episode_artwork={episode.get_episode_artwork()}
                     episode_title={episode.get_episode_title()}
                     description={description.clone()}
                     format_release={format_release.to_string()}
-                    duration={formatted_duration}
+                    duration={episode_duration}
                     on_close={on_modal_close}
                     on_show_notes={on_shownotes_click}
                     listen_duration_percentage={listen_duration_percentage}
+                    is_youtube={episode.get_is_youtube()}
                 />
             }
         </div>

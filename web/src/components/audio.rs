@@ -1521,14 +1521,16 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     html! {
                         <EpisodeModal
                             episode_id={props.episode_id}
+                            episode_url={props.src.clone()}
                             episode_artwork={props.artwork_url.clone()}
                             episode_title={props.title.clone()}
                             description={props.description.clone()}  // You might need to fetch this
                             format_release={props.release_date.clone()}
-                            duration={formatted_duration}
+                            duration={audio_props.duration_sec as i32}
                             on_close={on_modal_close.clone()}
                             on_show_notes={nav_to_episode}
                             listen_duration_percentage={listen_duration_percentage}
+                            is_youtube={props.is_youtube}
                         />
                     }
                 } else {

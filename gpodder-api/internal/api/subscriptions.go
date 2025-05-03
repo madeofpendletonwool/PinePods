@@ -14,6 +14,7 @@ import (
 
 	"pinepods/gpodder-api/internal/db"
 	"pinepods/gpodder-api/internal/models"
+	"pinepods/gpodder-api/internal/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -1028,19 +1029,70 @@ func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 
 			// Add to Podcasts table if it doesn't exist
 			if !podcastExists {
-				if database.IsPostgreSQLDB() {
-					query = `
-						INSERT INTO "Podcasts" (PodcastName, FeedURL, UserID)
-						VALUES ($1, $2, $3)
-					`
-				} else {
-					query = `
-						INSERT INTO Podcasts (PodcastName, FeedURL, UserID)
-						VALUES (?, ?, ?)
-					`
+				// Fetch podcast metadata from the feed
+				podcastValues, err := utils.GetPodcastValues(cleanURL, userID.(int), "", "")
+				if err != nil {
+					log.Printf("[WARNING] uploadSubscriptionChanges: Error fetching podcast metadata from %s: %v", cleanURL, err)
+					// Continue with minimal data if we can't fetch full metadata
 				}
 
-				_, err = tx.Exec(query, cleanURL, cleanURL, userID)
+				// Use default values if fetch failed
+				if podcastValues == nil {
+					// Insert minimal data
+					if database.IsPostgreSQLDB() {
+						query = `
+							INSERT INTO "Podcasts" (PodcastName, FeedURL, UserID)
+							VALUES ($1, $2, $3)
+						`
+					} else {
+						query = `
+							INSERT INTO Podcasts (PodcastName, FeedURL, UserID)
+							VALUES (?, ?, ?)
+						`
+					}
+
+					_, err = tx.Exec(query, cleanURL, cleanURL, userID)
+				} else {
+					// Insert with full metadata
+					if database.IsPostgreSQLDB() {
+						query = `
+							INSERT INTO "Podcasts" (
+								PodcastName, ArtworkURL, Author, Categories,
+								Description, EpisodeCount, FeedURL, WebsiteURL,
+								Explicit, UserID
+							)
+							VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+						`
+					} else {
+						query = `
+							INSERT INTO Podcasts (
+								PodcastName, ArtworkURL, Author, Categories,
+								Description, EpisodeCount, FeedURL, WebsiteURL,
+								Explicit, UserID
+							)
+							VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+						`
+					}
+
+					explicit := 0
+					if podcastValues.Explicit {
+						explicit = 1
+					}
+
+					_, err = tx.Exec(
+						query,
+						podcastValues.Title,
+						podcastValues.ArtworkURL,
+						podcastValues.Author,
+						podcastValues.Categories,
+						podcastValues.Description,
+						podcastValues.EpisodeCount,
+						cleanURL,
+						podcastValues.WebsiteURL,
+						explicit,
+						userID,
+					)
+				}
 
 				if err != nil {
 					log.Printf("[ERROR] uploadSubscriptionChanges: Error adding podcast: %v", err)

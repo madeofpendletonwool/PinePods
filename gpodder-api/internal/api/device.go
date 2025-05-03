@@ -49,43 +49,45 @@ func listDevices(database *db.Database) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[DEBUG] listDevices called for user ID: %v", userID)
+		// Fix for the listDevices function
+		// Replace the query code in listDevices function with this:
 
-		// Query devices from the database
 		log.Printf("[DEBUG] listDevices: Querying devices for userID: %v", userID)
 
 		var query string
+		var rows *sql.Rows
+		var err error
 
 		// Format query according to database type
 		if database.IsPostgreSQLDB() {
 			query = `
-                SELECT d.DeviceID, d.DeviceName, d.DeviceType,
-                       COALESCE(d.DeviceCaption, '') as DeviceCaption, d.IsActive,
-                       COALESCE(
-                           (SELECT COUNT(p.PodcastID)
-                            FROM "Podcasts" p
-                            WHERE p.UserID = $1),
-                           0
-                       ) as subscription_count
-                FROM "GpodderDevices" d
-                WHERE d.UserID = $1 AND d.IsActive = true
-            `
+		        SELECT d.DeviceID, d.DeviceName, d.DeviceType,
+		               COALESCE(d.DeviceCaption, '') as DeviceCaption, d.IsActive,
+		               COALESCE(
+		                   (SELECT COUNT(p.PodcastID)
+		                    FROM "Podcasts" p
+		                    WHERE p.UserID = $1),
+		                   0
+		               ) as subscription_count
+		        FROM "GpodderDevices" d
+		        WHERE d.UserID = $1 AND d.IsActive = true
+		    `
+			rows, err = database.Query(query, userID)
 		} else {
 			query = `
-                SELECT d.DeviceID, d.DeviceName, d.DeviceType,
-                       COALESCE(d.DeviceCaption, '') as DeviceCaption, d.IsActive,
-                       COALESCE(
-                           (SELECT COUNT(p.PodcastID)
-                            FROM Podcasts p
-                            WHERE p.UserID = ?),
-                           0
-                       ) as subscription_count
-                FROM GpodderDevices d
-                WHERE d.UserID = ? AND d.IsActive = true
-            `
+		        SELECT d.DeviceID, d.DeviceName, d.DeviceType,
+		               COALESCE(d.DeviceCaption, '') as DeviceCaption, d.IsActive,
+		               COALESCE(
+		                   (SELECT COUNT(p.PodcastID)
+		                    FROM Podcasts p
+		                    WHERE p.UserID = ?),
+		                   0
+		               ) as subscription_count
+		        FROM GpodderDevices d
+		        WHERE d.UserID = ? AND d.IsActive = true
+		    `
+			rows, err = database.Query(query, userID, userID) // Note: passing userID twice for MySQL
 		}
-
-		rows, err := database.Query(query, userID)
 
 		if err != nil {
 			log.Printf("[ERROR] listDevices: Error querying devices: %v", err)
@@ -239,12 +241,17 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 
 				if database.IsPostgreSQLDB() {
 					query = `INSERT INTO "GpodderDevices" (UserID, DeviceName, DeviceType, DeviceCaption, IsActive, LastSync)
-                             VALUES ($1, $2, $3, $4, true, $5) RETURNING DeviceID`
+                     VALUES ($1, $2, $3, $4, true, $5) RETURNING DeviceID`
 
 					err = tx.QueryRow(query, userID, deviceName, req.Type, req.Caption, time.Now()).Scan(&deviceID)
+					if err != nil {
+						log.Printf("[ERROR] updateDeviceData: Error creating device: %v", err)
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
+						return
+					}
 				} else {
 					query = `INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, DeviceCaption, IsActive, LastSync)
-                             VALUES (?, ?, ?, ?, true, ?)`
+                     VALUES (?, ?, ?, ?, true, ?)`
 
 					result, err := tx.Exec(query, userID, deviceName, req.Type, req.Caption, time.Now())
 					if err != nil {
@@ -264,18 +271,12 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 					deviceID = int(lastID)
 				}
 
-				if err != nil {
-					log.Printf("[ERROR] updateDeviceData: Error creating device: %v", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create device"})
-					return
-				}
-
 				log.Printf("[DEBUG] updateDeviceData: Created new device with ID: %d", deviceID)
 
 				// Also create entry in device state table, handling both PostgreSQL and MySQL syntax
 				if database.IsPostgreSQLDB() {
 					query = `INSERT INTO "GpodderSyncDeviceState" (UserID, DeviceID)
-                             VALUES ($1, $2) ON CONFLICT (UserID, DeviceID) DO NOTHING`
+                     VALUES ($1, $2) ON CONFLICT (UserID, DeviceID) DO NOTHING`
 					_, err = tx.Exec(query, userID, deviceID)
 				} else {
 					// In MySQL, use INSERT IGNORE instead of ON CONFLICT
@@ -283,9 +284,10 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 					_, err = tx.Exec(query, userID, deviceID)
 				}
 
+				// Log the device state creation result but don't fail on error
 				if err != nil {
-					log.Printf("[ERROR] updateDeviceData: Error creating device state: %v", err)
-					// Not fatal, continue
+					log.Printf("[WARNING] updateDeviceData: Error creating device state: %v", err)
+					// Not fatal, continue with response
 				}
 			} else {
 				log.Printf("[ERROR] updateDeviceData: Error checking device existence: %v", err)

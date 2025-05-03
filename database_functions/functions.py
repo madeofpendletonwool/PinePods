@@ -902,22 +902,51 @@ def get_first_episode_id(cnx, database_type, podcast_id, user_id, is_youtube=Fal
 
 def try_fetch_feed(url, username=None, password=None):
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1'
     }
     auth = HTTPBasicAuth(username, password) if username and password else None
+
+    # Try the original URL first
     try:
         response = requests.get(
             url,
             auth=auth,
             headers=headers,
             timeout=30,
-            allow_redirects=True,
-            # verify=False  # Be cautious with this in production!
+            allow_redirects=True
         )
         response.raise_for_status()
         return response.content
     except RequestException as e:
         print(f"Error fetching {url}: {str(e)}")
+
+        # If original URL failed and starts with https, try with http
+        if url.startswith('https://'):
+            http_url = 'http://' + url[8:]  # Replace https:// with http://
+            print(f"Trying HTTP fallback: {http_url}")
+            try:
+                response = requests.get(
+                    http_url,
+                    auth=auth,
+                    headers=headers,
+                    timeout=30,
+                    allow_redirects=True
+                )
+                response.raise_for_status()
+                return response.content
+            except RequestException as e2:
+                print(f"Error fetching HTTP fallback {http_url}: {str(e2)}")
+
+        # Original URL and HTTP fallback both failed
         return None
 
 def parse_duration(duration_string: str) -> int:
@@ -3252,7 +3281,15 @@ def download_podcast(cnx, database_type, episode_id, user_id, task_id=None, prog
         logger.info(f"Starting download of episode {episode_id} from {episode_url}")
 
         try:
-            with requests.get(episode_url, stream=True) as response:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Referer': 'https://www.buzzsprout.com/',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br'
+            }
+
+            with requests.get(episode_url, stream=True, headers=headers) as response:
                 response.raise_for_status()
                 downloaded_date = datetime.datetime.now()
                 file_size = int(response.headers.get("Content-Length", 0))

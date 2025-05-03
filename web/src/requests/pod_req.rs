@@ -2698,15 +2698,15 @@ pub async fn call_check_youtube_channel(
 pub struct HomePodcast {
     pub podcastid: i32,
     pub podcastname: String,
-    pub podcastindexid: i64,
+    pub podcastindexid: Option<i64>,
     pub artworkurl: Option<String>,
     pub author: Option<String>,
-    pub categories: String,
+    pub categories: Option<String>,
     pub description: Option<String>,
     pub episodecount: Option<i32>,
     pub feedurl: Option<String>,
     pub websiteurl: Option<String>,
-    pub explicit: bool,
+    pub explicit: Option<bool>,
     pub is_youtube: bool, // This maps to isyoutubechannel in the DB
     pub play_count: i32,
     pub total_listen_time: Option<i32>,
