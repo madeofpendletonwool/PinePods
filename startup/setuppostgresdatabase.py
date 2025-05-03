@@ -562,6 +562,7 @@ try:
                 Password TEXT,
                 IsYouTubeChannel BOOLEAN DEFAULT FALSE,
                 NotificationsEnabled BOOLEAN DEFAULT FALSE,
+                FeedCutoffDays INT DEFAULT 0,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
             )
         """)
@@ -615,7 +616,27 @@ try:
     # Usage
     add_youtube_column_if_not_exist(cursor, cnx)
 
+    def add_feed_cutoff_column_if_not_exist(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='Podcasts'
+                AND column_name = 'feedcutoffdays'
+            """)
+            existing_column = cursor.fetchone()
 
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN "feedcutoffdays" INT DEFAULT 0
+                """)
+                print("Added 'feedcutoffdays' column to 'Podcasts' table.")
+                cnx.commit()
+        except Exception as e:
+            print(f"Error adding feedcutoffdays column to Podcasts table: {e}")
+
+    add_feed_cutoff_column_if_not_exist(cursor, cnx)
 
     cursor.execute("SELECT to_regclass('public.\"Podcasts\"')")
 

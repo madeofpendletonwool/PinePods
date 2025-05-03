@@ -84,7 +84,7 @@ def download_youtube_audio(video_id: str, output_path: str):
         ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
 
 
-def process_youtube_videos(database_type, podcast_id: int, channel_id: str, cnx):
+def process_youtube_videos(database_type, podcast_id: int, channel_id: str, cnx, feed_cutoff: int):
     """Background task to process videos and download audio"""
 
     logging.basicConfig(level=logging.INFO)
@@ -97,8 +97,8 @@ def process_youtube_videos(database_type, podcast_id: int, channel_id: str, cnx)
     logger.info("="*50)
 
     try:
-        thirty_days_ago = datetime.datetime.now(datetime.timezone.utc) - timedelta(days=30)
-        logger.info(f"Cutoff date set to: {thirty_days_ago}")
+        cutoff_date = datetime.datetime.now(datetime.timezone.utc) - timedelta(days=feed_cutoff)
+        logger.info(f"Cutoff date set to: {cutoff_date}")
 
         ydl_opts = {
             'quiet': True,
@@ -148,7 +148,7 @@ def process_youtube_videos(database_type, podcast_id: int, channel_id: str, cnx)
 
                     logger.info(f"Video publish date: {published}")
 
-                    if published <= thirty_days_ago:
+                    if published <= cutoff_date:
                         logger.info(f"Video {video_id} from {published} is too old, stopping processing")
                         break
 

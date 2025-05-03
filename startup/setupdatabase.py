@@ -443,6 +443,7 @@ try:
         Password TEXT,
         IsYouTubeChannel TINYINT(1) DEFAULT 0,
         NotificationsEnabled TINYINT(1) DEFAULT 0,
+        FeedCutoffDays INT DEFAULT 0,
         FOREIGN KEY (UserID) REFERENCES Users(UserID)
         )""")
 
@@ -469,6 +470,30 @@ try:
             print(f"Error adding IsYouTubeChannel column to Podcasts table: {e}")
 
     add_youtube_column_if_not_exist(cursor, cnx)
+
+    def add_feed_cutoff_column_if_not_exist(cursor, cnx):
+        try:
+            # Check if column exists in MySQL
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'FeedCutoffDays'
+                AND TABLE_SCHEMA = DATABASE()
+            """)
+            existing_column = cursor.fetchone()
+
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN FeedCutoffDays INT DEFAULT 0
+                """)
+                print("Added 'FeedCutoffDays' column to 'Podcasts' table.")
+                cnx.commit()
+        except Exception as e:
+            print(f"Error adding FeedCutoffDays column to Podcasts table: {e}")
+
+    add_feed_cutoff_column_if_not_exist(cursor, cnx)
 
     def add_user_pass_columns_if_not_exist(cursor, cnx):
         try:
