@@ -3,10 +3,10 @@ use crate::components::context::{AppState, UIState};
 use crate::components::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
 };
-use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{format_time, strip_images_from_html};
 use crate::components::notification_center::{NotificationCenter, ToastNotification};
+use crate::components::safehtml::SafeHtml;
 use crate::requests::people_req::PersonEpisode;
 use crate::requests::pod_req::{
     call_download_episode, call_mark_episode_completed, call_mark_episode_uncompleted,
@@ -53,33 +53,46 @@ pub struct FallbackImageProps {
 #[function_component(FallbackImage)]
 pub fn fallback_image(props: &FallbackImageProps) -> Html {
     let image_ref = use_node_ref();
-    let src_state = use_state(|| props.src.clone());
+    // Add a unique timestamp parameter to the src URL to prevent caching
+    let src_with_timestamp =
+        use_state(|| format!("{}?t={}", props.src.clone(), js_sys::Date::now()));
     let has_error = use_state(|| false);
-
     let (state, _dispatch) = use_store::<AppState>();
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let server_name_str = server_name.unwrap();
+
+    // Update src_with_timestamp when props.src changes
+    {
+        let src_with_timestamp = src_with_timestamp.clone();
+        let props_src = props.src.clone();
+
+        use_effect_with(props_src, move |src| {
+            src_with_timestamp.set(format!("{}?t={}", src, js_sys::Date::now()));
+            || ()
+        });
+    }
+
     // Create a proxied URL from the original source
     let proxied_url = {
         let original_url = props.src.clone();
         format!(
-            "{}/api/proxy/image?url={}",
+            "{}/api/proxy/image?url={}&t={}",
             server_name_str,
-            urlencoding::encode(&original_url)
+            urlencoding::encode(&original_url),
+            js_sys::Date::now() // Add timestamp to proxy URL too
         )
     };
 
     // Handle image load error
     let on_error = {
         let has_error = has_error.clone();
-        let src_state = src_state.clone();
+        let src_with_timestamp = src_with_timestamp.clone();
         let proxied_url = proxied_url.clone();
-
         Callback::from(move |_: Event| {
             if !*has_error {
                 // First error - switch to proxied URL
                 has_error.set(true);
-                src_state.set(proxied_url.clone());
+                src_with_timestamp.set(proxied_url.clone());
                 web_sys::console::log_1(
                     &format!("Image load failed, switching to proxy: {}", proxied_url).into(),
                 );
@@ -93,7 +106,7 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     html! {
         <img
             ref={image_ref}
-            src={(*src_state).clone()}
+            src={(*src_with_timestamp).clone()}
             alt={props.alt.clone()}
             class={props.class.clone().unwrap_or_default()}
             style={props.style.clone().unwrap_or_default()}
@@ -1999,14 +2012,16 @@ pub fn on_shownotes_click(
 #[derive(Properties, PartialEq)]
 pub struct EpisodeModalProps {
     pub episode_id: i32, // Instead of Box<dyn EpisodeTrait>
+    pub episode_url: String,
     pub episode_artwork: String,
     pub episode_title: String,
     pub description: String,
     pub format_release: String,
-    pub duration: String,
+    pub duration: i32,
     pub on_close: Callback<MouseEvent>,
     pub on_show_notes: Callback<MouseEvent>,
     pub listen_duration_percentage: f64,
+    pub is_youtube: bool,
 }
 
 #[function_component(EpisodeModal)]
@@ -2050,7 +2065,17 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                 <div class="flex-1 p-6 overflow-y-auto">
                     <div class="prose dark:prose-invert item_container-text max-w-none">
                         <div class="links-custom episode-description-container">
-                            <SafeHtml html={props.description.clone()} />
+                            <SafeHtml
+                                html={props.description.clone()}
+                                episode_url={Some(props.episode_url.clone())}
+                                episode_title={Some(props.episode_title.clone())}
+                                episode_description={Some(props.description.clone())}
+                                episode_release_date={Some(props.format_release.clone())}
+                                episode_artwork={Some(props.episode_artwork.clone())}
+                                episode_duration={Some(props.duration)}
+                                episode_id={Some(props.episode_id)}
+                                is_youtube={props.is_youtube}
+                            />
                         </div>
                     </div>
                 </div>
@@ -2318,14 +2343,16 @@ pub fn episode_item(
             if show_modal {
                 <EpisodeModal
                     episode_id={episode.get_episode_id(None)}
+                    episode_url={ep_url}
                     episode_artwork={episode.get_episode_artwork()}
                     episode_title={episode.get_episode_title()}
                     description={description.clone()}
                     format_release={format_release.to_string()}
-                    duration={formatted_duration}
+                    duration={episode_duration}
                     on_close={on_modal_close}
                     on_show_notes={on_shownotes_click}
                     listen_duration_percentage={listen_duration_percentage}
+                    is_youtube={episode.get_is_youtube()}
                 />
             }
         </div>
@@ -2538,14 +2565,16 @@ pub fn virtual_episode_item(
             if show_modal {
                 <EpisodeModal
                     episode_id={episode.get_episode_id(None)}
+                    episode_url={ep_url}
                     episode_artwork={episode.get_episode_artwork()}
                     episode_title={episode.get_episode_title()}
                     description={description.clone()}
                     format_release={format_release.to_string()}
-                    duration={formatted_duration}
+                    duration={episode_duration}
                     on_close={on_modal_close}
                     on_show_notes={on_shownotes_click}
                     listen_duration_percentage={listen_duration_percentage}
+                    is_youtube={episode.get_is_youtube()}
                 />
             }
         </div>
@@ -2711,14 +2740,16 @@ pub fn download_episode_item(
             if show_modal {
                 <EpisodeModal
                     episode_id={episode.get_episode_id(None)}
+                    episode_url={ep_url}
                     episode_artwork={episode.get_episode_artwork()}
                     episode_title={episode.get_episode_title()}
                     description={description.clone()}
                     format_release={format_release.to_string()}
-                    duration={formatted_duration}
+                    duration={episode_duration}
                     on_close={on_modal_close}
                     on_show_notes={on_shownotes_click}
                     listen_duration_percentage={listen_duration_percentage}
+                    is_youtube={episode.get_is_youtube()}
                 />
             }
         </div>
@@ -2904,14 +2935,16 @@ pub fn queue_episode_item(
             if show_modal {
                 <EpisodeModal
                     episode_id={episode.get_episode_id(None)}
+                    episode_url={ep_url}
                     episode_artwork={episode.get_episode_artwork()}
                     episode_title={episode.get_episode_title()}
                     description={description.clone()}
                     format_release={format_release.to_string()}
-                    duration={formatted_duration}
+                    duration={episode_duration}
                     on_close={on_modal_close}
                     on_show_notes={on_shownotes_click}
                     listen_duration_percentage={listen_duration_percentage}
+                    is_youtube={episode.get_is_youtube()}
                 />
             }
         </div>
@@ -3075,14 +3108,16 @@ pub fn person_episode_item(
             if show_modal {
                 <EpisodeModal
                     episode_id={episode.get_episode_id(None)}
+                    episode_url={ep_url}
                     episode_artwork={episode.get_episode_artwork()}
                     episode_title={episode.get_episode_title()}
                     description={description.clone()}
                     format_release={format_release.to_string()}
-                    duration={formatted_duration}
+                    duration={episode_duration}
                     on_close={on_modal_close}
                     on_show_notes={on_shownotes_click}
                     listen_duration_percentage={listen_duration_percentage}
+                    is_youtube={episode.get_is_youtube()}
                 />
             }
         </div>

@@ -210,6 +210,50 @@ try:
                         FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
                     )""")
 
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "GpodderDevices" (
+                DeviceID SERIAL PRIMARY KEY,
+                UserID INT NOT NULL,
+                DeviceName VARCHAR(255) NOT NULL,
+                DeviceType VARCHAR(50) DEFAULT 'desktop',
+                DeviceCaption VARCHAR(255),
+                IsDefault BOOLEAN DEFAULT FALSE,
+                LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                IsActive BOOLEAN DEFAULT TRUE,
+                FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                UNIQUE(UserID, DeviceName)
+            )
+        """)
+        cnx.commit()
+        print("Created GpodderDevices table")
+
+        # Create index for faster lookups
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_gpodder_devices_userid
+            ON "GpodderDevices"(UserID)
+        """)
+        cnx.commit()
+
+        # Create a table for subscription history/sync state
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "GpodderSyncState" (
+                SyncStateID SERIAL PRIMARY KEY,
+                UserID INT NOT NULL,
+                DeviceID INT NOT NULL,
+                LastTimestamp BIGINT DEFAULT 0,
+                EpisodesTimestamp BIGINT DEFAULT 0,
+                FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                UNIQUE(UserID, DeviceID)
+            )
+        """)
+        cnx.commit()
+        print("Created GpodderSyncState table")
+    except Exception as e:
+        print(f"Error creating GPodder tables: {e}")
+
     cursor.execute("""CREATE TABLE IF NOT EXISTS "UserStats" (
                         UserStatsID SERIAL PRIMARY KEY,
                         UserID INT UNIQUE,
@@ -524,6 +568,29 @@ try:
         cnx.commit()  # Ensure changes are committed
     except Exception as e:
         print(f"Error adding Podcasts table: {e}")
+
+    try:
+        # Add unique constraint on UserID and FeedURL to fix the ON CONFLICT error
+        cursor.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'podcasts_userid_feedurl_key'
+                ) THEN
+                    -- Add the constraint if it doesn't exist
+                    ALTER TABLE "Podcasts"
+                    ADD CONSTRAINT podcasts_userid_feedurl_key
+                    UNIQUE (UserID, FeedURL);
+                END IF;
+            END
+            $$;
+        """)
+        cnx.commit()
+        print("Added unique constraint on UserID and FeedURL to Podcasts table")
+    except Exception as e:
+        print(f"Error adding unique constraint to Podcasts table: {e}")
 
     def add_youtube_column_if_not_exist(cursor, cnx):
         try:
@@ -1081,12 +1148,18 @@ try:
                             IncludeUnplayed,
                             IncludePartiallyPlayed,
                             IncludePlayed,
-                            IconName
+                            IconName,
+                            TimeFilterHours,
+                            PlayProgressMin,
+                            PlayProgressMax
                         ) VALUES (
                             1,
                             %s,
                             %s,
                             TRUE,
+                            %s,
+                            %s,
+                            %s,
                             %s,
                             %s,
                             %s,
@@ -1106,7 +1179,10 @@ try:
                         playlist.get('include_unplayed', True),
                         playlist.get('include_partially_played', True),
                         playlist.get('include_played', False),
-                        playlist.get('icon_name', 'ph-playlist')
+                        playlist.get('icon_name', 'ph-playlist'),
+                        playlist.get('time_filter_hours'),
+                        playlist.get('play_progress_min'),
+                        playlist.get('play_progress_max')
                     ))
                     cnx.commit()
                     print(f"Successfully added system playlist: {playlist['name']}")

@@ -193,37 +193,41 @@ pub struct RemovePodcastValues {
     pub is_youtube: bool,
 }
 
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+pub struct RemovePodcastResponse {
+    pub success: bool,
+}
+
 pub async fn call_remove_podcasts(
     server_name: &String,
     api_key: &Option<String>,
     remove_podcast: &RemovePodcastValues,
 ) -> Result<bool, Error> {
     let url = format!("{}/api/data/remove_podcast_id", server_name);
-
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-
     // Serialize `added_podcast` into JSON
     let json_body = serde_json::to_string(remove_podcast)?;
-
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
         .body(json_body)?
         .send()
         .await?;
-
     let response_text = response
         .text()
         .await
         .unwrap_or_else(|_| "Failed to get response text".to_string());
-
     if response.ok() {
-        match serde_json::from_str::<PodcastStatusResponse>(&response_text) {
+        match serde_json::from_str::<RemovePodcastResponse>(&response_text) {
             Ok(parsed_response) => Ok(parsed_response.success),
-            Err(_parse_error) => Err(anyhow::Error::msg("Failed to parse response")),
+            Err(_parse_error) => {
+                // Add debug logging to see what's being received
+                web_sys::console::log_1(&format!("Response text: {}", response_text).into());
+                Err(anyhow::Error::msg("Failed to parse response"))
+            }
         }
     } else {
         Err(anyhow::Error::msg(format!(
@@ -246,31 +250,31 @@ pub async fn call_remove_podcasts_name(
     remove_podcast: &RemovePodcastValuesName,
 ) -> Result<bool, Error> {
     let url = format!("{}/api/data/remove_podcast", server_name);
-
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-
     // Serialize `added_podcast` into JSON
     let json_body = serde_json::to_string(remove_podcast)?;
-
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
         .body(json_body)?
         .send()
         .await?;
-
     let response_text = response
         .text()
         .await
         .unwrap_or_else(|_| "Failed to get response text".to_string());
-
     if response.ok() {
-        match serde_json::from_str::<PodcastStatusResponse>(&response_text) {
+        // Use the new simpler response struct
+        match serde_json::from_str::<RemovePodcastResponse>(&response_text) {
             Ok(parsed_response) => Ok(parsed_response.success),
-            Err(_parse_error) => Err(anyhow::Error::msg("Failed to parse response")),
+            Err(_parse_error) => {
+                // Add debug logging
+                web_sys::console::log_1(&format!("Response text: {}", response_text).into());
+                Err(anyhow::Error::msg("Failed to parse response"))
+            }
         }
     } else {
         Err(anyhow::Error::msg(format!(
@@ -2694,15 +2698,15 @@ pub async fn call_check_youtube_channel(
 pub struct HomePodcast {
     pub podcastid: i32,
     pub podcastname: String,
-    pub podcastindexid: i64,
+    pub podcastindexid: Option<i64>,
     pub artworkurl: Option<String>,
     pub author: Option<String>,
-    pub categories: String,
+    pub categories: Option<String>,
     pub description: Option<String>,
     pub episodecount: Option<i32>,
     pub feedurl: Option<String>,
     pub websiteurl: Option<String>,
-    pub explicit: bool,
+    pub explicit: Option<bool>,
     pub is_youtube: bool, // This maps to isyoutubechannel in the DB
     pub play_count: i32,
     pub total_listen_time: Option<i32>,

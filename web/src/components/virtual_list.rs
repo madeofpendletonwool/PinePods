@@ -4,12 +4,13 @@ use super::gen_components::{
 use super::gen_funcs::{format_datetime, match_date_format, parse_date};
 use crate::components::audio::on_play_pause;
 use crate::components::context::{AppState, UIState};
-use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::{
     convert_time_to_seconds, sanitize_html_with_blank_target, truncate_description,
 };
 use crate::components::gen_funcs::{format_time, strip_images_from_html};
+use crate::components::safehtml::SafeHtml;
 use crate::requests::search_pods::Episode;
+use _PodcastEpisodeVirtualListProps::{api_key, server_name};
 use gloo::events::EventListener;
 use std::rc::Rc;
 use wasm_bindgen::JsCast;
@@ -392,14 +393,16 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 html! {
                     <EpisodeModal
                         episode_id={episode.episode_id.unwrap_or(0)}
+                        episode_url={episode.enclosure_url.clone().unwrap()}
                         episode_artwork={episode.artwork.clone().unwrap_or_default()}
                         episode_title={episode.title.clone().unwrap_or_default()}
                         description={description}
                         format_release={format_release}
-                        duration={formatted_duration}
+                        duration={episode.duration.clone().unwrap_or_default().parse().unwrap_or(0) as i32}
                         on_close={on_modal_close.clone()}
                         on_show_notes={modal_shownotes_callback}
                         listen_duration_percentage={0.0}
+                        is_youtube={episode.is_youtube.unwrap()}
                     />
                 }
             } else {

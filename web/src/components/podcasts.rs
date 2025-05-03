@@ -2,9 +2,9 @@ use super::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, ExpandedDescriptions, FilterState, UIState};
-use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
+use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req;
 use crate::requests::pod_req::PodcastExtra;
 use crate::requests::pod_req::{call_remove_podcasts, PodcastResponseExtra, RemovePodcastValues};
@@ -97,11 +97,20 @@ fn render_podcasts(
     desc_dispatch: Dispatch<ExpandedDescriptions>,
     toggle_delete: Callback<(i32, std::string::String)>,
 ) -> Html {
+    // Add a debug log at the start of render function
+    web_sys::console::log_1(&format!("Rendering {} podcasts", podcasts.len()).into());
+
     match layout {
         None | Some(PodcastLayout::List) => {
             html! {
                 <div>
-                    {podcasts.iter().map(|podcast| {
+                    {podcasts.iter().enumerate().map(|(index, podcast)| {
+                        // Log each podcast for debugging
+                        web_sys::console::log_1(&format!("Rendering podcast #{}: {} with artwork: {:?}",
+                                                       index,
+                                                       podcast.podcastname,
+                                                       podcast.artworkurl).into());
+
                         let api_key_iter = api_key.clone();
                         let server_name_iter = server_name.clone().unwrap();
                         let history_clone = history.clone();
@@ -111,6 +120,13 @@ fn render_podcasts(
                         let podcast_feed_loop = podcast.feedurl.clone();
                         let podcast_description_clone = podcast.description.clone();
                         let episode_count = podcast.episodecount.clone().unwrap_or_else(|| 0);
+
+                        // Always use the specific podcast's artwork URL directly from this podcast object
+                        let podcast_artwork = podcast.artworkurl.clone()
+                            .unwrap_or_else(|| String::from("/static/assets/favicon.png"));
+
+                        // Create a key for this podcast to help React properly track it
+                        let podcast_key = format!("podcast-{}-{}", podcast.podcastid, podcast.podcastname);
 
                         let on_title_click = create_on_title_click(
                             dispatch_clone.clone(),
@@ -122,7 +138,7 @@ fn render_podcasts(
                             podcast.feedurl.clone(),
                             podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
                             podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
-                            podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
+                            podcast_artwork.clone(), // Use the saved artwork URL directly
                             podcast.explicit.clone(),
                             episode_count,
                             Some(podcast.categories.clone()),
@@ -164,10 +180,10 @@ fn render_podcasts(
                         };
 
                         html! {
-                            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
+                            <div key={podcast_key} class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full">
                                 <div class="flex flex-col w-auto object-cover pl-4">
                                     <FallbackImage
-                                        src={podcast.artworkurl.clone().unwrap_or_else(|| String::from("/static/assets/favicon.png"))}
+                                        src={podcast_artwork} // Direct use of saved artwork URL
                                         onclick={on_title_click.clone()}
                                         alt={format!("Cover for {}", podcast.podcastname.clone())}
                                         class={"episode-image"}
@@ -205,7 +221,20 @@ fn render_podcasts(
         Some(PodcastLayout::Grid) => {
             html! {
                 <div class="podcast-grid">
-                    {podcasts.iter().map(|podcast| {
+                    {podcasts.iter().enumerate().map(|(index, podcast)| {
+                        // Log each grid podcast for debugging
+                        web_sys::console::log_1(&format!("Rendering grid podcast #{}: {} with artwork: {:?}",
+                                                       index,
+                                                       podcast.podcastname,
+                                                       podcast.artworkurl).into());
+
+                        // Create a key for this podcast
+                        let podcast_key = format!("grid-podcast-{}-{}", podcast.podcastid, podcast.podcastname);
+
+                        // Always use the specific podcast's artwork URL directly
+                        let podcast_artwork = podcast.artworkurl.clone()
+                            .unwrap_or_else(|| String::from("/static/assets/favicon.png"));
+
                         let on_click = create_on_title_click(
                             dispatch.clone(),
                             server_name.clone().unwrap(),
@@ -216,7 +245,7 @@ fn render_podcasts(
                             podcast.feedurl.clone(),
                             podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
                             podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
-                            podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
+                            podcast_artwork.clone(), // Use the saved artwork URL directly
                             podcast.explicit.clone(),
                             podcast.episodecount.clone().unwrap_or_else(|| 0),
                             Some(podcast.categories.clone()),
@@ -224,15 +253,25 @@ fn render_podcasts(
                             user_id.unwrap(),
                             podcast.is_youtube,
                         );
+
+                        // Get episode count
+                        let episode_count = podcast.episodecount.unwrap_or(0);
+
                         html! {
                             <div
-                                class="podcast-grid-item"
+                                key={podcast_key}
+                                class="podcast-grid-item relative"
                                 onclick={on_click}
                             >
+                                // Episode count badge
+                                <div class="absolute top-1 right-1 z-10 bg-opacity-80 bg-gray-800 text-white rounded-full px-2 py-1 text-xs font-bold">
+                                    <i class="ph ph-broadcast inline-block mr-1"></i>
+                                    {episode_count}
+                                </div>
+
                                 <div class="podcast-image-container">
                                     <FallbackImage
-                                        src={podcast.artworkurl.clone().unwrap_or_else(|| String::from("/static/assets/favicon.png"))}
-                                        // onclick={on_title_click.clone()}
+                                        src={podcast_artwork}
                                         alt={format!("Cover for {}", podcast.podcastname.clone())}
                                         class={"podcast-image"}
                                     />
@@ -686,6 +725,10 @@ pub fn podcasts() -> Html {
         })
     };
 
+    // Replace the existing filtered_pods use_memo block with this improved version
+    // Modify your filtered_pods use_memo with this version that adds logging
+    // and ensures proper image consistency
+
     let filtered_pods = use_memo(
         (
             state.podcast_feed_return_extra.clone(),
@@ -694,10 +737,21 @@ pub fn podcasts() -> Html {
             sort_direction.clone(),
         ),
         |(podcasts, selected_cat, search, sort_dir)| {
+            // Log for debugging
+            web_sys::console::log_1(&"Filtering podcasts...".into());
+
             if let Some(pods) = podcasts.as_ref().and_then(|p| p.pods.as_ref()) {
-                let mut filtered = pods
-                    .iter()
+                // Log the original podcasts
+                web_sys::console::log_1(&format!("Original podcasts count: {}", pods.len()).into());
+
+                // Create a deep clone of all podcasts first to ensure we have independent copies
+                let all_podcasts = pods.clone();
+
+                // Apply filtering while ensuring artwork URLs are preserved
+                let mut filtered = all_podcasts
+                    .into_iter()
                     .filter(|podcast| {
+                        // Apply search term filter
                         let matches_search = if !search.is_empty() {
                             podcast
                                 .podcastname
@@ -706,17 +760,49 @@ pub fn podcasts() -> Html {
                         } else {
                             true
                         };
+
+                        // Apply category filter
                         let matches_category = if let Some(cat) = selected_cat.as_ref() {
                             podcast.categories.split(',').any(|c| c.trim() == cat)
                         } else {
                             true
                         };
+
+                        // Both conditions must be true
                         matches_search && matches_category
                     })
-                    .cloned()
                     .collect::<Vec<_>>();
 
-                // Apply sorting
+                // Log filtered podcasts
+                if !search.is_empty() {
+                    web_sys::console::log_1(
+                        &format!(
+                            "Filtered by search '{:?}': {} podcasts",
+                            search,
+                            filtered.len()
+                        )
+                        .into(),
+                    );
+                    // Log each podcast name and artwork URL for debugging
+                    for pod in &filtered {
+                        web_sys::console::log_1(
+                            &format!(
+                                "Podcast: {}, Artwork: {:?}",
+                                pod.podcastname, pod.artworkurl
+                            )
+                            .into(),
+                        );
+                    }
+                }
+
+                // Make sure each podcast has its artwork URL properly set
+                for podcast in &mut filtered {
+                    if podcast.artworkurl.is_none() {
+                        podcast.artworkurl = Some("/static/assets/favicon.png".to_string());
+                    }
+                }
+
+                // Apply sorting to our filtered list
                 if let Some(direction) = (*sort_dir).as_ref() {
                     filtered.sort_by(|a, b| match direction {
                         SortDirection::AlphaAsc => a
@@ -739,6 +825,7 @@ pub fn podcasts() -> Html {
                         SortDirection::LeastPlayed => a.play_count.cmp(&b.play_count),
                     });
                 }
+
                 filtered
             } else {
                 vec![]
@@ -757,10 +844,30 @@ pub fn podcasts() -> Html {
         let selected_category = selected_category.clone();
         let search_term = search_term.clone();
         let sort_direction = sort_direction.clone();
-        Callback::from(move |_| {
+        Callback::from(move |_: MouseEvent| {
             selected_category.set(None);
             search_term.set(String::new());
             sort_direction.set(None);
+        })
+    };
+
+    // Add this function to clear filters and force a complete re-render
+    let reset_filter = {
+        let selected_category = selected_category.clone();
+        let search_term = search_term.clone();
+        let sort_direction = sort_direction.clone();
+        let force_update = use_state(|| 0); // Add this state to force re-rendering
+
+        Callback::from(move |_| {
+            web_sys::console::log_1(&"Clearing all filters and resetting podcast list...".into());
+
+            // Clear all filters
+            selected_category.set(None);
+            search_term.set(String::new());
+            sort_direction.set(Some(SortDirection::AlphaAsc)); // Reset to default sort
+
+            // Force re-render by incrementing counter
+            force_update.set(*force_update + 1);
         })
     };
 
@@ -835,7 +942,7 @@ pub fn podcasts() -> Html {
                     html! {
                         <div class="filter-container flex items-center space-x-4">
                             // Clear Filter button
-                            <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={clear_filter}>
+                            <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={reset_filter}>
                                 <i class="ph ph-broom text-2xl"></i>
                                 <span class="text-lg ml-2 hidden sm:inline">{"Clear Filter"}</span>
                             </button>

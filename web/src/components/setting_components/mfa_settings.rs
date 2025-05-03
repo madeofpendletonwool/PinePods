@@ -1,6 +1,6 @@
 use crate::components::context::AppState;
-use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::format_error_message;
+use crate::components::safehtml::SafeHtml;
 use crate::requests::setting_reqs::{
     call_disable_mfa, call_generate_mfa_secret, call_mfa_settings, call_verify_temp_mfa,
 };

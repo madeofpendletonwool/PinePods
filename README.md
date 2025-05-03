@@ -240,7 +240,7 @@ Adding the Helm Repository
 First, add the Pinepods Helm repository:
 
 ```
-helm repo add pinepods http://helm.pinepods.online/PinePods
+helm repo add pinepods http://helm.pinepods.online
 helm repo update
 ```
 #### Installing the Chart

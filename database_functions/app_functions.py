@@ -105,6 +105,29 @@ def sync_subscription_change_gpodder(gpodder_url, gpodder_login, auth, add, remo
     print(f"Subscription changes synced with gPodder: {response.text}")
 
 
+def sync_subscription_change_gpodder_session(session, gpodder_url, gpodder_login, add, remove):
+    """Sync subscription changes using session-based authentication"""
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    payload = {
+        "add": add,
+        "remove": remove
+    }
+
+    try:
+        response = session.post(
+            f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/default.json",
+            json=payload
+        )
+        response.raise_for_status()
+        logger.info(f"Subscription changes synced with gPodder using session: {response.text}")
+        return True
+    except Exception as e:
+        logger.error(f"Error syncing subscription changes with session: {str(e)}")
+        return False
+
 def sync_episode_actions(nextcloud_url, headers):
     print('test')
     # Implement fetching and creating episode actions
@@ -119,8 +142,16 @@ def get_podcast_values(feed_url, user_id, username: Optional[str] = None, passwo
     # Use requests to fetch the feed content
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1'
         }
         print(f"Fetching URL: {feed_url}")
         print(f"Headers: {headers}")
@@ -133,8 +164,13 @@ def get_podcast_values(feed_url, user_id, username: Optional[str] = None, passwo
         response.raise_for_status()  # Raise an exception for HTTP errors
         feed_content = response.content
     except requests.RequestException as e:
-        print(f"Response headers: {response.headers}")
-        print(f"Response content: {response.content}")
+        try:
+            # Only try to access response if it exists
+            if 'response' in locals():
+                print(f"Response headers: {response.headers}")
+                print(f"Response content: {response.content}")
+        except:
+            pass
         raise ValueError(f"Error fetching the feed: {str(e)}")
 
     # Parse the feed
