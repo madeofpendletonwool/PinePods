@@ -5680,7 +5680,7 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
                     y.videoid as episodeid,
                     y.podcastid,
                     y.videotitle as episodetitle,
-                    y.videodescription as episodetitle,
+                    y.videodescription as episodedescription,
                     y.videourl as episodeurl,
                     y.thumbnailurl as e.episodeartwork
                     y.publishedat as episodepubdate,
