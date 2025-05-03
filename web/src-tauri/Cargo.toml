@@ -17,13 +17,13 @@ tauri-build = { version = "2.0.6", features = [] }
 [dependencies]
 serde_json = "1.0.140"
 serde = { version = "1.0.219", features = ["derive"] }
-tauri = { version = "2.3.1", features = ["tray-icon"] }
+tauri = { version = "2.5.1", features = ["tray-icon"] }
 directories = "6.0.0"
 dirs = "6.0.0"
 # reqwest = { version = "0.12.5", features = ["blocking", "json"] }
-tokio = { version = "1.44.1", features = ["full"] }
+tokio = { version = "1.44.2", features = ["full"] }
 warp = "0.3.7"
-ureq = "=3.0.8"
+ureq = "=3.0.11"
 
 
 [features]
