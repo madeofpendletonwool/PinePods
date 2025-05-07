@@ -11,6 +11,32 @@ Major Version:
 - [ ] Fix Virtual Line Spacing on Playlist Page
 - [ ] Update /home/collinp/Documents/github/PinePods/web/src-tauri/com.gooseberrydevelopment.pinepods.metainfo.xml file along with flatpak automation. This must be done on each release
 
+0.7.8
+
+- [] Add youtube feed retention time setting onto settings for each pod
+- [x] Finish custom pod notifications
+- [] Validate that mysql and postgres upgrade correctly
+- [] Finish validating every call
+- [x] Weirdly different color trash can on podcast page
+- [x] gpodder pod deletions on local
+- [] validate external pod sync platforms again
+- [x] Fixed issue with time created by timestamps
+- [] Fix up warnings
+- [x] Fixed up issue with saved search, and queue pages not showing saved and queued status correct in context button sometimes
+- [x] Pinepods news feed not adding at all
+- [x] episode count is being doubled
+- [] Show youtube feed cutoff only on youtube channels - It should also show a notification when updated
+
+pinepods-1  | Error creating GPodder tables: 1061 (42000): Duplicate key name 'idx_gpodder_devices_userid'
+pinepods-1  | Error setting up platlists: 1061 (42000): Duplicate key name 'idx_playlists_userid'
+- [] ^ On mariadb startup
+
+
+- [] If you click shownotes while on the episode page of the episode that's currently playing it will take you to an empty screen
+- [] After deleting podcasts searching for them in the same session still thinks they're Added. Reloading fixes. So, state BS
+- [] Downloading on certain pages is weirdly skippy - It does download fine though.Just status
+- [] Main podcast page needs to return saved, downloaded, and queued status
+
 0.7.7
 
 - [] Updated youtube search results page to be similar to new pod results page

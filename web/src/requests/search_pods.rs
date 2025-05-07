@@ -765,6 +765,9 @@ pub struct SearchEpisode {
     pub episodeduration: i32,
     pub listenduration: Option<i32>,
     pub completed: bool,
+    pub saved: bool,      // Added field
+    pub queued: bool,     // Added field
+    pub downloaded: bool, // Added field
     pub is_youtube: bool,
 }
 

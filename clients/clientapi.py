@@ -1536,18 +1536,23 @@ async def api_add_podcast(
             else:
                 database_functions.functions.add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, request.podcast_values.pod_feed_url, "pinepods")
 
-        podcast_id, first_episode_id = database_functions.functions.add_podcast(
+        result = database_functions.functions.add_podcast(
             cnx,
             database_type,
             request.podcast_values.dict(),
             request.podcast_values.user_id,
+            30,
             podcast_index_id=request.podcast_index_id
         )
 
+        if isinstance(result, tuple):
+            podcast_id, first_episode_id = result
+        else:
+            podcast_id = result
+            first_episode_id = None  # Or fetch it if needed
+
         if podcast_id:
             return {"success": True, "podcast_id": podcast_id, "first_episode_id": first_episode_id}
-        else:
-            return {"success": False}
     else:
         raise HTTPException(status_code=403,
                             detail="You can only add podcasts for yourself!")
@@ -1933,7 +1938,7 @@ async def api_delete_podcast(data: DeletePodcastData, cnx=Depends(get_database_c
     if key_id == data.user_id or is_web_key:
         database_functions.functions.delete_episode(database_type, cnx, data.episode_id,
                                                  data.user_id, data.is_youtube)
-        return {"detail": "Content deleted."}
+        return {"detail": "Episode(s) Deleted"}
     else:
         raise HTTPException(status_code=403,
                           detail="You can only delete content for yourself!")
@@ -2200,6 +2205,55 @@ async def api_remove_category(data: RemoveCategoryData, cnx=Depends(get_database
     else:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
+
+class UpdateFeedCutoffDaysData(BaseModel):
+    podcast_id: int
+    user_id: int
+    feed_cutoff_days: int
+
+@app.post("/api/data/update_feed_cutoff_days")
+async def api_update_feed_cutoff_days(data: UpdateFeedCutoffDaysData, cnx=Depends(get_database_connection),
+                                     api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        success = database_functions.functions.update_feed_cutoff_days(cnx, database_type, data.podcast_id, data.user_id, data.feed_cutoff_days)
+        if success:
+            return {"detail": "Feed cutoff days updated successfully!"}
+        else:
+            raise HTTPException(status_code=400, detail="Error updating feed cutoff days.")
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify settings of your own podcasts!")
+
+@app.get("/api/data/get_feed_cutoff_days")
+async def api_get_feed_cutoff_days(podcast_id: int, user_id: int, cnx=Depends(get_database_connection),
+                                  api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == user_id or is_web_key:
+        feed_cutoff_days = database_functions.functions.get_feed_cutoff_days(cnx, database_type, podcast_id, user_id)
+        if feed_cutoff_days is not None:
+            return {"podcast_id": podcast_id, "user_id": user_id, "feed_cutoff_days": feed_cutoff_days}
+        else:
+            raise HTTPException(status_code=404, detail="Podcast not found or does not belong to the user.")
+    else:
+        raise HTTPException(status_code=403, detail="You can only access settings of your own podcasts!")
 
 class TogglePodcastNotificationData(BaseModel):
     user_id: int
@@ -4172,7 +4226,7 @@ async def remove_queued_pod(data: QueueRmData, cnx=Depends(get_database_connecti
         result = database_functions.functions.remove_queued_pod(
             database_type, cnx, data.episode_id, data.user_id, data.is_youtube
         )
-        return {"data": result}
+        return result
     else:
         raise HTTPException(status_code=403,
                           detail=f"You can only remove {'videos' if data.is_youtube else 'episodes'} for your own queue!")
@@ -5100,6 +5154,7 @@ async def add_custom_pod(data: CustomPodcast, cnx=Depends(get_database_connectio
         # Assuming the rest of the code processes the podcast correctly
         try:
             podcast_id = database_functions.functions.add_custom_podcast(database_type, cnx, data.feed_url, data.user_id, data.username, data.password)
+            print('custom done')
             podcast_details = database_functions.functions.get_podcast_details(database_type, cnx, data.user_id, podcast_id)
             return {"data": podcast_details}
         except Exception as e:
@@ -5962,8 +6017,8 @@ def process_youtube_channel(podcast_id: int, channel_id: str, feed_cutoff: int):
 async def subscribe_to_youtube_channel(
     channel_id: str,
     user_id: int,
-    feed_cutoff: int = 30,
     background_tasks: BackgroundTasks,
+    feed_cutoff: int = 30,
     cnx=Depends(get_database_connection),
     api_key: str = Depends(get_api_key_from_header)
 ):
