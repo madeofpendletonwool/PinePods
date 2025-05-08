@@ -305,7 +305,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
 
             # Add episodes to database
             first_episode_id = add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'],
-                                          podcast_values['pod_artwork'], False, feed_cutoff, username, password, user_id)  # Add user_id here
+                                          podcast_values['pod_artwork'], False, feed_cutoff, username, password, websocket=False)
             print("episodes added")
             return podcast_id, first_episode_id
 
@@ -2610,7 +2610,7 @@ def refresh_pods(cnx, database_type):
                 youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx, feed_cutoff)
             else:
                 add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url,
-                           auto_download, feed_cutoff, username, password, user_id)  # Added user_id here
+                           auto_download, feed_cutoff, username, password, websocket=False)
         except Exception as e:
             print(f"Error refreshing podcast {podcast_id}: {str(e)}")
             continue
