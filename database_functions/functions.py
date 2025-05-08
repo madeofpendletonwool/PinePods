@@ -13800,5 +13800,26 @@ def get_home_overview(database_type, cnx, user_id):
 
     return lowercase_keys(home_data)
 
-def get_playback_speed(cnx, database_type: str, user_id: int, is_youtube: bool, podcast_id: Optional[int] = None):
-    # TODO: implement this function
+def get_playback_speed(cnx, database_type: str, user_id: int, is_youtube: bool, podcast_id: Optional[int] = None) -> float:
+     cursor = cnx.cursor()
+    if database_type == "postgresql":
+        if podcast_id is None:
+            query = 'SELECT PlaybackSpeed FROM "Users" WHERE UserID = %s'
+        else:
+            query = 'SELECT PlaybackSpeed FROM "Podcasts" WHERE PodcastID = %s'
+    else:
+        if podcast_id is None:
+            query = 'SELECT PlaybackSpeed FROM Users WHERE UserID = %s'
+        else:
+            query = 'SELECT PlaybackSpeed FROM Podcasts WHERE PodcastID = %s'
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        # Handle both tuple and dictionary return types
+        if isinstance(result, dict):
+            return result['PlaybackSpeed']
+        else:
+            return result[0]
+    return 1.0
