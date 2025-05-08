@@ -1164,6 +1164,7 @@ pub async fn call_download_episode(
 pub struct DownloadAllPodcastRequest {
     pub podcast_id: i32,
     pub user_id: i32,
+    pub is_youtube: bool
 }
 
 pub async fn call_download_all_podcast(
