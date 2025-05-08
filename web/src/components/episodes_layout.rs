@@ -850,6 +850,7 @@ pub fn episode_layout() -> Html {
                         let request = DownloadAllPodcastRequest {
                             podcast_id,
                             user_id: user_id_copy.unwrap(),
+                            is_youtube
                         };
 
                         match call_download_all_podcast(
