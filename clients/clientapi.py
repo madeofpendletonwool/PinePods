@@ -5342,7 +5342,7 @@ async def stream_episode(
     cnx=Depends(get_database_connection),
     api_key: str = Query(..., alias='api_key'),
     user_id: int = Query(..., alias='user_id'),
-    source_type: str = Query(None, alias='type')  # Add source type parameter
+    source_type: str = Query(None, alias='type')
 ):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
@@ -5482,6 +5482,7 @@ async def get_user_feed(
     api_key: str,  # Now a query parameter
     limit: int = 100,
     podcast_id: Optional[int] = None,
+    source_type: str = Query(None, alias='type')
     cnx=Depends(get_database_connection)
 ):
     """Get RSS feed for all podcasts or a specific podcast"""
@@ -5498,7 +5499,8 @@ async def get_user_feed(
             user_id,
             api_key,
             limit,
-            podcast_id
+            podcast_id,
+            source_type
         )
         return Response(
             content=feed_content,
