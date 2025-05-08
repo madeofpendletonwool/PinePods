@@ -5111,14 +5111,14 @@ def get_api_info(database_type, cnx, user_id):
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
         query = (
-            'SELECT APIKeyID, "APIKeys".UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, Created '
+            'SELECT APIKeyID, "APIKeys".UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, RssOnly, Created '
             'FROM "APIKeys" '
             'JOIN "Users" ON "APIKeys".UserID = "Users".UserID '
         )
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
         query = (
-            "SELECT APIKeyID, APIKeys.UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, Created "
+            "SELECT APIKeyID, APIKeys.UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, RssOnly, Created "
             "FROM APIKeys "
             "JOIN Users ON APIKeys.UserID = Users.UserID "
         )
@@ -5145,7 +5145,7 @@ def get_api_info(database_type, cnx, user_id):
 
 
 
-def create_api_key(cnx, database_type, user_id):
+def create_api_key(cnx, database_type: str, user_id: int, rssonly: bool):
     import secrets
     import string
     alphabet = string.ascii_letters + string.digits
@@ -5153,11 +5153,11 @@ def create_api_key(cnx, database_type, user_id):
 
     cursor = cnx.cursor()
     if database_type == "postgresql":
-        query = 'INSERT INTO "APIKeys" (UserID, APIKey) VALUES (%s, %s)'
+        query = 'INSERT INTO "APIKeys" (UserID, APIKey, RssOnly) VALUES (%s, %s, %s)'
     else:  # MySQL or MariaDB
-        query = "INSERT INTO APIKeys (UserID, APIKey) VALUES (%s, %s)"
+        query = "INSERT INTO APIKeys (UserID, APIKey, RssOnly) VALUES (%s, %s, %s)"
 
-    cursor.execute(query, (user_id, api_key))
+    cursor.execute(query, (user_id, api_key, rssonly))
     cnx.commit()
     cursor.close()
 
@@ -6200,14 +6200,14 @@ def get_value_from_result(result, key_name: str, default=None):
     return default
 
 
-def id_from_api_key(cnx, database_type, passed_key):
+def id_from_api_key(cnx, database_type: str, passed_key: str, rss_feed: bool = False):
     cursor = cnx.cursor()
     try:
         if database_type == "postgresql":
-            query = 'SELECT userid FROM "APIKeys" WHERE apikey = %s'
+            query = 'SELECT userid FROM "APIKeys" WHERE apikey = %s AND rssonly = %s'
         else:
-            query = "SELECT UserID FROM APIKeys WHERE APIKey = %s"
-        cursor.execute(query, (passed_key,))
+            query = "SELECT UserID FROM APIKeys WHERE APIKey = %s AND RssOnly = %s"
+        cursor.execute(query, (passed_key, rss_feed))
         result = cursor.fetchone()
         logging.info(f"id_from_api_key result type: {type(result)}, value: {result}")
 

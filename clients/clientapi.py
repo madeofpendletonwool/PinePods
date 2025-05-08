@@ -3456,11 +3456,12 @@ async def api_set_theme(user_id: int = Body(...), new_theme: str = Body(...), cn
                             detail="You can only set your own theme!")
 
 @app.post("/api/data/create_api_key")
-async def api_create_api_key(user_id: int = Body(..., embed=True), cnx=Depends(get_database_connection),
+async def api_create_api_key(user_id: int = Body(..., embed=True), rssonly: bool = Body(..., embed=True), cnx=Depends(get_database_connection),
                              api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-    if is_valid_key:
-        new_api_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if user_id == key_id or is_web_key:
+        new_api_key = database_functions.functions.create_api_key(cnx, database_type, user_id, rssonly)
         return {"api_key": new_api_key}
     else:
         raise HTTPException(status_code=403,
@@ -5763,7 +5764,7 @@ async def get_user_feed(
     print(f'user: {user_id}, api: {api_key}')
     try:
         # Use id_from_api_key to verify the API key from query param
-        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key, True)
         if not key_id:
             raise HTTPException(status_code=403, detail="Invalid API key")
 

@@ -193,6 +193,7 @@ try:
             APIKeyID SERIAL PRIMARY KEY,
             UserID INT,
             APIKey TEXT,
+            RssOnly BOOLEAN DEFAULT FALSE,
             Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
         )
@@ -206,6 +207,7 @@ try:
                         APIKeyID SERIAL PRIMARY KEY,
                         UserID INT,
                         APIKey TEXT,
+                        RssOnly BOOLEAN DEFAULT FALSE,
                         Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
                     )""")
@@ -637,6 +639,28 @@ try:
             print(f"Error adding feedcutoffdays column to Podcasts table: {e}")
 
     add_feed_cutoff_column_if_not_exist(cursor, cnx)
+
+    def add_rssonly_column_if_not_exists(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='ApiKeys'
+                AND column_name = 'RssOnly'
+            """)
+            existing_column = cursor.fetchone()
+
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE "ApiKeys"
+                    ADD COLUMN "RssOnly" BOOLEAN DEFAULT FALSE
+                """)
+                print("Added 'RssOnly' column to 'ApiKeys' table.")
+                cnx.commit()
+        except Exception as e:
+            print(f"Error adding RssOnly column to ApiKeys table: {e}")
+
+    add_rssonly_column_if_not_exists(cursor, cnx)
 
     cursor.execute("SELECT to_regclass('public.\"Podcasts\"')")
 

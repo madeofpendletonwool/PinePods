@@ -186,6 +186,7 @@ try:
                         APIKeyID INT AUTO_INCREMENT PRIMARY KEY,
                         UserID INT,
                         APIKey TEXT,
+                        RssOnly TINYINT DEFAULT 0,
                         Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                     )""")
@@ -824,6 +825,40 @@ try:
             print(f"Error checking for is_youtube column: {e}")
 
     add_queue_youtube_column_if_not_exist(cursor, cnx)
+
+    def add_rssonly_column_if_not_exists(cursor, cnx):
+        try:
+            # Check if column exists in MySQL
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'ApiKeys'
+                AND COLUMN_NAME = 'RssOnly'
+                AND TABLE_SCHEMA = DATABASE()
+            """)
+            existing_column = cursor.fetchone()
+
+            if not existing_column:
+                try:
+                    # Add the is_youtube column
+                    cursor.execute("""
+                        ALTER TABLE ApiKeys
+                        ADD COLUMN RssOnly TINYINT(1) DEFAULT 0
+                    """)
+                    cnx.commit()
+                    print("Added 'RssOnly' column to 'ApiKeys' table.")
+                except Exception as e:
+                    cnx.rollback()
+                    if 'Duplicate column name' not in str(e):  # MySQL specific error message
+                        print(f"Error adding RssOnly column to ApiKeys table: {e}")
+            else:
+                cnx.commit()  # Commit transaction even if column exists
+
+        except Exception as e:
+            cnx.rollback()
+            print(f"Error checking for is_youtube column: {e}")
+
+    add_rssonly_column_if_not_exists(cursor, cnx)
 
     # Create the Sessions table
     cursor.execute("""CREATE TABLE IF NOT EXISTS Sessions (
