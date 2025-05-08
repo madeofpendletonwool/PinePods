@@ -2090,6 +2090,46 @@ async def api_get_auto_skip_times(data: AutoSkipTimesRequest, cnx=Depends(get_da
 
     return AutoSkipTimesResponse(start_skip=start_skip, end_skip=end_skip)
 
+class SetPlaybackSpeed(BaseModel):
+    user_id: int
+    podcast_id: int
+    playback_speed: float
+
+@app.post("/api/data/podcast/set_playback_speed")
+async def api_set_playback_speed_podcast(data: SetPlaybackSpeed, cnx=Depends(get_database_connection),
+                                api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        database_functions.functions.set_playback_speed_podcast(cnx, database_type, data.podcast_id, data.playback_speed)
+        return {"detail": "Default podcast playback speed updated."}
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify your own podcasts.")
+
+@app.post("/api/data/user/set_playback_speed")
+async def api_set_playback_speed_user(data: SetPlaybackSpeed, cnx=Depends(get_database_connection),
+                                api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        database_functions.functions.set_playback_speed_user(cnx, database_type, data.user_id, data.playback_speed)
+        return {"detail": "Default playback speed updated."}
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify your own podcasts.")
 
 class SaveEpisodeData(BaseModel):
     episode_id: int
@@ -3733,6 +3773,33 @@ async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_databa
             data.is_youtube
         )
         return {"episode": episode}
+    else:
+        raise HTTPException(status_code=403,
+                          detail="You can only get metadata for yourself!")
+
+class GetPlaybackSpeed(BaseModel):
+    podcast_id: Optional[int] = None
+    user_id: int
+
+@app.post("/api/data/get_playback_speed")
+async def api_get_playback_speed(data: GetPlaybackSpeed, cnx=Depends(get_database_connection),
+                                 api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                          detail="Your API key is either invalid or does not have correct permission")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        playback_speed = database_functions.functions.get_playback_speed(
+            database_type,
+            cnx,
+            data.user_id,
+            data.podcast_id
+        )
+        return {"playback_speed": playback_speed}
     else:
         raise HTTPException(status_code=403,
                           detail="You can only get metadata for yourself!")
