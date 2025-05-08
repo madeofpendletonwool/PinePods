@@ -5145,7 +5145,7 @@ def get_api_info(database_type, cnx, user_id):
 
 
 
-def create_api_key(cnx, database_type: str, user_id: int, rssonly: bool):
+def create_api_key(cnx, database_type: str, user_id: int, rssonly: bool = False):
     import secrets
     import string
     alphabet = string.ascii_letters + string.digits
@@ -5809,7 +5809,7 @@ class PodcastFeed(feedgenerator.Rss201rev2Feed):
                 attrs={'href': item['artwork_url']})
 
 
-def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, limit: int, podcast_id: Optional[int] = None, source_type: str) -> str:
+def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, limit: int, source_type: str, podcast_id: Optional[int] = None) -> str:
     from datetime import datetime as dt, timezone
     cursor = cnx.cursor()
     logging.basicConfig(level=logging.INFO)

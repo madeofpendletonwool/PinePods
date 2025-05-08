@@ -5764,7 +5764,7 @@ async def get_user_feed(
     print(f'user: {user_id}, api: {api_key}')
     try:
         # Use id_from_api_key to verify the API key from query param
-        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key, True)
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key, rss_feed=True)
         if not key_id:
             raise HTTPException(status_code=403, detail="Invalid API key")
 
@@ -5774,8 +5774,8 @@ async def get_user_feed(
             user_id,
             api_key,
             limit,
-            podcast_id,
-            source_type
+            source_type,
+            podcast_id
         )
         return Response(
             content=feed_content,
