@@ -5664,34 +5664,21 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
                     e.podcastid,
                     e.episodetitle,
                     e.episodedescription,
-                    e.episodeurl,
+                    CASE WHEN de.episodeid IS NULL 
+                            THEN e.episodeurl 
+                            ELSE CONCAT('/api/data/stream/', e.episodeid, '?api_key=%s') 
+                    END as episodeurl,
                     e.episodeartwork,
                     e.episodepubdate,
                     e.episodeduration,
-                    p.podcastname,
-                    p.author,
-                    p.artworkurl,
-                    p.description as podcastdescription
+                    pp.podcastname,
+                    pp.author,
+                    pp.artworkurl,
+                    pp.description as podcastdescription
                 FROM "Episodes" e
-                JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                WHERE p.userid = %s
-                UNION ALL 
-                SELECT
-                    y.videoid as episodeid,
-                    y.podcastid,
-                    y.videotitle as episodetitle,
-                    y.videodescription as episodedescription,
-                    y.videourl as episodeurl,
-                    y.thumbnailurl as e.episodeartwork
-                    y.publishedat as episodepubdate,
-                    y.duration as episodeduration
-                    p.podcastname,
-                    p.author,
-                    p.artworkurl,
-                    p.description as podcastdescription
-                FROM "YouTubeVideos" y
-                JOIN "Podcasts" p on y.podcastid = p.podcastid
-                WHERE p.userid = %s
+                JOIN "Podcasts" pp ON e.podcastid = p.podcastid
+                LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid 
+                WHERE pp.userid = %s
             '''
         else:
             base_query = '''
@@ -5700,40 +5687,83 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
                     e.PodcastID,
                     e.EpisodeTitle,
                     e.EpisodeDescription,
-                    e.EpisodeURL,
+                    CASE WHEN de.EpisodeID IS NULL 
+                            THEN e.EpisodeURL 
+                            ELSE CONCAT('/api/data/stream/', e.EpisodeID, '?api_key=%s') 
+                    END as EpisodeURL,
                     e.EpisodeArtwork,
                     e.EpisodePubDate,
                     e.EpisodeDuration,
-                    p.PodcastName,
-                    p.Author,
-                    p.ArtworkURL,
-                    p.Description as PodcastDescription
+                    pp.PodcastName,
+                    pp.Author,
+                    pp.ArtworkURL,
+                    pp.Description as PodcastDescription
                 FROM Episodes e
-                JOIN Podcasts p ON e.PodcastID = p.PodcastID
-                WHERE p.UserID = %s
+                JOIN Podcasts pp ON e.PodcastID = pp.PodcastID
+                LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID
+                WHERE pp.UserID = %s
+            '''
+
+        params = [api_key, user_id]
+        if podcast_id is not None:
+            base_query += f' AND {"pp.podcastid" if database_type == "postgresql" else "pp.PodcastID"} = %s'
+            params.append(podcast_id)
+
+
+        # append yt videos
+        if database_type == "postgres":
+            base_query += '''
                 UNION ALL
+                SELECT
+                    y.videoid as episodeid,
+                    y.podcastid,
+                    y.videotitle as episodetitle,
+                    y.videodescription as episodetitle,
+                    CASE WHEN dv.videoid IS NULL 
+                            THEN y.videourl 
+                            ELSE CONCAT('/api/data/stream/', e.videoid, '?api_key=%s&source=youtube') 
+                    END as episodeurl,
+                    y.videourl as episodeurl,
+                    y.thumbnailurl as episodeartwork
+                    y.publishedat as episodepubdate,
+                    y.duration as episodeduration,
+                    pv.podcastname,
+                    pv.author,
+                    pv.artworkurl,
+                    pv.description as podcastdescription
+                FROM "YouTubeVideos" y
+                JOIN "Podcasts" pv on y.podcastid = pv.podcastid
+                LEFT JOIN "DownloadedVideos" dv ON y.videoid = dv.videoid
+                WHERE pv.userid = %s
+            '''
+        else:
+            base_query += '''
                 SELECT
                     y.VideoID as EpisodeID,
                     y.PodcastID as PodcastID,
                     y.VideoTitle as EpisodeTitle,
                     y.VideoDescription as EpisodeDescription,
-                    y.VideoURL as EpisodeURL,
-                    y.ThumbnailURL as e.EpisodeArtwork
+                    CASE WHEN dv.VideoID IS NULL
+                            THEN y.VideoURL
+                            ELSE CONCAT('/api/data/stream/', e.VideoID, '?api_key=%s&type=youtube')
+                    END as EpisodeURL,
+                    y.ThumbnailURL as EpisodeArtwork
                     y.PublishedAt as EpisodePubDate,
-                    y.Duration as EpisodeDuration
-                    p.PodcastName,
-                    p.Author,
-                    p.ArtworkURL,
-                    p.Description as PodcastDescription
+                    y.Duration as EpisodeDuration,
+                    pv.PodcastName,
+                    pv.Author,
+                    pv.ArtworkURL,
+                    pv.Description as PodcastDescription
                 FROM YouTubeVideos y
-                JOIN Podcasts p on y.PodcastID = p.PodcastID
-                WHERE p.UserID = %s
+                JOIN Podcasts pv on y.PodcastID = pv.PodcastID
+                LEFT JOIN DownloadedVideos dv ON y.VideoID = dv.VideoID
+                WHERE pv.UserID = %s
             '''
+        params += [api_key, user_id]
 
-        params = [user_id, user_id]
         if podcast_id is not None:
-            base_query += f' AND {"p.podcastid" if database_type == "postgresql" else "p.PodcastID"} = %s'
-            params.append(podcast_id)
+                base_query += f' AND {"y.podcastid" if database_type == "postgresql" else "y.PodcastID"} = %s'
+                params.append(podcast_id)
 
         base_query += f' ORDER BY 7 DESC LIMIT %s'
         params.append(limit)
