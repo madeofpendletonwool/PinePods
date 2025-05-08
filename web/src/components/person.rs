@@ -5,7 +5,6 @@ use crate::components::click_events::create_on_title_click;
 use crate::components::context::ExpandedDescriptions;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg as EpisodeMsg;
-use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_components::on_shownotes_click;
 use crate::components::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::gen_funcs::format_error_message;
@@ -13,6 +12,7 @@ use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
     strip_images_from_html, truncate_description, unix_timestamp_to_datetime_string,
 };
+use crate::components::safehtml::SafeHtml;
 use crate::requests::people_req::{
     call_get_person_subscriptions, call_subscribe_to_person, call_unsubscribe_from_person,
 };

@@ -5,7 +5,7 @@
 # PinePods :evergreen_tree:
 [![Discord](https://img.shields.io/badge/discord-join%20chat-5B5EA6)](https://discord.gg/bKzHRa4GNc)
 [![Chat on Matrix](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#pinepods:matrix.org)
-![Docker Container Build](https://github.com/madeofpendletonwool/PinePods/actions/workflows/docker-publish.yml/badge.svg)
+[![Docker Container Build](https://github.com/madeofpendletonwool/PinePods/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/madeofpendletonwool/PinePods/actions)
 [![GitHub Release](https://img.shields.io/github/v/release/madeofpendletonwool/pinepods)](https://github.com/madeofpendletonwool/PinePods/releases)
 
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
@@ -240,7 +240,7 @@ Adding the Helm Repository
 First, add the Pinepods Helm repository:
 
 ```
-helm repo add pinepods http://helm.pinepods.online/PinePods
+helm repo add pinepods http://helm.pinepods.online
 helm repo update
 ```
 #### Installing the Chart

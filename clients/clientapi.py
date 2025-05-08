@@ -74,6 +74,7 @@ import database_functions.oidc_state_manager
 import database_functions.valkey_client
 import database_functions.youtube
 import database_functions.tasks
+from database_functions.gpodder_router import gpodder_router
 from database_functions.db_client import create_database_connection, close_database_connection
 
 # # Use a try-except to handle potential import errors
@@ -115,6 +116,8 @@ origins = [
     "http://127.0.0.1",
     "*"
 ]
+
+app.include_router(gpodder_router)
 
 # app.add_middleware(
 #     CORSMiddleware,
@@ -2517,15 +2520,12 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             ''', (user_id,))
         count_result = cursor.fetchone()
         print(f"Count result: {count_result}")
-
         # Handle both dictionary and tuple results
         if isinstance(count_result, dict):
             total_podcasts = count_result['count'] if count_result else 0
         else:
             total_podcasts = count_result[0] if count_result else 0
-
         print(f"Total podcasts: {total_podcasts}")
-
         await websocket.send_json({
             "progress": {
                 "current": 0,
@@ -2534,6 +2534,30 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             }
         })
 
+        # Get default device information for sync
+        default_device_id = database_functions.functions.get_or_create_default_device(cnx, database_type, user_id)
+        default_device_name = None
+
+        if default_device_id:
+            # Get the device name
+            device_cursor = cnx.cursor()
+            if database_type == "postgresql":
+                device_query = 'SELECT DeviceName FROM "GpodderDevices" WHERE DeviceID = %s'
+            else:
+                device_query = "SELECT DeviceName FROM GpodderDevices WHERE DeviceID = %s"
+
+            device_cursor.execute(device_query, (default_device_id,))
+            device_result = device_cursor.fetchone()
+            device_cursor.close()
+
+            if device_result:
+                default_device_name = device_result[0] if isinstance(device_result, tuple) else device_result["devicename"]
+                print(f"Using default device for sync: {default_device_name} (ID: {default_device_id})")
+            else:
+                print("Default device ID found but no name - will use automatic fallback")
+        else:
+            print("No default device found - will use automatic fallback")
+
         if nextcloud_refresh:
             await websocket.send_json({"detail": "Refreshing Nextcloud subscriptions..."})
             print(f"Refreshing Nextcloud subscriptions for user {user_id}")
@@ -2541,12 +2565,13 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             pod_sync_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
             if pod_sync_type == "nextcloud":
                 await asyncio.to_thread(database_functions.functions.refresh_nextcloud_subscription,
-                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type)
+                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type,
+                                      default_device_id, default_device_name, False)
             else:
                 await asyncio.to_thread(database_functions.functions.refresh_gpodder_subscription,
-                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type)
+                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type,
+                                      default_device_id, default_device_name, False)
             await websocket.send_json({"detail": "Pod Sync subscription refresh complete."})
-
         # Get list of podcast names for progress updates
         print('Getting list')
         if database_type == "postgresql":
@@ -2603,7 +2628,7 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             })
 
             # Refresh this podcast
-            print(f'is it youtube?: {is_youtube}')
+            # print(f'is it youtube?: {is_youtube}')
             try:
                 if is_youtube is True:
                     # Extract channel ID from feed URL
@@ -2649,9 +2674,47 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
     except Exception as e:
         await websocket.send_json({"detail": f"Error during refresh: {e}"})
     finally:
+        # Clear explicit reference
         if cnx:
-            if not cnx.closed:
-                cnx.close()
+            try:
+                # Get connection type
+                connection_type = type(cnx).__name__
+                print(f"Closing connection of type: {connection_type}")
+
+                # For PooledMySQLConnection
+                if connection_type == "PooledMySQLConnection":
+                    print("Detected PooledMySQLConnection - using special handling")
+                    # DO NOTHING - don't try to close or modify it
+                    # Just let it go out of scope and be garbage collected
+                    pass
+                # Regular MySQL connection
+                elif "MySQL" in connection_type:
+                    print("Detected MySQL connection - using basic close")
+                    try:
+                        cnx.close()
+                    except Exception as e:
+                        print(f"MySQL close error (ignored): {e}")
+                # PostgreSQL connection
+                elif hasattr(cnx, 'closed'):
+                    print("Detected PostgreSQL connection")
+                    if not cnx.closed:
+                        cnx.close()
+                # Generic
+                elif hasattr(cnx, 'close'):
+                    print("Using generic close method")
+                    cnx.close()
+
+                print("Connection handling complete")
+            except Exception as e:
+                print(f"Connection handling error: {e}")
+
+            # Force drop reference regardless of what happened above
+            cnx = None
+
+        # Force garbage collection
+        import gc
+        gc.collect()
+        print("Garbage collection complete")
 
 @app.get("/api/data/get_stats")
 async def api_get_stats(user_id: int, cnx=Depends(get_database_connection),
@@ -4768,7 +4831,6 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
         users = database_functions.functions.get_nextcloud_users(database_type, cnx)
     finally:
         close_database_connection(cnx)
-
     for user in users:
         # Handle both dictionary and tuple cases
         if isinstance(user, dict):
@@ -4777,24 +4839,97 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
                 gpodder_url = user["gpodderurl"]
                 gpodder_token = user["gpoddertoken"]
                 gpodder_login = user["gpodderloginname"]
+                sync_type = user.get("pod_sync_type", "None")
             else:
                 user_id = user["UserID"]
                 gpodder_url = user["GpodderUrl"]
                 gpodder_token = user["GpodderToken"]
                 gpodder_login = user["GpodderLoginName"]
+                sync_type = user.get("Pod_Sync_Type", "None")
         else:  # assuming tuple
-            user_id, gpodder_url, gpodder_token, gpodder_login = user
-        background_tasks.add_task(refresh_nextcloud_subscription_for_user, database_type, user_id, gpodder_url, gpodder_token, gpodder_login)
+            # Now handle 5 values instead of 4
+            if len(user) >= 5:
+                user_id, gpodder_url, gpodder_token, gpodder_login, sync_type = user
+            else:
+                user_id, gpodder_url, gpodder_token, gpodder_login = user
+                sync_type = "None"
+
+        # Pass the sync_type to the refresh function
+        background_tasks.add_task(
+            refresh_nextcloud_subscription_for_user,
+            database_type,
+            user_id,
+            gpodder_url,
+            gpodder_token,
+            gpodder_login,
+            sync_type  # Add this parameter
+        )
     return {"status": "success", "message": "Nextcloud subscriptions refresh initiated."}
 
-def refresh_nextcloud_subscription_for_user(c, user_id, gpodder_url, gpodder_token, gpodder_login):
+def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url, gpodder_token, gpodder_login, sync_type=None):
     cnx = create_database_connection()
     try:
-        gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
-        if gpod_type == "nextcloud":
-            database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
-        else:  # Assume gPodder
-            database_functions.functions.refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
+        # If sync_type wasn't passed, try to get it from the database
+        if not sync_type:
+            sync_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
+
+        # Determine if this is internal based on URL
+        is_internal = gpodder_url == "http://localhost:8042"
+        print(f"Using {'internal' if is_internal else 'external'} gpodder API for user {user_id}")
+
+        # Special handling for nextcloud sync
+        if sync_type == "nextcloud":
+            print(f"Using nextcloud gpodder API for user {user_id}")
+            success = database_functions.functions.refresh_nextcloud_subscription(
+                database_type,
+                cnx,
+                user_id,
+                gpodder_url,
+                gpodder_token,
+                gpodder_login,
+                sync_type
+            )
+            return success
+        # For all other GPodder sync types, use the standard refresh function
+        elif sync_type in ["gpodder", "both", "external"]:
+            # Get default device ID
+            device_id = database_functions.functions.get_or_create_default_device(cnx, database_type, user_id)
+
+            # Get device name if we have a device ID
+            device_name = None
+            if device_id:
+                cursor = cnx.cursor()
+                if database_type == "postgresql":
+                    query = 'SELECT DeviceName FROM "GpodderDevices" WHERE DeviceID = %s'
+                else:
+                    query = "SELECT DeviceName FROM GpodderDevices WHERE DeviceID = %s"
+
+                cursor.execute(query, (device_id,))
+                result = cursor.fetchone()
+                cursor.close()
+
+                if result:
+                    device_name = result[0] if isinstance(result, tuple) else result["devicename"]
+
+            # Determine if this is a remote sync
+            is_remote = not is_internal and sync_type in ["external", "both"]
+
+            success = database_functions.functions.refresh_gpodder_subscription(
+                database_type,
+                cnx,
+                user_id,
+                gpodder_url,
+                gpodder_token,
+                gpodder_login,
+                sync_type,
+                device_id,
+                device_name,
+                is_remote
+            )
+            return success
+        else:
+            print(f"GPodder sync not enabled for user {user_id} (sync_type: {sync_type})")
+            return False
     finally:
         close_database_connection(cnx)
 
@@ -5366,6 +5501,145 @@ async def stream_episode(
             raise HTTPException(status_code=404, detail="Episode not found or not downloaded")
     else:
         raise HTTPException(status_code=403, detail="You do not have permission to access this episode")
+
+class UpdateGpodderSyncRequest(BaseModel):
+    enabled: bool
+
+@app.post("/api/data/gpodder/toggle")
+async def toggle_gpodder_sync(
+    request: UpdateGpodderSyncRequest,
+    background_tasks: BackgroundTasks,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Enable or disable gpodder sync for the current user"""
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+    # Get the user ID from the API key
+    user_id_result = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    print(f"User ID result: {user_id_result}")
+    if isinstance(user_id_result, dict):
+        user_id = user_id_result.get('userid')
+    else:
+        user_id = user_id_result[0] if isinstance(user_id_result, tuple) else user_id_result
+    if not user_id:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+    try:
+        print(f"Request to toggle gpodder sync: {request.enabled}")
+        user_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        # Get initial state
+        current_sync_type = user_data["sync_type"]
+        print(f"Current sync type: {current_sync_type}")
+        device_info = None
+        if request.enabled:
+            # Enable gpodder sync
+            result = database_functions.functions.set_gpodder_internal_sync(cnx, database_type, user_id)
+            if not result:
+                raise HTTPException(status_code=500, detail="Failed to enable gpodder sync")
+            device_info = result
+
+            # Get required parameters for refresh_gpodder_subscription
+            gpodder_settings = database_functions.functions.get_gpodder_settings(database_type, cnx, user_id)
+            gpodder_token = gpodder_settings.get("gpoddertoken", "")
+            gpodder_login = gpodder_settings.get("gpodderloginname", "")
+            print(gpodder_settings)
+
+            # Get the updated sync type after enabling
+            updated_user_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+            updated_sync_type = updated_user_data["sync_type"]
+            # gpodder_login = gpodder_settings.get("gpodderloginname", "")
+            # gpodder_token = gpodder_settings.get("gpoddertoken", "")
+            device_id = device_info.get("device_id") if device_info else None
+            device_name = device_info.get("device_name") if device_info else None
+
+            background_tasks.add_task(
+                database_functions.functions.refresh_gpodder_subscription,
+                database_type,
+                cnx,
+                user_id,
+                'http://localhost:8042',
+                gpodder_token,  # Pass the raw token, don't encrypt/decrypt it
+                gpodder_login,
+                updated_sync_type,
+                device_id,
+                device_name,
+                False  # is_remote
+            )
+            print(f"Added background task to sync gpodder for user: {user_id}")
+        else:
+            # Disable gpodder sync
+            success = database_functions.functions.disable_gpodder_internal_sync(cnx, database_type, user_id)
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to disable gpodder sync")
+        # Get updated state after changes
+        updated_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+        new_sync_type = updated_data["sync_type"]
+        print(f"Updated sync type: {new_sync_type}")
+        response = {
+            "sync_type": new_sync_type,
+            "gpodder_enabled": new_sync_type in ["gpodder", "both"],
+            "external_enabled": new_sync_type in ["external", "both"],
+            "external_url": updated_data.get("gpodder_url") if new_sync_type in ["external", "both"] else None,
+            "api_url": "http://localhost:8042" if new_sync_type in ["gpodder", "both"] else None
+        }
+        # Add device information if available
+        if device_info and request.enabled:
+            response["device_name"] = device_info["device_name"]
+            response["device_id"] = device_info["device_id"]
+        print(f"Returning response: {response}")
+        return response
+    except Exception as e:
+        print(f"Error in toggle_gpodder_sync: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+# Helper function to generate a token for internal gpodder API
+def generate_gpodder_token(user_id):
+    import secrets
+    token = secrets.token_hex(16)
+    return f"internal_gpodder_{user_id}_{token}"
+
+@app.get("/api/data/gpodder/status")
+async def get_gpodder_status(
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Get the current gpodder sync status for the user"""
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+    # Get the user ID from the API key
+    user_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if not user_id:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    try:
+        user_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        sync_type = user_data["sync_type"]
+
+        return {
+            "sync_type": sync_type,
+            "gpodder_enabled": sync_type in ["gpodder", "both"],
+            "external_enabled": sync_type in ["external", "both"],
+            "external_url": user_data["gpodder_url"],
+                "api_url": "http://localhost:8042"  # Replace with actual API URL if needed
+        }
+    except Exception as e:
+        print(f"Error in get_gpodder_status: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 class BackupUser(BaseModel):
     user_id: int

@@ -2,8 +2,8 @@ use super::app_drawer::App_drawer;
 use super::gen_components::{empty_message, FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, PodcastState, UIState};
-use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::format_error_message;
+use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req::{
     call_add_podcast, call_check_podcast, call_remove_podcasts_name, PodcastDetails, PodcastValues,
     RemovePodcastValuesName,
