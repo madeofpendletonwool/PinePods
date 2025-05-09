@@ -10,12 +10,13 @@ use crate::components::virtual_list::PodcastEpisodeVirtualList;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_check_podcast,
     call_download_all_podcast, call_enable_auto_download, call_fetch_podcasting_2_pod_data,
-    call_get_auto_download_status, call_get_auto_skip_times, call_get_podcast_id_from_ep,
-    call_get_podcast_id_from_ep_name, call_get_podcast_notifications_status, call_remove_category,
-    call_remove_podcasts_name, call_remove_youtube_channel, call_toggle_podcast_notifications,
+    call_get_auto_download_status, call_get_auto_skip_times, call_get_feed_cutoff_days,
+    call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
+    call_get_podcast_notifications_status, call_remove_category, call_remove_podcasts_name,
+    call_remove_youtube_channel, call_toggle_podcast_notifications, call_update_feed_cutoff_days,
     AddCategoryRequest, AutoDownloadRequest, DownloadAllPodcastRequest,
     FetchPodcasting2PodDataRequest, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
-    RemoveYouTubeChannelValues, SkipTimesRequest,
+    RemoveYouTubeChannelValues, SkipTimesRequest, UpdateFeedCutoffDaysRequest,
 };
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
@@ -183,6 +184,8 @@ pub fn episode_layout() -> Html {
     let completed_filter_state = use_state(|| CompletedFilter::ShowAll);
     let show_in_progress = use_state(|| false);
     let notification_status = use_state(|| false);
+    let feed_cutoff_days = use_state(|| 0);
+    let feed_cutoff_days_input = use_state(|| "0".to_string());
 
     let history = BrowserHistory::new();
     // let node_ref = use_node_ref();
@@ -472,6 +475,8 @@ pub fn episode_layout() -> Html {
         let effect_start_skip = start_skip.clone();
         let effect_end_skip = end_skip.clone();
         let effect_added = is_added.clone();
+        let feed_cutoff_days = feed_cutoff_days.clone();
+        let feed_cutoff_days_input = feed_cutoff_days_input.clone();
         let audio_dispatch = _dispatch.clone();
         let click_state = search_state.clone();
 
@@ -536,6 +541,28 @@ pub fn episode_layout() -> Html {
                                                 web_sys::console::log_1(
                                                     &format!(
                                                         "Error getting auto-download status: {}",
+                                                        e
+                                                    )
+                                                    .into(),
+                                                );
+                                            }
+                                        }
+                                        match call_get_feed_cutoff_days(
+                                            &server_name,
+                                            &Some(api_key.clone().unwrap()),
+                                            id,
+                                            user_id,
+                                        )
+                                        .await
+                                        {
+                                            Ok(days) => {
+                                                feed_cutoff_days.set(days);
+                                                feed_cutoff_days_input.set(days.to_string());
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!(
+                                                        "Error getting feed cutoff days: {}",
                                                         e
                                                     )
                                                     .into(),
@@ -983,6 +1010,81 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    // Add this callback for handling input changes
+    let feed_cutoff_days_input_handler = {
+        let feed_cutoff_days_input = feed_cutoff_days_input.clone();
+
+        Callback::from(move |e: InputEvent| {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                feed_cutoff_days_input.set(input.value());
+            }
+        })
+    };
+
+    // Add this callback for saving the feed cutoff days
+    let save_feed_cutoff_days = {
+        let dispatch_vid = _search_dispatch.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let podcast_id = podcast_id.clone();
+        let feed_cutoff_days_input = feed_cutoff_days_input.clone();
+        let feed_cutoff_days = feed_cutoff_days.clone();
+        let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID);
+
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            let dispatch_wasm = dispatch_vid.clone();
+
+            // Extract the values directly without creating intermediate variables
+            if let (Some(server_val), Some(key_val), Some(user_val)) = (
+                server_name.as_ref(),
+                api_key.as_ref().and_then(|k| k.as_ref()),
+                user_id,
+            ) {
+                let pod_id = *podcast_id;
+                let days_str = (*feed_cutoff_days_input).clone();
+                let days = days_str.parse::<i32>().unwrap_or(0);
+                let request_data = UpdateFeedCutoffDaysRequest {
+                    podcast_id: pod_id,
+                    user_id: user_val,
+                    feed_cutoff_days: days,
+                };
+
+                // Clone everything needed for the async block
+                let server_val = server_val.clone();
+                let key_val = key_val.clone();
+                let feed_cutoff_days = feed_cutoff_days.clone();
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_update_feed_cutoff_days(&server_val, &Some(key_val), &request_data)
+                        .await
+                    {
+                        Ok(_) => {
+                            feed_cutoff_days.set(days);
+                            dispatch_wasm.reduce_mut(|state| {
+                                state.info_message =
+                                    Option::from("Youtube Episode Limit Updated!".to_string())
+                            });
+                            // No need to update a ClickedFeedURL or PodcastInfo struct
+                            // Just update the state
+                        }
+                        Err(err) => {
+                            web_sys::console::log_1(
+                                &format!("Error updating feed cutoff days: {}", err).into(),
+                            );
+                            dispatch_wasm.reduce_mut(|state| {
+                                state.error_message = Option::from(format!(
+                                    "Error updating feed cutoff days: {:?}",
+                                    err
+                                ))
+                            });
+                        }
+                    }
+                });
+            }
+        })
+    };
+
     let toggle_notifications = {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
@@ -1348,6 +1450,36 @@ pub fn episode_layout() -> Html {
                                     </button>
                                 </div>
                             </div>
+
+                            {
+                                if podcast_info.unwrap().is_youtube.unwrap() {
+                                    html! {
+                                        <div class="mt-4">
+                                            <label for="feed-cutoff" class="block mb-2 text-sm font-medium">{"Youtube Download Episode Limit (days):"}</label>
+                                            <div class="flex items-center space-x-2">
+                                                <input
+                                                    type="number"
+                                                    id="feed-cutoff"
+                                                    value={(*feed_cutoff_days_input).clone()}
+                                                    class="email-input border text-sm rounded-lg p-2.5 w-24"
+                                                    oninput={feed_cutoff_days_input_handler}
+                                                    min="0"
+                                                />
+                                                <span class="text-sm text-gray-500">{"0 = No limit"}</span>
+                                                <button
+                                                    class="download-button font-bold py-2 px-4 rounded"
+                                                    onclick={save_feed_cutoff_days}
+                                                >
+                                                    {"Save"}
+                                                </button>
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-1">{"Adjusts how long Youtube Feed audio is retained when downloaded to be streamed via the server. Youtube episodes will be removed after to free up space."}</p>
+                                        </div>
+                                    }
+                                } else {
+                                    html! {}  // Render nothing if it's not a YouTube podcast
+                                }
+                            }
                             // Categories section of the modal
                             <div>
                                 <label for="category_adjust" class="block mb-2 text-sm font-medium">
@@ -1992,7 +2124,7 @@ pub fn episode_layout() -> Html {
                                                                 html! {}
                                                             }
                                                         }
-                                                        <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-4"} style="width: 60px; height: 60px;">
+                                                        <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class={"item-container-button font-bold py-2 px-4 rounded-full self-center mr-4"} style="width: 60px; height: 60px;">
                                                             { button_content }
                                                         </button>
                                                         {

@@ -644,23 +644,19 @@ pub async fn call_remove_queued_episode(
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-
     let request_body = serde_json::to_string(request_data)
         .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
-
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
         .body(request_body)?
         .send()
         .await?;
-
     if response.ok() {
-        let success_message = response
-            .text()
-            .await
-            .unwrap_or_else(|_| String::from("Item removed successfully"));
-        Ok(success_message)
+        // Use the same QueueResponse struct to deserialize the response
+        let response_body: QueueResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.data)
     } else {
         let error_text = response
             .text()
@@ -701,6 +697,9 @@ pub struct QueuedEpisode {
     pub listenduration: Option<i32>,
     pub episodeid: i32,
     pub completed: bool,
+    pub saved: bool,      // Added field
+    pub queued: bool,     // Added field
+    pub downloaded: bool, // Added field
     pub is_youtube: bool,
 }
 
@@ -805,6 +804,9 @@ pub struct SavedEpisode {
     pub episodeid: i32,
     pub websiteurl: String,
     pub completed: bool,
+    pub saved: bool,      // Added field
+    pub queued: bool,     // Added field
+    pub downloaded: bool, // Added field
     pub is_youtube: bool,
 }
 
@@ -1061,6 +1063,9 @@ pub struct EpisodeDownload {
     pub podcastid: i32,
     pub podcastindexid: Option<i64>,
     pub completed: bool,
+    pub saved: bool,      // Added field
+    pub queued: bool,     // Added field
+    pub downloaded: bool, // Added field
     pub is_youtube: bool,
 }
 
@@ -1214,36 +1219,43 @@ pub async fn call_remove_downloaded_episode(
     request_data: &DownloadEpisodeRequest,
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/delete_episode", server_name);
-
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-
     let request_body = serde_json::to_string(request_data)
         .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
-
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
         .body(request_body)?
         .send()
         .await?;
-
     if response.ok() {
-        let success_text = response.text().await.unwrap_or_else(|_| {
+        let response_text = response.text().await.unwrap_or_else(|_| {
             if request_data.is_youtube {
                 String::from("Video deleted successfully")
             } else {
                 String::from("Episode deleted successfully")
             }
         });
-        Ok(success_text)
+
+        // Try to parse as JSON first
+        if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&response_text) {
+            // If it's a JSON object with a "detail" field, extract that message
+            if let Some(detail) = json_value.get("detail") {
+                if let Some(message) = detail.as_str() {
+                    return Ok(message.to_string());
+                }
+            }
+        }
+
+        // If not JSON or no "detail" field, return the text as is
+        Ok(response_text)
     } else {
         let error_text = response
             .text()
             .await
             .unwrap_or_else(|_| String::from("Failed to read error message"));
-
         Err(anyhow::Error::msg(format!(
             "Failed to delete {}: {} - {}",
             if request_data.is_youtube {
@@ -2451,6 +2463,108 @@ pub async fn call_add_category(
 }
 
 #[derive(Serialize)]
+pub struct UpdateFeedCutoffDaysRequest {
+    pub(crate) podcast_id: i32,
+    pub(crate) user_id: i32,
+    pub(crate) feed_cutoff_days: i32,
+}
+
+#[derive(Serialize)]
+pub struct GetFeedCutoffDaysRequest {
+    pub(crate) podcast_id: i32,
+    pub(crate) user_id: i32,
+}
+
+pub async fn call_update_feed_cutoff_days(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &UpdateFeedCutoffDaysRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/update_feed_cutoff_days", server_name);
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let success_message = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Feed cutoff days updated successfully"));
+        Ok(success_message)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to update feed cutoff days: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+pub async fn call_get_feed_cutoff_days(
+    server_name: &String,
+    api_key: &Option<String>,
+    podcast_id: i32,
+    user_id: i32,
+) -> Result<i32, Error> {
+    let url = format!(
+        "{}/api/data/get_feed_cutoff_days?podcast_id={}&user_id={}",
+        server_name, podcast_id, user_id
+    );
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_text = response
+            .text()
+            .await
+            .map_err(|e| anyhow::Error::msg(format!("Failed to read response: {}", e)))?;
+
+        let response_data: serde_json::Value = serde_json::from_str(&response_text)
+            .map_err(|e| anyhow::Error::msg(format!("Failed to parse JSON: {}", e)))?;
+
+        let feed_cutoff_days = response_data["feed_cutoff_days"]
+            .as_i64()
+            .ok_or_else(|| anyhow::Error::msg("Feed cutoff days not found in response"))?;
+
+        Ok(feed_cutoff_days as i32)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to get feed cutoff days: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize)]
 pub struct RemoveCategoryRequest {
     pub(crate) podcast_id: i32,
     pub(crate) user_id: i32,
@@ -2577,6 +2691,7 @@ pub async fn call_get_podcast_notifications_status(
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct YouTubeSubscribeResponse {
     pub success: bool,
     pub podcast_id: i32,
@@ -2895,6 +3010,7 @@ pub struct CreatePlaylistRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct CreatePlaylistResponse {
     pub detail: String,
     pub playlist_id: i32,

@@ -10,7 +10,6 @@ use crate::components::gen_funcs::{
 use crate::components::gen_funcs::{format_time, strip_images_from_html};
 use crate::components::safehtml::SafeHtml;
 use crate::requests::search_pods::Episode;
-use _PodcastEpisodeVirtualListProps::{api_key, server_name};
 use gloo::events::EventListener;
 use std::rc::Rc;
 use wasm_bindgen::JsCast;
@@ -363,7 +362,6 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 let date_format = match_date_format(props.search_state.date_format.as_deref());
                 let datetime = parse_date(&episode.pub_date.clone().unwrap_or_default(), &props.search_state.user_tz);
                 let format_release = format_datetime(&datetime, &props.search_state.hour_preference, date_format);
-                let formatted_duration = format_time(episode.duration.clone().unwrap_or_default().parse().unwrap_or(0) as f64);
 
                 // Create the callback here where we have access to index
                 let modal_shownotes_callback = {

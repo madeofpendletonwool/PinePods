@@ -698,7 +698,6 @@ pub struct ContextButtonProps {
 pub fn context_button(props: &ContextButtonProps) -> Html {
     let dropdown_open = use_state(|| false);
     let (post_state, post_dispatch) = use_store::<AppState>();
-    let (ui_state, ui_dispatch) = use_store::<UIState>();
     let api_key = post_state
         .auth_details
         .as_ref()
@@ -1567,7 +1566,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     { if is_queued { "Remove from Queue" } else { "Queue Episode" } }
                 </li>
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
-                    { if is_saved { "Remove from Saved Episodes" } else { "Save Episode" } }
+                    { "Remove from Saved Episodes" }
                 </li>
                 {
                     // Handle download_button as VNode
@@ -2036,6 +2035,7 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
             }
         })
     };
+    let formatted_duration = format_time(props.duration.into());
 
     html! {
         <div class="modal-overlay fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
@@ -2083,7 +2083,7 @@ pub fn episode_modal(props: &EpisodeModalProps) -> Html {
                 // Footer - fixed at bottom
                 <div class="flex justify-between items-center p-6 border-t border-custom-border mt-auto">
                     <div class="flex items-center space-x-2">
-                        <span class="item_container-text">{props.duration.clone()}</span>
+                        <span class="item_container-text">{formatted_duration.clone()}</span>
                         <div class="progress-bar-container">
                             <div class="progress-bar"
                                  style={format!("width: {}%;", props.listen_duration_percentage)} />

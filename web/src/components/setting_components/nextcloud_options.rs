@@ -280,7 +280,7 @@ pub fn gpodder_advanced_options() -> Html {
                     )
                     .await
                     {
-                        Ok(response) => {
+                        Ok(_response) => {
                             web_sys::console::log_1(
                                 &format!("Successfully set device as default").into(),
                             );
@@ -994,7 +994,7 @@ pub fn sync_options() -> Html {
 
                             // Get the sync type
                             let sync_type_clone = sync_type.clone();
-                            if let (Some(server_name), Some(api_key)) =
+                            if let (Some(_server_name), Some(_api_key)) =
                                 (server_name.clone(), api_key.clone())
                             {
                                 wasm_bindgen_futures::spawn_local(async move {
