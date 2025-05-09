@@ -5753,6 +5753,7 @@ async def toggle_rss_feeds_endpoint(
 
 @app.get("/api/feed/{user_id}")
 async def get_user_feed(
+    request: Request,
     user_id: int,
     api_key: str,  # Now a query parameter
     limit: int = 100,
@@ -5763,6 +5764,11 @@ async def get_user_feed(
     """Get RSS feed for all podcasts or a specific podcast"""
     print(f'user: {user_id}, api: {api_key}')
     try:
+        if reverse_proxy == "True":
+            domain = f'{proxy_protocol}://{proxy_host}'
+        else:
+            domain = f'{request.url.scheme}://{request.url.hostname}'
+        
         # Use id_from_api_key to verify the API key from query param
         key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key, rss_feed=True)
         if not key_id:
@@ -5775,6 +5781,7 @@ async def get_user_feed(
             api_key,
             limit,
             source_type,
+            domain,
             podcast_id
         )
         return Response(

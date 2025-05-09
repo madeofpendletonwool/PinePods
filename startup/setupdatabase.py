@@ -832,7 +832,7 @@ try:
             cursor.execute("""
                 SELECT COLUMN_NAME
                 FROM INFORMATION_SCHEMA.COLUMNS
-                WHERE TABLE_NAME = 'ApiKeys'
+                WHERE TABLE_NAME = 'APIKeys'
                 AND COLUMN_NAME = 'RssOnly'
                 AND TABLE_SCHEMA = DATABASE()
             """)
@@ -842,15 +842,15 @@ try:
                 try:
                     # Add the is_youtube column
                     cursor.execute("""
-                        ALTER TABLE ApiKeys
+                        ALTER TABLE APIKeys
                         ADD COLUMN RssOnly TINYINT(1) DEFAULT 0
                     """)
                     cnx.commit()
-                    print("Added 'RssOnly' column to 'ApiKeys' table.")
+                    print("Added 'RssOnly' column to 'APIKeys' table.")
                 except Exception as e:
                     cnx.rollback()
                     if 'Duplicate column name' not in str(e):  # MySQL specific error message
-                        print(f"Error adding RssOnly column to ApiKeys table: {e}")
+                        print(f"Error adding RssOnly column to APIKeys table: {e}")
             else:
                 cnx.commit()  # Commit transaction even if column exists
 

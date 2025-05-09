@@ -5809,7 +5809,7 @@ class PodcastFeed(feedgenerator.Rss201rev2Feed):
                 attrs={'href': item['artwork_url']})
 
 
-def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, limit: int, source_type: str, podcast_id: Optional[int] = None) -> str:
+def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, limit: int, source_type: str, domain: str, podcast_id: Optional[int] = None) -> str:
     from datetime import datetime as dt, timezone
     cursor = cnx.cursor()
     logging.basicConfig(level=logging.INFO)
@@ -5843,7 +5843,7 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
                         e.episodedescription,
                         CASE WHEN de.episodeid IS NULL 
                                 THEN e.episodeurl 
-                                ELSE CONCAT('/api/data/stream/', e.episodeid, '?api_key=%s') 
+                                ELSE CONCAT(CAST(%s AS TEXT), '/api/data/stream/', e.episodeid, '?api_key=', CAST(%s AS TEXT), '&user_id=', pp.userid) 
                         END as episodeurl,
                         e.episodeartwork,
                         e.episodepubdate,
@@ -5853,7 +5853,7 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
                         pp.artworkurl,
                         pp.description as podcastdescription
                     FROM "Episodes" e
-                    JOIN "Podcasts" pp ON e.podcastid = p.podcastid
+                    JOIN "Podcasts" pp ON e.podcastid = pp.podcastid
                     LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid 
                     WHERE pp.userid = %s
                 '''
@@ -5866,7 +5866,7 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
                         e.EpisodeDescription,
                         CASE WHEN de.EpisodeID IS NULL 
                                 THEN e.EpisodeURL 
-                                ELSE CONCAT('/api/data/stream/', e.EpisodeID, '?api_key=%s') 
+                                ELSE CONCAT(CAST(%s AS TEXT), '/api/data/stream/', CAST(y.EpisodeID AS TEXT), '?api_key=', CAST(%s AS TEXT), '&user_id=', pp.UserID) 
                         END as EpisodeURL,
                         e.EpisodeArtwork,
                         e.EpisodePubDate,
@@ -5881,7 +5881,7 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
                     WHERE pp.UserID = %s
                 '''
 
-        params = [api_key, user_id]
+        params = [domain, api_key, user_id]
         if podcast_id is not None:
             base_query += f' AND {"pp.podcastid" if database_type == "postgresql" else "pp.PodcastID"} = %s'
             params.append(podcast_id)
@@ -5891,19 +5891,15 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
             if base_query:
                 base_query += "\nUNION ALL\n"
 
-            if database_type == "postgres":
+            if database_type == "postgresql":
                 base_query += '''
                     SELECT
                         y.videoid as episodeid,
                         y.podcastid,
                         y.videotitle as episodetitle,
                         y.videodescription as episodetitle,
-                        CASE WHEN dv.videoid IS NULL 
-                                THEN y.videourl 
-                                ELSE CONCAT('/api/data/stream/', e.videoid, '?api_key=%s&source=youtube') 
-                        END as episodeurl,
-                        y.videourl as episodeurl,
-                        y.thumbnailurl as episodeartwork
+                        CONCAT(CAST(%s AS TEXT), '/api/data/stream/', CAST(y.videoid AS TEXT), '?api_key=', CAST(%s AS TEXT), '&type=youtube&user_id=', pv.userid) as episodeurl,
+                        y.thumbnailurl as episodeartwork,
                         y.publishedat as episodepubdate,
                         y.duration as episodeduration,
                         pv.podcastname,
@@ -5912,7 +5908,6 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
                         pv.description as podcastdescription
                     FROM "YouTubeVideos" y
                     JOIN "Podcasts" pv on y.podcastid = pv.podcastid
-                    LEFT JOIN "DownloadedVideos" dv ON y.videoid = dv.videoid
                     WHERE pv.userid = %s
                 '''
             else:
@@ -5922,11 +5917,8 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
                         y.PodcastID as PodcastID,
                         y.VideoTitle as EpisodeTitle,
                         y.VideoDescription as EpisodeDescription,
-                        CASE WHEN dv.VideoID IS NULL
-                                THEN y.VideoURL
-                                ELSE CONCAT('/api/data/stream/', e.VideoID, '?api_key=%s&type=youtube')
-                        END as EpisodeURL,
-                        y.ThumbnailURL as EpisodeArtwork
+                        CONCAT(CAST(%s AS TEXT), '/api/data/stream/', CAST(y.VideoID AS TEXT), '?api_key=', CAST(%s AS TEXT), '&type=youtube&user_id=', pv.UserID) as EpisodeURL,
+                        y.ThumbnailURL as EpisodeArtwork,
                         y.PublishedAt as EpisodePubDate,
                         y.Duration as EpisodeDuration,
                         pv.PodcastName,
@@ -5935,10 +5927,9 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
                         pv.Description as PodcastDescription
                     FROM YouTubeVideos y
                     JOIN Podcasts pv on y.PodcastID = pv.PodcastID
-                    LEFT JOIN DownloadedVideos dv ON y.VideoID = dv.VideoID
                     WHERE pv.UserID = %s
                 '''
-            params += [api_key, user_id]
+            params += [domain, api_key, user_id]
 
             if podcast_id is not None:
                     base_query += f' AND {"y.podcastid" if database_type == "postgresql" else "y.PodcastID"} = %s'
@@ -6203,11 +6194,19 @@ def get_value_from_result(result, key_name: str, default=None):
 def id_from_api_key(cnx, database_type: str, passed_key: str, rss_feed: bool = False):
     cursor = cnx.cursor()
     try:
+        params = [passed_key]
         if database_type == "postgresql":
-            query = 'SELECT userid FROM "APIKeys" WHERE apikey = %s AND rssonly = %s'
+            query = 'SELECT userid FROM "APIKeys" WHERE apikey = %s'
+            if not rss_feed:
+                query += ' AND rssonly = %s'
+                params.append(rss_feed)
         else:
-            query = "SELECT UserID FROM APIKeys WHERE APIKey = %s AND RssOnly = %s"
-        cursor.execute(query, (passed_key, rss_feed))
+            query = "SELECT UserID FROM APIKeys WHERE APIKey = %s"
+            if not rss_feed:
+                query += ' AND RssOnly = %s'
+                params.append(rss_feed)
+
+        cursor.execute(query, tuple(params))
         result = cursor.fetchone()
         logging.info(f"id_from_api_key result type: {type(result)}, value: {result}")
 

@@ -645,20 +645,20 @@ try:
             cursor.execute("""
                 SELECT column_name
                 FROM information_schema.columns
-                WHERE table_name='ApiKeys'
+                WHERE table_name='APIKeys'
                 AND column_name = 'RssOnly'
             """)
             existing_column = cursor.fetchone()
 
             if not existing_column:
                 cursor.execute("""
-                    ALTER TABLE "ApiKeys"
-                    ADD COLUMN "RssOnly" BOOLEAN DEFAULT FALSE
+                    ALTER TABLE "APIKeys"
+                    ADD COLUMN "rssonly" BOOLEAN DEFAULT FALSE
                 """)
-                print("Added 'RssOnly' column to 'ApiKeys' table.")
+                print("Added 'RssOnly' column to 'APIKeys' table.")
                 cnx.commit()
         except Exception as e:
-            print(f"Error adding RssOnly column to ApiKeys table: {e}")
+            print(f"Error adding RssOnly column to APIKeys table: {e}")
 
     add_rssonly_column_if_not_exists(cursor, cnx)
 
