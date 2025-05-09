@@ -215,14 +215,54 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
         if result is not None:
             # Print more details for debugging
             print(f"Matched podcast - ID: {result[0]}, Name: {result[1]}, URL: {result[2]}")
-            # Podcast already exists for the user, return the PodcastID instead of False
-            cursor.close()
+
+            # Get the podcast ID
             if isinstance(result, dict):
-                return result['podcastid']
+                podcast_id = result['podcastid']
             elif isinstance(result, tuple):
-                return result[0]
+                podcast_id = result[0]
             else:
-                return result  # Assuming this is just the ID
+                podcast_id = result
+
+            # Add this check right before calling add_episodes in the "if result is not None:" block
+            if database_type == "postgresql":
+                episode_count_query = 'SELECT COUNT(*) FROM "Episodes" WHERE PodcastID = %s'
+                reset_count_query = 'UPDATE "Podcasts" SET EpisodeCount = 0 WHERE PodcastID = %s'
+            else:  # MySQL or MariaDB
+                episode_count_query = "SELECT COUNT(*) FROM Episodes WHERE PodcastID = %s"
+                reset_count_query = "UPDATE Podcasts SET EpisodeCount = 0 WHERE PodcastID = %s"
+
+            # Check if there are any episodes for this podcast
+            cursor.execute(episode_count_query, (podcast_id,))
+            episode_count_result = cursor.fetchone()
+            episode_count = episode_count_result[0] if isinstance(episode_count_result, tuple) else episode_count_result
+
+            # If there are no episodes but the podcast has a non-zero count, reset it to 0
+            if episode_count == 0:
+                # Get the current episode count from Podcasts table
+                if database_type == "postgresql":
+                    podcast_count_query = 'SELECT EpisodeCount FROM "Podcasts" WHERE PodcastID = %s'
+                else:
+                    podcast_count_query = "SELECT EpisodeCount FROM Podcasts WHERE PodcastID = %s"
+
+                cursor.execute(podcast_count_query, (podcast_id,))
+                podcast_count_result = cursor.fetchone()
+                podcast_count = podcast_count_result[0] if isinstance(podcast_count_result, tuple) else podcast_count_result
+
+                # If the podcast has a non-zero count but no episodes, reset it
+                if podcast_count > 0:
+                    print(f"Resetting episode count for podcast {podcast_id} from {podcast_count} to 0")
+                    cursor.execute(reset_count_query, (podcast_id,))
+                    cnx.commit()
+
+            # Now proceed with add_episodes as normal
+            first_episode_id = add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'],
+                                            podcast_values['pod_artwork'], False, username, password, user_id)
+
+            print("Episodes added for existing podcast")
+
+            # Return both IDs like we do for new podcasts
+            return podcast_id, first_episode_id
 
         # Extract category names and convert to comma-separated string
         categories = podcast_values['categories']
@@ -2630,7 +2670,7 @@ def refresh_pods(cnx, database_type):
                 youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx, feed_cutoff)
             else:
                 add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url,
-                           auto_download, username, password, user_id)  # Added user_id here
+                           auto_download, username, password, user_id)
         except Exception as e:
             print(f"Error refreshing podcast {podcast_id}: {str(e)}")
             continue
@@ -10755,32 +10795,50 @@ def add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, enc
         print(f"Failed to add podcast to Nextcloud: {e}")
         print(f"Response body: {response.text}")
 
-def add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_url, device_id="default"):
+def add_podcast_to_opodsync(cnx, database_type, user_id, gpodder_url, gpodder_login, gpodder_token, podcast_url, device_id="default"):
     import requests
     from requests.auth import HTTPBasicAuth
-
     # Initialize response variable to None
     response = None
-
     try:
+        # Get user ID from gpodder_login
+        cursor = cnx.cursor()
+        try:
+            if database_type == "postgresql":
+                query = 'SELECT UserID, GpodderUrl FROM "Users" WHERE Username = %s'
+            else:
+                query = 'SELECT UserID, GpodderUrl FROM Users WHERE Username = %s'
+
+            cursor.execute(query, (gpodder_login,))
+            user_result = cursor.fetchone()
+
+            user_id = None
+            user_gpodder_url = None
+
+            if user_result:
+                if isinstance(user_result, dict):
+                    user_id = user_result.get('userid')
+                    user_gpodder_url = user_result.get('gpodderurl')
+                elif isinstance(user_result, tuple):
+                    user_id = user_result[0]
+                    user_gpodder_url = user_result[1]
+        finally:
+            cursor.close()
+
         # Detect if this is the internal API
         is_internal_api = (gpodder_url == "http://localhost:8042")
-
         # Create auth object - this is used for both session and direct auth
         auth = HTTPBasicAuth(gpodder_login, gpodder_token)
-
         # Create headers - add special header only for internal API
         headers = {"Content-Type": "application/json"}
         if is_internal_api:
             headers["X-GPodder-Token"] = gpodder_token
             print("Using internal API with X-GPodder-Token header")
-
         # Prepare request data
         data = {
             "add": [podcast_url],
             "remove": []
         }
-
         # Try session-based auth first (works with many external servers)
         try:
             session = requests.Session()
@@ -10789,27 +10847,60 @@ def add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpod
             login_response = session.post(login_url, auth=auth, headers=headers if is_internal_api else None)
             login_response.raise_for_status()
             print("Session login successful for podcast add")
-
             # Use the session to add the podcast
             url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
             print(f"Sending POST request to: {url}")
             response = session.post(url, json=data, headers=headers)
             response.raise_for_status()
             print(f"Podcast added to oPodSync successfully using session: {response.text}")
+
+            # If this is internal GPodder sync and we have a user ID, update UserStats
+            if is_internal_api and user_id is not None:
+                try:
+                    cursor = cnx.cursor()
+                    if database_type == "postgresql":
+                        query = 'UPDATE "UserStats" SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = %s'
+                    else:  # MySQL or MariaDB
+                        query = "UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = %s"
+
+                    cursor.execute(query, (user_id,))
+                    cnx.commit()
+                    print(f"Incremented PodcastsAdded count for user {user_id} in UserStats table")
+                except Exception as stats_err:
+                    print(f"Error updating UserStats: {stats_err}")
+                finally:
+                    cursor.close()
+
             return response.json()
         except Exception as e:
             print(f"Session auth failed, trying basic auth: {str(e)}")
-
             # Fall back to direct basic auth
             url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
             print(f"Sending direct POST request to: {url}")
             print(f"Using headers: {headers}")
             print(f"Using auth with username: {gpodder_login}")
-
             response = requests.post(url, json=data, headers=headers, auth=auth)
             print(f"Response status: {response.status_code}")
             response.raise_for_status()
             print(f"Podcast added to oPodSync successfully with basic auth: {response.text}")
+
+            # If this is internal GPodder sync and we have a user ID, update UserStats
+            if is_internal_api and user_id is not None:
+                try:
+                    cursor = cnx.cursor()
+                    if database_type == "postgresql":
+                        query = 'UPDATE "UserStats" SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = %s'
+                    else:  # MySQL or MariaDB
+                        query = "UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = %s"
+
+                    cursor.execute(query, (user_id,))
+                    cnx.commit()
+                    print(f"Incremented PodcastsAdded count for user {user_id} in UserStats table")
+                except Exception as stats_err:
+                    print(f"Error updating UserStats: {stats_err}")
+                finally:
+                    cursor.close()
+
             return response.json()
     except Exception as e:
         print(f"Failed to add podcast to oPodSync: {e}")
@@ -10822,7 +10913,6 @@ def add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpod
         else:
             print("No response received (error occurred before HTTP request)")
         return None
-
 
 def remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url):
     from cryptography.fernet import Fernet
@@ -10858,31 +10948,137 @@ def remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login
         print(f"Response body: {response.text}")
 
 
-def remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, encrypted_gpodder_token, podcast_url, device_id="default"):
-    from cryptography.fernet import Fernet
+def remove_podcast_from_opodsync(cnx, database_type, user_id, gpodder_url, gpodder_login, gpodder_token, podcast_url, device_id="default"):
     from requests.auth import HTTPBasicAuth
     import requests
+    import traceback
+    import mysql.connector
+    import psycopg
+
+    # Track if we've handled episode removal internally
+    episodes_handled = False
+    response = None
 
     try:
-        # Decrypt the token
-        encryption_key = get_encryption_key(cnx, database_type)
-        encryption_key_bytes = base64.b64decode(encryption_key)
-        cipher_suite = Fernet(encryption_key_bytes)
+        # Validate required parameters first
+        if not gpodder_url or not gpodder_login or not podcast_url:
+            error_msg = "Missing required parameters for oPodSync removal"
+            print(f"Failed to remove podcast from oPodSync: {error_msg}")
+            return False, episodes_handled
 
-        if encrypted_gpodder_token is not None:
-            decrypted_token_bytes = cipher_suite.decrypt(encrypted_gpodder_token.encode())
-            gpodder_token = decrypted_token_bytes.decode()
-        else:
-            gpodder_token = None
+        # Check if token is provided
+        if gpodder_token is None:
+            print("No gpodder token provided")
+            return False, episodes_handled
+
+        # Detect if this is the internal API
+        is_internal_api = (gpodder_url == "http://localhost:8042")
+
+        # For internal API, handle episode deletion directly to avoid foreign key constraints
+        if is_internal_api:
+            print("Using internal gPodder API - handling episodes directly")
+
+            # First, get the podcast_id for this feed URL
+            cursor = cnx.cursor()
+            try:
+                if database_type == "postgresql":
+                    podcast_query = 'SELECT "PodcastID" FROM "Podcasts" WHERE "FeedURL" = %s AND "UserID" = %s'
+                else:  # MySQL or MariaDB
+                    podcast_query = "SELECT PodcastID FROM Podcasts WHERE FeedURL = %s AND UserID = %s"
+
+                cursor.execute(podcast_query, (podcast_url, user_id))
+                result = cursor.fetchone()
+
+                podcast_id = None
+                if result:
+                    # Extract podcast_id based on the result type
+                    if isinstance(result, dict):
+                        podcast_id = result.get('podcastid') or result.get('PodcastID')
+                    else:  # tuple
+                        podcast_id = result[0]
+
+                if podcast_id:
+                    print(f"Found podcast ID {podcast_id} for URL {podcast_url}")
+
+                    # Now delete all related data to handle the foreign key constraints
+                    if database_type == "postgresql":
+                        # DELETE FROM PLAYLIST CONTENTS - Add this first!
+                        delete_playlist_contents = 'DELETE FROM "PlaylistContents" WHERE "EpisodeID" IN (SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s)'
+                        delete_history = 'DELETE FROM "UserEpisodeHistory" WHERE "EpisodeID" IN (SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s)'
+                        delete_downloaded = 'DELETE FROM "DownloadedEpisodes" WHERE "EpisodeID" IN (SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s)'
+                        delete_saved = 'DELETE FROM "SavedEpisodes" WHERE "EpisodeID" IN (SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s)'
+                        delete_queue = 'DELETE FROM "EpisodeQueue" WHERE "EpisodeID" IN (SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s)'
+                        delete_episodes = 'DELETE FROM "Episodes" WHERE "PodcastID" = %s'
+                        delete_podcast = 'DELETE FROM "Podcasts" WHERE "PodcastID" = %s'
+                        update_user_stats = 'UPDATE "UserStats" SET "PodcastsAdded" = "PodcastsAdded" - 1 WHERE "UserID" = %s'
+                    else:  # MySQL or MariaDB
+                        # DELETE FROM PLAYLIST CONTENTS - Add this first!
+                        delete_playlist_contents = "DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+                        delete_history = "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+                        delete_downloaded = "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+                        delete_saved = "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+                        delete_queue = "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
+                        delete_episodes = "DELETE FROM Episodes WHERE PodcastID = %s"
+                        delete_podcast = "DELETE FROM Podcasts WHERE PodcastID = %s"
+                        update_user_stats = "UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = %s"
+
+                    # Execute the deletion statements in order
+                    try:
+                        cursor.execute(delete_playlist_contents, (podcast_id,))
+                        print(f"Deleted playlist contents for podcast ID {podcast_id}")
+
+                        cursor.execute(delete_history, (podcast_id,))
+                        print(f"Deleted episode history for podcast ID {podcast_id}")
+
+                        cursor.execute(delete_downloaded, (podcast_id,))
+                        print(f"Deleted downloaded episodes for podcast ID {podcast_id}")
+
+                        cursor.execute(delete_saved, (podcast_id,))
+                        print(f"Deleted saved episodes for podcast ID {podcast_id}")
+
+                        cursor.execute(delete_queue, (podcast_id,))
+                        print(f"Deleted queued episodes for podcast ID {podcast_id}")
+
+                        cursor.execute(delete_episodes, (podcast_id,))
+                        print(f"Deleted episodes for podcast ID {podcast_id}")
+
+                        cursor.execute(delete_podcast, (podcast_id,))
+                        print(f"Deleted podcast with ID {podcast_id}")
+
+                        cursor.execute(update_user_stats, (user_id,))
+                        print(f"Updated user stats for user ID {user_id}")
+
+                        cnx.commit()
+                        print("All database operations committed successfully")
+                        episodes_handled = True
+                    except (psycopg.Error, mysql.connector.Error) as db_err:
+                        print(f"Database error during podcast deletion: {db_err}")
+                        cnx.rollback()
+                        # Continue with API call even if direct deletion failed
+                else:
+                    print(f"Podcast ID not found for URL {podcast_url}")
+            except Exception as podcast_error:
+                print(f"Error finding podcast ID: {podcast_error}")
+            finally:
+                cursor.close()
+
+        # Create auth object - this is used for both session and direct auth
+        auth = HTTPBasicAuth(gpodder_login, gpodder_token)
+
+        # Create headers - add special header only for internal API
+        headers = {"Content-Type": "application/json"}
+        if is_internal_api:
+            headers["X-GPodder-Token"] = gpodder_token
+            print("Using internal API with X-GPodder-Token header")
 
         # Create a session for cookie-based auth
         session = requests.Session()
-        auth = HTTPBasicAuth(gpodder_login, gpodder_token)
 
         # Try to establish a session first (for PodFetch)
         try:
             login_url = f"{gpodder_url}/api/2/auth/{gpodder_login}/login.json"
-            login_response = session.post(login_url, auth=auth)
+            print(f"Attempting session login at: {login_url}")
+            login_response = session.post(login_url, auth=auth, headers=headers if is_internal_api else None, timeout=10)
             login_response.raise_for_status()
             print("Session login successful for podcast removal")
 
@@ -10892,35 +11088,49 @@ def remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login,
                 "add": [],
                 "remove": [podcast_url]
             }
-            headers = {
-                "Content-Type": "application/json"
-            }
-            response = session.post(url, json=data, headers=headers)
+            print(f"Sending POST request to: {url}")
+            response = session.post(url, json=data, headers=headers, timeout=10)
             response.raise_for_status()
             print(f"Podcast removed from oPodSync successfully using session: {response.text}")
-            return response.json()
+            return True, episodes_handled
 
-        except Exception as e:
-            print(f"Session auth failed, trying basic auth: {str(e)}")
+        except requests.exceptions.RequestException as session_error:
+            print(f"Session auth failed, trying basic auth: {str(session_error)}")
 
             # Fall back to basic auth
             url = f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/{device_id}.json"
-            auth = HTTPBasicAuth(gpodder_login, gpodder_token)
+            print(f"Sending direct POST request to: {url}")
+            print(f"Using headers: {headers}")
+            print(f"Using auth with username: {gpodder_login}")
             data = {
                 "add": [],
                 "remove": [podcast_url]
             }
-            headers = {
-                "Content-Type": "application/json"
-            }
-            response = requests.post(url, json=data, headers=headers, auth=auth)
-            response.raise_for_status()
-            print(f"Podcast removed from oPodSync successfully with basic auth: {response.text}")
-            return response.json()
+
+            try:
+                response = requests.post(url, json=data, headers=headers, auth=auth, timeout=10)
+                print(f"Response status: {response.status_code}")
+                response.raise_for_status()
+                print(f"Podcast removed from oPodSync successfully with basic auth: {response.text}")
+                return True, episodes_handled
+            except requests.exceptions.RequestException as basic_auth_error:
+                print(f"Basic auth removal failed: {str(basic_auth_error)}")
+                return False, episodes_handled
 
     except Exception as e:
-        print(f"Failed to remove podcast from oPodSync: {e}")
-        return None
+        error_details = traceback.format_exc()
+        print(f"Failed to remove podcast from oPodSync: {str(e)}\n{error_details}")
+        if response is not None:
+            print(f"Response body: {getattr(response, 'text', 'No response object')}")
+            print(f"Status code: {getattr(response, 'status_code', 'No status code')}")
+            # If there was a server error, try to get more information
+            if getattr(response, 'status_code', 0) >= 500:
+                print("Server returned an error. Check gpodder API logs for more details.")
+        else:
+            print("No response received (error occurred before HTTP request)")
+        return False, episodes_handled
+
+
 
 def refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, encrypted_gpodder_token, gpodder_login, pod_sync_type):
     # Set up logging

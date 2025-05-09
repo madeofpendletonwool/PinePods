@@ -1531,10 +1531,15 @@ async def api_add_podcast(
         if database_functions.functions.check_gpodder_settings(database_type, cnx, request.podcast_values.user_id):
             gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, request.podcast_values.user_id)
             gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, request.podcast_values.user_id)
+
+            if gpod_type == "gpodder":
+                default_device = database_functions.functions.get_default_gpodder_device(cnx, database_type, request.podcast_values.user_id)
+                device_name = default_device["name"] if default_device else f"pinepods-internal-{request.podcast_values.user_id}"
+
             if gpod_type == "nextcloud":
                 database_functions.functions.add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, request.podcast_values.pod_feed_url)
             else:
-                database_functions.functions.add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, request.podcast_values.pod_feed_url, "pinepods")
+                database_functions.functions.add_podcast_to_opodsync(cnx, database_type, request.podcast_values.user_id, gpodder_url, gpodder_login, gpodder_token, request.podcast_values.pod_feed_url, device_name)
 
         result = database_functions.functions.add_podcast(
             cnx,
@@ -2960,28 +2965,53 @@ class RemovePodcastData(BaseModel):
 async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depends(get_database_connection),
                                    api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
-
     elevated_access = await has_elevated_access(api_key, cnx)
-
     if not elevated_access:
         # Get user ID from API key
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove podcasts for other users")
+
+    # Track if episodes have been handled
+    episodes_handled = False
+
     if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
+        logging.info('get cloud vals')
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
+
+        # Get the full gpodder settings to check URL
+        gpodder_settings = database_functions.functions.get_gpodder_settings(database_type, cnx, data.user_id)
+
+        logging.info('em cloud')
+        podcast_feed = database_functions.functions.get_podcast_feed_by_id(cnx, database_type, data.podcast_id)
         gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, data.user_id)
+
+        # Get the correct device name, matching what we do in add_podcast
+        device_name = f"pinepods-internal-{data.user_id}"  # Default device name
+        if gpod_type == "gpodder":
+            default_device = database_functions.functions.get_default_gpodder_device(cnx, database_type, data.user_id)
+            if default_device:
+                device_name = default_device["name"]
+
         if gpod_type == "nextcloud":
-            database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
+            database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed)
         else:
-            database_functions.functions.remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url, "pinepods")
-    database_functions.functions.remove_podcast(cnx, database_type, data.podcast_name, data.podcast_url, data.user_id)
+            # Modified return value includes whether episodes were handled
+            success, episodes_handled = database_functions.functions.remove_podcast_from_opodsync(
+                cnx, database_type, data.user_id, gpodder_url, gpodder_login,
+                gpodder_token, podcast_feed, device_name
+            )
+
+    # Only run remove_podcast if episodes weren't already handled by gpodder sync
+    if not episodes_handled:
+        database_functions.functions.remove_podcast(cnx, database_type, data.podcast_name, data.podcast_url, data.user_id)
+    else:
+        logging.info('skipping remove_podcast - already handled by gpodder sync')
+
     return {"success": True}
 
 class RemovePodcastIDData(BaseModel):
@@ -2991,37 +3021,58 @@ class RemovePodcastIDData(BaseModel):
 
 @app.post("/api/data/remove_podcast_id")
 async def api_remove_podcast_route_id(data: RemovePodcastIDData = Body(...),
-                                    cnx=Depends(get_database_connection),
-                                    api_key: str = Depends(get_api_key_from_header)):
+                                   cnx=Depends(get_database_connection),
+                                   api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
-
     elevated_access = await has_elevated_access(api_key, cnx)
     if not elevated_access:
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove content for other users")
-
     if data.is_youtube:
         database_functions.functions.remove_youtube_channel(cnx, database_type, data.podcast_id, data.user_id)
     else:
         # Existing podcast removal logic
         logging.info('check gpod')
+        episodes_handled = False  # Track whether episodes were already handled by gpodder sync
+
         if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
             logging.info('get cloud vals')
             gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
+
+            # Get the full gpodder settings to check URL
+            gpodder_settings = database_functions.functions.get_gpodder_settings(database_type, cnx, data.user_id)
+
             logging.info('em cloud')
             podcast_feed = database_functions.functions.get_podcast_feed_by_id(cnx, database_type, data.podcast_id)
             gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, data.user_id)
+
+            # Get the correct device name, matching what we do in add_podcast
+            device_name = f"pinepods-internal-{data.user_id}"  # Default device name
+            if gpod_type == "gpodder":
+                default_device = database_functions.functions.get_default_gpodder_device(cnx, database_type, data.user_id)
+                if default_device:
+                    device_name = default_device["name"]
+
             if gpod_type == "nextcloud":
                 database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed)
             else:
-                database_functions.functions.remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed, "pinepods")
-        logging.info('rm pod id')
-        database_functions.functions.remove_podcast_id(cnx, database_type, data.podcast_id, data.user_id)
+                # Modified return value includes whether episodes were handled
+                success, episodes_handled = database_functions.functions.remove_podcast_from_opodsync(
+                    cnx, database_type, data.user_id, gpodder_url, gpodder_login,
+                    gpodder_token, podcast_feed, device_name
+                )
+
+        # Only run remove_podcast_id if episodes weren't already handled by gpodder sync
+        if not episodes_handled:
+            logging.info('rm pod id')
+            database_functions.functions.remove_podcast_id(cnx, database_type, data.podcast_id, data.user_id)
+        else:
+            logging.info('skipping rm pod id - already handled by gpodder sync')
 
     return {"success": True}
 
@@ -5614,12 +5665,11 @@ async def toggle_gpodder_sync(
             device_name = device_info.get("device_name") if device_info else None
 
             background_tasks.add_task(
-                database_functions.functions.refresh_gpodder_subscription,
+                refresh_gpodder_subscription_for_background,  # Use the wrapper function
                 database_type,
-                cnx,
                 user_id,
                 'http://localhost:8042',
-                gpodder_token,  # Pass the raw token, don't encrypt/decrypt it
+                gpodder_token,
                 gpodder_login,
                 updated_sync_type,
                 device_id,
@@ -5653,6 +5703,41 @@ async def toggle_gpodder_sync(
         print(f"Error in toggle_gpodder_sync: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
+
+def refresh_gpodder_subscription_for_background(database_type, user_id, gpodder_url, gpodder_token,
+                                               gpodder_login, sync_type, device_id=None, device_name=None, is_remote=False):
+    """Wrapper function for background tasks to ensure proper database connection handling"""
+    from database_functions.db_client import create_database_connection, close_database_connection
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Create a new connection explicitly for this background task
+    cnx = create_database_connection()
+
+    try:
+        print(f"Starting background refresh for user {user_id} with sync_type {sync_type}")
+        # Call the original function with our managed connection
+        success = database_functions.functions.refresh_gpodder_subscription(
+            database_type,
+            cnx,
+            user_id,
+            gpodder_url,
+            gpodder_token,
+            gpodder_login,
+            sync_type,
+            device_id,
+            device_name,
+            is_remote
+        )
+        return success
+    except Exception as e:
+        logger.error(f"Error in background gpodder refresh: {str(e)}")
+        return False
+    finally:
+        # Always close the connection we created
+        close_database_connection(cnx)
+        print(f"Closed database connection for background task for user {user_id}")
 # Helper function to generate a token for internal gpodder API
 def generate_gpodder_token(user_id):
     import secrets

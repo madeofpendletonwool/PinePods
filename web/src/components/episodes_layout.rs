@@ -1023,6 +1023,7 @@ pub fn episode_layout() -> Html {
 
     // Add this callback for saving the feed cutoff days
     let save_feed_cutoff_days = {
+        let dispatch_vid = _search_dispatch.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let podcast_id = podcast_id.clone();
@@ -1032,6 +1033,7 @@ pub fn episode_layout() -> Html {
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
+            let dispatch_wasm = dispatch_vid.clone();
 
             // Extract the values directly without creating intermediate variables
             if let (Some(server_val), Some(key_val), Some(user_val)) = (
@@ -1059,6 +1061,10 @@ pub fn episode_layout() -> Html {
                     {
                         Ok(_) => {
                             feed_cutoff_days.set(days);
+                            dispatch_wasm.reduce_mut(|state| {
+                                state.info_message =
+                                    Option::from("Youtube Episode Limit Updated!".to_string())
+                            });
                             // No need to update a ClickedFeedURL or PodcastInfo struct
                             // Just update the state
                         }
@@ -1066,6 +1072,12 @@ pub fn episode_layout() -> Html {
                             web_sys::console::log_1(
                                 &format!("Error updating feed cutoff days: {}", err).into(),
                             );
+                            dispatch_wasm.reduce_mut(|state| {
+                                state.error_message = Option::from(format!(
+                                    "Error updating feed cutoff days: {:?}",
+                                    err
+                                ))
+                            });
                         }
                     }
                 });
@@ -1439,28 +1451,35 @@ pub fn episode_layout() -> Html {
                                 </div>
                             </div>
 
-                            <div class="mt-4">
-                            // Feed Cutoff Options
-                            <label for="feed-cutoff" class="block mb-2 text-sm font-medium">{"Youtube Download Episode Limit (days):"}</label>
-                            <div class="flex items-center space-x-2">
-                                <input
-                                    type="number"
-                                    id="feed-cutoff"
-                                    value={(*feed_cutoff_days_input).clone()}
-                                    class="email-input border text-sm rounded-lg p-2.5 w-24"
-                                    oninput={feed_cutoff_days_input_handler}
-                                    min="0"
-                                />
-                                <span class="text-sm text-gray-500">{"0 = No limit"}</span>
-                                <button
-                                    class="download-button font-bold py-2 px-4 rounded"
-                                    onclick={save_feed_cutoff_days}
-                                >
-                                    {"Save"}
-                                </button>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1">{"Adjusts how long long Youtube Feed audio is retained when downloaded to be streamed via the server. Youtube episodes will be removed after to free up space."}</p>
-                        </div>
+                            {
+                                if podcast_info.unwrap().is_youtube.unwrap() {
+                                    html! {
+                                        <div class="mt-4">
+                                            <label for="feed-cutoff" class="block mb-2 text-sm font-medium">{"Youtube Download Episode Limit (days):"}</label>
+                                            <div class="flex items-center space-x-2">
+                                                <input
+                                                    type="number"
+                                                    id="feed-cutoff"
+                                                    value={(*feed_cutoff_days_input).clone()}
+                                                    class="email-input border text-sm rounded-lg p-2.5 w-24"
+                                                    oninput={feed_cutoff_days_input_handler}
+                                                    min="0"
+                                                />
+                                                <span class="text-sm text-gray-500">{"0 = No limit"}</span>
+                                                <button
+                                                    class="download-button font-bold py-2 px-4 rounded"
+                                                    onclick={save_feed_cutoff_days}
+                                                >
+                                                    {"Save"}
+                                                </button>
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-1">{"Adjusts how long Youtube Feed audio is retained when downloaded to be streamed via the server. Youtube episodes will be removed after to free up space."}</p>
+                                        </div>
+                                    }
+                                } else {
+                                    html! {}  // Render nothing if it's not a YouTube podcast
+                                }
+                            }
                             // Categories section of the modal
                             <div>
                                 <label for="category_adjust" class="block mb-2 text-sm font-medium">

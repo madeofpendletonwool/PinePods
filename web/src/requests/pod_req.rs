@@ -2691,6 +2691,7 @@ pub async fn call_get_podcast_notifications_status(
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct YouTubeSubscribeResponse {
     pub success: bool,
     pub podcast_id: i32,
@@ -3009,6 +3010,7 @@ pub struct CreatePlaylistRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct CreatePlaylistResponse {
     pub detail: String,
     pub playlist_id: i32,

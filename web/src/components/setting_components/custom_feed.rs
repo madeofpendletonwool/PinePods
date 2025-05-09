@@ -1,7 +1,6 @@
 use crate::components::context::AppState;
-use crate::requests::setting_reqs::call_add_custom_feed;
-use gloo_timers::callback::Timeout;
 use crate::components::gen_funcs::format_error_message;
+use crate::requests::setting_reqs::call_add_custom_feed;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
@@ -9,7 +8,7 @@ use yewdux::prelude::*;
 #[function_component(CustomFeed)]
 pub fn custom_feed() -> Html {
     let feed_url = use_state(|| "".to_string());
-    let (state, dispatch) = use_store::<AppState>();
+    let (_state, dispatch) = use_store::<AppState>();
     let pod_user = use_state(|| "".to_string());
     let pod_pass = use_state(|| "".to_string());
     let is_loading = use_state(|| false);
@@ -52,7 +51,7 @@ pub fn custom_feed() -> Html {
         let feed_url = (*feed_url).clone();
         let dispatch = dispatch.clone();
         let is_loading_call = custom_loading.clone();
-        
+
         Callback::from(move |_| {
             let server_name = server_name.clone();
             let api_key = api_key.clone();
@@ -62,7 +61,7 @@ pub fn custom_feed() -> Html {
             let is_loading_wasm = is_loading_call.clone();
             let unstate_pod_user = (*pod_user).clone();
             let unstate_pod_pass = (*pod_pass).clone();
-            
+
             wasm_bindgen_futures::spawn_local(async move {
                 match call_add_custom_feed(
                     &server_name,
@@ -83,10 +82,11 @@ pub fn custom_feed() -> Html {
                     Err(e) => {
                         // Format error message if you have a formatter function like in StartPageOptions
                         let formatted_error = format_error_message(&e.to_string());
-                        
+
                         // Update global state with error message
                         dispatch.reduce_mut(|state| {
-                            state.error_message = Some(format!("Failed to add podcast: {}", formatted_error));
+                            state.error_message =
+                                Some(format!("Failed to add podcast: {}", formatted_error));
                         });
                     }
                 }

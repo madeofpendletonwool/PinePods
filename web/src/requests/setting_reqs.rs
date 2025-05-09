@@ -273,6 +273,7 @@ pub async fn call_set_password(
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct DeleteUserResponse {
     pub status: String,
 }
@@ -1766,6 +1767,7 @@ pub struct RemoveSyncRequest {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct RemoveSyncResponse {
     success: bool,
     message: String,
@@ -2096,6 +2098,7 @@ pub struct AddOIDCProviderRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct OIDCProvider {
     pub provider_id: i32,
     pub provider_name: String,
@@ -2186,6 +2189,7 @@ pub async fn call_list_oidc_providers(
 
 // First, create a struct to match the JSON response for getting startpage
 #[derive(Deserialize)]
+#[allow(non_snake_case)]
 struct StartPageResponse {
     StartPage: String,
 }
@@ -2219,6 +2223,7 @@ pub struct SetStartPageRequest {
 // Struct for the set startpage response
 #[derive(Deserialize)]
 #[allow(non_snake_case)]
+#[allow(dead_code)]
 struct SetStartPageResponse {
     success: bool,
     message: String,

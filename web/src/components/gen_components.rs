@@ -698,7 +698,6 @@ pub struct ContextButtonProps {
 pub fn context_button(props: &ContextButtonProps) -> Html {
     let dropdown_open = use_state(|| false);
     let (post_state, post_dispatch) = use_store::<AppState>();
-    let (ui_state, ui_dispatch) = use_store::<UIState>();
     let api_key = post_state
         .auth_details
         .as_ref()
@@ -2026,7 +2025,6 @@ pub struct EpisodeModalProps {
 
 #[function_component(EpisodeModal)]
 pub fn episode_modal(props: &EpisodeModalProps) -> Html {
-    let (search_state, _search_dispatch) = use_store::<AppState>();
     let onclick_outside = {
         let on_close = props.on_close.clone();
         Callback::from(move |e: MouseEvent| {

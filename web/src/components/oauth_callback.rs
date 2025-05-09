@@ -17,6 +17,7 @@ enum PageState {
     Loading,
     Error(String),
     TimeZone,
+    #[allow(dead_code)]
     Success,
 }
 

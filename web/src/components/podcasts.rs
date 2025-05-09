@@ -816,17 +816,6 @@ pub fn podcasts() -> Html {
         })
     };
 
-    let clear_filter = {
-        let selected_category = selected_category.clone();
-        let search_term = search_term.clone();
-        let sort_direction = sort_direction.clone();
-        Callback::from(move |_: MouseEvent| {
-            selected_category.set(None);
-            search_term.set(String::new());
-            sort_direction.set(None);
-        })
-    };
-
     // Add this function to clear filters and force a complete re-render
     let reset_filter = {
         let selected_category = selected_category.clone();
