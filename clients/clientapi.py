@@ -5757,7 +5757,7 @@ async def get_user_feed(
     api_key: str,  # Now a query parameter
     limit: int = 100,
     podcast_id: Optional[int] = None,
-    source_type: str = Query(None, alias='type')
+    source_type: str = Query(None, alias='type'),
     cnx=Depends(get_database_connection)
 ):
     """Get RSS feed for all podcasts or a specific podcast"""
