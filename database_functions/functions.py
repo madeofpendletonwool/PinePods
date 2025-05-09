@@ -305,7 +305,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
 
             # Add episodes to database
             first_episode_id = add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'],
-                                          podcast_values['pod_artwork'], False, feed_cutoff, username, password, user_id)  # Add user_id here
+                                          podcast_values['pod_artwork'], False, feed_cutoff, username, password, websocket=False)
             print("episodes added")
             return podcast_id, first_episode_id
 
@@ -2610,7 +2610,7 @@ def refresh_pods(cnx, database_type):
                 youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx, feed_cutoff)
             else:
                 add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url,
-                           auto_download, feed_cutoff, username, password, user_id)  # Added user_id here
+                           auto_download, feed_cutoff, username, password, websocket=False)
         except Exception as e:
             print(f"Error refreshing podcast {podcast_id}: {str(e)}")
             continue
@@ -5111,14 +5111,14 @@ def get_api_info(database_type, cnx, user_id):
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
         query = (
-            'SELECT APIKeyID, "APIKeys".UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, Created '
+            'SELECT APIKeyID, "APIKeys".UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, RssOnly, Created '
             'FROM "APIKeys" '
             'JOIN "Users" ON "APIKeys".UserID = "Users".UserID '
         )
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
         query = (
-            "SELECT APIKeyID, APIKeys.UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, Created "
+            "SELECT APIKeyID, APIKeys.UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, RssOnly, Created "
             "FROM APIKeys "
             "JOIN Users ON APIKeys.UserID = Users.UserID "
         )
@@ -5145,7 +5145,7 @@ def get_api_info(database_type, cnx, user_id):
 
 
 
-def create_api_key(cnx, database_type, user_id):
+def create_api_key(cnx, database_type: str, user_id: int, rssonly: bool = False):
     import secrets
     import string
     alphabet = string.ascii_letters + string.digits
@@ -5153,11 +5153,11 @@ def create_api_key(cnx, database_type, user_id):
 
     cursor = cnx.cursor()
     if database_type == "postgresql":
-        query = 'INSERT INTO "APIKeys" (UserID, APIKey) VALUES (%s, %s)'
+        query = 'INSERT INTO "APIKeys" (UserID, APIKey, RssOnly) VALUES (%s, %s, %s)'
     else:  # MySQL or MariaDB
-        query = "INSERT INTO APIKeys (UserID, APIKey) VALUES (%s, %s)"
+        query = "INSERT INTO APIKeys (UserID, APIKey, RssOnly) VALUES (%s, %s, %s)"
 
-    cursor.execute(query, (user_id, api_key))
+    cursor.execute(query, (user_id, api_key, rssonly))
     cnx.commit()
     cursor.close()
 
@@ -5809,7 +5809,7 @@ class PodcastFeed(feedgenerator.Rss201rev2Feed):
                 attrs={'href': item['artwork_url']})
 
 
-def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, podcast_id: Optional[int] = None) -> str:
+def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, limit: int, source_type: str, domain: str, podcast_id: Optional[int] = None) -> str:
     from datetime import datetime as dt, timezone
     cursor = cnx.cursor()
     logging.basicConfig(level=logging.INFO)
@@ -5832,53 +5832,111 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, po
 
         username = get_value_from_rss_result(user, 'username', 'Unknown User')
 
-        # Build the query with correct case for each database type
-        if database_type == "postgresql":
-            base_query = '''
-                SELECT
-                    e.episodeid,
-                    e.podcastid,
-                    e.episodetitle,
-                    e.episodedescription,
-                    e.episodeurl,
-                    e.episodeartwork,
-                    e.episodepubdate,
-                    e.episodeduration,
-                    p.podcastname,
-                    p.author,
-                    p.artworkurl,
-                    p.description as podcastdescription
-                FROM "Episodes" e
-                JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                WHERE p.userid = %s
-            '''
-        else:
-            base_query = '''
-                SELECT
-                    e.EpisodeID,
-                    e.PodcastID,
-                    e.EpisodeTitle,
-                    e.EpisodeDescription,
-                    e.EpisodeURL,
-                    e.EpisodeArtwork,
-                    e.EpisodePubDate,
-                    e.EpisodeDuration,
-                    p.PodcastName,
-                    p.Author,
-                    p.ArtworkURL,
-                    p.Description as PodcastDescription
-                FROM Episodes e
-                JOIN Podcasts p ON e.PodcastID = p.PodcastID
-                WHERE p.UserID = %s
-            '''
+        if not source_type or source_type != "youtube":
+            # Build the query with correct case for each database type
+            if database_type == "postgresql":
+                base_query = '''
+                    SELECT
+                        e.episodeid,
+                        e.podcastid,
+                        e.episodetitle,
+                        e.episodedescription,
+                        CASE WHEN de.episodeid IS NULL 
+                                THEN e.episodeurl 
+                                ELSE CONCAT(CAST(%s AS TEXT), '/api/data/stream/', e.episodeid, '?api_key=', CAST(%s AS TEXT), '&user_id=', pp.userid) 
+                        END as episodeurl,
+                        e.episodeartwork,
+                        e.episodepubdate,
+                        e.episodeduration,
+                        pp.podcastname,
+                        pp.author,
+                        pp.artworkurl,
+                        pp.description as podcastdescription
+                    FROM "Episodes" e
+                    JOIN "Podcasts" pp ON e.podcastid = pp.podcastid
+                    LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid 
+                    WHERE pp.userid = %s
+                '''
+            else:
+                base_query = '''
+                    SELECT
+                        e.EpisodeID,
+                        e.PodcastID,
+                        e.EpisodeTitle,
+                        e.EpisodeDescription,
+                        CASE WHEN de.EpisodeID IS NULL 
+                                THEN e.EpisodeURL 
+                                ELSE CONCAT(CAST(%s AS TEXT), '/api/data/stream/', CAST(y.EpisodeID AS TEXT), '?api_key=', CAST(%s AS TEXT), '&user_id=', pp.UserID) 
+                        END as EpisodeURL,
+                        e.EpisodeArtwork,
+                        e.EpisodePubDate,
+                        e.EpisodeDuration,
+                        pp.PodcastName,
+                        pp.Author,
+                        pp.ArtworkURL,
+                        pp.Description as PodcastDescription
+                    FROM Episodes e
+                    JOIN Podcasts pp ON e.PodcastID = pp.PodcastID
+                    LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID
+                    WHERE pp.UserID = %s
+                '''
 
-        params = [user_id]
+        params = [domain, api_key, user_id]
         if podcast_id is not None:
-            base_query += f' AND {"p.podcastid" if database_type == "postgresql" else "p.PodcastID"} = %s'
+            base_query += f' AND {"pp.podcastid" if database_type == "postgresql" else "pp.PodcastID"} = %s'
             params.append(podcast_id)
 
-        base_query += f' ORDER BY {"e.episodepubdate" if database_type == "postgresql" else "e.EpisodePubDate"} DESC LIMIT 100'
 
+        if not source_type or source_type == "youtube":
+            if base_query:
+                base_query += "\nUNION ALL\n"
+
+            if database_type == "postgresql":
+                base_query += '''
+                    SELECT
+                        y.videoid as episodeid,
+                        y.podcastid,
+                        y.videotitle as episodetitle,
+                        y.videodescription as episodetitle,
+                        CONCAT(CAST(%s AS TEXT), '/api/data/stream/', CAST(y.videoid AS TEXT), '?api_key=', CAST(%s AS TEXT), '&type=youtube&user_id=', pv.userid) as episodeurl,
+                        y.thumbnailurl as episodeartwork,
+                        y.publishedat as episodepubdate,
+                        y.duration as episodeduration,
+                        pv.podcastname,
+                        pv.author,
+                        pv.artworkurl,
+                        pv.description as podcastdescription
+                    FROM "YouTubeVideos" y
+                    JOIN "Podcasts" pv on y.podcastid = pv.podcastid
+                    WHERE pv.userid = %s
+                '''
+            else:
+                base_query += '''
+                    SELECT
+                        y.VideoID as EpisodeID,
+                        y.PodcastID as PodcastID,
+                        y.VideoTitle as EpisodeTitle,
+                        y.VideoDescription as EpisodeDescription,
+                        CONCAT(CAST(%s AS TEXT), '/api/data/stream/', CAST(y.VideoID AS TEXT), '?api_key=', CAST(%s AS TEXT), '&type=youtube&user_id=', pv.UserID) as EpisodeURL,
+                        y.ThumbnailURL as EpisodeArtwork,
+                        y.PublishedAt as EpisodePubDate,
+                        y.Duration as EpisodeDuration,
+                        pv.PodcastName,
+                        pv.Author,
+                        pv.ArtworkURL,
+                        pv.Description as PodcastDescription
+                    FROM YouTubeVideos y
+                    JOIN Podcasts pv on y.PodcastID = pv.PodcastID
+                    WHERE pv.UserID = %s
+                '''
+            params += [domain, api_key, user_id]
+
+            if podcast_id is not None:
+                    base_query += f' AND {"y.podcastid" if database_type == "postgresql" else "y.PodcastID"} = %s'
+                    params.append(podcast_id)
+
+        base_query += f' ORDER BY 7 DESC LIMIT %s'
+        params.append(limit)
         cursor.execute(base_query, tuple(params))
         print('q1')
         # Get column names and create result mapping
@@ -6133,14 +6191,22 @@ def get_value_from_result(result, key_name: str, default=None):
     return default
 
 
-def id_from_api_key(cnx, database_type, passed_key):
+def id_from_api_key(cnx, database_type: str, passed_key: str, rss_feed: bool = False):
     cursor = cnx.cursor()
     try:
+        params = [passed_key]
         if database_type == "postgresql":
             query = 'SELECT userid FROM "APIKeys" WHERE apikey = %s'
+            if not rss_feed:
+                query += ' AND rssonly = %s'
+                params.append(rss_feed)
         else:
             query = "SELECT UserID FROM APIKeys WHERE APIKey = %s"
-        cursor.execute(query, (passed_key,))
+            if not rss_feed:
+                query += ' AND RssOnly = %s'
+                params.append(rss_feed)
+
+        cursor.execute(query, tuple(params))
         result = cursor.fetchone()
         logging.info(f"id_from_api_key result type: {type(result)}, value: {result}")
 

@@ -3456,11 +3456,12 @@ async def api_set_theme(user_id: int = Body(...), new_theme: str = Body(...), cn
                             detail="You can only set your own theme!")
 
 @app.post("/api/data/create_api_key")
-async def api_create_api_key(user_id: int = Body(..., embed=True), cnx=Depends(get_database_connection),
+async def api_create_api_key(user_id: int = Body(..., embed=True), rssonly: bool = Body(..., embed=True), cnx=Depends(get_database_connection),
                              api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-    if is_valid_key:
-        new_api_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if user_id == key_id or is_web_key:
+        new_api_key = database_functions.functions.create_api_key(cnx, database_type, user_id, rssonly)
         return {"api_key": new_api_key}
     else:
         raise HTTPException(status_code=403,
@@ -5477,7 +5478,7 @@ async def stream_episode(
     cnx=Depends(get_database_connection),
     api_key: str = Query(..., alias='api_key'),
     user_id: int = Query(..., alias='user_id'),
-    source_type: str = Query(None, alias='type')  # Add source type parameter
+    source_type: str = Query(None, alias='type')
 ):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
@@ -5752,16 +5753,24 @@ async def toggle_rss_feeds_endpoint(
 
 @app.get("/api/feed/{user_id}")
 async def get_user_feed(
+    request: Request,
     user_id: int,
     api_key: str,  # Now a query parameter
+    limit: int = 100,
     podcast_id: Optional[int] = None,
+    source_type: str = Query(None, alias='type'),
     cnx=Depends(get_database_connection)
 ):
     """Get RSS feed for all podcasts or a specific podcast"""
     print(f'user: {user_id}, api: {api_key}')
     try:
+        if reverse_proxy == "True":
+            domain = f'{proxy_protocol}://{proxy_host}'
+        else:
+            domain = f'{request.url.scheme}://{request.url.hostname}'
+        
         # Use id_from_api_key to verify the API key from query param
-        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key, rss_feed=True)
         if not key_id:
             raise HTTPException(status_code=403, detail="Invalid API key")
 
@@ -5770,6 +5779,9 @@ async def get_user_feed(
             cnx,
             user_id,
             api_key,
+            limit,
+            source_type,
+            domain,
             podcast_id
         )
         return Response(
@@ -5962,8 +5974,8 @@ def process_youtube_channel(podcast_id: int, channel_id: str, feed_cutoff: int):
 async def subscribe_to_youtube_channel(
     channel_id: str,
     user_id: int,
-    feed_cutoff: int = 30,
     background_tasks: BackgroundTasks,
+    feed_cutoff: int = 30,
     cnx=Depends(get_database_connection),
     api_key: str = Depends(get_api_key_from_header)
 ):
