@@ -5962,8 +5962,8 @@ def process_youtube_channel(podcast_id: int, channel_id: str, feed_cutoff: int):
 async def subscribe_to_youtube_channel(
     channel_id: str,
     user_id: int,
-    feed_cutoff: int = 30,
     background_tasks: BackgroundTasks,
+    feed_cutoff: int = 30,
     cnx=Depends(get_database_connection),
     api_key: str = Depends(get_api_key_from_header)
 ):
