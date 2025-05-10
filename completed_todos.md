@@ -15,22 +15,11 @@ Major Version:
 
 - [] Maybe fix m1 issues
 - [] Freaking caching
-- [] Fix spacing of play button on shared episodes page
+- [x] Fix spacing of play button on shared episodes page
 - [] Issue with client builds
 - [] Finish validating every call
 - [] validate external pod sync platforms again
-- [] The below error happens on Honoring Juneteenth from Short Wave. Seems to happen when there's an episode that goes longer than the expected possible length
-web-dfc8f5ea375d11d5.js:1303 Uncaught TypeError: Failed to execute 'setPositionState' on 'MediaSession': The provided position cannot be greater than the duration.
-    at imports.wbg.__wbg_setPositionState_7d0ff2d40ff67a99 (web-dfc8f5ea375d11d5.js:1303:14)
-    at web-011fa146f76c80ea.wasm.__wbg_setPositionState_7d0ff2d40ff67a99 externref shim (web-dfc8f5ea375d11d5_bg.wasm:0x714b69)
-    at web-011fa146f76c80ea.wasm.yew::functional::hooks::use_effect::<impl yew::functional::Effect for core::cell::RefCell<yew::functional::hooks::use_effect::UseEffectBase<T,F,D>>>::rendered::h071244125e334c8d (web-dfc8f5ea375d11d5_bg.wasm:0x4adfe3)
-    at web-011fa146f76c80ea.wasm.<yew::html::component::lifecycle::CompStateInner<COMP> as yew::html::component::lifecycle::Stateful>::rendered::h0014c3112e44634c (web-dfc8f5ea375d11d5_bg.wasm:0x6c5ab0)
-    at web-011fa146f76c80ea.wasm.<yew::html::component::lifecycle::feat_csr::RenderedRunner as yew::scheduler::Runnable>::run::ha8c9b153e684a116 (web-dfc8f5ea375d11d5_bg.wasm:0x6db92f)
-    at web-011fa146f76c80ea.wasm.yew::scheduler::arch::start::{{closure}}::h3da5b4594b8c062f (web-dfc8f5ea375d11d5_bg.wasm:0x4f0186)
-    at web-011fa146f76c80ea.wasm.wasm_bindgen_futures::queue::QueueState::run_all::hdbb9d2250ee4ca7e (web-dfc8f5ea375d11d5_bg.wasm:0x651146)
-    at web-011fa146f76c80ea.wasm.wasm_bindgen_futures::queue::Queue::new::{{closure}}::h50ac1e5682bcc00e (web-dfc8f5ea375d11d5_bg.wasm:0x70ba1c)
-    at web-011fa146f76c80ea.wasm.<dyn core::ops::function::FnMut<(/A,)>+Output = R as wasm_bindgen::closure::WasmClosure>::describe::invoke::h0d9f20b668d119ee (https://pinepods.collinpendleton.com/web-dfc8f5ea375d11d5_bg.wasm)
-    at web-011fa146f76c80ea.wasm.closure155 externref shim (web-dfc8f5ea375d11d5_bg.wasm:0x70e01e)
+- [x] The below error happens on Honoring Juneteenth from Short Wave. Seems to happen when there's an episode that goes longer than the expected possible length
 - [x] Add youtube feed retention time setting onto settings for each pod
 - [x] Finish custom pod notifications
 - [x] Validate that mysql and postgres upgrade correctly

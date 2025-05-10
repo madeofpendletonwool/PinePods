@@ -213,16 +213,16 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
         print(f"Checking for feed URL: {podcast_values['pod_feed_url']}")
 
         if result is not None:
-            # Print more details for debugging
-            print(f"Matched podcast - ID: {result[0]}, Name: {result[1]}, URL: {result[2]}")
-
-            # Get the podcast ID
+            # Print more details for debugging - handle both dict and tuple
             if isinstance(result, dict):
+                print(f"Matched podcast - ID: {result['podcastid']}, Name: {result['podcastname']}, URL: {result['feedurl']}")
                 podcast_id = result['podcastid']
             elif isinstance(result, tuple):
+                print(f"Matched podcast - ID: {result[0]}, Name: {result[1]}, URL: {result[2]}")
                 podcast_id = result[0]
             else:
-                podcast_id = result
+                print(f"Unexpected result type: {type(result)}")
+                podcast_id = result  # Fallback for scalar result
 
             # Add this check right before calling add_episodes in the "if result is not None:" block
             if database_type == "postgresql":
@@ -235,7 +235,14 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
             # Check if there are any episodes for this podcast
             cursor.execute(episode_count_query, (podcast_id,))
             episode_count_result = cursor.fetchone()
-            episode_count = episode_count_result[0] if isinstance(episode_count_result, tuple) else episode_count_result
+
+            # Handle both dict and tuple for episode count result
+            if isinstance(episode_count_result, dict):
+                episode_count = episode_count_result.get('count', episode_count_result.get('COUNT(*)', 0))
+            elif isinstance(episode_count_result, tuple):
+                episode_count = episode_count_result[0]
+            else:
+                episode_count = episode_count_result
 
             # If there are no episodes but the podcast has a non-zero count, reset it to 0
             if episode_count == 0:
@@ -247,7 +254,14 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
 
                 cursor.execute(podcast_count_query, (podcast_id,))
                 podcast_count_result = cursor.fetchone()
-                podcast_count = podcast_count_result[0] if isinstance(podcast_count_result, tuple) else podcast_count_result
+
+                # Handle both dict and tuple for podcast count result
+                if isinstance(podcast_count_result, dict):
+                    podcast_count = podcast_count_result.get('episodecount', podcast_count_result.get('EpisodeCount', 0))
+                elif isinstance(podcast_count_result, tuple):
+                    podcast_count = podcast_count_result[0]
+                else:
+                    podcast_count = podcast_count_result
 
                 # If the podcast has a non-zero count but no episodes, reset it
                 if podcast_count > 0:
@@ -258,9 +272,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
             # Now proceed with add_episodes as normal
             first_episode_id = add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'],
                                             podcast_values['pod_artwork'], False, username, password, user_id)
-
             print("Episodes added for existing podcast")
-
             # Return both IDs like we do for new podcasts
             return podcast_id, first_episode_id
 

@@ -145,7 +145,7 @@ jobs:
         run: |
           cd web/src-tauri
           cat tauri.conf.json
-          export RUSTFLAGS="--cfg=web_sys_unstable_apis"
+          export RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\""
           cargo tauri build
           pwd
           ls

@@ -698,6 +698,7 @@ pub struct ContextButtonProps {
 pub fn context_button(props: &ContextButtonProps) -> Html {
     let dropdown_open = use_state(|| false);
     let (post_state, post_dispatch) = use_store::<AppState>();
+    let (_ui_state, _ui_dispatch) = use_store::<UIState>();
     let api_key = post_state
         .auth_details
         .as_ref()
@@ -1314,6 +1315,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             wasm_bindgen_futures::spawn_local(future);
         })
     };
+
+    #[cfg(not(feature = "server_build"))]
+    let ui_dispatch = _ui_dispatch.clone();
 
     #[cfg(not(feature = "server_build"))]
     let on_remove_locally_downloaded_episode = {
