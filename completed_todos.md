@@ -14,7 +14,7 @@ Major Version:
 0.7.8
 
 - [] Maybe fix m1 issues
-- [] Freaking caching
+- [x] Freaking caching
 - [x] Fix spacing of play button on shared episodes page
 - [] Issue with client builds
 - [] Finish validating every call

@@ -157,7 +157,7 @@ jobs:
         run: |
           cd web/src-tauri
           Get-Content tauri.conf.json
-          $env:RUSTFLAGS="--cfg=web_sys_unstable_apis"
+          $env:RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=`"wasm_js`""
           cargo tauri build
           ls target/release/bundle
         shell: pwsh
