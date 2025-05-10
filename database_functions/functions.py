@@ -10982,9 +10982,11 @@ def remove_podcast_from_opodsync(cnx, database_type, user_id, gpodder_url, gpodd
             cursor = cnx.cursor()
             try:
                 if database_type == "postgresql":
-                    podcast_query = 'SELECT "PodcastID" FROM "Podcasts" WHERE "FeedURL" = %s AND "UserID" = %s'
+                    # PostgreSQL: Quoted table names, unquoted lowercase column names
+                    podcast_query = 'SELECT podcastid FROM "Podcasts" WHERE feedurl = %s AND userid = %s'
                 else:  # MySQL or MariaDB
-                    podcast_query = "SELECT PodcastID FROM Podcasts WHERE FeedURL = %s AND UserID = %s"
+                    # MySQL/MariaDB: Quoted table and column names with proper case
+                    podcast_query = 'SELECT "PodcastID" FROM "Podcasts" WHERE "FeedURL" = %s AND "UserID" = %s'
 
                 cursor.execute(podcast_query, (podcast_url, user_id))
                 result = cursor.fetchone()
@@ -11002,7 +11004,17 @@ def remove_podcast_from_opodsync(cnx, database_type, user_id, gpodder_url, gpodd
 
                     # Now delete all related data to handle the foreign key constraints
                     if database_type == "postgresql":
-                        # DELETE FROM PLAYLIST CONTENTS - Add this first!
+                        # PostgreSQL: Quoted table names, unquoted lowercase column names
+                        delete_playlist_contents = 'DELETE FROM "PlaylistContents" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = %s)'
+                        delete_history = 'DELETE FROM "UserEpisodeHistory" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = %s)'
+                        delete_downloaded = 'DELETE FROM "DownloadedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = %s)'
+                        delete_saved = 'DELETE FROM "SavedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = %s)'
+                        delete_queue = 'DELETE FROM "EpisodeQueue" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = %s)'
+                        delete_episodes = 'DELETE FROM "Episodes" WHERE podcastid = %s'
+                        delete_podcast = 'DELETE FROM "Podcasts" WHERE podcastid = %s'
+                        update_user_stats = 'UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = %s'
+                    else:  # MySQL or MariaDB
+                        # MySQL/MariaDB: Quoted table and column names with proper case
                         delete_playlist_contents = 'DELETE FROM "PlaylistContents" WHERE "EpisodeID" IN (SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s)'
                         delete_history = 'DELETE FROM "UserEpisodeHistory" WHERE "EpisodeID" IN (SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s)'
                         delete_downloaded = 'DELETE FROM "DownloadedEpisodes" WHERE "EpisodeID" IN (SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s)'
@@ -11011,16 +11023,6 @@ def remove_podcast_from_opodsync(cnx, database_type, user_id, gpodder_url, gpodd
                         delete_episodes = 'DELETE FROM "Episodes" WHERE "PodcastID" = %s'
                         delete_podcast = 'DELETE FROM "Podcasts" WHERE "PodcastID" = %s'
                         update_user_stats = 'UPDATE "UserStats" SET "PodcastsAdded" = "PodcastsAdded" - 1 WHERE "UserID" = %s'
-                    else:  # MySQL or MariaDB
-                        # DELETE FROM PLAYLIST CONTENTS - Add this first!
-                        delete_playlist_contents = "DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-                        delete_history = "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-                        delete_downloaded = "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-                        delete_saved = "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-                        delete_queue = "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-                        delete_episodes = "DELETE FROM Episodes WHERE PodcastID = %s"
-                        delete_podcast = "DELETE FROM Podcasts WHERE PodcastID = %s"
-                        update_user_stats = "UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = %s"
 
                     # Execute the deletion statements in order
                     try:

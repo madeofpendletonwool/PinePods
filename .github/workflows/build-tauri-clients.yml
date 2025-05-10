@@ -77,7 +77,7 @@ jobs:
 
       - uses: hecrj/setup-rust-action@v2
         with:
-          rust-version: 1.81
+          rust-version: 1.86
           targets: wasm32-unknown-unknown
 
       # Install cargo-binstall for macOS runners using direct download
