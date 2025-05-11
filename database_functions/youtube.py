@@ -10,6 +10,26 @@ from bs4 import BeautifulSoup
 import time
 import random
 from database_functions import functions
+from enum import IntFlag
+
+# see https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/postprocessor/sponsorblock.py#L21
+class SponsorBlockCategories(IntFlag):
+    sponsor = 1 << 0  # 1
+    intro = 1 << 1    # 2
+    outro = 1 << 2    # 4
+    selfpromo = 1 << 3  # 8
+    preview = 1 << 4    # 16
+    filler = 1 << 5     # 32
+    interaction = 1 << 6  # 64
+    music_offtopic = 1 << 7  # 128
+    
+    def bitfield_to_list(categories: int) -> list[str]:
+        return [category.name for category in SponsorBlockCategories if categories & category]
+
+def duration_filter(info, *, incomplete):
+    duration = info.get('duration')
+    if duration and duration < 60:
+        return 'The video is too short'
 
 
 async def get_channel_info(channel_id: str) -> Dict:
@@ -64,7 +84,7 @@ async def get_channel_info(channel_id: str) -> Dict:
             detail=f"Error fetching channel info: {str(e)}"
         )
 
-def download_youtube_audio(video_id: str, output_path: str):
+def download_youtube_audio(video_id: str, output_path: str, sponsorblock_categories: int, min_duration_seconds: int):
     """Download audio for a YouTube video"""
     # Remove .mp3 extension if present to prevent double extension
     if output_path.endswith('.mp3'):
@@ -72,20 +92,28 @@ def download_youtube_audio(video_id: str, output_path: str):
     else:
         base_path = output_path
 
+    post_processors = [{
+        'key': 'FFmpegExtractAudio',
+        'preferredcodec': 'mp3',
+    }]
+
+    if len(sponsorblock_categories) > 0:
+        post_processors.append({
+            'key': 'SponsorBlock',
+            'categories': SponsorBlockCategories.bitfield_to_list(sponsorblock_categories)
+        })
+
     ydl_opts = {
         'format': 'bestaudio/best',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-        }],
+        'postprocessors': post_processors,
         'outtmpl': base_path,
-        'ignoreerrors': True,  # Add this to not fail on individual errors
+        'match_filters': [ duration_filter ]
     }
     with YoutubeDL(ydl_opts) as ydl:
         ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
 
 
-def process_youtube_videos(database_type, podcast_id: int, channel_id: str, cnx, feed_cutoff: int):
+def process_youtube_videos(database_type, podcast_id: int, channel_id: str, cnx, feed_cutoff: int, sponsorblock_categories: int, min_duration_seconds: int):
     """Background task to process videos and download audio"""
 
     logging.basicConfig(level=logging.INFO)
@@ -109,6 +137,7 @@ def process_youtube_videos(database_type, podcast_id: int, channel_id: str, cnx,
             'no_warnings': True,
             'extract_flat': True,  # Fast initial fetch
             'ignoreerrors': True,
+            'match_filters': [ duration_filter ]
         }
 
         logger.info("Initializing YouTube-DL with options:")
@@ -142,7 +171,6 @@ def process_youtube_videos(database_type, podcast_id: int, channel_id: str, cnx,
 
                 try:
                     video_id = entry['id']
-                    logger.info(f"\nProcessing video ID: {video_id}")
 
                     # Get upload date using BS4 method
                     published = functions.get_video_date(video_id)
@@ -150,11 +178,17 @@ def process_youtube_videos(database_type, podcast_id: int, channel_id: str, cnx,
                         logger.warning(f"Could not determine upload date for video {video_id}, skipping")
                         continue
 
-                    logger.info(f"Video publish date: {published}")
 
                     if published <= cutoff_date:
                         logger.info(f"Video {video_id} from {published} is too old, stopping processing")
                         break
+
+                    if entry.get('duration', 0) < min_duration_seconds:
+                        logger.info(f"Video {video_id} has a duration of {entry.get('duration', 0)} seconds, which is less than the minimum duration of {min_duration_seconds} seconds, skipping")
+                        continue
+        
+                    logger.info(f"\nProcessing video ID: {video_id}")
+                    logger.info(f"Video publish date: {published}")
 
                     video_data = {
                         'id': video_id,
@@ -225,7 +259,7 @@ def process_youtube_videos(database_type, podcast_id: int, channel_id: str, cnx,
                         continue
 
                     logger.info("Starting download...")
-                    download_youtube_audio(video['id'], output_path)
+                    download_youtube_audio(video['id'], output_path, sponsorblock_categories, min_duration_seconds)
                     logger.info("Download completed successfully")
                     successful_downloads += 1
 

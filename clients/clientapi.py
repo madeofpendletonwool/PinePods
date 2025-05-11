@@ -1529,6 +1529,8 @@ class PodcastValuesModel(BaseModel):
     pod_website: str
     pod_explicit: bool
     user_id: int
+    min_duration_seconds: int = Field(default=0)
+    feed_cutoff: int = Field(default=0)
 
 class AddPodcastRequest(BaseModel):
     podcast_values: PodcastValuesModel
@@ -1567,7 +1569,8 @@ async def api_add_podcast(
             database_type,
             request.podcast_values.dict(),
             request.podcast_values.user_id,
-            30,
+            request.podcast_values.feed_cutoff,
+            request.podcast_values.min_duration_seconds,
             podcast_index_id=request.podcast_index_id
         )
 
@@ -2761,14 +2764,16 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
         if database_type == "postgresql":
             cursor.execute('''
                 SELECT "podcastid", "podcastname", "feedurl", "artworkurl", "autodownload",
-                       "username", "password", "isyoutubechannel", "feedcutoffdays"
+                       "username", "password", "isyoutubechannel", "feedcutoffdays", 
+                       "sponsorblockcategories", "mindurationseconds"
                 FROM "Podcasts"
                 WHERE "userid" = %s
             ''', (user_id,))
         else:
             cursor.execute('''
                 SELECT PodcastID, PodcastName, FeedURL, ArtworkURL, AutoDownload,
-                       Username, Password, IsYouTubeChannel, FeedCutoffDays
+                       Username, Password, IsYouTubeChannel, FeedCutoffDays, 
+                       SponsorBlockCategories, mindurationseconds
                 FROM Podcasts
                 WHERE UserID = %s
             ''', (user_id,))
@@ -2790,6 +2795,8 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                     password = podcast['password']
                     is_youtube = podcast['isyoutubechannel']
                     feed_cutoff = podcast['feedcutoffdays']
+                    sponsorblock_categories = podcast['sponsorblockcategories']
+                    min_duration_seconds = podcast['mindurationseconds']
                 else:
                     podcast_id = podcast['PodcastID']
                     podcast_name = podcast['PodcastName']
@@ -2800,8 +2807,10 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                     password = podcast['Password']
                     is_youtube = podcast['IsYouTubeChannel']
                     feed_cutoff = podcast['FeedCutoffDays']
+                    sponsorblock_categories = podcast['SponsorBlockCategories']
+                    min_duration_seconds = podcast['mindurationseconds']
             else:
-                podcast_id, podcast_name, feed_url, artwork_url, auto_download, username, password, is_youtube, feed_cutoff = podcast
+                podcast_id, podcast_name, feed_url, artwork_url, auto_download, username, password, is_youtube, feed_cutoff, sponsorblock_categories, min_duration_seconds = podcast
 
             await websocket.send_json({
                 "progress": {
@@ -2824,7 +2833,9 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                         podcast_id,
                         channel_id,
                         cnx,
-                        feed_cutoff
+                        feed_cutoff,
+                        sponsorblock_categories,
+                        min_duration_seconds
                     )
                     if youtube_episodes:
                         for episode in youtube_episodes:
@@ -2840,6 +2851,8 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                         feed_url,
                         artwork_url,
                         auto_download,
+                        feed_cutoff,
+                        min_duration_seconds,
                         username,
                         password,
                         True # websocket
@@ -5341,6 +5354,8 @@ def check_valid_feed(feed_url: str, username: Optional[str] = None, password: Op
 class CustomPodcast(BaseModel):
     feed_url: str
     user_id: int
+    feed_cutoff: int = 0
+    min_duration_seconds: int = 0
     username: Optional[str] = None
     password: Optional[str] = None
 
@@ -5367,7 +5382,7 @@ async def add_custom_pod(data: CustomPodcast, cnx=Depends(get_database_connectio
 
         # Assuming the rest of the code processes the podcast correctly
         try:
-            podcast_id = database_functions.functions.add_custom_podcast(database_type, cnx, data.feed_url, data.user_id, data.username, data.password)
+            podcast_id = database_functions.functions.add_custom_podcast(database_type, cnx, data.feed_url, data.feed_cutoff, data.min_duration_seconds, data.user_id, data.username, data.password)
             print('custom done')
             podcast_details = database_functions.functions.get_podcast_details(database_type, cnx, data.user_id, podcast_id)
             return {"data": podcast_details}
@@ -6254,10 +6269,10 @@ async def search_youtube_channels(
             detail=f"Error searching YouTube channels: {str(e)}"
         )
 
-def process_youtube_channel(podcast_id: int, channel_id: str, feed_cutoff: int):
+def process_youtube_channel(podcast_id: int, channel_id: str, feed_cutoff: int, sponsorblock_categories: int, min_duration_seconds: int):
     cnx = create_database_connection()
     try:
-        database_functions.youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx, feed_cutoff)
+        database_functions.youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx, feed_cutoff, sponsorblock_categories, min_duration_seconds)
     finally:
         close_database_connection(cnx)
 
@@ -6267,6 +6282,8 @@ async def subscribe_to_youtube_channel(
     user_id: int,
     background_tasks: BackgroundTasks,
     feed_cutoff: int = 30,
+    sponsorblock_categories: int = 0,
+    min_duration_seconds: int = 0,
     cnx=Depends(get_database_connection),
     api_key: str = Depends(get_api_key_from_header)
 ):
@@ -6290,10 +6307,10 @@ async def subscribe_to_youtube_channel(
         channel_info = await database_functions.youtube.get_channel_info(channel_id)
 
         logger.info("Adding channel to database")
-        podcast_id = database_functions.functions.add_youtube_channel(cnx, database_type, channel_info, user_id, feed_cutoff)
+        podcast_id = database_functions.functions.add_youtube_channel(cnx, database_type, channel_info, user_id, feed_cutoff, sponsorblock_categories, min_duration_seconds)
 
         logger.info(f"Starting background task for podcast_id {podcast_id}")
-        background_tasks.add_task(process_youtube_channel, podcast_id, channel_id, feed_cutoff)
+        background_tasks.add_task(process_youtube_channel, podcast_id, channel_id, feed_cutoff, sponsorblock_categories, min_duration_seconds)
 
         logger.info("Subscription completed successfully")
         return {
