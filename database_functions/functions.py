@@ -1019,9 +1019,9 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
 
         # Release date - use current time as fallback if parsing fails
         try:
-            parsed_release_datetime = dateutil.parser.parse(entry.published).strftime("%Y-%m-%d %H:%M:%S")
+            parsed_release_datetime = dateutil.parser.parse(entry.published)
         except (AttributeError, ValueError):
-            parsed_release_datetime = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            parsed_release_datetime = datetime.datetime.now()
 
         if feed_cutoff > 0:
             cutoff_date = datetime.datetime.now(datetime.timezone.utc) - timedelta(days=feed_cutoff)
@@ -1124,7 +1124,7 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
 
-        cursor.execute(episode_insert_query, (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_datetime, parsed_duration))
+        cursor.execute(episode_insert_query, (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_datetime.strftime("%Y-%m-%d %H:%M:%S"), parsed_duration))
         print('episodes inserted')
         update_episode_count(cnx, database_type, cursor, podcast_id)
         # Get the EpisodeID for the newly added episode
