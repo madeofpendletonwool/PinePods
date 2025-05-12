@@ -14,6 +14,7 @@ Major Version:
 0.7.8
 
 - [x] Potential home page issue on tauri app
+- [] External gpodder api message shows internal gpodder message
 - [] Local download issue tauri app
 - [x] Freaking caching
 - [x] Fix spacing of play button on shared episodes page
@@ -50,6 +51,7 @@ pinepods-1  | Error setting up platlists: 1061 (42000): Duplicate key name 'idx_
 - [] Categories come over pretty broken from gpodder sync
 - [] If a second pod comes in with the same episode url as another in the same podcast. Delete the first entry and apply the second
 - [] Shownotes button doesn't work with YT video
+- [] display episode progress on episode page. Ensure clicking play takes you to the listened location
 
 
 

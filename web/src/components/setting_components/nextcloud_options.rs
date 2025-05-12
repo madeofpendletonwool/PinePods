@@ -1548,6 +1548,22 @@ pub fn sync_options() -> Html {
         })
     };
 
+    let determine_sync_type = || {
+        if *is_internal_gpodder_enabled {
+            "internal_gpodder"
+        } else if *sync_type == "nextcloud" {
+            "nextcloud"
+        } else if *is_sync_configured && *sync_type == "gpodder" {
+            if (*nextcloud_url) == "http://localhost:8042" {
+                "internal_gpodder"
+            } else {
+                "external_gpodder"
+            }
+        } else {
+            "none"
+        }
+    };
+
     // Determine if sync options should be hidden
     let should_hide_sync_options = *is_internal_gpodder_enabled || *sync_type == "nextcloud";
 
@@ -1758,33 +1774,32 @@ pub fn sync_options() -> Html {
             // }
 
             {
-                if should_hide_sync_options {
+                if should_hide_sync_options || (determine_sync_type() == "external_gpodder" && *is_sync_configured) {
+                    let current_sync_type = determine_sync_type();
                     html! {
                         <div class="mb-6 p-4 border rounded-lg bg-gray-50 dark:bg-gray-800">
                             <div class="flex items-center mb-2">
                                 <i class="ph ph-info text-blue-500 mr-2 text-lg"></i>
                                 <h4 class="font-medium">
                                     {
-                                        if *is_internal_gpodder_enabled {
-                                            "Internal gpodder API is active"
-                                        } else if *sync_type == "nextcloud" {
-                                            "About Nextcloud Sync"
-                                        } else {
-                                            "Sync Information"
+                                        match current_sync_type {
+                                            "internal_gpodder" => "Internal gpodder API is active",
+                                            "nextcloud" => "About Nextcloud Sync",
+                                            "external_gpodder" => "About External GPodder Sync",
+                                            _ => "Sync Information"
                                         }
                                     }
                                 </h4>
                             </div>
                             <div class="ml-6">
                                 {
-                                    if *is_internal_gpodder_enabled {
-                                        html! {
+                                    match current_sync_type {
+                                        "internal_gpodder" => html! {
                                             <p class="text-sm">
-                                                {"External sync options (Nextcloud and GPodder server) are hidden while the internal gpodder API is enabled. Disable the internal API to configure external sync options."}
+                                                {"External sync options (Nextcloud and GPodder server) are hidden while the internal gpodder API is enabled. Disable the internal API to configure an external sync option."}
                                             </p>
-                                        }
-                                    } else if *sync_type == "nextcloud" {
-                                        html! {
+                                        },
+                                        "nextcloud" => html! {
                                             <>
                                                 <p class="text-sm mb-2">
                                                     {"Nextcloud sync is currently active. After enabling, it can take up to 20 minutes to fully synchronize all your podcasts."}
@@ -1799,11 +1814,34 @@ pub fn sync_options() -> Html {
                                                     {"If you need more advanced sync features (like device management), consider using the internal gpodder API or a dedicated gpodder server instead."}
                                                 </p>
                                             </>
-                                        }
-                                    } else {
-                                        html! {
+                                        },
+                                        "external_gpodder" => html! {
+                                            <>
+                                                <p class="text-sm mb-2">
+                                                    {"External GPodder sync is currently active with "}<span class="font-medium">{(*nextcloud_url).clone()}</span>{"."}
+                                                </p>
+                                                <p class="text-sm mb-2">
+                                                    {"GPodder sync provides full podcast synchronization capabilities including managing multiple devices, subscription synchronization, and episode status tracking."}
+                                                </p>
+                                                <p class="text-sm mb-2">
+                                                    {"You can use this sync method with any gpodder-compatible clients like AntennaPod, and others."}
+                                                </p>
+                                                {
+                                                    if *is_sync_configured && *sync_type == "gpodder" {
+                                                        html! {
+                                                            <p class="text-sm mt-3">
+                                                                {"You can access advanced device management options by clicking the 'Show Extra Options' button below."}
+                                                            </p>
+                                                        }
+                                                    } else {
+                                                        html! {}
+                                                    }
+                                                }
+                                            </>
+                                        },
+                                        _ => html! {
                                             <p class="text-sm">
-                                                {"External sync options are currently not available."}
+                                                {"No sync method is currently configured. You can choose from internal gpodder API, Nextcloud, or an external GPodder server."}
                                             </p>
                                         }
                                     }
