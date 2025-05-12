@@ -72,10 +72,6 @@ fn process_timecodes(
     let has_episode_info =
         episode_props.episode_url.is_some() && episode_props.episode_title.is_some();
 
-    if !has_episode_info {
-        log_debug("Missing episode info for full timecode functionality");
-    }
-
     // Create a temporary div to hold the HTML content
     let document = match web_sys::window().and_then(|win| win.document()) {
         Some(doc) => doc,

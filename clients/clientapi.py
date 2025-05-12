@@ -2976,6 +2976,15 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove podcasts for other users")
 
+    # First, get the podcast ID and check if it's a YouTube channel
+    podcast_id = database_functions.functions.get_podcast_id_by_name_and_url(cnx, database_type, data.podcast_name, data.podcast_url, data.user_id)
+
+    if podcast_id is None:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+
+    # Check if this is a YouTube channel
+    is_youtube = database_functions.functions.check_if_youtube_channel(cnx, database_type, podcast_id)
+
     # Track if episodes have been handled
     episodes_handled = False
 
@@ -2987,7 +2996,7 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
         gpodder_settings = database_functions.functions.get_gpodder_settings(database_type, cnx, data.user_id)
 
         logging.info('em cloud')
-        podcast_feed = database_functions.functions.get_podcast_feed_by_id(cnx, database_type, data.podcast_id)
+        podcast_feed = database_functions.functions.get_podcast_feed_by_id(cnx, database_type, podcast_id)
         gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, data.user_id)
 
         # Get the correct device name, matching what we do in add_podcast
@@ -3006,11 +3015,14 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
                 gpodder_token, podcast_feed, device_name
             )
 
-    # Only run remove_podcast if episodes weren't already handled by gpodder sync
+    # Only run the appropriate remove function if episodes weren't already handled by gpodder sync
     if not episodes_handled:
-        database_functions.functions.remove_podcast(cnx, database_type, data.podcast_name, data.podcast_url, data.user_id)
+        if is_youtube:
+            database_functions.functions.remove_youtube_channel(cnx, database_type, podcast_id, data.user_id)
+        else:
+            database_functions.functions.remove_podcast(cnx, database_type, data.podcast_name, data.podcast_url, data.user_id)
     else:
-        logging.info('skipping remove_podcast - already handled by gpodder sync')
+        logging.info('skipping remove - already handled by gpodder sync')
 
     return {"success": True}
 
