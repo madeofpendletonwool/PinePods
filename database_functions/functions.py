@@ -271,7 +271,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
 
             # Now proceed with add_episodes as normal
             first_episode_id = add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'],
-                                            podcast_values['pod_artwork'], False, username, password, user_id)
+                                            podcast_values['pod_artwork'], False, username, password)
             print("Episodes added for existing podcast")
             # Return both IDs like we do for new podcasts
             return podcast_id, first_episode_id
@@ -366,7 +366,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
 
             # Add episodes to database
             first_episode_id = add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'],
-                                          podcast_values['pod_artwork'], False, username, password, user_id)  # Add user_id here
+                                          podcast_values['pod_artwork'], False, username, password)  # Add user_id here
             print("episodes added")
             return podcast_id, first_episode_id
 
@@ -2977,7 +2977,7 @@ def refresh_pods(cnx, database_type):
                 youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx, feed_cutoff)
             else:
                 add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url,
-                           auto_download, username, password, user_id)
+                           auto_download, username, password)
         except Exception as e:
             print(f"Error refreshing podcast {podcast_id}: {str(e)}")
             continue
@@ -7632,6 +7632,46 @@ def check_youtube_channel(cnx, database_type, user_id, channel_name, channel_url
         cursor.execute(query, (user_id, channel_name, channel_url))
         return cursor.fetchone() is not None
     except Exception:
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+
+def check_youtube_channel_id(cnx, database_type, podcast_id):
+    cursor = None
+    try:
+        cursor = cnx.cursor()
+        if database_type == "postgresql":
+            query = '''
+                SELECT IsYouTubeChannel
+                FROM "Podcasts"
+                WHERE PodcastID = %s
+                AND IsYouTubeChannel = TRUE
+            '''
+        else:  # MySQL or MariaDB
+            query = '''
+                SELECT IsYouTubeChannel
+                FROM Podcasts
+                WHERE PodcastID = %s
+                AND IsYouTubeChannel = TRUE
+            '''
+        cursor.execute(query, (podcast_id,))
+        result = cursor.fetchone()
+
+        # Handle different return types from different database adapters
+        if result is not None:
+            # If result is a dict (psycopg2 with dict cursor)
+            if isinstance(result, dict):
+                return True
+            # If result is a tuple/list (standard cursor)
+            elif isinstance(result, (tuple, list)):
+                return True
+            # Any other non-None result means we found a match
+            else:
+                return True
+        return False
+    except Exception as e:
+        print(f"Error checking if YouTube channel: {e}")
         return False
     finally:
         if cursor:

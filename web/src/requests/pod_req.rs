@@ -138,7 +138,7 @@ pub struct FirstEpisodeInfo {
 pub struct PodcastStatusResponse {
     pub success: bool,
     pub podcast_id: i32,
-    pub first_episode_id: Option<Vec<FirstEpisodeInfo>>,
+    pub first_episode_id: i32,
 }
 
 pub async fn call_add_podcast(

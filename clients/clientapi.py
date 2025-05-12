@@ -815,12 +815,38 @@ async def fetch_podcast_feed(podcast_feed: str = Query(...), cnx=Depends(get_dat
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
 
-    # Fetch the podcast feed data using httpx
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        response = await client.get(podcast_feed)
-        response.raise_for_status()  # Will raise an httpx.HTTPStatusError for 4XX/5XX responses
-        return Response(content=response.content, media_type="application/xml")
+    # Define headers that mimic a standard web browser
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Cache-Control": "max-age=0"
+    }
 
+    # Fetch the podcast feed data using httpx with browser-like headers
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.get(podcast_feed, headers=headers)
+            response.raise_for_status()  # Will raise an httpx.HTTPStatusError for 4XX/5XX responses
+            return Response(content=response.content, media_type="application/xml")
+    except httpx.HTTPStatusError as e:
+        # Add more detailed error logging
+        error_message = f"HTTP error fetching podcast feed: {str(e)}"
+        logging.error(error_message)
+        raise HTTPException(status_code=e.response.status_code,
+                           detail=f"Failed to fetch podcast feed: {e.response.reason_phrase}")
+    except httpx.RequestError as e:
+        # Handle request errors (network issues, etc.)
+        error_message = f"Request error fetching podcast feed: {str(e)}"
+        logging.error(error_message)
+        raise HTTPException(status_code=500, detail="Failed to fetch podcast feed due to network or connection issues")
+    except Exception as e:
+        # Catch-all for other unexpected errors
+        error_message = f"Unexpected error fetching podcast feed: {str(e)}"
+        logging.error(error_message)
+        raise HTTPException(status_code=500, detail="Unexpected error occurred while fetching the podcast feed")
 
 NAMESPACE = {'podcast': 'https://podcastindex.org/namespace/1.0'}
 
@@ -2715,7 +2741,6 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                         feed_url,
                         artwork_url,
                         auto_download,
-                        feed_cutoff,
                         username,
                         password,
                         True # websocket
@@ -2977,13 +3002,13 @@ async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depe
                                 detail="You are not authorized to remove podcasts for other users")
 
     # First, get the podcast ID and check if it's a YouTube channel
-    podcast_id = database_functions.functions.get_podcast_id_by_name_and_url(cnx, database_type, data.podcast_name, data.podcast_url, data.user_id)
+    podcast_id = database_functions.functions.get_podcast_id(database_type, cnx, data.user_id, data.podcast_url, data.podcast_name)
 
     if podcast_id is None:
         raise HTTPException(status_code=404, detail="Podcast not found")
 
     # Check if this is a YouTube channel
-    is_youtube = database_functions.functions.check_if_youtube_channel(cnx, database_type, podcast_id)
+    is_youtube = database_functions.functions.check_youtube_channel_id(cnx, database_type, podcast_id)
 
     # Track if episodes have been handled
     episodes_handled = False
