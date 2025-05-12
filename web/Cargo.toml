@@ -74,7 +74,7 @@ ammonia = "4.1.0"
 pulldown-cmark = "0.13.0"
 async-std = "1.13.1"
 argon2 = { version = "0.5.3", features = ["std", "password-hash"] } 
-getrandom = { version = "0.3.2", features = ["wasm_js"] }
+getrandom = { version = "0.3.3", features = ["wasm_js"] }
 rand = "0.9.1"
 regex = "1.11.1"
 js-sys = "0.3.77"
