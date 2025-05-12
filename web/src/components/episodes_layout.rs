@@ -1740,19 +1740,13 @@ pub fn episode_layout() -> Html {
                                 let call_podcast_id = response_body.podcast_id;
                                 callback_podcast_id.set(call_podcast_id);
 
-                                // Handle first episode ID differently since it's now Option<Vec<FirstEpisodeInfo>>
-                                if let Some(first_episodes) = &response_body.first_episode_id {
-                                    if !first_episodes.is_empty() {
-                                        // Get the episode_id from the first episode in the array
-                                        let episode_id = Some(first_episodes[0].episode_id);
-
-                                        // Use the episode_id for further processing if needed
-                                        app_dispatch.reduce_mut(|state| {
-                                            state.selected_episode_id = episode_id;
-                                            // Now this matches Option<i32>
-                                        });
-                                    }
-                                }
+                                // Since first_episode_id is now an i32, use it directly
+                                let episode_id = Some(response_body.first_episode_id);
+                                // Use the episode_id for further processing
+                                app_dispatch.reduce_mut(|state| {
+                                    state.selected_episode_id = episode_id;
+                                    // Now this matches Option<i32>
+                                });
 
                                 // Fetch episodes - podcast_id is now direct i32
                                 match call_get_podcast_episodes(

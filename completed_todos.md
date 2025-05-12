@@ -13,13 +13,21 @@ Major Version:
 
 0.7.8
 
+- [x] Potential home page issue on tauri app
+- [] Local download issue tauri app
+- [x] Freaking caching
+- [x] Fix spacing of play button on shared episodes page
+- [x] Issue with client builds
+- [] Finish validating every call
+- [x] When YT video is added we need to increment episode count
+- [] validate external pod sync platforms again
+- [x] Validate YT feed deletion
+- [x] The below error happens on Honoring Juneteenth from Short Wave. Seems to happen when there's an episode that goes longer than the expected possible length
 - [x] Add youtube feed retention time setting onto settings for each pod
 - [x] Finish custom pod notifications
 - [x] Validate that mysql and postgres upgrade correctly
-- [] Finish validating every call
 - [x] Weirdly different color trash can on podcast page
 - [x] gpodder pod deletions on local
-- [] validate external pod sync platforms again
 - [x] Fixed issue with time created by timestamps
 - [x] Fix up warnings
 - [x] Fixed up issue with saved search, and queue pages not showing saved and queued status correct in context button sometimes
@@ -29,7 +37,7 @@ Major Version:
 pinepods-1  | Error creating GPodder tables: 1061 (42000): Duplicate key name 'idx_gpodder_devices_userid'
 pinepods-1  | Error setting up platlists: 1061 (42000): Duplicate key name 'idx_playlists_userid'
 - [x] ^ On mariadb startup
-- [] Maybe fix m1 issues
+- [x] postgres pod removals while pod sync enabled
 
 
 - [] If you click shownotes while on the episode page of the episode that's currently playing it will take you to an empty screen
@@ -40,6 +48,10 @@ pinepods-1  | Error setting up platlists: 1061 (42000): Duplicate key name 'idx_
 - [] Need to finish long press finger hold on each episode. Thsi should include fixing highlighting issues
 - [] Episode Count for youtube videos doesn't work (doesn't get updated)
 - [] Categories come over pretty broken from gpodder sync
+- [] If a second pod comes in with the same episode url as another in the same podcast. Delete the first entry and apply the second
+- [] Shownotes button doesn't work with YT video
+
+
 
 0.7.7
 

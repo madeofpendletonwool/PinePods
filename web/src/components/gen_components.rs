@@ -48,26 +48,27 @@ pub struct FallbackImageProps {
     pub onclick: Option<Callback<MouseEvent>>,
     #[prop_or_default]
     pub style: Option<String>,
+    #[prop_or("lazy".to_string())]
+    pub loading: String,
+    #[prop_or("async".to_string())]
+    pub decoding: String,
 }
 
 #[function_component(FallbackImage)]
 pub fn fallback_image(props: &FallbackImageProps) -> Html {
     let image_ref = use_node_ref();
-    // Add a unique timestamp parameter to the src URL to prevent caching
-    let src_with_timestamp =
-        use_state(|| format!("{}?t={}", props.src.clone(), js_sys::Date::now()));
     let has_error = use_state(|| false);
     let (state, _dispatch) = use_store::<AppState>();
-    let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    let server_name_str = server_name.unwrap();
 
-    // Update src_with_timestamp when props.src changes
+    // Just use the original src without timestamps
+    let image_src = use_state(|| props.src.clone());
+
+    // Update src when props.src changes
     {
-        let src_with_timestamp = src_with_timestamp.clone();
+        let image_src = image_src.clone();
         let props_src = props.src.clone();
-
         use_effect_with(props_src, move |src| {
-            src_with_timestamp.set(format!("{}?t={}", src, js_sys::Date::now()));
+            image_src.set(src.clone());
             || ()
         });
     }
@@ -75,24 +76,24 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     // Create a proxied URL from the original source
     let proxied_url = {
         let original_url = props.src.clone();
+        let server_name = state.auth_details.as_ref().unwrap().server_name.clone();
         format!(
-            "{}/api/proxy/image?url={}&t={}",
-            server_name_str,
-            urlencoding::encode(&original_url),
-            js_sys::Date::now() // Add timestamp to proxy URL too
+            "{}/api/proxy/image?url={}",
+            server_name,
+            urlencoding::encode(&original_url)
         )
     };
 
     // Handle image load error
     let on_error = {
         let has_error = has_error.clone();
-        let src_with_timestamp = src_with_timestamp.clone();
+        let image_src = image_src.clone();
         let proxied_url = proxied_url.clone();
         Callback::from(move |_: Event| {
             if !*has_error {
                 // First error - switch to proxied URL
                 has_error.set(true);
-                src_with_timestamp.set(proxied_url.clone());
+                image_src.set(proxied_url.clone());
                 web_sys::console::log_1(
                     &format!("Image load failed, switching to proxy: {}", proxied_url).into(),
                 );
@@ -106,10 +107,13 @@ pub fn fallback_image(props: &FallbackImageProps) -> Html {
     html! {
         <img
             ref={image_ref}
-            src={(*src_with_timestamp).clone()}
+            src={(*image_src).clone()}
             alt={props.alt.clone()}
             class={props.class.clone().unwrap_or_default()}
             style={props.style.clone().unwrap_or_default()}
+            loading={props.loading.clone()}
+            decoding={props.decoding.clone()}
+            // DON'T ADD CROSSORIGIN - it causes CORS issues with NPR's CDN
             onerror={on_error}
             onclick={onclick}
         />
@@ -698,6 +702,7 @@ pub struct ContextButtonProps {
 pub fn context_button(props: &ContextButtonProps) -> Html {
     let dropdown_open = use_state(|| false);
     let (post_state, post_dispatch) = use_store::<AppState>();
+    let (_ui_state, _ui_dispatch) = use_store::<UIState>();
     let api_key = post_state
         .auth_details
         .as_ref()
@@ -1314,6 +1319,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             wasm_bindgen_futures::spawn_local(future);
         })
     };
+
+    #[cfg(not(feature = "server_build"))]
+    let ui_dispatch = _ui_dispatch.clone();
 
     #[cfg(not(feature = "server_build"))]
     let on_remove_locally_downloaded_episode = {

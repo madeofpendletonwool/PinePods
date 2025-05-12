@@ -213,16 +213,16 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
         print(f"Checking for feed URL: {podcast_values['pod_feed_url']}")
 
         if result is not None:
-            # Print more details for debugging
-            print(f"Matched podcast - ID: {result[0]}, Name: {result[1]}, URL: {result[2]}")
-
-            # Get the podcast ID
+            # Print more details for debugging - handle both dict and tuple
             if isinstance(result, dict):
+                print(f"Matched podcast - ID: {result['podcastid']}, Name: {result['podcastname']}, URL: {result['feedurl']}")
                 podcast_id = result['podcastid']
             elif isinstance(result, tuple):
+                print(f"Matched podcast - ID: {result[0]}, Name: {result[1]}, URL: {result[2]}")
                 podcast_id = result[0]
             else:
-                podcast_id = result
+                print(f"Unexpected result type: {type(result)}")
+                podcast_id = result  # Fallback for scalar result
 
             # Add this check right before calling add_episodes in the "if result is not None:" block
             if database_type == "postgresql":
@@ -235,7 +235,14 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
             # Check if there are any episodes for this podcast
             cursor.execute(episode_count_query, (podcast_id,))
             episode_count_result = cursor.fetchone()
-            episode_count = episode_count_result[0] if isinstance(episode_count_result, tuple) else episode_count_result
+
+            # Handle both dict and tuple for episode count result
+            if isinstance(episode_count_result, dict):
+                episode_count = episode_count_result.get('count', episode_count_result.get('COUNT(*)', 0))
+            elif isinstance(episode_count_result, tuple):
+                episode_count = episode_count_result[0]
+            else:
+                episode_count = episode_count_result
 
             # If there are no episodes but the podcast has a non-zero count, reset it to 0
             if episode_count == 0:
@@ -247,7 +254,14 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
 
                 cursor.execute(podcast_count_query, (podcast_id,))
                 podcast_count_result = cursor.fetchone()
-                podcast_count = podcast_count_result[0] if isinstance(podcast_count_result, tuple) else podcast_count_result
+
+                # Handle both dict and tuple for podcast count result
+                if isinstance(podcast_count_result, dict):
+                    podcast_count = podcast_count_result.get('episodecount', podcast_count_result.get('EpisodeCount', 0))
+                elif isinstance(podcast_count_result, tuple):
+                    podcast_count = podcast_count_result[0]
+                else:
+                    podcast_count = podcast_count_result
 
                 # If the podcast has a non-zero count but no episodes, reset it
                 if podcast_count > 0:
@@ -257,10 +271,8 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
 
             # Now proceed with add_episodes as normal
             first_episode_id = add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'],
-                                            podcast_values['pod_artwork'], False, username, password, user_id)
-
+                                            podcast_values['pod_artwork'], False, username, password)
             print("Episodes added for existing podcast")
-
             # Return both IDs like we do for new podcasts
             return podcast_id, first_episode_id
 
@@ -354,7 +366,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
 
             # Add episodes to database
             first_episode_id = add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'],
-                                          podcast_values['pod_artwork'], False, username, password, user_id)  # Add user_id here
+                                          podcast_values['pod_artwork'], False, username, password)  # Add user_id here
             print("episodes added")
             return podcast_id, first_episode_id
 
@@ -1031,15 +1043,72 @@ def parse_duration(duration_string: str) -> int:
             h, m, s = map(int, parts)
             return h * 3600 + m * 60 + s
 
-# Function to update the episode count
-def update_episode_count(cnx, database_type, cursor, podcast_id):
-    if database_type == "postgresql":
-        update_query = 'UPDATE "Podcasts" SET EpisodeCount = EpisodeCount + 1 WHERE PodcastID = %s'
-    else:  # MySQL or MariaDB
-        update_query = "UPDATE Podcasts SET EpisodeCount = EpisodeCount + 1 WHERE PodcastID = %s"
+def update_episode_count(cnx, database_type, podcast_id):
+    """Recalculate and update episode count for a podcast"""
+    cursor = cnx.cursor()
+    print(f'Updating episode count for podcast {podcast_id}')
+    try:
+        # Count both regular episodes and YouTube videos
+        if database_type == "postgresql":
+            episode_count_query = 'SELECT COUNT(*) FROM "Episodes" WHERE PodcastID = %s'
+            video_count_query = 'SELECT COUNT(*) FROM "YouTubeVideos" WHERE PodcastID = %s'
+            update_query = 'UPDATE "Podcasts" SET EpisodeCount = %s WHERE PodcastID = %s'
+            verify_query = 'SELECT EpisodeCount FROM "Podcasts" WHERE PodcastID = %s'
+        else:  # MySQL or MariaDB
+            episode_count_query = 'SELECT COUNT(*) FROM Episodes WHERE PodcastID = %s'
+            video_count_query = 'SELECT COUNT(*) FROM YouTubeVideos WHERE PodcastID = %s'
+            update_query = "UPDATE Podcasts SET EpisodeCount = %s WHERE PodcastID = %s"
+            verify_query = 'SELECT EpisodeCount FROM Podcasts WHERE PodcastID = %s'
 
-    cursor.execute(update_query, (podcast_id,))
-    cnx.commit()
+        # Get episode count
+        cursor.execute(episode_count_query, (podcast_id,))
+        episode_result = cursor.fetchone()
+        episode_count = 0
+        if episode_result:
+            if isinstance(episode_result, tuple):
+                episode_count = episode_result[0]
+            elif isinstance(episode_result, dict):
+                episode_count = episode_result["count"]
+
+        # Get video count
+        cursor.execute(video_count_query, (podcast_id,))
+        video_result = cursor.fetchone()
+        video_count = 0
+        if video_result:
+            if isinstance(video_result, tuple):
+                video_count = video_result[0]
+            elif isinstance(video_result, dict):
+                video_count = video_result["count"]
+
+        # Total count
+        total_count = episode_count + video_count
+        print(f'Found {episode_count} episodes and {video_count} videos for podcast {podcast_id}')
+
+        # Update total count
+        cursor.execute(update_query, (total_count, podcast_id))
+        print(f'Updated total content count to {total_count} for podcast {podcast_id}')
+
+        # Verify the update
+        cursor.execute(verify_query, (podcast_id,))
+        verify_result = cursor.fetchone()
+        final_count = 0
+        if verify_result:
+            if isinstance(verify_result, tuple):
+                final_count = verify_result[0]
+            elif isinstance(verify_result, dict):
+                final_count = verify_result["episodecount"]
+
+        print(f'Verified content count for podcast {podcast_id}: {final_count}')
+
+        cnx.commit()
+        print(f'Successfully updated content count for podcast {podcast_id}')
+
+    except Exception as e:
+        print(f'Error updating content count for podcast {podcast_id}: {str(e)}')
+        cnx.rollback()
+        raise
+    finally:
+        cursor.close()
 
 def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, username=None, password=None, websocket=False):
     import feedparser
@@ -1181,7 +1250,7 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
 
         cursor.execute(episode_insert_query, (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_datetime, parsed_duration))
         print('episodes inserted')
-        update_episode_count(cnx, database_type, cursor, podcast_id)
+        update_episode_count(cnx, database_type, podcast_id)
         # Get the EpisodeID for the newly added episode
         if cursor.rowcount > 0:
             print(f"Added episode '{parsed_title}'")
@@ -1345,10 +1414,169 @@ def add_youtube_videos(cnx, database_type: str, podcast_id: int, videos: list):
                 video['duration'],
                 video['id']
             ))
+        # Update episode count for each video added
+        update_episode_count(cnx, database_type, podcast_id)
+
         cnx.commit()
     except Exception as e:
         cnx.rollback()
         raise e
+
+def cleanup_old_youtube_videos(cnx, database_type):
+    """Periodically cleanup old YouTube videos for all channels"""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    cursor = cnx.cursor()
+
+    try:
+        # Get all YouTube channels and their cutoff settings
+        if database_type == "postgresql":
+            query = """
+                SELECT PodcastID, FeedCutoffDays
+                FROM "Podcasts"
+                WHERE IsYouTubeChannel = TRUE AND FeedCutoffDays > 0
+            """
+        else:
+            query = """
+                SELECT PodcastID, FeedCutoffDays
+                FROM Podcasts
+                WHERE IsYouTubeChannel = TRUE AND FeedCutoffDays > 0
+            """
+
+        cursor.execute(query)
+        channels = cursor.fetchall()
+
+        for channel in channels:
+            podcast_id = channel[0] if isinstance(channel, tuple) else channel["podcastid"] if database_type == "postgresql" else channel["PodcastID"]
+            feed_cutoff = channel[1] if isinstance(channel, tuple) else channel["feedcutoffdays"] if database_type == "postgresql" else channel["FeedCutoffDays"]
+
+            cutoff_date = datetime.datetime.now(datetime.timezone.utc) - timedelta(days=feed_cutoff)
+            logger.info(f"Cleaning up channel {podcast_id} with cutoff {feed_cutoff} days")
+
+            remove_old_youtube_videos(cnx, database_type, podcast_id, cutoff_date)
+
+    except Exception as e:
+        logger.error(f"Error during YouTube cleanup: {str(e)}")
+        raise e
+    finally:
+        cursor.close()
+
+def remove_old_youtube_videos(cnx, database_type: str, podcast_id: int, cutoff_date: datetime.datetime):
+    """Remove YouTube videos older than cutoff date and their associated files"""
+    import os
+    import logging
+
+    logger = logging.getLogger(__name__)
+    cursor = cnx.cursor()
+
+    try:
+        # First, get all videos older than cutoff date
+        if database_type == "postgresql":
+            query = """
+                SELECT VideoID, YouTubeVideoID, VideoURL
+                FROM "YouTubeVideos"
+                WHERE PodcastID = %s AND PublishedAt < %s
+            """
+        else:
+            query = """
+                SELECT VideoID, YouTubeVideoID, VideoURL
+                FROM YouTubeVideos
+                WHERE PodcastID = %s AND PublishedAt < %s
+            """
+
+        cursor.execute(query, (podcast_id, cutoff_date))
+        old_videos = cursor.fetchall()
+
+        if not old_videos:
+            logger.info(f"No videos to remove for podcast {podcast_id}")
+            return
+
+        # Extract the VideoID list for database cleanup
+        video_ids = []
+        youtube_video_ids = []
+
+        for video in old_videos:
+            if isinstance(video, tuple):
+                video_id, youtube_video_id, _ = video
+            else:
+                if database_type == "postgresql":
+                    video_id = video["videoid"]
+                    youtube_video_id = video["youtubevideoid"]
+                else:
+                    video_id = video["VideoID"]
+                    youtube_video_id = video["YouTubeVideoID"]
+
+            video_ids.append(video_id)
+            youtube_video_ids.append(youtube_video_id)
+
+            # Delete the MP3 file
+            file_paths = [
+                f"/opt/pinepods/downloads/youtube/{youtube_video_id}.mp3",
+                f"/opt/pinepods/downloads/youtube/{youtube_video_id}.mp3.mp3"  # In case of double extension
+            ]
+
+            for file_path in file_paths:
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        logger.info(f"Deleted file: {file_path}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete file {file_path}: {str(e)}")
+
+        # Now clean up all references to these videos in other tables
+        if video_ids:  # Only proceed if we have videos to delete
+            # Create placeholders for the IN clause
+            placeholders = ','.join(['%s'] * len(video_ids))
+
+            if database_type == "postgresql":
+                # Delete from all related tables
+                delete_playlist_contents = f'DELETE FROM "PlaylistContents" WHERE EpisodeID IN ({placeholders})'
+                delete_history = f'DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN ({placeholders})'
+                delete_downloaded = f'DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN ({placeholders})'
+                delete_saved = f'DELETE FROM "SavedEpisodes" WHERE EpisodeID IN ({placeholders})'
+                delete_queue = f'DELETE FROM "EpisodeQueue" WHERE EpisodeID IN ({placeholders})'
+                delete_videos = f'DELETE FROM "YouTubeVideos" WHERE VideoID IN ({placeholders})'
+            else:
+                # Delete from all related tables
+                delete_playlist_contents = f'DELETE FROM PlaylistContents WHERE EpisodeID IN ({placeholders})'
+                delete_history = f'DELETE FROM UserEpisodeHistory WHERE EpisodeID IN ({placeholders})'
+                delete_downloaded = f'DELETE FROM DownloadedEpisodes WHERE EpisodeID IN ({placeholders})'
+                delete_saved = f'DELETE FROM SavedEpisodes WHERE EpisodeID IN ({placeholders})'
+                delete_queue = f'DELETE FROM EpisodeQueue WHERE EpisodeID IN ({placeholders})'
+                delete_videos = f'DELETE FROM YouTubeVideos WHERE VideoID IN ({placeholders})'
+
+            # Execute all deletion statements
+            cursor.execute(delete_playlist_contents, video_ids)
+            logger.info(f"Deleted playlist content references for {cursor.rowcount} videos")
+
+            cursor.execute(delete_history, video_ids)
+            logger.info(f"Deleted history entries for {cursor.rowcount} videos")
+
+            cursor.execute(delete_downloaded, video_ids)
+            logger.info(f"Deleted downloaded entries for {cursor.rowcount} videos")
+
+            cursor.execute(delete_saved, video_ids)
+            logger.info(f"Deleted saved entries for {cursor.rowcount} videos")
+
+            cursor.execute(delete_queue, video_ids)
+            logger.info(f"Deleted queue entries for {cursor.rowcount} videos")
+
+            cursor.execute(delete_videos, video_ids)
+            logger.info(f"Deleted {cursor.rowcount} videos from YouTubeVideos table")
+
+            # Update episode count
+            update_episode_count(cnx, database_type, podcast_id)
+
+            cnx.commit()
+            logger.info(f"Successfully removed {len(video_ids)} old videos and all references for podcast {podcast_id}")
+
+    except Exception as e:
+        cnx.rollback()
+        logger.error(f"Error removing old YouTube videos for podcast {podcast_id}: {str(e)}")
+        raise e
+    finally:
+        cursor.close()
 
 def add_people_episodes(cnx, database_type, person_id: int, podcast_id: int, feed_url: str):
     import feedparser
@@ -1555,20 +1783,52 @@ def remove_youtube_channel_by_url(cnx, database_type, channel_name, channel_url,
                 AND UserID = %s
                 AND IsYouTubeChannel = TRUE
             '''
-
         cursor.execute(select_podcast_id, (channel_name, channel_url, user_id))
         result = cursor.fetchone()
-
         if result:
             podcast_id = result[0] if not isinstance(result, dict) else result.get('podcastid')
         else:
             raise ValueError(f"No YouTube channel found with name {channel_name}")
 
-        # Delete related data
+        # Get all video IDs for the podcast so we can delete the files
+        if database_type == "postgresql":
+            get_video_ids_query = 'SELECT YouTubeVideoID FROM "YouTubeVideos" WHERE PodcastID = %s'
+        else:  # MySQL or MariaDB
+            get_video_ids_query = "SELECT YouTubeVideoID FROM YouTubeVideos WHERE PodcastID = %s"
+
+        cursor.execute(get_video_ids_query, (podcast_id,))
+        video_ids = cursor.fetchall()
+
+        # Delete the MP3 files for each video
+        for video_id in video_ids:
+            if isinstance(video_id, tuple):
+                video_id_str = video_id[0]
+            else:  # dict
+                video_id_str = video_id["youtubevideoid"]
+
+            # Delete the MP3 file
+            file_paths = [
+                f"/opt/pinepods/downloads/youtube/{video_id_str}.mp3",
+                f"/opt/pinepods/downloads/youtube/{video_id_str}.mp3.mp3"  # In case of double extension
+            ]
+
+            for file_path in file_paths:
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        print(f"Deleted file: {file_path}")
+                    except Exception as e:
+                        print(f"Failed to delete file {file_path}: {str(e)}")
+
+        # Delete related data - now including all tables
         if database_type == "postgresql":
             delete_queries = [
+                ('DELETE FROM "PlaylistContents" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
                 ('DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
+                ('DELETE FROM "UserVideoHistory" WHERE VideoID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
                 ('DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
+                ('DELETE FROM "DownloadedVideos" WHERE VideoID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
+                ('DELETE FROM "SavedVideos" WHERE VideoID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
                 ('DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
                 ('DELETE FROM "EpisodeQueue" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)', (podcast_id,)),
                 ('DELETE FROM "YouTubeVideos" WHERE PodcastID = %s', (podcast_id,)),
@@ -1576,8 +1836,12 @@ def remove_youtube_channel_by_url(cnx, database_type, channel_name, channel_url,
             ]
         else:  # MySQL or MariaDB
             delete_queries = [
+                ("DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
                 ("DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
+                ("DELETE FROM UserVideoHistory WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
                 ("DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
+                ("DELETE FROM DownloadedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
+                ("DELETE FROM SavedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
                 ("DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
                 ("DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)", (podcast_id,)),
                 ("DELETE FROM YouTubeVideos WHERE PodcastID = %s", (podcast_id,)),
@@ -1592,10 +1856,9 @@ def remove_youtube_channel_by_url(cnx, database_type, channel_name, channel_url,
             query = 'UPDATE "UserStats" SET PodcastsAdded = GREATEST(PodcastsAdded - 1, 0) WHERE UserID = %s'
         else:  # MySQL or MariaDB
             query = "UPDATE UserStats SET PodcastsAdded = GREATEST(PodcastsAdded - 1, 0) WHERE UserID = %s"
-
         cursor.execute(query, (user_id,))
-        cnx.commit()
 
+        cnx.commit()
     except (psycopg.Error, mysql.connector.Error) as err:
         print(f"Database Error: {err}")
         cnx.rollback()
@@ -1762,31 +2025,75 @@ def remove_podcast_id(cnx, database_type, podcast_id, user_id):
 def remove_youtube_channel(cnx, database_type, podcast_id, user_id):
     cursor = cnx.cursor()
     try:
+        # First, get all video IDs for the podcast so we can delete the files
+        if database_type == "postgresql":
+            get_video_ids_query = 'SELECT YouTubeVideoID FROM "YouTubeVideos" WHERE PodcastID = %s'
+        else:  # MySQL or MariaDB
+            get_video_ids_query = "SELECT YouTubeVideoID FROM YouTubeVideos WHERE PodcastID = %s"
+
+        cursor.execute(get_video_ids_query, (podcast_id,))
+        video_ids = cursor.fetchall()
+
+        # Delete the MP3 files for each video
+        for video_id in video_ids:
+            if isinstance(video_id, tuple):
+                video_id_str = video_id[0]
+            else:  # dict
+                video_id_str = video_id["youtubevideoid"]
+
+            # Delete the MP3 file
+            file_paths = [
+                f"/opt/pinepods/downloads/youtube/{video_id_str}.mp3",
+                f"/opt/pinepods/downloads/youtube/{video_id_str}.mp3.mp3"  # In case of double extension
+            ]
+
+            for file_path in file_paths:
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        print(f"Deleted file: {file_path}")
+                    except Exception as e:
+                        print(f"Failed to delete file {file_path}: {str(e)}")
+
         # Delete from the related tables
         if database_type == "postgresql":
+            delete_playlist_contents = 'DELETE FROM "PlaylistContents" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
             delete_history = 'DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
+            delete_video_history = 'DELETE FROM "UserVideoHistory" WHERE VideoID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
             delete_downloaded = 'DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
+            delete_downloaded_videos = 'DELETE FROM "DownloadedVideos" WHERE VideoID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
+            delete_saved_videos = 'DELETE FROM "SavedVideos" WHERE VideoID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
             delete_saved = 'DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
             delete_queue = 'DELETE FROM "EpisodeQueue" WHERE EpisodeID IN (SELECT VideoID FROM "YouTubeVideos" WHERE PodcastID = %s)'
             delete_videos = 'DELETE FROM "YouTubeVideos" WHERE PodcastID = %s'
             delete_podcast = 'DELETE FROM "Podcasts" WHERE PodcastID = %s AND IsYouTubeChannel = TRUE'
             update_user_stats = 'UPDATE "UserStats" SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = %s'
         else:  # MySQL or MariaDB
+            delete_playlist_contents = "DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
             delete_history = "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
+            delete_video_history = "DELETE FROM UserVideoHistory WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
             delete_downloaded = "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
+            delete_downloaded_videos = "DELETE FROM DownloadedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
+            delete_saved_videos = "DELETE FROM SavedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
             delete_saved = "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
             delete_queue = "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = %s)"
             delete_videos = "DELETE FROM YouTubeVideos WHERE PodcastID = %s"
             delete_podcast = "DELETE FROM Podcasts WHERE PodcastID = %s AND IsYouTubeChannel = TRUE"
             update_user_stats = "UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = %s"
 
+        # Execute the deletion statements in order
+        cursor.execute(delete_playlist_contents, (podcast_id,))
         cursor.execute(delete_history, (podcast_id,))
+        cursor.execute(delete_video_history, (podcast_id,))
         cursor.execute(delete_downloaded, (podcast_id,))
+        cursor.execute(delete_downloaded_videos, (podcast_id,))
+        cursor.execute(delete_saved_videos, (podcast_id,))
         cursor.execute(delete_saved, (podcast_id,))
         cursor.execute(delete_queue, (podcast_id,))
         cursor.execute(delete_videos, (podcast_id,))
         cursor.execute(delete_podcast, (podcast_id,))
         cursor.execute(update_user_stats, (user_id,))
+
         cnx.commit()
     except (psycopg.Error, mysql.connector.Error) as err:
         print("Error: {}".format(err))
@@ -2670,7 +2977,7 @@ def refresh_pods(cnx, database_type):
                 youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx, feed_cutoff)
             else:
                 add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url,
-                           auto_download, username, password, user_id)
+                           auto_download, username, password)
         except Exception as e:
             print(f"Error refreshing podcast {podcast_id}: {str(e)}")
             continue
@@ -7330,6 +7637,46 @@ def check_youtube_channel(cnx, database_type, user_id, channel_name, channel_url
         if cursor:
             cursor.close()
 
+def check_youtube_channel_id(cnx, database_type, podcast_id):
+    cursor = None
+    try:
+        cursor = cnx.cursor()
+        if database_type == "postgresql":
+            query = '''
+                SELECT IsYouTubeChannel
+                FROM "Podcasts"
+                WHERE PodcastID = %s
+                AND IsYouTubeChannel = TRUE
+            '''
+        else:  # MySQL or MariaDB
+            query = '''
+                SELECT IsYouTubeChannel
+                FROM Podcasts
+                WHERE PodcastID = %s
+                AND IsYouTubeChannel = TRUE
+            '''
+        cursor.execute(query, (podcast_id,))
+        result = cursor.fetchone()
+
+        # Handle different return types from different database adapters
+        if result is not None:
+            # If result is a dict (psycopg2 with dict cursor)
+            if isinstance(result, dict):
+                return True
+            # If result is a tuple/list (standard cursor)
+            elif isinstance(result, (tuple, list)):
+                return True
+            # Any other non-None result means we found a match
+            else:
+                return True
+        return False
+    except Exception as e:
+        print(f"Error checking if YouTube channel: {e}")
+        return False
+    finally:
+        if cursor:
+            cursor.close()
+
 def reset_password_create_code(cnx, database_type, user_email):
     reset_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     cursor = cnx.cursor()
@@ -9165,9 +9512,15 @@ def update_fresh_releases_playlist(cnx, database_type):
                 WHERE Name = 'Fresh Releases' AND IsSystemPlaylist = 1
             """)
 
-        playlist_id = cursor.fetchone()[0]
-        if not playlist_id:
+        playlist_result = cursor.fetchone()
+        if not playlist_result:
             raise Exception("Fresh Releases playlist not found in system")
+
+        # Handle both tuple and dict results
+        if isinstance(playlist_result, tuple):
+            playlist_id = playlist_result[0]
+        else:  # dict
+            playlist_id = playlist_result["playlistid"]
 
         print(f"Updating Fresh Releases playlist (ID: {playlist_id})")
 
@@ -9189,8 +9542,13 @@ def update_fresh_releases_playlist(cnx, database_type):
 
         # Process each user
         for user in users:
-            user_id = user[0]
-            timezone = user[1] or 'UTC'  # Default to UTC if timezone is not set
+            # Handle both tuple and dict results for user data
+            if isinstance(user, tuple):
+                user_id = user[0]
+                timezone = user[1] or 'UTC'
+            else:  # dict
+                user_id = user["userid"]
+                timezone = user["timezone"] or 'UTC'
 
             print(f"Processing user {user_id} with timezone {timezone}")
 
@@ -9223,7 +9581,12 @@ def update_fresh_releases_playlist(cnx, database_type):
 
             # Add episodes to playlist if not already added
             for episode in recent_episodes:
-                episode_id = episode[0]
+                # Handle both tuple and dict results for episode data
+                if isinstance(episode, tuple):
+                    episode_id = episode[0]
+                else:  # dict
+                    episode_id = episode["episodeid"]
+
                 if episode_id not in added_episodes:
                     if database_type == "postgresql":
                         cursor.execute("""
@@ -10982,9 +11345,11 @@ def remove_podcast_from_opodsync(cnx, database_type, user_id, gpodder_url, gpodd
             cursor = cnx.cursor()
             try:
                 if database_type == "postgresql":
-                    podcast_query = 'SELECT "PodcastID" FROM "Podcasts" WHERE "FeedURL" = %s AND "UserID" = %s'
+                    # PostgreSQL: Quoted table names, unquoted lowercase column names
+                    podcast_query = 'SELECT podcastid FROM "Podcasts" WHERE feedurl = %s AND userid = %s'
                 else:  # MySQL or MariaDB
-                    podcast_query = "SELECT PodcastID FROM Podcasts WHERE FeedURL = %s AND UserID = %s"
+                    # MySQL/MariaDB: Quoted table and column names with proper case
+                    podcast_query = 'SELECT "PodcastID" FROM "Podcasts" WHERE "FeedURL" = %s AND "UserID" = %s'
 
                 cursor.execute(podcast_query, (podcast_url, user_id))
                 result = cursor.fetchone()
@@ -11002,7 +11367,17 @@ def remove_podcast_from_opodsync(cnx, database_type, user_id, gpodder_url, gpodd
 
                     # Now delete all related data to handle the foreign key constraints
                     if database_type == "postgresql":
-                        # DELETE FROM PLAYLIST CONTENTS - Add this first!
+                        # PostgreSQL: Quoted table names, unquoted lowercase column names
+                        delete_playlist_contents = 'DELETE FROM "PlaylistContents" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = %s)'
+                        delete_history = 'DELETE FROM "UserEpisodeHistory" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = %s)'
+                        delete_downloaded = 'DELETE FROM "DownloadedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = %s)'
+                        delete_saved = 'DELETE FROM "SavedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = %s)'
+                        delete_queue = 'DELETE FROM "EpisodeQueue" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = %s)'
+                        delete_episodes = 'DELETE FROM "Episodes" WHERE podcastid = %s'
+                        delete_podcast = 'DELETE FROM "Podcasts" WHERE podcastid = %s'
+                        update_user_stats = 'UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = %s'
+                    else:  # MySQL or MariaDB
+                        # MySQL/MariaDB: Quoted table and column names with proper case
                         delete_playlist_contents = 'DELETE FROM "PlaylistContents" WHERE "EpisodeID" IN (SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s)'
                         delete_history = 'DELETE FROM "UserEpisodeHistory" WHERE "EpisodeID" IN (SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s)'
                         delete_downloaded = 'DELETE FROM "DownloadedEpisodes" WHERE "EpisodeID" IN (SELECT "EpisodeID" FROM "Episodes" WHERE "PodcastID" = %s)'
@@ -11011,16 +11386,6 @@ def remove_podcast_from_opodsync(cnx, database_type, user_id, gpodder_url, gpodd
                         delete_episodes = 'DELETE FROM "Episodes" WHERE "PodcastID" = %s'
                         delete_podcast = 'DELETE FROM "Podcasts" WHERE "PodcastID" = %s'
                         update_user_stats = 'UPDATE "UserStats" SET "PodcastsAdded" = "PodcastsAdded" - 1 WHERE "UserID" = %s'
-                    else:  # MySQL or MariaDB
-                        # DELETE FROM PLAYLIST CONTENTS - Add this first!
-                        delete_playlist_contents = "DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-                        delete_history = "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-                        delete_downloaded = "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-                        delete_saved = "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-                        delete_queue = "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = %s)"
-                        delete_episodes = "DELETE FROM Episodes WHERE PodcastID = %s"
-                        delete_podcast = "DELETE FROM Podcasts WHERE PodcastID = %s"
-                        update_user_stats = "UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = %s"
 
                     # Execute the deletion statements in order
                     try:
