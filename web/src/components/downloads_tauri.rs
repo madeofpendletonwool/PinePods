@@ -544,6 +544,64 @@ pub fn downloads() -> Html {
         html! {}
     };
 
+    web_sys::console::log_1(
+        &format!(
+            "Podcast feed count: {:?}",
+            state
+                .podcast_feed_return
+                .as_ref()
+                .and_then(|pf| pf.pods.as_ref().map(|pods| pods.len()))
+                .unwrap_or(0)
+        )
+        .into(),
+    );
+    web_sys::console::log_1(
+        &format!(
+            "Downloaded episodes count: {:?}",
+            state
+                .downloaded_episodes
+                .as_ref()
+                .map(|de| de.episodes.len())
+                .unwrap_or(0)
+        )
+        .into(),
+    );
+    if let Some(download_eps) = state.downloaded_episodes.clone() {
+        let grouped = group_episodes_by_podcast(download_eps.episodes.clone());
+        web_sys::console::log_1(&format!("Grouped podcast count: {:?}", grouped.len()).into());
+        web_sys::console::log_1(
+            &format!(
+                "Grouped podcast IDs: {:?}",
+                grouped.keys().collect::<Vec<_>>()
+            )
+            .into(),
+        );
+
+        if let Some(podcast_feed) = state.podcast_feed_return.as_ref() {
+            if let Some(pods) = podcast_feed.pods.as_ref() {
+                web_sys::console::log_1(
+                    &format!(
+                        "Podcast IDs in feed: {:?}",
+                        pods.iter().map(|p| p.podcastid).collect::<Vec<_>>()
+                    )
+                    .into(),
+                );
+
+                // Check matches
+                for podcast in pods.iter() {
+                    let has_episodes = grouped.get(&podcast.podcastid).is_some();
+                    web_sys::console::log_1(
+                        &format!(
+                            "Podcast ID {} has episodes: {}",
+                            podcast.podcastid, has_episodes
+                        )
+                        .into(),
+                    );
+                }
+            }
+        }
+    }
+
     html! {
         <>
         <div class="main-container">
@@ -610,7 +668,7 @@ pub fn downloads() -> Html {
                                 // Render "No Recent Episodes Found" if episodes list is empty
                                 empty_message(
                                     "No Downloaded Episodes Found",
-                                    "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download the the server and show up here!"
+                                    "This is where local episode downloads will appear. To download an episode you can open the context menu on an episode and select Local Download. It will then download to your device locally and show up here!"
                                 )
                             } else {
                                 let grouped_episodes = group_episodes_by_podcast(int_download_eps.episodes);
