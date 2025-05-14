@@ -112,10 +112,11 @@ jobs:
             --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set-env.outputs.IMAGE_TAG }}-arm64
 
           docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.set-env.outputs.IMAGE_TAG }}
-            - name: Create and push Docker manifest for the latest tag
-              if: needs.set-env.outputs.CREATE_LATEST == 'true'
-              run: |
-                docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
-                  --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64 \
-                  --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
-                docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+      - name: Create and push Docker manifest for the latest tag
+        if: needs.set-env.outputs.CREATE_LATEST == 'true'
+        run: |
+          docker manifest create ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-amd64 \
+            --amend ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest-arm64
+          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest

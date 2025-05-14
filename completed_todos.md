@@ -42,19 +42,6 @@ pinepods-1  | Error setting up platlists: 1061 (42000): Duplicate key name 'idx_
 - [x] postgres pod removals while pod sync enabled
 
 
-- [] If you click shownotes while on the episode page of the episode that's currently playing it will take you to an empty screen
-- [] After deleting podcasts searching for them in the same session still thinks they're Added. Reloading fixes. So, state BS
-- [] Downloading on certain pages is weirdly skippy - It does download fine though. Just status
-- [] Main podcast page needs to return saved, downloaded, and queued status
-- [] Main Podcast page doesn't display saved, queued, downloaded episode status. This is due to the return function not returning those values
-- [] Need to finish long press finger hold on each episode. Thsi should include fixing highlighting issues
-- [] Episode Count for youtube videos doesn't work (doesn't get updated)
-- [] Categories come over pretty broken from gpodder sync
-- [] If a second pod comes in with the same episode url as another in the same podcast. Delete the first entry and apply the second
-- [] Shownotes button doesn't work with YT video
-- [] display episode progress on episode page. Ensure clicking play takes you to the listened location
-
-
 
 0.7.7
 
