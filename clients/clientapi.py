@@ -2581,17 +2581,13 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
     print(f"Running refresh process for user in job {user_id}")
     try:
         # First get total count of podcasts
-        print("Creating cursor")
         cursor = cnx.cursor()
-        print("Cursor created")
         if database_type == "postgresql":
-            print("Executing count query")
             cursor.execute('''
                 SELECT COUNT(*), array_agg("podcastname")
                 FROM "Podcasts"
                 WHERE "userid" = %s
             ''', (user_id,))
-            print("Count query executed")
         else:
             cursor.execute('''
                 SELECT COUNT(*), GROUP_CONCAT(PodcastName)
@@ -2599,13 +2595,11 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                 WHERE UserID = %s
             ''', (user_id,))
         count_result = cursor.fetchone()
-        print(f"Count result: {count_result}")
         # Handle both dictionary and tuple results
         if isinstance(count_result, dict):
             total_podcasts = count_result['count'] if count_result else 0
         else:
             total_podcasts = count_result[0] if count_result else 0
-        print(f"Total podcasts: {total_podcasts}")
         await websocket.send_json({
             "progress": {
                 "current": 0,
