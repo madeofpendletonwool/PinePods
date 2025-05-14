@@ -620,10 +620,8 @@ async def api_podcast_details(podcast_id: str = Query(...), cnx=Depends(get_data
     is_web_key = api_key == base_webkey.web_key
 
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-    print('called the id')
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == user_id or is_web_key:
-        print('getting details')
         details = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
         print(f'got details {details}')
         if details is None:
@@ -1046,11 +1044,8 @@ async def fetch_podcasting_2_data(
 
     try:
         # Get all the metadata
-        print('getting meta')
         episode_metadata = database_functions.functions.get_episode_metadata(database_type, cnx, episode_id, user_id)
-        print('getting id')
         podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
-        print('getting deets')
         podcast_feed = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
 
         episode_url = episode_metadata['episodeurl']

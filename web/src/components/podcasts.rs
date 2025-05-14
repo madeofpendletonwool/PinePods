@@ -222,10 +222,6 @@ fn render_podcasts(
                 <div class="podcast-grid">
                     {podcasts.iter().enumerate().map(|(index, podcast)| {
                         // Log each grid podcast for debugging
-                        web_sys::console::log_1(&format!("Rendering grid podcast #{}: {} with artwork: {:?}",
-                                                       index,
-                                                       podcast.podcastname,
-                                                       podcast.artworkurl).into());
 
                         // Create a key for this podcast
                         let podcast_key = format!("grid-podcast-{}-{}", podcast.podcastid, podcast.podcastname);

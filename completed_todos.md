@@ -13,15 +13,16 @@ Major Version:
 
 0.7.8
 
-- [x] Potential home page issue on tauri app
 - [] External gpodder api message shows internal gpodder message
-- [] Local download issue tauri app
+- [] Potential issue with user refresh
+- [x] Potential home page issue on tauri app
+- [x] Local download issue tauri app
 - [x] Freaking caching
 - [x] Fix spacing of play button on shared episodes page
 - [x] Issue with client builds
-- [] Finish validating every call
+- [x] Finish validating every call
 - [x] When YT video is added we need to increment episode count
-- [] validate external pod sync platforms again
+- [x] validate external pod sync platforms again
 - [x] Validate YT feed deletion
 - [x] The below error happens on Honoring Juneteenth from Short Wave. Seems to happen when there's an episode that goes longer than the expected possible length
 - [x] Add youtube feed retention time setting onto settings for each pod

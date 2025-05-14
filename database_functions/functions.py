@@ -2502,21 +2502,17 @@ def return_youtube_episodes(database_type, cnx, user_id, podcast_id):
     return rows or None
 
 def get_podcast_details(database_type, cnx, user_id, podcast_id):
-    print('getting details')
     if isinstance(podcast_id, tuple):
         pod_id, episode_id = podcast_id
     else:
         pod_id = podcast_id
         episode_id = None
-    print('got podid')
 
     if database_type == "postgresql":
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
     else:
         cursor = cnx.cursor(dictionary=True)
-
-    print(f"pulling pod deets for podcast ID: {pod_id}, episode ID: {episode_id}")
 
     if database_type == "postgresql":
         query = """
@@ -2666,7 +2662,6 @@ def delete_episode(database_type, cnx, episode_id, user_id, is_youtube=False):
                     "WHERE Episodes.EpisodeID = %s AND Podcasts.UserID = %s"
                 )
 
-        logging.debug(f"Executing query: {query} with ID: {episode_id} and UserID: {user_id}")
         cursor.execute(query, (episode_id, user_id))
         result = cursor.fetchone()
         logging.debug(f"Query result: {result}")
@@ -3814,7 +3809,6 @@ def get_episode_ids_for_podcast(cnx, database_type, podcast_id):
     else:  # MySQL or MariaDB
         query = "SELECT EpisodeID, EpisodeTitle FROM Episodes WHERE PodcastID = %s"
 
-    print(f"Executing query: {query} with podcast_id: {podcast_id}")
     cursor.execute(query, (podcast_id,))
     results = cursor.fetchall()
     print(f"Raw query results (first 3): {results[:3]}")
@@ -4585,9 +4579,6 @@ def get_youtube_video_location(cnx, database_type, episode_id, user_id):
                 WHERE YouTubeVideos.VideoID = %s AND Podcasts.UserID = %s
             '''
 
-        logging.info(f"Executing query: {query}")
-        logging.info(f"With parameters: episode_id={episode_id}, user_id={user_id}")
-
         cursor.execute(query, (episode_id, user_id))
         result = cursor.fetchone()
 
@@ -4633,7 +4624,6 @@ def get_download_location(cnx, database_type, episode_id, user_id):
         else:
             query = "SELECT DownloadedLocation FROM DownloadedEpisodes WHERE EpisodeID = %s AND UserID = %s"
 
-        print(f"Executing query: {query} with EpisodeID: {episode_id} and UserID: {user_id}")
         cursor.execute(query, (episode_id, user_id))
         result = cursor.fetchone()
 
@@ -4968,7 +4958,6 @@ def get_episode_id_ep_name(cnx, database_type, podcast_title, episode_url):
         '''
 
     params = (podcast_title, episode_url)
-    print(f"Executing query: {query} with params: {params}")
 
     # Extra debugging: Check the values before executing the query
     print(f"Podcast Title: {podcast_title}")
@@ -6960,7 +6949,6 @@ def get_categories(cnx, database_type, podcast_id, user_id):
                 "FROM Podcasts "
                 "WHERE PodcastID = %s AND UserID = %s"
             )
-        logging.debug(f"Executing query: {query} with PodcastID: {podcast_id} and UserID: {user_id}")
         cursor.execute(query, (podcast_id, user_id))
         result = cursor.fetchone()
 
@@ -7009,7 +6997,6 @@ def add_category(cnx, database_type, podcast_id, user_id, category):
                 "FROM Podcasts "
                 "WHERE PodcastID = %s AND UserID = %s"
             )
-        logging.debug(f"Executing query: {query} with PodcastID: {podcast_id} and UserID: {user_id}")
         cursor.execute(query, (podcast_id, user_id))
         result = cursor.fetchone()
 
@@ -7081,7 +7068,6 @@ def remove_category(cnx, database_type, podcast_id, user_id, category):
                 "FROM Podcasts "
                 "WHERE PodcastID = %s AND UserID = %s"
             )
-        logging.debug(f"Executing query: {query} with PodcastID: {podcast_id} and UserID: {user_id}")
         cursor.execute(query, (podcast_id, user_id))
         result = cursor.fetchone()
 
@@ -7153,7 +7139,6 @@ def update_feed_cutoff_days(cnx, database_type, podcast_id, user_id, feed_cutoff
                 "FROM Podcasts "
                 "WHERE PodcastID = %s AND UserID = %s"
             )
-        logging.debug(f"Executing query: {query} with PodcastID: {podcast_id} and UserID: {user_id}")
         cursor.execute(query, (podcast_id, user_id))
         result = cursor.fetchone()
 
@@ -7202,7 +7187,6 @@ def get_feed_cutoff_days(cnx, database_type, podcast_id, user_id):
                 "FROM Podcasts "
                 "WHERE PodcastID = %s AND UserID = %s"
             )
-        logging.debug(f"Executing query: {query} with PodcastID: {podcast_id} and UserID: {user_id}")
         cursor.execute(query, (podcast_id, user_id))
         result = cursor.fetchone()
 
@@ -8626,8 +8610,6 @@ def search_data(database_type, cnx, search_term, user_id):
 
     try:
         start = time.time()
-        logging.info(f"Executing query: {query}")
-        logging.info(f"Search term: {search_term}, User ID: {user_id}")
         cursor.execute(query, params)
         result = cursor.fetchall()
         end = time.time()
@@ -12509,7 +12491,6 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
         try:
             encryption_key_bytes = base64.b64decode(encryption_key)
             cipher_suite = Fernet(encryption_key_bytes)
-            print("Successfully created cipher suite for decryption")
         except Exception as e:
             logger.error(f"Error preparing encryption key: {str(e)}")
             return False
@@ -12535,23 +12516,18 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
                     # If the token isn't in the right format for decryption, try to fix it
                     if not (token_to_decrypt.startswith(b'gAAAAA') if isinstance(token_to_decrypt, bytes)
                             else token_to_decrypt.startswith('gAAAAA')):
-                        print("Token doesn't appear to be in Fernet format, using raw token instead")
                         gpodder_token = encrypted_gpodder_token
                     else:
-                        print("Decrypting token in Fernet format")
                         decrypted_token_bytes = cipher_suite.decrypt(token_to_decrypt.encode())
                         gpodder_token = decrypted_token_bytes.decode()
-                        print("Successfully decrypted gpodder token")
             except Exception as e:
                 logger.error(f"Error decrypting token: {str(e)}")
                 # For non-internal servers, we might still want to continue with whatever token we have
                 if is_internal_api:
                     # For internal server, fall back to using the raw token if decryption fails
-                    logger.warning("Using raw token as fallback for internal server")
                     gpodder_token = encrypted_gpodder_token
                 else:
                     # For external servers, continue with the encrypted token
-                    print("Using encrypted token for external server")
                     gpodder_token = encrypted_gpodder_token
         else:
             logger.warning("No token provided")
@@ -12559,7 +12535,6 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
                 logger.error("Token required for internal gpodder server")
                 return False
 
-        print(f"Final token established: {'[OBSCURED FOR SECURITY]' if gpodder_token else 'None'}")
         print(f"Using {'internal' if is_internal_api else 'external'} gpodder API at {gpodder_url}")
 
         # Create a session for cookie-based auth
@@ -13570,14 +13545,12 @@ def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person
                     SELECT PersonID, AssociatedPodcasts FROM "People"
                     WHERE UserID = %s AND PeopleDBID = %s
                 """
-                print(f"Executing query for non-zero person_id: {query} with params: ({user_id}, {person_id})")
                 cursor.execute(query, (user_id, person_id))
             else:
                 query = """
                     SELECT PersonID, AssociatedPodcasts FROM "People"
                     WHERE UserID = %s AND Name = %s AND PeopleDBID = 0
                 """
-                print(f"Executing query for zero person_id: {query} with params: ({user_id}, {person_name})")
                 cursor.execute(query, (user_id, person_name))
 
             existing_person = cursor.fetchone()
@@ -13634,14 +13607,12 @@ def subscribe_to_person(cnx, database_type, user_id: int, person_id: int, person
                     SELECT PersonID, AssociatedPodcasts FROM People
                     WHERE UserID = %s AND PeopleDBID = %s
                 """
-                print(f"Executing query for non-zero person_id: {query} with params: ({user_id}, {person_id})")
                 cursor.execute(query, (user_id, person_id))
             else:
                 query = """
                     SELECT PersonID, AssociatedPodcasts FROM People
                     WHERE UserID = %s AND Name = %s AND PeopleDBID = 0
                 """
-                print(f"Executing query for zero person_id: {query} with params: ({user_id}, {person_name})")
                 cursor.execute(query, (user_id, person_name))
 
             existing_person = cursor.fetchone()
