@@ -1,6 +1,7 @@
 use anyhow::{Context, Error};
 // use futures_util::stream::StreamExt;
 use crate::components::context::AppState;
+use crate::components::notification_center::TaskProgress;
 use futures::StreamExt;
 use gloo::net::websocket::WebSocketError;
 use gloo::net::websocket::{futures::WebSocket, Message};
@@ -1063,9 +1064,12 @@ pub struct EpisodeDownload {
     pub podcastid: i32,
     pub podcastindexid: Option<i64>,
     pub completed: bool,
-    pub saved: bool,      // Added field
-    pub queued: bool,     // Added field
-    pub downloaded: bool, // Added field
+    #[serde(rename = "is_queued")]
+    pub queued: bool,
+    #[serde(rename = "is_saved")]
+    pub saved: bool,
+    #[serde(rename = "is_downloaded")]
+    pub downloaded: bool,
     pub is_youtube: bool,
 }
 
@@ -2240,7 +2244,7 @@ pub async fn connect_to_episode_websocket(
     user_id: &i32,
     api_key: &str,
     nextcloud_refresh: bool,
-    dispatch: Dispatch<AppState>, // Add dispatch parameter
+    dispatch: Dispatch<AppState>,
 ) -> Result<Vec<EpisodeWebsocketResponse>, Error> {
     let clean_server_name = server_name
         .trim_start_matches("http://")
@@ -2266,6 +2270,48 @@ pub async fn connect_to_episode_websocket(
     let (_write, mut read) = websocket.split();
     let mut episodes = Vec::new();
 
+    // Create a task for the refresh operation
+    let refresh_task_id = format!("feed_refresh_{}", js_sys::Date::now());
+
+    // Add a starting task to show in notification center
+    dispatch.reduce_mut(|state| {
+        // Initialize active_tasks if it doesn't exist
+        if state.active_tasks.is_none() {
+            state.active_tasks = Some(Vec::new());
+        }
+
+        // Create an initial task
+        if let Some(tasks) = &mut state.active_tasks {
+            let initial_task = TaskProgress {
+                task_id: refresh_task_id.clone(),
+                user_id: *user_id,
+                item_id: None,
+                r#type: "feed_refresh".to_string(),
+                progress: 0.0,
+                status: "STARTED".to_string(),
+                started_at: format!("{}", js_sys::Date::now()),
+                completed_at: None,
+                details: Some({
+                    let mut details = HashMap::new();
+                    details.insert(
+                        "status_text".to_string(),
+                        "Starting feed refresh...".to_string(),
+                    );
+                    details
+                }),
+                completion_time: None,
+            };
+
+            // Check if there's already a feed refresh task and remove it
+            tasks.retain(|task| {
+                task.r#type != "feed_refresh" || task.status == "SUCCESS" || task.status == "FAILED"
+            });
+
+            // Add the new task
+            tasks.push(initial_task);
+        }
+    });
+
     while let Some(msg) = read.next().await {
         match msg {
             Ok(Message::Text(text)) => {
@@ -2275,8 +2321,53 @@ pub async fn connect_to_episode_websocket(
                         // Handle progress updates
                         match serde_json::from_value::<RefreshProgress>(progress.clone()) {
                             Ok(progress_data) => {
+                                // Update the state for the drawer display
                                 dispatch.reduce_mut(|state| {
-                                    state.refresh_progress = Some(progress_data);
+                                    state.refresh_progress = Some(progress_data.clone());
+
+                                    // Also update the task in the notification center
+                                    if let Some(tasks) = &mut state.active_tasks {
+                                        // Find and update the feed refresh task
+                                        if let Some(task) =
+                                            tasks.iter_mut().find(|t| t.task_id == refresh_task_id)
+                                        {
+                                            let progress_percentage = if progress_data.total > 0 {
+                                                (progress_data.current as f64
+                                                    / progress_data.total as f64)
+                                                    * 100.0
+                                            } else {
+                                                0.0
+                                            };
+
+                                            task.progress = progress_percentage;
+                                            task.status = "PROGRESS".to_string();
+
+                                            // Update the details
+                                            if let Some(details) = &mut task.details {
+                                                details.insert(
+                                                    "current_podcast".to_string(),
+                                                    progress_data.current_podcast.clone(),
+                                                );
+                                                details.insert(
+                                                    "current".to_string(),
+                                                    progress_data.current.to_string(),
+                                                );
+                                                details.insert(
+                                                    "total".to_string(),
+                                                    progress_data.total.to_string(),
+                                                );
+                                                details.insert(
+                                                    "status_text".to_string(),
+                                                    format!(
+                                                        "Refreshing {}/{}: {}",
+                                                        progress_data.current,
+                                                        progress_data.total,
+                                                        progress_data.current_podcast
+                                                    ),
+                                                );
+                                            }
+                                        }
+                                    }
                                 });
                             }
                             Err(e) => {
@@ -2315,17 +2406,58 @@ pub async fn connect_to_episode_websocket(
             }
             Err(WebSocketError::ConnectionClose(close_event)) => {
                 console::log_1(&format!("WebSocket closed: {:?}", close_event).into());
-                // Clear progress when websocket closes
+
+                // Mark task as completed when websocket closes
                 dispatch.reduce_mut(|state| {
+                    // Clear progress indicator
                     state.refresh_progress = None;
+
+                    // Update task status
+                    if let Some(tasks) = &mut state.active_tasks {
+                        if let Some(task) = tasks.iter_mut().find(|t| t.task_id == refresh_task_id)
+                        {
+                            task.status = "SUCCESS".to_string();
+                            task.progress = 100.0;
+                            task.completed_at = Some(format!("{}", js_sys::Date::now()));
+                            task.completion_time = Some(js_sys::Date::now());
+
+                            // Update status text
+                            if let Some(details) = &mut task.details {
+                                details.insert(
+                                    "status_text".to_string(),
+                                    "Feed refresh completed".to_string(),
+                                );
+                            }
+                        }
+                    }
                 });
                 break;
             }
             Err(e) => {
                 console::log_1(&format!("WebSocket error: {:?}", e).into());
-                // Clear progress on error
+
+                // Mark task as failed on error
                 dispatch.reduce_mut(|state| {
+                    // Clear progress indicator
                     state.refresh_progress = None;
+
+                    // Update task status to failed
+                    if let Some(tasks) = &mut state.active_tasks {
+                        if let Some(task) = tasks.iter_mut().find(|t| t.task_id == refresh_task_id)
+                        {
+                            task.status = "FAILED".to_string();
+                            task.completed_at = Some(format!("{}", js_sys::Date::now()));
+                            task.completion_time = Some(js_sys::Date::now());
+
+                            // Update status text
+                            if let Some(details) = &mut task.details {
+                                details.insert(
+                                    "status_text".to_string(),
+                                    format!("Feed refresh failed: {:?}", e),
+                                );
+                            }
+                        }
+                    }
                 });
                 break;
             }

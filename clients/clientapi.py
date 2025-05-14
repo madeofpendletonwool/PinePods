@@ -620,10 +620,8 @@ async def api_podcast_details(podcast_id: str = Query(...), cnx=Depends(get_data
     is_web_key = api_key == base_webkey.web_key
 
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-    print('called the id')
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == user_id or is_web_key:
-        print('getting details')
         details = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
         print(f'got details {details}')
         if details is None:
@@ -1046,11 +1044,8 @@ async def fetch_podcasting_2_data(
 
     try:
         # Get all the metadata
-        print('getting meta')
         episode_metadata = database_functions.functions.get_episode_metadata(database_type, cnx, episode_id, user_id)
-        print('getting id')
         podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
-        print('getting deets')
         podcast_feed = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
 
         episode_url = episode_metadata['episodeurl']
@@ -2586,17 +2581,13 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
     print(f"Running refresh process for user in job {user_id}")
     try:
         # First get total count of podcasts
-        print("Creating cursor")
         cursor = cnx.cursor()
-        print("Cursor created")
         if database_type == "postgresql":
-            print("Executing count query")
             cursor.execute('''
                 SELECT COUNT(*), array_agg("podcastname")
                 FROM "Podcasts"
                 WHERE "userid" = %s
             ''', (user_id,))
-            print("Count query executed")
         else:
             cursor.execute('''
                 SELECT COUNT(*), GROUP_CONCAT(PodcastName)
@@ -2604,13 +2595,11 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                 WHERE UserID = %s
             ''', (user_id,))
         count_result = cursor.fetchone()
-        print(f"Count result: {count_result}")
         # Handle both dictionary and tuple results
         if isinstance(count_result, dict):
             total_podcasts = count_result['count'] if count_result else 0
         else:
             total_podcasts = count_result[0] if count_result else 0
-        print(f"Total podcasts: {total_podcasts}")
         await websocket.send_json({
             "progress": {
                 "current": 0,

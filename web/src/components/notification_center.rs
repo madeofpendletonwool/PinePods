@@ -1,5 +1,6 @@
 // notification_center.rs
 use crate::components::context::AppState;
+use crate::requests::pod_req::RefreshProgress;
 use crate::requests::task_reqs::init_task_monitoring;
 use gloo_timers::callback::Interval;
 use gloo_timers::callback::Timeout;
@@ -29,6 +30,39 @@ pub struct TaskProgress {
     pub details: Option<HashMap<String, String>>,
     #[serde(default)]
     pub completion_time: Option<f64>, // JS timestamp for auto-cleanup
+}
+
+impl TaskProgress {
+    // Create a TaskProgress object from RefreshProgress data
+    pub fn from_refresh_progress(progress: &RefreshProgress) -> Self {
+        let progress_percentage = if progress.total > 0 {
+            (progress.current as f64 / progress.total as f64) * 100.0
+        } else {
+            0.0
+        };
+
+        Self {
+            task_id: format!("feed_refresh_{}", js_sys::Date::now()), // Generate a unique ID
+            user_id: 0, // We'll use the user ID from the state later
+            item_id: None,
+            r#type: "feed_refresh".to_string(),
+            progress: progress_percentage,
+            status: "PROGRESS".to_string(),
+            started_at: format!("{}", js_sys::Date::now()),
+            completed_at: None,
+            details: Some({
+                let mut details = HashMap::new();
+                details.insert(
+                    "current_podcast".to_string(),
+                    progress.current_podcast.clone(),
+                );
+                details.insert("current".to_string(), progress.current.to_string());
+                details.insert("total".to_string(), progress.total.to_string());
+                details
+            }),
+            completion_time: None,
+        }
+    }
 }
 
 #[function_component(NotificationCenter)]

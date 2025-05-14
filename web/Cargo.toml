@@ -2,6 +2,7 @@
 name = "web"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.86"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -73,8 +74,8 @@ md5 = "0.7.0"
 ammonia = "4.1.0"
 pulldown-cmark = "0.13.0"
 async-std = "1.13.1"
-argon2 = { version = "0.5.3", features = ["std", "password-hash"] } 
-getrandom = { version = "0.3.2", features = ["wasm_js"] }
+argon2 = { version = "0.5.3", features = ["std", "password-hash"] }
+getrandom = { version = "0.3.3", features = ["wasm_js"] }
 rand = "0.9.1"
 regex = "1.11.1"
 js-sys = "0.3.77"

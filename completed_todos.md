@@ -13,14 +13,16 @@ Major Version:
 
 0.7.8
 
+- [x] External gpodder api message shows internal gpodder message
+- [x] User refresh now shows refresh status in notification center
 - [x] Potential home page issue on tauri app
-- [] Local download issue tauri app
+- [x] Local download issue tauri app
 - [x] Freaking caching
 - [x] Fix spacing of play button on shared episodes page
 - [x] Issue with client builds
-- [] Finish validating every call
+- [x] Finish validating every call
 - [x] When YT video is added we need to increment episode count
-- [] validate external pod sync platforms again
+- [x] validate external pod sync platforms again
 - [x] Validate YT feed deletion
 - [x] The below error happens on Honoring Juneteenth from Short Wave. Seems to happen when there's an episode that goes longer than the expected possible length
 - [x] Add youtube feed retention time setting onto settings for each pod
@@ -50,6 +52,7 @@ pinepods-1  | Error setting up platlists: 1061 (42000): Duplicate key name 'idx_
 - [] Categories come over pretty broken from gpodder sync
 - [] If a second pod comes in with the same episode url as another in the same podcast. Delete the first entry and apply the second
 - [] Shownotes button doesn't work with YT video
+- [] display episode progress on episode page. Ensure clicking play takes you to the listened location
 
 
 

@@ -477,9 +477,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         let closure_episode_id = episode_id.clone();
         let offline_status = offline_status.clone();
         move |_| {
-            web_sys::console::log_1(&"Setting up interval".into());
             //print the ep id
-            web_sys::console::log_1(&format!("Episode ID: {:?}", closure_episode_id).into());
             let interval_handle: Rc<Cell<Option<Interval>>> = Rc::new(Cell::new(None));
             let interval_handle_clone = interval_handle.clone();
             let interval = Interval::new(1000, move || {
@@ -1664,15 +1662,6 @@ pub fn on_play_click(
         let app_dispatch = audio_dispatch.clone();
         let episode_url = episode_url_for_wasm.clone();
         let episode_title = episode_title_for_wasm.clone();
-        web_sys::console::log_1(&JsValue::from_str("Checking if episode is in db"));
-        web_sys::console::log_1(&JsValue::from_str(&episode_title_for_wasm));
-        web_sys::console::log_1(&JsValue::from_str(&episode_url_for_wasm));
-        web_sys::console::log_1(&JsValue::from_str(&episode_artwork_for_wasm));
-        web_sys::console::log_1(&JsValue::from_str(&episode_duration_for_wasm.to_string()));
-        web_sys::console::log_1(&JsValue::from_str(&episode_id_for_wasm.to_string()));
-        web_sys::console::log_1(&JsValue::from_str(&api_key));
-        web_sys::console::log_1(&JsValue::from_str(&user_id.to_string()));
-        web_sys::console::log_1(&JsValue::from_str(&server_name));
 
         web_sys::console::log_1(&JsValue::from_str(&episode_id_for_wasm.to_string()));
         spawn_local(async move {

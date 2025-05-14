@@ -154,14 +154,6 @@ pub async fn connect_to_task_websocket(
                                 // Replace the "update" event handler with this code:
                                 "update" => {
                                     if let Some(raw_task) = update.task {
-                                        console::log_1(
-                                            &format!(
-                                                "Received task update: status={}, progress={:.1}%",
-                                                raw_task.status, raw_task.progress
-                                            )
-                                            .into(),
-                                        );
-
                                         // Convert RawTaskProgress to TaskProgress
                                         let item_id = match raw_task.item_id {
                                             Value::Number(num) => Some(num.to_string()),
@@ -290,14 +282,13 @@ pub async fn connect_to_task_websocket(
                                         };
 
                                         dispatch_clone.reduce_mut(|state| {
-                                            let mut tasks = state.active_tasks.clone().unwrap_or_default();
+                                            let mut tasks =
+                                                state.active_tasks.clone().unwrap_or_default();
 
                                             // Find and update existing task or add new one
                                             let mut found = false;
                                             for existing_task in tasks.iter_mut() {
                                                 if existing_task.task_id == task.task_id {
-                                                    console::log_1(&format!("Updating existing task: {} - status: {} -> {}, progress: {:.1}%",
-                                                                          task.task_id, existing_task.status, task.status, task.progress).into());
                                                     *existing_task = task.clone();
                                                     found = true;
                                                     break;
@@ -305,8 +296,13 @@ pub async fn connect_to_task_websocket(
                                             }
 
                                             if !found {
-                                                console::log_1(&format!("Adding new task: {} - status: {}",
-                                                                      task.task_id, task.status).into());
+                                                console::log_1(
+                                                    &format!(
+                                                        "Adding new task: {} - status: {}",
+                                                        task.task_id, task.status
+                                                    )
+                                                    .into(),
+                                                );
                                                 tasks.push(task.clone());
                                             }
 
@@ -316,7 +312,8 @@ pub async fn connect_to_task_websocket(
                                                     // Remove completed tasks after 30 seconds (30000 ms)
                                                     const TASK_DISPLAY_DURATION: f64 = 30000.0;
                                                     let current_time = js_sys::Date::now();
-                                                    return (current_time - completion_time) < TASK_DISPLAY_DURATION;
+                                                    return (current_time - completion_time)
+                                                        < TASK_DISPLAY_DURATION;
                                                 }
                                                 true
                                             });
