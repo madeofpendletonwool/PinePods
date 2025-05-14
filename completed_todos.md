@@ -15,7 +15,7 @@ Major Version:
 
 - [x] Potential home page issue on tauri app
 - [] External gpodder api message shows internal gpodder message
-- [] Local download issue tauri app
+- [x] Local download issue tauri app
 - [x] Freaking caching
 - [x] Fix spacing of play button on shared episodes page
 - [x] Issue with client builds
