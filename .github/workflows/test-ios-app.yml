@@ -23,7 +23,7 @@ jobs:
 
       - uses: hecrj/setup-rust-action@v2
         with:
-          rust-version: 1.81
+          rust-version: 1.86
           targets: wasm32-unknown-unknown
 
       - name: Install cargo-binstall
@@ -60,9 +60,8 @@ jobs:
           cargo tauri ios init
           cargo tauri ios build
           cargo tauri icon src-tauri/icons/Square1024x1024.png
-          cargo tauri ios build 
+          cargo tauri ios build
       # --release --export-method app-store-connect
-
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
