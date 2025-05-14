@@ -13,8 +13,8 @@ Major Version:
 
 0.7.8
 
-- [] External gpodder api message shows internal gpodder message
-- [] Potential issue with user refresh
+- [x] External gpodder api message shows internal gpodder message
+- [x] User refresh now shows refresh status in notification center
 - [x] Potential home page issue on tauri app
 - [x] Local download issue tauri app
 - [x] Freaking caching

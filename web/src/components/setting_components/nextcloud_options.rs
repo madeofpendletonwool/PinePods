@@ -1549,16 +1549,14 @@ pub fn sync_options() -> Html {
     };
 
     let determine_sync_type = || {
-        if *is_internal_gpodder_enabled {
+        if *is_internal_gpodder_enabled && (*nextcloud_url) == "http://localhost:8042" {
+            // Only consider it internal if BOTH gpodder_enabled is true AND the URL is localhost
             "internal_gpodder"
         } else if *sync_type == "nextcloud" {
             "nextcloud"
         } else if *is_sync_configured && *sync_type == "gpodder" {
-            if (*nextcloud_url) == "http://localhost:8042" {
-                "internal_gpodder"
-            } else {
-                "external_gpodder"
-            }
+            // External gpodder - when sync_type is gpodder but URL is not localhost
+            "external_gpodder"
         } else {
             "none"
         }
