@@ -102,6 +102,7 @@ try:
             auth_type VARCHAR(50) DEFAULT 'standard',
             oidc_provider_id INT,
             oidc_subject VARCHAR(255),
+            PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0,
             UNIQUE (Username)
         )
     """)
@@ -159,6 +160,25 @@ try:
     """)
     if cursor.fetchone()[0] == 0:
         cursor.execute("ALTER TABLE Users ADD COLUMN EnableRSSFeeds TINYINT(1) DEFAULT 0")
+
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.columns
+        WHERE table_name = 'Users'
+        AND column_name = 'PlaybackSpeed'
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE Users ADD COLUMN PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0")
+
+    # Add EnableRSSFeeds column if it doesn't exist
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.columns
+        WHERE table_name = 'Podcasts'
+        AND column_name = 'PlaybackSpeed'
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE Podcasts ADD COLUMN PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0")
 
 
     ensure_usernames_lowercase(cnx)
@@ -458,6 +478,7 @@ try:
         IsYouTubeChannel TINYINT(1) DEFAULT 0,
         NotificationsEnabled TINYINT(1) DEFAULT 0,
         FeedCutoffDays INT DEFAULT 0,
+        PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0,
         FOREIGN KEY (UserID) REFERENCES Users(UserID)
         )""")
 

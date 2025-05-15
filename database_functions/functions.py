@@ -4467,7 +4467,35 @@ def call_get_auto_download_status(cnx, database_type, podcast_id, user_id):
     finally:
         cursor.close()
 
+def set_playback_speed_podcast(cnx, database_type: str, podcast_id: int, playback_speed: float):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'UPDATE "Podcasts" SET PlaybackSpeed = %s WHERE PodcastID = %s'
+        else:  # MySQL or MariaDB
+            query = "UPDATE Podcasts SET PlaybackSpeed = %s WHERE PodcastID = %s"
+        cursor.execute(query, (playback_speed, podcast_id))
+        cnx.commit()
+    except Exception as e:
+        cnx.rollback()
+        raise e
+    finally:
+        cursor.close()
 
+def set_playback_speed_user(cnx, database_type: str, user_id: int, playback_speed: float):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = 'UPDATE "Users" SET PlaybackSpeed = %s WHERE UserID = %s'
+        else:  # MySQL or MariaDB
+            query = "UPDATE Users SET PlaybackSpeed = %s WHERE UserID = %s"
+        cursor.execute(query, (playback_speed, user_id))
+        cnx.commit()
+    except Exception as e:
+        cnx.rollback()
+        raise e
+    finally:
+        cursor.close()
 
 def adjust_skip_times(cnx, database_type, podcast_id, start_skip, end_skip):
     cursor = cnx.cursor()
@@ -14583,3 +14611,27 @@ def get_home_overview(database_type, cnx, user_id):
         home_data = convert_booleans(home_data)
 
     return lowercase_keys(home_data)
+
+def get_playback_speed(cnx, database_type: str, user_id: int, is_youtube: bool, podcast_id: Optional[int] = None) -> float:
+     cursor = cnx.cursor()
+    if database_type == "postgresql":
+        if podcast_id is None:
+            query = 'SELECT PlaybackSpeed FROM "Users" WHERE UserID = %s'
+        else:
+            query = 'SELECT PlaybackSpeed FROM "Podcasts" WHERE PodcastID = %s'
+    else:
+        if podcast_id is None:
+            query = 'SELECT PlaybackSpeed FROM Users WHERE UserID = %s'
+        else:
+            query = 'SELECT PlaybackSpeed FROM Podcasts WHERE PodcastID = %s'
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+    cursor.close()
+
+    if result:
+        # Handle both tuple and dictionary return types
+        if isinstance(result, dict):
+            return result['PlaybackSpeed']
+        else:
+            return result[0]
+    return 1.0
