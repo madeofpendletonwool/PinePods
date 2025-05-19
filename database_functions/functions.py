@@ -5297,6 +5297,30 @@ def generate_guid(episode_time):
     guid = uuid.uuid3(uuid.NAMESPACE_URL, unique_string)
     return str(guid)
 
+def get_playback_speed(cnx, database_type: str, user_id: int, is_youtube: bool, podcast_id: Optional[int] = None) -> float:
+    cursor = cnx.cursor()  # This line was indented incorrectly
+    if database_type == "postgresql":
+        if podcast_id is None:
+            query = 'SELECT PlaybackSpeed FROM "Users" WHERE UserID = %s'
+        else:
+            query = 'SELECT PlaybackSpeed FROM "Podcasts" WHERE PodcastID = %s'
+    else:
+        if podcast_id is None:
+            query = 'SELECT PlaybackSpeed FROM Users WHERE UserID = %s'
+        else:
+            query = 'SELECT PlaybackSpeed FROM Podcasts WHERE PodcastID = %s'
+    cursor.execute(query, (user_id,))
+    result = cursor.fetchone()
+    cursor.close()
+    if result:
+        # Handle both tuple and dictionary return types
+        if isinstance(result, dict):
+            return result['PlaybackSpeed']
+        else:
+            return result[0]
+    return 1.0
+
+
 
 def check_episode_playback(cnx, database_type, user_id, episode_title, episode_url):
     if database_type == "postgresql":
@@ -6599,53 +6623,86 @@ def id_from_api_key(cnx, database_type, passed_key):
 def get_stats(cnx, database_type, user_id):
     logging.info(f"Fetching stats for user ID: {user_id}, database type: {database_type}")
     cursor = cnx.cursor()
+
+    # First get the user stats
     if database_type == "postgresql":
         query = 'SELECT UserCreated, PodcastsPlayed, TimeListened, PodcastsAdded, EpisodesSaved, EpisodesDownloaded FROM "UserStats" WHERE UserID = %s'
     else:  # MySQL or MariaDB
         query = "SELECT UserCreated, PodcastsPlayed, TimeListened, PodcastsAdded, EpisodesSaved, EpisodesDownloaded FROM UserStats WHERE UserID = %s"
-    print('gettings stats')
-    cursor.execute(query, (user_id,))
-    results = cursor.fetchall()
-    cursor.close()
-    print(f'stats {results}')
-    logging.info(f"Query results: {results}")
 
-    if not results:
+    print('getting stats')
+    cursor.execute(query, (user_id,))
+    stats_results = cursor.fetchall()
+    print(f'stats {stats_results}')
+    logging.info(f"Stats query results: {stats_results}")
+
+    if not stats_results:
         logging.warning(f"No stats found for user ID: {user_id}")
         return None
 
-    result = results[0]
-    # Check if result is a dictionary or a tuple and create stats accordingly
-    if isinstance(result, dict):
+    stats_result = stats_results[0]
+
+    # Now get ONLY GpodderUrl and Pod_Sync_Type from Users table
+    if database_type == "postgresql":
+        gpodder_query = 'SELECT GpodderUrl, Pod_Sync_Type FROM "Users" WHERE UserID = %s'
+    else:  # MySQL or MariaDB
+        gpodder_query = "SELECT GpodderUrl, Pod_Sync_Type FROM Users WHERE UserID = %s"
+
+    cursor.execute(gpodder_query, (user_id,))
+    gpodder_results = cursor.fetchone()
+    cursor.close()
+
+    logging.info(f"GPodder query results: {gpodder_results}")
+
+    # Check if stats_result is a dictionary or a tuple and create stats accordingly
+    if isinstance(stats_result, dict):
         if database_type == 'postgresql':
             stats = {
-                "UserCreated": result['usercreated'],
-                "PodcastsPlayed": result['podcastsplayed'],
-                "TimeListened": result['timelistened'],
-                "PodcastsAdded": result['podcastsadded'],
-                "EpisodesSaved": result['episodessaved'],
-                "EpisodesDownloaded": result['episodesdownloaded']
+                "UserCreated": stats_result['usercreated'],
+                "PodcastsPlayed": stats_result['podcastsplayed'],
+                "TimeListened": stats_result['timelistened'],
+                "PodcastsAdded": stats_result['podcastsadded'],
+                "EpisodesSaved": stats_result['episodessaved'],
+                "EpisodesDownloaded": stats_result['episodesdownloaded']
             }
         else:
             stats = {
-                "UserCreated": result['UserCreated'],
-                "PodcastsPlayed": result['PodcastsPlayed'],
-                "TimeListened": result['TimeListened'],
-                "PodcastsAdded": result['PodcastsAdded'],
-                "EpisodesSaved": result['EpisodesSaved'],
-                "EpisodesDownloaded": result['EpisodesDownloaded']
+                "UserCreated": stats_result['UserCreated'],
+                "PodcastsPlayed": stats_result['PodcastsPlayed'],
+                "TimeListened": stats_result['TimeListened'],
+                "PodcastsAdded": stats_result['PodcastsAdded'],
+                "EpisodesSaved": stats_result['EpisodesSaved'],
+                "EpisodesDownloaded": stats_result['EpisodesDownloaded']
             }
     else:  # Assume it's a tuple
         stats = {
-            "UserCreated": result[0],
-            "PodcastsPlayed": result[1],
-            "TimeListened": result[2],
-            "PodcastsAdded": result[3],
-            "EpisodesSaved": result[4],
-            "EpisodesDownloaded": result[5]
+            "UserCreated": stats_result[0],
+            "PodcastsPlayed": stats_result[1],
+            "TimeListened": stats_result[2],
+            "PodcastsAdded": stats_result[3],
+            "EpisodesSaved": stats_result[4],
+            "EpisodesDownloaded": stats_result[5]
         }
-    logging.info(f"Fetched stats: {stats}")
 
+    # Add ONLY GpodderUrl and Pod_Sync_Type to the stats
+    if isinstance(gpodder_results, dict):
+        if database_type == 'postgresql':
+            stats.update({
+                "GpodderUrl": gpodder_results['gpodderurl'],
+                "Pod_Sync_Type": gpodder_results['pod_sync_type']
+            })
+        else:
+            stats.update({
+                "GpodderUrl": gpodder_results['GpodderUrl'],
+                "Pod_Sync_Type": gpodder_results['Pod_Sync_Type']
+            })
+    else:  # Assume it's a tuple
+        stats.update({
+            "GpodderUrl": gpodder_results[0],
+            "Pod_Sync_Type": gpodder_results[1]
+        })
+
+    logging.info(f"Fetched stats with GPodder info: {stats}")
     return stats
 
 
@@ -14611,27 +14668,3 @@ def get_home_overview(database_type, cnx, user_id):
         home_data = convert_booleans(home_data)
 
     return lowercase_keys(home_data)
-
-def get_playback_speed(cnx, database_type: str, user_id: int, is_youtube: bool, podcast_id: Optional[int] = None) -> float:
-     cursor = cnx.cursor()
-    if database_type == "postgresql":
-        if podcast_id is None:
-            query = 'SELECT PlaybackSpeed FROM "Users" WHERE UserID = %s'
-        else:
-            query = 'SELECT PlaybackSpeed FROM "Podcasts" WHERE PodcastID = %s'
-    else:
-        if podcast_id is None:
-            query = 'SELECT PlaybackSpeed FROM Users WHERE UserID = %s'
-        else:
-            query = 'SELECT PlaybackSpeed FROM Podcasts WHERE PodcastID = %s'
-    cursor.execute(query, (user_id,))
-    result = cursor.fetchone()
-    cursor.close()
-
-    if result:
-        # Handle both tuple and dictionary return types
-        if isinstance(result, dict):
-            return result['PlaybackSpeed']
-        else:
-            return result[0]
-    return 1.0

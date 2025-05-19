@@ -201,6 +201,7 @@ pub fn settings() -> Html {
                         <div id="accordion-collapse" data-accordion="collapse" class="bg-custom-light">
                             <AccordionItem title="Change Theme" content={html!{ <setting_components::theme_options::ThemeOptions /> }} position={AccordionItemPosition::First}/>
                             <AccordionItem title="Account Settings" content={html!{ <setting_components::user_self_settings::UserSelfSettings /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title="Playback Settings" content={html!{ <setting_components::playback_settings::PlaybackSettings /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="MFA Settings" content={html!{ <setting_components::mfa_settings::MFAOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Export/Backup Podcasts" content={html!{ <setting_components::export_settings::ExportOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Import Podcasts" content={html!{ <setting_components::import_options::ImportOptions /> }} position={AccordionItemPosition::Middle}/>
