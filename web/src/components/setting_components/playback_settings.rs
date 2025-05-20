@@ -10,9 +10,15 @@ use yew::prelude::*;
 use yewdux::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct PlaybackSpeedRequest {
+pub struct SetPlaybackSpeedRequest {
     pub user_id: i32,
     pub playback_speed: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetPlaybackSpeedRequest {
+    pub user_id: i32,
+    pub podcast_id: Option<i32>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -20,14 +26,29 @@ struct PlaybackSpeedResponse {
     detail: String,
 }
 
+#[derive(Deserialize, Debug)]
+struct PlaybackSpeedGetResponse {
+    playback_speed: f64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SetPlaybackSpeedUserRequest {
+    pub user_id: i32,
+    pub playback_speed: f64,
+}
+
 async fn call_set_user_playback_speed(
-    server_name: String,
-    api_key: String,
+    server_name: &String,
+    api_key: &Option<String>,
     user_id: i32,
     playback_speed: f64,
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/user/set_playback_speed", server_name);
-    let request_data = PlaybackSpeedRequest {
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_data = SetPlaybackSpeedUserRequest {
         user_id,
         playback_speed,
     };
@@ -36,7 +57,7 @@ async fn call_set_user_playback_speed(
         .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
 
     let response = Request::post(&url)
-        .header("Api-Key", &api_key)
+        .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
         .body(request_body)?
         .send()
@@ -59,23 +80,28 @@ async fn call_set_user_playback_speed(
     }
 }
 
-#[derive(Deserialize, Debug)]
-struct PlaybackSpeedGetResponse {
-    playback_speed: f64,
-}
-
 async fn call_get_user_playback_speed(
-    server_name: String,
-    api_key: String,
+    server_name: &String,
+    api_key: &Option<String>,
     user_id: i32,
 ) -> Result<f64, Error> {
-    let url = format!(
-        "{}/api/data/user/get_playback_speed?user_id={}",
-        server_name, user_id
-    );
+    let url = format!("{}/api/data/get_playback_speed", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
-    let response = Request::get(&url)
-        .header("Api-Key", &api_key)
+    let request_data = GetPlaybackSpeedRequest {
+        user_id,
+        podcast_id: None, // This is None for user-wide settings
+    };
+
+    let request_body = serde_json::to_string(&request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
         .send()
         .await?;
 
@@ -122,10 +148,10 @@ pub fn playback_settings() -> Html {
                     (api_key.clone(), server_name.clone(), user_id)
                 {
                     let server_name = server_name.clone();
-                    let api_key = api_key.clone().unwrap_or_default();
+                    let api_key = api_key.clone();
 
                     wasm_bindgen_futures::spawn_local(async move {
-                        match call_get_user_playback_speed(server_name, api_key, user_id).await {
+                        match call_get_user_playback_speed(&server_name, &api_key, user_id).await {
                             Ok(speed) => {
                                 default_playback_speed.set(speed);
                                 is_loading.set(false);
@@ -176,14 +202,15 @@ pub fn playback_settings() -> Html {
                 (api_key.clone(), server_name.clone(), user_id)
             {
                 let server_name = server_name.clone();
-                let api_key = api_key.clone().unwrap_or_default();
+                let api_key = api_key.clone();
                 let speed = *default_playback_speed;
                 let show_success = show_success.clone();
                 let success_message = success_message.clone();
                 let dispatch = dispatch.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_set_user_playback_speed(server_name, api_key, user_id, speed).await {
+                    match call_set_user_playback_speed(&server_name, &api_key, user_id, speed).await
+                    {
                         Ok(_) => {
                             show_success.set(true);
                             success_message
