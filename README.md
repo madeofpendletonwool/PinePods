@@ -232,7 +232,7 @@ https://www.pinepods.online/docs/API/search_api
 
 #### Timezone Configuration
 
-PinePods now supports displaying timestamps in your local timezone instead of UTC. This helps improve readability and prevents confusion when viewing timestamps such as "last sync" times in the gpodder API.
+PinePods supports displaying timestamps in your local timezone instead of UTC. This helps improve readability and prevents confusion when viewing timestamps such as "last sync" times in the gpodder API. Note that this configuration is specifically for logs. Each user sets their own timezone settings on first login. That is seperate from this server timezone config
 
 ##### Setting the Timezone
 
