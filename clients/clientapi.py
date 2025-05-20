@@ -2121,6 +2121,47 @@ async def api_get_auto_skip_times(data: AutoSkipTimesRequest, cnx=Depends(get_da
 
     return AutoSkipTimesResponse(start_skip=start_skip, end_skip=end_skip)
 
+class PlayEpisodeDetailsRequest(BaseModel):
+    podcast_id: int
+    user_id: int
+    is_youtube: bool = False
+
+class PlayEpisodeDetailsResponse(BaseModel):
+    playback_speed: float
+    start_skip: int
+    end_skip: int
+
+@app.post("/api/data/get_play_episode_details")
+async def api_get_play_episode_details(data: PlayEpisodeDetailsRequest,
+                                       cnx=Depends(get_database_connection),
+                                       api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                          detail="Your API key is either invalid or does not have correct permission")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        # Get all details in one function call
+        playback_speed, start_skip, end_skip = database_functions.functions.get_play_episode_details(
+            cnx,
+            database_type,
+            data.user_id,
+            data.podcast_id,
+            data.is_youtube
+        )
+
+        return PlayEpisodeDetailsResponse(
+            playback_speed=playback_speed,
+            start_skip=start_skip,
+            end_skip=end_skip
+        )
+    else:
+        raise HTTPException(status_code=403,
+                          detail="You can only get metadata for yourself!")
+
 class SetPlaybackSpeedPodcast(BaseModel):
     user_id: int
     podcast_id: int
@@ -2158,7 +2199,9 @@ async def api_set_playback_speed_user(data: SetPlaybackSpeedUser, cnx=Depends(ge
         database_functions.functions.set_playback_speed_user(cnx, database_type, data.user_id, data.playback_speed)
         return {"detail": "Default playback speed updated."}
     else:
-        raise HTTPException(status_code=403, detail="You can only modify your own settings."}
+        raise HTTPException(status_code=403, detail="You can only modify your own settings.")
+
+
 class SaveEpisodeData(BaseModel):
     episode_id: int
     user_id: int
