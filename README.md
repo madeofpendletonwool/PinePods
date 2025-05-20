@@ -118,10 +118,15 @@ services:
       DEBUG_MODE: false
       PUID: ${UID:-911}
       PGID: ${GID:-911}
+      # Add timezone configuration
+      TZ: "America/New_York"
     volumes:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
+      # Timezone volumes, HIGHLY optional. Read the timezone notes below
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     depends_on:
       - db
       - valkey
@@ -174,11 +179,16 @@ services:
       DEBUG_MODE: false
       PUID: ${UID:-911}
       PGID: ${GID:-911}
+      # Add timezone configuration
+      TZ: "America/New_York"
 
     volumes:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
+      # Timezone volumes, HIGHLY optional. Read the timezone notes below
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     depends_on:
       - db
       - valkey
@@ -219,6 +229,71 @@ SEARCH_API_URL: 'https://search.pinepods.online/api/search'
 Above is an api that I maintain. I do not guarantee 100% uptime on this api though, it should be up most of the time besides a random internet or power outage here or there. A better idea though, and what I would honestly recommend is to maintain your own api. It's super easy. Check out the API docs for more information on doing this. Link Below -
 
 https://www.pinepods.online/docs/API/search_api
+
+#### Timezone Configuration
+
+PinePods now supports displaying timestamps in your local timezone instead of UTC. This helps improve readability and prevents confusion when viewing timestamps such as "last sync" times in the gpodder API.
+
+##### Setting the Timezone
+
+You have two main options for configuring the timezone in PinePods:
+
+##### Option 1: Using the TZ Environment Variable (Recommended)
+
+Add the `TZ` environment variable to your docker-compose.yml file:
+
+```yaml
+services:
+  pinepods:
+    image: madeofpendletonwool/pinepods:latest
+    environment:
+      # Other environment variables...
+      TZ: "America/Chicago"  # Set your preferred timezone
+```
+
+This method works consistently across all operating systems (Linux, macOS, Windows) and is the recommended approach.
+
+##### Option 2: Mounting Host Timezone Files (Linux Only)
+
+On Linux systems, you can mount the host's timezone files:
+
+```yaml
+services:
+  pinepods:
+    image: madeofpendletonwool/pinepods:latest
+    volumes:
+      # Other volumes...
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+```
+
+**Note**: This method only works reliably on Linux hosts. For macOS and Windows users, please use the TZ environment variable (Option 1).
+
+##### Priority
+
+If both methods are used:
+1. The TZ environment variable takes precedence
+2. Mounted timezone files are used as a fallback
+
+##### Common Timezone Values
+
+Here are some common timezone identifiers:
+- `America/New_York` - Eastern Time
+- `America/Chicago` - Central Time
+- `America/Denver` - Mountain Time
+- `America/Los_Angeles` - Pacific Time
+- `Europe/London` - United Kingdom
+- `Europe/Berlin` - Central Europe
+- `Asia/Tokyo` - Japan
+- `Australia/Sydney` - Australia Eastern
+
+For a complete list of valid timezone identifiers, see the [IANA Time Zone Database](https://www.iana.org/time-zones).
+
+##### Troubleshooting Timezones
+
+- I'm on macOS and timezone settings aren't working
+
+macOS uses a different timezone file format than Linux. You must use the TZ environment variable method on macOS.
 
 
 #### Start it up!
