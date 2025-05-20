@@ -18,6 +18,7 @@
       - [Admin User Info](#admin-user-info)
       - [Proxy Info](#proxy-info)
       - [Note on the Search API](#note-on-the-search-api)
+      - [Timezone Configuration](#timezone-configuration)
       - [Client API Vars](#client-api-vars)
       - [Start it up!](#start-it-up)
     - [Linux Client Install :computer:](#linux-client-install-computer)
@@ -232,7 +233,7 @@ https://www.pinepods.online/docs/API/search_api
 
 #### Timezone Configuration
 
-PinePods supports displaying timestamps in your local timezone instead of UTC. This helps improve readability and prevents confusion when viewing timestamps such as "last sync" times in the gpodder API. Note that this configuration is specifically for logs. Each user sets their own timezone settings on first login. That is seperate from this server timezone config
+PinePods supports displaying timestamps in your local timezone instead of UTC. This helps improve readability and prevents confusion when viewing timestamps such as "last sync" times in the gpodder API. Note that this configuration is specifically for logs. Each user sets their own timezone settings on first login. That is seperate from this server timezone config.
 
 ##### Setting the Timezone
 
