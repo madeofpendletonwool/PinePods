@@ -6012,7 +6012,7 @@ async def get_user_feed(
     user_id: int,
     api_key: str,  # Now a query parameter
     limit: int = 100,
-    podcast_id: Optional[int] = None,
+    podcast_id: Optional[List[int]] = None,
     source_type: str = Query(None, alias='type'),
     cnx=Depends(get_database_connection)
 ):
@@ -6025,12 +6025,12 @@ async def get_user_feed(
             domain = f'{request.url.scheme}://{request.url.hostname}'
 
 
-        feed_key = database_functions.functions.podcasts_from_feed_key(cnx, database_type, api_key, rss_feed=True)
+        feed_key = database_functions.functions.validate_feed_key(cnx, database_type, api_key, podcast_id)
         
         # TODO: remove this once backwards compatibility is no longer needed
         if not feed_key:
             # Use id_from_api_key to verify the API key from query param
-            key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key, rss_feed=True)
+            key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
             if not key_id:
                 raise HTTPException(status_code=403, detail="Invalid API key")
             feed_key = {

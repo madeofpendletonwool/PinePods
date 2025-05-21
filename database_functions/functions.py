@@ -5572,8 +5572,6 @@ def get_api_info(database_type, cnx, user_id):
 
     return rows
 
-
-
 def create_api_key(cnx, database_type: str, user_id: int):
     import secrets
     import string
@@ -6698,7 +6696,8 @@ def id_from_api_key(cnx, database_type: str, passed_key: str, rss_feed: bool = F
     finally:
         cursor.close()
 
-def podcasts_from_feed_key(cnx, database_type: str, passed_key: str):
+def validate_feed_key(cnx, database_type: str, passed_key: str, podcast_ids: Optional[List[int]] = None):
+    filter_podcast_ids = (podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids)
     cursor = cnx.cursor()
     try:
         params = [passed_key]
@@ -6728,14 +6727,20 @@ def podcasts_from_feed_key(cnx, database_type: str, passed_key: str):
 
         try:
             user_id = get_value_from_result(result, 'userid')
-            podcast_ids = get_value_from_result(result, 'podcastids')
-            logging.info(f"Successfully extracted user_id: {user_id} and podcast_ids: {podcast_ids}")
+            key_podcast_ids = get_value_from_result(result, 'podcastids')
+            logging.info(f"Successfully extracted user_id: {user_id} and podcast_ids: {key_podcast_ids}")
             
             # Convert podcast_ids string to list of integers
             podcast_ids_list = []
             if podcast_ids:
-                podcast_ids_list = [int(pid) for pid in podcast_ids.split(',')]
-            
+                podcast_ids_list = [int(pid) for pid in key_podcast_ids.split(',')]
+
+            if filter_podcast_ids:
+                if not podcast_ids_list or len(podcast_ids_list) == 0 or -1 in podcast_ids_list:
+                    podcast_ids_list = filter_podcast_ids
+                else:
+                    podcast_ids_list = [pid for pid in podcast_ids_list if pid in podcast_ids]
+
             return {
                 'user_id': user_id,
                 'podcast_ids': podcast_ids_list,
@@ -6746,10 +6751,15 @@ def podcasts_from_feed_key(cnx, database_type: str, passed_key: str):
             # If we failed to get from dict, try tuple
             if isinstance(result, tuple) and len(result) > 0:
                 user_id = result[0]
-                podcast_ids = result[1] if len(result) > 1 else None
+                key_podcast_ids = result[1] if len(result) > 1 else None
                 podcast_ids_list = []
-                if podcast_ids:
-                    podcast_ids_list = [int(pid) for pid in podcast_ids.split(',')]
+                if key_podcast_ids:
+                    podcast_ids_list = [int(pid) for pid in key_podcast_ids.split(',')]
+                if filter_podcast_ids:
+                    if not podcast_ids_list or len(podcast_ids_list) == 0 or -1 in podcast_ids_list:
+                        podcast_ids_list = filter_podcast_ids
+                    else:
+                        podcast_ids_list = [pid for pid in podcast_ids_list if pid in podcast_ids]
                 return {
                     'user_id': user_id,
                     'podcast_ids': podcast_ids_list,
