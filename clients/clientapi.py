@@ -3627,16 +3627,38 @@ async def api_set_theme(user_id: int = Body(...), new_theme: str = Body(...), cn
                             detail="You can only set your own theme!")
 
 @app.post("/api/data/create_api_key")
-async def api_create_api_key(user_id: int = Body(..., embed=True), rssonly: bool = Body(..., embed=True), cnx=Depends(get_database_connection),
-                             api_key: str = Depends(get_api_key_from_header)):
+async def api_create_api_key(
+        user_id: int = Body(..., embed=True),
+        rssonly: bool = Body(..., embed=True),
+        podcast_ids: Optional[List[int]] = Body(None, embed=True),
+        cnx=Depends(get_database_connection),
+        api_key: str = Depends(get_api_key_from_header)):
     is_web_key = api_key == base_webkey.web_key
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
     if user_id == key_id or is_web_key:
-        new_api_key = database_functions.functions.create_api_key(cnx, database_type, user_id, rssonly)
-        return {"api_key": new_api_key}
+        if rssonly:
+            new_api_key = database_functions.functions.create_rss_key(cnx, database_type, user_id, podcast_ids)
+        else:
+            new_api_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
+        return {"feed_key" if rssonly else "api_key": new_api_key}
     else:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
+
+@app.post("/api/data/set_rss_key_podcasts")
+async def api_set_rss_key_podcasts(
+    user_id: int = Body(..., embed=True),
+    feed_key_id: int = Body(..., embed=True),
+    podcast_ids: Optional[List[int]] = Body(None, embed=True),
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)):
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if user_id == key_id or is_web_key:
+        database_functions.functions.set_rss_key_podcasts(cnx, database_type, feed_key_id, podcast_ids)
+        return {"message": "Podcast IDs updated successfully"}
+    else:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
 class SendTestEmailValues(BaseModel):
     server_name: str
@@ -6001,17 +6023,26 @@ async def get_user_feed(
             domain = f'{proxy_protocol}://{proxy_host}'
         else:
             domain = f'{request.url.scheme}://{request.url.hostname}'
+
+
+        feed_key = database_functions.functions.podcasts_from_feed_key(cnx, database_type, api_key, rss_feed=True)
         
-        # Use id_from_api_key to verify the API key from query param
-        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key, rss_feed=True)
-        if not key_id:
-            raise HTTPException(status_code=403, detail="Invalid API key")
+        # TODO: remove this once backwards compatibility is no longer needed
+        if not feed_key:
+            # Use id_from_api_key to verify the API key from query param
+            key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key, rss_feed=True)
+            if not key_id:
+                raise HTTPException(status_code=403, detail="Invalid API key")
+            feed_key = {
+                "podcast_ids": [ -1 ],
+                "user_id": key_id,
+                "key": api_key
+            }
 
         feed_content = database_functions.functions.generate_podcast_rss(
             database_type,
             cnx,
-            user_id,
-            api_key,
+            feed_key,
             limit,
             source_type,
             domain,

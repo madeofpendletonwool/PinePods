@@ -201,7 +201,6 @@ try:
 
     add_pod_sync_if_not_exists(cursor, 'Users', 'Pod_Sync_Type', 'VARCHAR(50) DEFAULT \'None\'')
 
-
     cursor.execute("""CREATE TABLE IF NOT EXISTS APIKeys (
                         APIKeyID INT AUTO_INCREMENT PRIMARY KEY,
                         UserID INT,
@@ -210,7 +209,22 @@ try:
                         Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                     )""")
+    cnx.commit()
 
+    cursor.execute("""CREATE TABLE IF NOT EXISTS FeedKeys (
+                        FeedKeyID INT AUTO_INCREMENT PRIMARY KEY,
+                        UserID INT,
+                        FeedKey TEXT,
+                        FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                    )""")
+    cnx.commit()
+
+    cursor.execute("""CREATE TABLE IF NOT EXISTS FeedKeyMap (
+                        FeedKeyID INT,
+                        PodcastID INT,
+                        FOREIGN KEY (FeedKeyID) REFERENCES FeedKeys(FeedKeyID) ON DELETE CASCADE
+                    )""")
+    cnx.commit()
 
     try:
         cursor.execute("""

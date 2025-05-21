@@ -5516,14 +5516,14 @@ def get_api_info(database_type, cnx, user_id):
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
         query = (
-            'SELECT APIKeyID, "APIKeys".UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, RssOnly, Created '
+            'SELECT APIKeyID, "APIKeys".UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, Created '
             'FROM "APIKeys" '
             'JOIN "Users" ON "APIKeys".UserID = "Users".UserID '
         )
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
         query = (
-            "SELECT APIKeyID, APIKeys.UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, RssOnly, Created "
+            "SELECT APIKeyID, APIKeys.UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, Created "
             "FROM APIKeys "
             "JOIN Users ON APIKeys.UserID = Users.UserID "
         )
@@ -5535,7 +5535,31 @@ def get_api_info(database_type, cnx, user_id):
         else:
             query += "WHERE APIKeys.UserID = %s"
 
-    cursor.execute(query, (user_id,) if not is_admin else ())
+    
+    if database_type == 'postgresql':
+        query += '''
+        UNION ALL
+        SELECT FeedKeyID, FeedKeys.UserID, Username, RIGHT(FeedKey, 4) as LastFourDigits, Created, GROUP_CONCAT(PodcastID) as PodcastIDs
+        FROM "FeedKeys"
+        JOIN "Users" ON "FeedKeys".UserID = "Users".UserID 
+        JOIN "FeedKeyMap" ON "FeedKeys".FeedKeyID = "FeedKeyMap".FeedKeyID
+        '''
+    else:
+        query += '''
+        UNION ALL
+        SELECT FeedKeyID, FeedKeys.UserID, Username, RIGHT(FeedKey, 4) as LastFourDigits, Created, GROUP_CONCAT(PodcastID) as PodcastIDs
+        FROM FeedKeys
+        JOIN Users ON FeedKeys.UserID = Users.UserID 
+        JOIN FeedKeyMap ON FeedKeys.FeedKeyID = FeedKeyMap.FeedKeyID
+        '''
+
+    if not is_admin:
+        if database_type == 'postgresql':
+            query += 'WHERE "FeedKeys".UserID = %s'
+        else:
+            query += 'WHERE FeedKeys.UserID = %s'
+
+    cursor.execute(query, (user_id, user_id) if not is_admin else ())
     rows = cursor.fetchall()
     cursor.close()
 
@@ -5550,7 +5574,7 @@ def get_api_info(database_type, cnx, user_id):
 
 
 
-def create_api_key(cnx, database_type: str, user_id: int, rssonly: bool = False):
+def create_api_key(cnx, database_type: str, user_id: int):
     import secrets
     import string
     alphabet = string.ascii_letters + string.digits
@@ -5558,15 +5582,60 @@ def create_api_key(cnx, database_type: str, user_id: int, rssonly: bool = False)
 
     cursor = cnx.cursor()
     if database_type == "postgresql":
-        query = 'INSERT INTO "APIKeys" (UserID, APIKey, RssOnly) VALUES (%s, %s, %s)'
+        query = 'INSERT INTO "APIKeys" (UserID, APIKey) VALUES (%s, %s)'
     else:  # MySQL or MariaDB
-        query = "INSERT INTO APIKeys (UserID, APIKey, RssOnly) VALUES (%s, %s, %s)"
+        query = "INSERT INTO APIKeys (UserID, APIKey) VALUES (%s, %s)"
 
-    cursor.execute(query, (user_id, api_key, rssonly))
+    cursor.execute(query, (user_id, api_key))
     cnx.commit()
     cursor.close()
 
     return api_key
+
+def create_rss_key(cnx, database_type: str, user_id: int, podcast_ids: list[int] = None):
+    import secrets
+    import string
+    alphabet = string.ascii_letters + string.digits
+    api_key = ''.join(secrets.choice(alphabet) for _ in range(64))
+
+    cursor = cnx.cursor()
+    if database_type == "postgresql":
+        query = 'INSERT INTO "FeedKeys" (UserID, FeedKey) VALUES (%s, %s)'
+    else:
+        query = "INSERT INTO FeedKeys (UserID, FeedKey) VALUES (%s, %s)"
+
+    cursor.execute(query, (user_id, api_key))
+    
+    if podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids:
+        for podcast_id in podcast_ids:
+            if database_type == "postgresql":
+                query = 'INSERT INTO "FeedKeyMap" (FeedKeyID, PodcastID) VALUES (%s, %s)'
+            else:
+                query = 'INSERT INTO FeedKeyMap (FeedKeyID, PodcastID) VALUES (%s, %s)'
+            cursor.execute(query, (api_key, podcast_id))
+    
+    cnx.commit()
+    cursor.close()
+
+    return api_key
+
+def set_rss_key_podcasts(cnx, database_type: str, feed_key_id: int, podcast_ids: list[int]):
+    cursor = cnx.cursor()
+    # delete existing podcast ids
+    if database_type == "postgresql":
+        query = 'DELETE FROM "FeedKeyMap" WHERE FeedKeyID = %s'
+    else:
+        query = 'DELETE FROM "FeedKeyMap" WHERE FeedKeyID = %s'
+    cursor.execute(query, (feed_key_id,))
+
+    # insert new podcast ids
+    for podcast_id in podcast_ids:
+        query = 'INSERT INTO "FeedKeyMap" (FeedKeyID, PodcastID) VALUES (%s, %s)'
+        cursor.execute(query, (feed_key_id, podcast_id))
+
+    cnx.commit()
+    cursor.close()
+    
 
 def get_user_api_key(cnx, database_type, user_id):
     cursor = cnx.cursor()
@@ -6213,12 +6282,15 @@ class PodcastFeed(feedgenerator.Rss201rev2Feed):
                 attrs={'href': item['artwork_url']})
 
 
-def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, limit: int, source_type: str, domain: str, podcast_id: Optional[int] = None) -> str:
+def generate_podcast_rss(database_type: str, cnx, feed_key: dict, limit: int, source_type: str, domain: str) -> str:
     from datetime import datetime as dt, timezone
     cursor = cnx.cursor()
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
-
+    user_id = feed_key.get('user_id')
+    podcast_ids = feed_key.get('podcast_ids')
+    key = feed_key.get('key')
+    podcast_filter = (podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids)
     try:
         # Check if RSS feeds are enabled for user
         if not get_rss_feed_status(cnx, database_type, user_id):
@@ -6285,11 +6357,10 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
                     WHERE pp.UserID = %s
                 '''
 
-        params = [domain, api_key, user_id]
-        if podcast_id is not None:
-            base_query += f' AND {"pp.podcastid" if database_type == "postgresql" else "pp.PodcastID"} = %s'
-            params.append(podcast_id)
-
+        params = [domain, key, user_id]
+        if podcast_filter:
+            base_query += f' AND {"pp.podcastid" if database_type == "postgresql" else "pp.PodcastID"} IN %s'
+            params.append(tuple(podcast_ids))
 
         if not source_type or source_type == "youtube":
             if base_query:
@@ -6333,11 +6404,11 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
                     JOIN Podcasts pv on y.PodcastID = pv.PodcastID
                     WHERE pv.UserID = %s
                 '''
-            params += [domain, api_key, user_id]
+            params += [domain, key, user_id]
 
-            if podcast_id is not None:
-                    base_query += f' AND {"y.podcastid" if database_type == "postgresql" else "y.PodcastID"} = %s'
-                    params.append(podcast_id)
+            if podcast_filter:
+                base_query += f' AND {"y.podcastid" if database_type == "postgresql" else "y.PodcastID"} IN %s'
+                params.append(tuple(podcast_ids))
 
         base_query += f' ORDER BY 7 DESC LIMIT %s'
         params.append(limit)
@@ -6409,17 +6480,18 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
         podcast_name = "All Podcasts"
         feed_image = "/var/www/html/static/assets/favicon.png"  # Default to Pinepods logo
 
-        if podcast_id is not None:
+        # change to if podcast_ids is not None/empty or contains -1
+        if podcast_filter:
             try:
                 if database_type == "postgresql":
                     cursor.execute(
-                        'SELECT podcastname, artworkurl FROM "Podcasts" WHERE podcastid = %s',  # Added artworkurl
-                        (podcast_id,)
+                        'SELECT podcastname, artworkurl FROM "Podcasts" WHERE podcastid IN %s',  # Added artworkurl
+                        (tuple(podcast_ids),)
                     )
                 else:
                     cursor.execute(
-                        "SELECT PodcastName, ArtworkURL FROM Podcasts WHERE PodcastID = %s",  # Added ArtworkURL
-                        (podcast_id,)
+                        "SELECT PodcastName, ArtworkURL FROM Podcasts WHERE PodcastID IN %s",  # Added ArtworkURL
+                        (tuple(podcast_ids),)
                     )
                 result = cursor.fetchone()
                 if result:
@@ -6435,7 +6507,7 @@ def generate_podcast_rss(database_type: str, cnx, user_id: int, api_key: str, li
         feed = PodcastFeed(
             title=f"Pinepods - {podcast_name}",
             link="https://github.com/madeofpendletonwool/pinepods",
-            description=f"RSS feed for {'all' if podcast_id is None else 'selected'} podcasts from Pinepods",
+            description=f"RSS feed for {'all' if not podcast_filter else 'selected'} podcasts from Pinepods",
             language="en",
             author_name=username,
             feed_url="",
@@ -6601,14 +6673,8 @@ def id_from_api_key(cnx, database_type: str, passed_key: str, rss_feed: bool = F
         params = [passed_key]
         if database_type == "postgresql":
             query = 'SELECT userid FROM "APIKeys" WHERE apikey = %s'
-            if not rss_feed:
-                query += ' AND rssonly = %s'
-                params.append(rss_feed)
         else:
             query = "SELECT UserID FROM APIKeys WHERE APIKey = %s"
-            if not rss_feed:
-                query += ' AND RssOnly = %s'
-                params.append(rss_feed)
 
         cursor.execute(query, tuple(params))
         result = cursor.fetchone()
@@ -6632,7 +6698,70 @@ def id_from_api_key(cnx, database_type: str, passed_key: str, rss_feed: bool = F
     finally:
         cursor.close()
 
+def podcasts_from_feed_key(cnx, database_type: str, passed_key: str):
+    cursor = cnx.cursor()
+    try:
+        params = [passed_key]
+        if database_type == "postgresql":
+            query = '''
+                SELECT fk.userid, GROUP_CONCAT(fkm.podcastid) as podcastids
+                FROM "FeedKeys" fk
+                LEFT JOIN "FeedKeyMap" fkm ON fk.feedkeyid = fkm.feedkeyid
+                WHERE fk.feedkey = %s
+                GROUP BY fk.userid
+            '''
+        else:
+            query = '''
+                SELECT fk.UserID, GROUP_CONCAT(fkm.PodcastID) as podcastids
+                FROM FeedKeys fk
+                LEFT JOIN FeedKeyMap fkm ON fk.FeedKeyID = fkm.FeedKeyID
+                WHERE fk.FeedKey = %s
+                GROUP BY fk.UserID
+            '''
 
+        cursor.execute(query, tuple(params))
+        result = cursor.fetchone()
+
+        if result is None:
+            logging.error("No result found for Feed Key")
+            return None
+
+        try:
+            user_id = get_value_from_result(result, 'userid')
+            podcast_ids = get_value_from_result(result, 'podcastids')
+            logging.info(f"Successfully extracted user_id: {user_id} and podcast_ids: {podcast_ids}")
+            
+            # Convert podcast_ids string to list of integers
+            podcast_ids_list = []
+            if podcast_ids:
+                podcast_ids_list = [int(pid) for pid in podcast_ids.split(',')]
+            
+            return {
+                'user_id': user_id,
+                'podcast_ids': podcast_ids_list,
+                'key': passed_key
+            }
+        except Exception as e:
+            logging.error(f"Error extracting data from result: {e}")
+            # If we failed to get from dict, try tuple
+            if isinstance(result, tuple) and len(result) > 0:
+                user_id = result[0]
+                podcast_ids = result[1] if len(result) > 1 else None
+                podcast_ids_list = []
+                if podcast_ids:
+                    podcast_ids_list = [int(pid) for pid in podcast_ids.split(',')]
+                return {
+                    'user_id': user_id,
+                    'podcast_ids': podcast_ids_list,
+                    'key': passed_key
+                }
+            raise
+
+    except Exception as e:
+        logging.error(f"Error in podcasts_from_feed_key: {e}")
+        return None
+    finally:
+        cursor.close()
 
 
 

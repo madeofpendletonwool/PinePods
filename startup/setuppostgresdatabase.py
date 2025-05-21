@@ -194,9 +194,28 @@ try:
             APIKeyID SERIAL PRIMARY KEY,
             UserID INT,
             APIKey TEXT,
-            RssOnly BOOLEAN DEFAULT FALSE,
             Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
+        )
+    """)
+    cnx.commit()
+
+    # TODO: create feedkeys table, feedkeysmap table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS "FeedKeys" (
+            FeedKeyID SERIAL PRIMARY KEY,
+            UserID INT,
+            FeedKey TEXT,
+            FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
+        )   
+    """)
+    cnx.commit()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS "FeedKeysMap" (
+            FeedKeyID INT,
+            PodcastID INT,
+            FOREIGN KEY (FeedKeyID) REFERENCES "FeedKeys"(FeedKeyID) ON DELETE CASCADE
         )
     """)
     cnx.commit()
@@ -229,16 +248,6 @@ try:
     cnx.commit()
 
     ensure_usernames_lowercase(cnx)
-
-
-    cursor.execute("""CREATE TABLE IF NOT EXISTS "APIKeys" (
-                        APIKeyID SERIAL PRIMARY KEY,
-                        UserID INT,
-                        APIKey TEXT,
-                        RssOnly BOOLEAN DEFAULT FALSE,
-                        Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
-                    )""")
 
 
     try:
@@ -668,28 +677,6 @@ try:
             print(f"Error adding feedcutoffdays column to Podcasts table: {e}")
 
     add_feed_cutoff_column_if_not_exist(cursor, cnx)
-
-    def add_rssonly_column_if_not_exists(cursor, cnx):
-        try:
-            cursor.execute("""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_name='APIKeys'
-                AND column_name = 'RssOnly'
-            """)
-            existing_column = cursor.fetchone()
-
-            if not existing_column:
-                cursor.execute("""
-                    ALTER TABLE "APIKeys"
-                    ADD COLUMN "rssonly" BOOLEAN DEFAULT FALSE
-                """)
-                print("Added 'RssOnly' column to 'APIKeys' table.")
-                cnx.commit()
-        except Exception as e:
-            print(f"Error adding RssOnly column to APIKeys table: {e}")
-
-    add_rssonly_column_if_not_exists(cursor, cnx)
 
     cursor.execute("SELECT to_regclass('public.\"Podcasts\"')")
 
