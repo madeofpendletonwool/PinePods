@@ -11,6 +11,38 @@ Major Version:
 - [ ] Fix Virtual Line Spacing on Playlist Page
 - [ ] Update /home/collinp/Documents/github/PinePods/web/src-tauri/com.gooseberrydevelopment.pinepods.metainfo.xml file along with flatpak automation. This must be done on each release
 
+0.7.8
+
+- [x] External gpodder api message shows internal gpodder message
+- [x] User refresh now shows refresh status in notification center
+- [x] Potential home page issue on tauri app
+- [x] Local download issue tauri app
+- [x] Freaking caching
+- [x] Fix spacing of play button on shared episodes page
+- [x] Issue with client builds
+- [x] Finish validating every call
+- [x] When YT video is added we need to increment episode count
+- [x] validate external pod sync platforms again
+- [x] Validate YT feed deletion
+- [x] The below error happens on Honoring Juneteenth from Short Wave. Seems to happen when there's an episode that goes longer than the expected possible length
+- [x] Add youtube feed retention time setting onto settings for each pod
+- [x] Finish custom pod notifications
+- [x] Validate that mysql and postgres upgrade correctly
+- [x] Weirdly different color trash can on podcast page
+- [x] gpodder pod deletions on local
+- [x] Fixed issue with time created by timestamps
+- [x] Fix up warnings
+- [x] Fixed up issue with saved search, and queue pages not showing saved and queued status correct in context button sometimes
+- [x] Pinepods news feed not adding at all
+- [x] episode count is being doubled
+- [x] Show youtube feed cutoff only on youtube channels - It should also show a notification when updated
+pinepods-1  | Error creating GPodder tables: 1061 (42000): Duplicate key name 'idx_gpodder_devices_userid'
+pinepods-1  | Error setting up platlists: 1061 (42000): Duplicate key name 'idx_playlists_userid'
+- [x] ^ On mariadb startup
+- [x] postgres pod removals while pod sync enabled
+
+
+
 0.7.7
 
 - [] Updated youtube search results page to be similar to new pod results page

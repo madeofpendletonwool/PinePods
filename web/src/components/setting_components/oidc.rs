@@ -32,7 +32,6 @@ pub enum ProviderType {
     GitHub,
     Google,
     Microsoft,
-    Custom,
 }
 
 // Create a helper function to get scope collections

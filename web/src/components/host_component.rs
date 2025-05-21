@@ -382,8 +382,8 @@ pub fn host_dropdown(
                                                 Ok(clicked_feed_url) => {
                                                     use rand::Rng;
                                                     let unique_id = 1_000_000_000
-                                                        + rand::thread_rng()
-                                                            .gen_range(0..1_000_000_000);
+                                                        + rand::rng()
+                                                            .random_range(0..1_000_000_000);
                                                     let details = clicked_feed_url.details;
                                                     Some(Podcast {
                                                         podcastid: unique_id,

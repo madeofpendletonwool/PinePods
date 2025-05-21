@@ -1,4 +1,3 @@
-use crate::components::audio::on_play_click;
 use crate::components::context::{AppState, UIState};
 use regex::Regex;
 use wasm_bindgen::prelude::*;
@@ -69,14 +68,6 @@ fn process_timecodes(
         return String::new();
     }
 
-    // Check if we have the episode info needed for timecode functionality
-    let has_episode_info =
-        episode_props.episode_url.is_some() && episode_props.episode_title.is_some();
-
-    if !has_episode_info {
-        log_debug("Missing episode info for full timecode functionality");
-    }
-
     // Create a temporary div to hold the HTML content
     let document = match web_sys::window().and_then(|win| win.document()) {
         Some(doc) => doc,
@@ -133,73 +124,6 @@ fn process_timecodes(
     result
 }
 
-fn add_test_span(temp_div: &web_sys::Element, document: &web_sys::Document) {
-    // Create a test span
-    match document.create_element("span") {
-        Ok(test_span) => {
-            test_span.set_text_content(Some("TEST TIMECODE LINK"));
-            let _ = test_span.set_attribute(
-                "style",
-                "color: red; font-weight: bold; cursor: pointer; margin: 10px; padding: 5px; border: 1px solid red; display: block;"
-            );
-
-            // Simple click handler
-            let click_handler = Closure::wrap(Box::new(move |e: web_sys::MouseEvent| {
-                e.prevent_default();
-                e.stop_propagation();
-                web_sys::console::log_1(&"TEST SPAN CLICKED".into());
-
-                // Show alert for clear visual feedback
-                match web_sys::window() {
-                    Some(window) => {
-                        let _ =
-                            window.alert_with_message("Test timecode span clicked successfully!");
-                    }
-                    None => {
-                        web_sys::console::error_1(&"Could not get window for alert".into());
-                    }
-                }
-            }) as Box<dyn FnMut(_)>);
-
-            // Add the event listener
-            match test_span
-                .add_event_listener_with_callback("click", click_handler.as_ref().unchecked_ref())
-            {
-                Ok(_) => {
-                    web_sys::console::log_1(&"Test span click handler added successfully".into());
-                    click_handler.forget();
-                }
-                Err(e) => {
-                    web_sys::console::error_1(
-                        &format!("Failed to add test click handler: {:?}", e).into(),
-                    );
-                }
-            }
-
-            // Add to the document at the beginning
-            if let Some(first_child) = temp_div.first_child() {
-                match temp_div.insert_before(&test_span, Some(&first_child)) {
-                    Ok(_) => web_sys::console::log_1(&"Test span inserted at beginning".into()),
-                    Err(e) => web_sys::console::error_1(
-                        &format!("Failed to insert test span: {:?}", e).into(),
-                    ),
-                }
-            } else {
-                match temp_div.append_child(&test_span) {
-                    Ok(_) => web_sys::console::log_1(&"Test span appended (no children)".into()),
-                    Err(e) => web_sys::console::error_1(
-                        &format!("Failed to append test span: {:?}", e).into(),
-                    ),
-                }
-            }
-        }
-        Err(e) => {
-            web_sys::console::error_1(&format!("Failed to create test span: {:?}", e).into());
-        }
-    }
-}
-
-// Helper function to process nodes recursively with error handling
 // Helper function to process nodes recursively with error handling
 fn process_node(
     node: &Node,
@@ -249,8 +173,6 @@ fn process_node(
 
                         let start_idx = full_match.start();
                         let end_idx = full_match.end();
-                        let match_text = &text[start_idx..end_idx];
-
                         // ADD THE URL CHECK RIGHT HERE! - Before checking for duplicates
                         let text_before = if start_idx > 0 {
                             &text[..start_idx]
@@ -419,23 +341,8 @@ fn process_node(
                         let dispatch = audio_dispatch.clone();
                         let start_time = *seconds;
 
-                        // Check episode info
-                        let has_episode_info = episode_props.episode_url.is_some()
-                            && episode_props.episode_title.is_some();
-
                         // Copy all episode props for the closure
-                        let episode_url = episode_props.episode_url.clone();
-                        let episode_title = episode_props.episode_title.clone();
-                        let episode_description = episode_props.episode_description.clone();
-                        let episode_release_date = episode_props.episode_release_date.clone();
-                        let episode_artwork = episode_props.episode_artwork.clone();
-                        let episode_duration = episode_props.episode_duration;
-                        let listen_duration = episode_props.listen_duration;
                         let episode_id = episode_props.episode_id;
-                        let api_key = api_key.clone();
-                        let user_id = user_id;
-                        let server_name = server_name.clone();
-                        let is_youtube = episode_props.is_youtube;
 
                         // Add inline handler
                         // Add inline handler
@@ -468,7 +375,6 @@ fn process_node(
 
                         // Add global handleTimecodeClick function if it doesn't exist yet
                         // Add global handleTimecodeClick function if it doesn't exist yet
-                        let window = web_sys::window().expect("no global window exists");
                         let function_text = r#"
                             if (!window.handleTimecodeClick) {
                                 window.handleTimecodeClick = function(seconds, episodeId) {
@@ -768,7 +674,7 @@ fn process_node(
 
                         // Also add mousedown handler for better coverage
                         let mousedown_handler =
-                            Closure::wrap(Box::new(move |e: web_sys::MouseEvent| {
+                            Closure::wrap(Box::new(move |_e: web_sys::MouseEvent| {
                                 web_sys::console::log_1(
                                     &format!("MOUSEDOWN detected on timecode {}s", start_time)
                                         .into(),
@@ -845,8 +751,8 @@ fn process_node(
 // Also update the SafeHtml component to add logging
 #[function_component(SafeHtml)]
 pub fn safe_html(props: &Props) -> Html {
-    let (state, dispatch) = use_store::<AppState>();
-    let (ui_state, ui_dispatch) = use_store::<UIState>();
+    let (state, _dispatch) = use_store::<AppState>();
+    let (ui_state, _ui_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());

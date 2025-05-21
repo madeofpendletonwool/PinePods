@@ -318,7 +318,7 @@ pub fn downloads() -> Html {
                                 // Render "No Recent Episodes Found" if episodes list is empty
                                 empty_message(
                                     "No Downloaded Episodes Found",
-                                    "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download the the server and show up here!"
+                                    "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download to the server and show up here!"
                                 )
                             } else {
                                 let grouped_episodes = group_episodes_by_podcast(int_download_eps.episodes);

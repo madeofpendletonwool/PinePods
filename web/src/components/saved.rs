@@ -1,22 +1,27 @@
 use super::app_drawer::App_drawer;
 use super::gen_components::{
-    empty_message, episode_item, on_shownotes_click, Search_nav, UseScrollToTop,
+    empty_message, on_shownotes_click, use_long_press, virtual_episode_item, Search_nav,
+    UseScrollToTop,
 };
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
-use crate::components::context::{AppState, UIState};
+use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::episodes_layout::AppStateMsg;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
 use crate::requests::pod_req;
 use crate::requests::pod_req::SavedEpisodesResponse;
-use gloo_events::EventListener;
+use gloo::events::EventListener;
+use wasm_bindgen::JsCast;
 use web_sys::window;
+use web_sys::{Element, HtmlElement};
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
+
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[derive(Clone, PartialEq)]
 pub enum SavedSortDirection {
@@ -33,23 +38,13 @@ pub fn saved() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let history = BrowserHistory::new();
 
-    // check_auth(effect_dispatch);
-
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let dropdown_open = use_state(|| false);
-    let active_modal = use_state(|| None::<i32>);
-    let active_modal_clone = active_modal.clone();
-    let on_modal_open = Callback::from(move |episode_id: i32| {
-        active_modal_clone.set(Some(episode_id));
-    });
-    let active_modal_clone = active_modal.clone();
-    let on_modal_close = Callback::from(move |_| {
-        active_modal_clone.set(None);
-    });
-
     let loading = use_state(|| true);
+
     let episode_search_term = use_state(|| String::new());
     let episode_sort_direction = use_state(|| Some(SavedSortDirection::NewestFirst)); // Default to newest first
     let show_completed = use_state(|| false); // Toggle for showing completed episodes only
@@ -78,8 +73,6 @@ pub fn saved() -> Html {
             .map(|ud| ud.server_name.clone());
 
         let effect_dispatch = dispatch.clone();
-
-        // fetch_episodes(api_key.flatten(), user_id, server_name, dispatch, error, pod_req::call_get_recent_eps);
 
         use_effect_with(
             (api_key.clone(), user_id.clone(), server_name.clone()),
@@ -119,42 +112,6 @@ pub fn saved() -> Html {
                 || ()
             },
         );
-    }
-
-    let container_height = use_state(|| "221px".to_string()); // Add this state
-    {
-        let container_height = container_height.clone();
-        use_effect_with((), move |_| {
-            let update_height = {
-                let container_height = container_height.clone();
-                Callback::from(move |_| {
-                    if let Some(window) = window() {
-                        if let Ok(width) = window.inner_width() {
-                            if let Some(width) = width.as_f64() {
-                                let new_height = if width <= 530.0 {
-                                    "122px"
-                                } else if width <= 768.0 {
-                                    "150px"
-                                } else {
-                                    "221px"
-                                };
-                                container_height.set(new_height.to_string());
-                            }
-                        }
-                    }
-                })
-            };
-
-            // Set initial height
-            update_height.emit(());
-
-            // Add resize listener
-            let listener = EventListener::new(&window().unwrap(), "resize", move |_| {
-                update_height.emit(());
-            });
-
-            move || drop(listener)
-        });
     }
 
     let filtered_episodes = use_memo(
@@ -227,30 +184,24 @@ pub fn saved() -> Html {
         <div class="main-container">
             <Search_nav />
             <UseScrollToTop />
+            {
                 if *loading { // If loading is true, display the loading animation
-                    {
-                        html! {
-                            <div class="loading-animation">
-                                <div class="frame1"></div>
-                                <div class="frame2"></div>
-                                <div class="frame3"></div>
-                                <div class="frame4"></div>
-                                <div class="frame5"></div>
-                                <div class="frame6"></div>
-                            </div>
-                        }
+                    html! {
+                        <div class="loading-animation">
+                            <div class="frame1"></div>
+                            <div class="frame2"></div>
+                            <div class="frame3"></div>
+                            <div class="frame4"></div>
+                            <div class="frame5"></div>
+                            <div class="frame6"></div>
+                        </div>
                     }
                 } else {
-                    {
-                        html! {
+                    html! {
+                        <>
                             <div>
-                            <h1 class="text-2xl item_container-text font-bold text-center mb-4">{"Saved"}</h1>
+                                <h1 class="text-2xl item_container-text font-bold text-center mb-4">{"Saved"}</h1>
                             </div>
-                        }
-                    }
-
-                    {
-                        html! {
                             <div class="flex justify-between items-center mb-4">
                                 <div class="flex gap-4">
                                     // Search input
@@ -402,164 +353,368 @@ pub fn saved() -> Html {
                                     </div>
                                 </div>
                             </div>
-                        }
-                    }
 
-                {
-                    if let Some(_saved_eps) = state.saved_episodes.clone() {
-                        if (*filtered_episodes).is_empty() {
-                            // Render "No Queued Episodes Found" if episodes list is empty
-                            empty_message(
-                                "No Saved Episodes Found",
-                                "You can save episodes by clicking the context button on each episode and clicking 'Save Episode'. Doing this will save episodes here for easy access when you want to return to them."
-                            )
-                        } else {
-                            (*filtered_episodes).iter().map(|episode| {
-                                let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-                                let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-                                let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-
-
-                                let is_current_episode = audio_state
-                                    .currently_playing
-                                    .as_ref()
-                                    .map_or(false, |current| current.episode_id == episode.episodeid);
-                                let is_playing = audio_state.audio_playing.unwrap_or(false);
-
-
-                                let history_clone = history.clone();
-                                let id_string = &episode.episodeid.to_string();
-
-                                let is_expanded = state.expanded_descriptions.contains(id_string);
-
-                                let dispatch = dispatch.clone();
-
-                                let episode_url_clone = episode.episodeurl.clone();
-                                let episode_title_clone = episode.episodetitle.clone();
-                                let episode_description_clone = episode.episodedescription.clone();
-                                let episode_artwork_clone = episode.episodeartwork.clone();
-                                let episode_duration_clone = episode.episodeduration.clone();
-                                let episode_id_clone = episode.episodeid.clone();
-                                let episode_listened_clone = episode.listenduration.clone();
-                                let episode_is_youtube = episode.is_youtube.clone();
-                                let sanitized_description = sanitize_html_with_blank_target(&episode.episodedescription.clone());
-
-                                let toggle_expanded = {
-                                    let search_dispatch_clone = dispatch.clone();
-                                    let state_clone = state.clone();
-                                    let episode_guid = episode.episodeid.clone();
-
-                                    Callback::from(move |_: MouseEvent| {
-                                        let guid_clone = episode_guid.to_string().clone();
-                                        let search_dispatch_call = search_dispatch_clone.clone();
-
-                                        if state_clone.expanded_descriptions.contains(&guid_clone) {
-                                            search_dispatch_call.apply(AppStateMsg::CollapseEpisode(guid_clone));
-                                        } else {
-                                            search_dispatch_call.apply(AppStateMsg::ExpandEpisode(guid_clone));
+                            {
+                                if let Some(_saved_eps) = state.saved_episodes.clone() {
+                                    if (*filtered_episodes).is_empty() {
+                                        empty_message(
+                                            "No Saved Episodes Found",
+                                            "You can save episodes by clicking the context button on each episode and clicking 'Save Episode'. Doing this will save episodes here for easy access when you want to return to them."
+                                        )
+                                    } else {
+                                        html! {
+                                            <VirtualList
+                                                episodes={(*filtered_episodes).clone()}
+                                                page_type="saved"
+                                            />
                                         }
-                                    })
-                                };
-
-                                let episode_url_for_closure = episode_url_clone.clone();
-                                let episode_title_for_closure = episode_title_clone.clone();
-                                let episode_description_for_closure = episode_description_clone.clone();
-                                let episode_artwork_for_closure = episode_artwork_clone.clone();
-                                let episode_duration_for_closure = episode_duration_clone.clone();
-                                let episode_id_for_closure = episode_id_clone.clone();
-                                let listener_duration_for_closure = episode_listened_clone.clone();
-
-                                let user_id_play = user_id.clone();
-                                let server_name_play = server_name.clone();
-                                let api_key_play = api_key.clone();
-                                let audio_dispatch = audio_dispatch.clone();
-
-                                let date_format = match_date_format(state.date_format.as_deref());
-                                let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
-                                let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
-
-                                let on_play_pause = on_play_pause(
-                                    episode_url_for_closure.clone(),
-                                    episode_title_for_closure.clone(),
-                                    episode_description_for_closure.clone(),
-                                    format_release.clone(),
-                                    episode_artwork_for_closure.clone(),
-                                    episode_duration_for_closure.clone(),
-                                    episode_id_for_closure.clone(),
-                                    listener_duration_for_closure.clone(),
-                                    api_key_play.unwrap().unwrap(),
-                                    user_id_play.unwrap(),
-                                    server_name_play.unwrap(),
-                                    audio_dispatch.clone(),
-                                    audio_state.clone(),
-                                    None,
-                                    Some(episode_is_youtube.clone()),
-                                );
-
-                                let on_shownotes_click = on_shownotes_click(
-                                    history_clone.clone(),
-                                    dispatch.clone(),
-                                    Some(episode_id_for_closure.clone()),
-                                    Some(String::from("saved")),
-                                    Some(String::from("saved")),
-                                    Some(String::from("saved")),
-                                    true,
-                                    None,
-                                    Some(episode_is_youtube),
-                                );
-
-                                let episode_url_for_ep_item = episode_url_clone.clone();
-                                let check_episode_id = &episode.episodeid.clone();
-                                let is_completed = state
-                                    .completed_episodes
-                                    .as_ref()
-                                    .unwrap_or(&vec![])
-                                    .contains(&check_episode_id);
-                                let episode_id_clone = Some(episode.episodeid).clone();
-                                let item = episode_item(
-                                    Box::new(episode.clone()),
-                                    sanitized_description,
-                                    is_expanded,
-                                    &format_release,
-                                    on_play_pause,
-                                    on_shownotes_click,
-                                    toggle_expanded,
-                                    episode_duration_clone,
-                                    episode_listened_clone,
-                                    "saved",
-                                    Callback::from(|_| {}),
-                                    false,
-                                    episode_url_for_ep_item,
-                                    is_completed,
-                                    *active_modal == episode_id_clone,
-                                    on_modal_open.clone(),
-                                    on_modal_close.clone(),
-                                    (*container_height).clone(),
-                                    is_current_episode,
-                                    is_playing,
-                                );
-
-                                item
-                            }).collect::<Html>()
-                        }
-
-                    } else {
-                        empty_message(
-                            "No Saved Episodes Found",
-                            "You can save episodes by clicking the context button on each episode and clicking 'Save Episode'. Doing this will save episodes here for easy access when you want to return to them."
-                        )
+                                    }
+                                } else {
+                                    empty_message(
+                                        "No Saved Episodes Found",
+                                        "You can save episodes by clicking the context button on each episode and clicking 'Save Episode'. Doing this will save episodes here for easy access when you want to return to them."
+                                    )
+                                }
+                            }
+                        </>
                     }
                 }
             }
-        {
-            if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
-            } else {
-                html! {}
+            {
+                if let Some(audio_props) = &audio_state.currently_playing {
+                    html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
+                } else {
+                    html! {}
+                }
             }
-        }
         </div>
         <App_drawer />
         </>
     }
+}
+
+#[derive(Properties, PartialEq)]
+pub struct VirtualListProps {
+    pub episodes: Vec<pod_req::SavedEpisode>,
+    pub page_type: String,
+}
+
+#[function_component(VirtualList)]
+pub fn virtual_list(props: &VirtualListProps) -> Html {
+    let scroll_pos = use_state(|| 0.0);
+    let container_ref = use_node_ref();
+    let container_height = use_state(|| 0.0);
+    let item_height = use_state(|| 234.0); // Default item height
+    let force_update = use_state(|| 0);
+
+    // Effect to set initial container height, item height, and listen for window resize
+    {
+        let container_height = container_height.clone();
+        let item_height = item_height.clone();
+        let force_update = force_update.clone();
+
+        use_effect_with((), move |_| {
+            let window = window().expect("no global `window` exists");
+            let window_clone = window.clone();
+
+            let update_sizes = Callback::from(move |_| {
+                let height = window_clone.inner_height().unwrap().as_f64().unwrap();
+                container_height.set(height - 100.0);
+
+                let width = window_clone.inner_width().unwrap().as_f64().unwrap();
+                // Add 16px (mb-4) to each height value for the virtual list calculations
+                let new_item_height = if width <= 530.0 {
+                    122.0 + 16.0 // Base height + margin
+                } else if width <= 768.0 {
+                    150.0 + 16.0 // Base height + margin
+                } else {
+                    221.0 + 16.0 // Base height + margin
+                };
+
+                item_height.set(new_item_height);
+                force_update.set(*force_update + 1);
+            });
+
+            update_sizes.emit(());
+
+            let listener = EventListener::new(&window, "resize", move |_| {
+                update_sizes.emit(());
+            });
+
+            move || drop(listener)
+        });
+    }
+
+    // Effect for scroll handling
+    {
+        let scroll_pos = scroll_pos.clone();
+        let container_ref = container_ref.clone();
+        use_effect_with(container_ref.clone(), move |container_ref| {
+            let container = container_ref.cast::<HtmlElement>().unwrap();
+            let listener = EventListener::new(&container, "scroll", move |event| {
+                let target = event.target().unwrap().unchecked_into::<Element>();
+                scroll_pos.set(target.scroll_top() as f64);
+            });
+            move || drop(listener)
+        });
+    }
+
+    let start_index = (*scroll_pos / *item_height).floor() as usize;
+    let visible_count = ((*container_height / *item_height).ceil() as usize) + 1;
+    let end_index = (start_index + visible_count).min(props.episodes.len());
+
+    let visible_episodes = (start_index..end_index)
+        .map(|index| {
+            let episode = props.episodes[index].clone();
+            html! {
+                <SavedEpisode
+                    key={format!("{}-{}", episode.episodeid, *force_update)}
+                    episode={episode.clone()}
+                    page_type={props.page_type.clone()}
+                />
+            }
+        })
+        .collect::<Html>();
+
+    let total_height = props.episodes.len() as f64 * *item_height;
+    let offset_y = start_index as f64 * *item_height;
+
+    html! {
+        <div
+            ref={container_ref}
+            class="virtual-list-container flex-grow overflow-y-auto"
+            style="height: calc(100vh - 100px);" // Subtract height of header/nav
+        >
+            <div style={format!("height: {}px; position: relative;", total_height)}>
+                <div style={format!("position: absolute; top: {}px; left: 0; right: 0;", offset_y)}>
+                    { visible_episodes }
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = window)]
+    fn toggleDescription(guid: &str, expanded: bool);
+}
+
+#[derive(Properties, PartialEq, Clone)]
+pub struct SavedEpisodeProps {
+    pub episode: pod_req::SavedEpisode,
+    pub page_type: String,
+}
+
+#[function_component(SavedEpisode)]
+pub fn saved_episode(props: &SavedEpisodeProps) -> Html {
+    let (state, dispatch) = use_store::<AppState>();
+    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
+    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+    let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+    let id_string = &props.episode.episodeid.to_string();
+    let history = BrowserHistory::new();
+    let history_clone = history.clone();
+    let show_modal = use_state(|| false);
+    let show_clonedal = show_modal.clone();
+    let show_clonedal2 = show_modal.clone();
+    let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
+    let on_modal_close = Callback::from(move |_: MouseEvent| show_clonedal2.set(false));
+    let container_height = use_state(|| "221px".to_string());
+
+    // This will track if we're showing the context menu from a long press
+    let show_context_menu = use_state(|| false);
+    let context_menu_position = use_state(|| (0, 0));
+
+    // Long press handler - simulate clicking the context button
+    let context_button_ref = use_node_ref();
+    let on_long_press = {
+        let context_button_ref = context_button_ref.clone();
+        let show_context_menu = show_context_menu.clone();
+        let context_menu_position = context_menu_position.clone();
+
+        Callback::from(move |event: TouchEvent| {
+            if let Some(touch) = event.touches().get(0) {
+                // Record position for the context menu
+                context_menu_position.set((touch.client_x(), touch.client_y()));
+
+                // Find and click the context button (if it exists)
+                if let Some(button) = context_button_ref.cast::<web_sys::HtmlElement>() {
+                    button.click();
+                } else {
+                    // If the button doesn't exist (maybe on mobile where it's hidden)
+                    // we'll just set our state to show the menu
+                    show_context_menu.set(true);
+                }
+            }
+        })
+    };
+
+    // Setup long press detection
+    let (on_touch_start, on_touch_end, on_touch_move, is_long_press) =
+        use_long_press(on_long_press, Some(600)); // 600ms for long press
+
+    // When long press is detected through the hook, update our state
+    {
+        let show_context_menu = show_context_menu.clone();
+        use_effect_with(is_long_press, move |is_pressed| {
+            if *is_pressed {
+                show_context_menu.set(true);
+            }
+            || ()
+        });
+    }
+
+    let desc_expanded = state.expanded_descriptions.contains(id_string);
+
+    let toggle_expanded = {
+        let desc_dispatch = desc_dispatch.clone();
+        let episode_guid = props.episode.episodeid.clone().to_string();
+
+        Callback::from(move |_: MouseEvent| {
+            let guid = episode_guid.clone();
+            desc_dispatch.reduce_mut(move |state| {
+                if state.expanded_descriptions.contains(&guid) {
+                    state.expanded_descriptions.remove(&guid);
+                    toggleDescription(&guid, false);
+                } else {
+                    state.expanded_descriptions.insert(guid.clone());
+                    toggleDescription(&guid, true);
+                }
+            });
+        })
+    };
+
+    let is_current_episode = audio_state
+        .currently_playing
+        .as_ref()
+        .map_or(false, |current| {
+            current.episode_id == props.episode.episodeid
+        });
+
+    let is_playing = audio_state.audio_playing.unwrap_or(false);
+
+    // Update container height based on screen width
+    {
+        let container_height = container_height.clone();
+        use_effect_with((), move |_| {
+            let update_height = {
+                let container_height = container_height.clone();
+                Callback::from(move |_| {
+                    if let Some(window) = window() {
+                        if let Ok(width) = window.inner_width() {
+                            if let Some(width) = width.as_f64() {
+                                let new_height = if width <= 530.0 {
+                                    "122px"
+                                } else if width <= 768.0 {
+                                    "150px"
+                                } else {
+                                    "221px"
+                                };
+                                container_height.set(new_height.to_string());
+                            }
+                        }
+                    }
+                })
+            };
+
+            // Set initial height
+            update_height.emit(());
+
+            // Add resize listener
+            let listener = EventListener::new(&window().unwrap(), "resize", move |_| {
+                update_height.emit(());
+            });
+
+            move || drop(listener)
+        });
+    }
+
+    let date_format = match_date_format(state.date_format.as_deref());
+    let datetime = parse_date(&props.episode.episodepubdate, &state.user_tz);
+    let formatted_date = format!(
+        "{}",
+        format_datetime(&datetime, &state.hour_preference, date_format)
+    );
+
+    let on_play_pause = on_play_pause(
+        props.episode.episodeurl.clone(),
+        props.episode.episodetitle.clone(),
+        props.episode.episodedescription.clone(),
+        formatted_date.clone(),
+        props.episode.episodeartwork.clone(),
+        props.episode.episodeduration.clone(),
+        props.episode.episodeid.clone(),
+        props.episode.listenduration.clone(),
+        api_key.unwrap().unwrap(),
+        user_id.unwrap(),
+        server_name.unwrap(),
+        audio_dispatch.clone(),
+        audio_state.clone(),
+        None,
+        Some(props.episode.is_youtube.clone()),
+    );
+
+    let on_shownotes_click = {
+        on_shownotes_click(
+            history_clone.clone(),
+            dispatch.clone(),
+            Some(props.episode.episodeid.clone()),
+            Some(props.page_type.clone()),
+            Some(props.page_type.clone()),
+            Some(props.page_type.clone()),
+            true,
+            None,
+            Some(props.episode.is_youtube.clone()),
+        )
+    };
+
+    let is_completed = state
+        .completed_episodes
+        .as_ref()
+        .unwrap_or(&vec![])
+        .contains(&props.episode.episodeid);
+
+    // Close context menu callback
+    let close_context_menu = {
+        let show_context_menu = show_context_menu.clone();
+        Callback::from(move |_| {
+            show_context_menu.set(false);
+        })
+    };
+
+    let item = virtual_episode_item(
+        Box::new(props.episode.clone()),
+        sanitize_html_with_blank_target(&props.episode.episodedescription),
+        desc_expanded,
+        &formatted_date,
+        on_play_pause,
+        on_shownotes_click,
+        toggle_expanded,
+        props.episode.episodeduration,
+        props.episode.listenduration,
+        &props.page_type,
+        Callback::from(|_| {}),
+        false,
+        props.episode.episodeurl.clone(),
+        is_completed,
+        *show_modal,
+        on_modal_open.clone(),
+        on_modal_close.clone(),
+        (*container_height).clone(),
+        is_current_episode,
+        is_playing,
+        // Add new params for touch events
+        on_touch_start,
+        on_touch_end,
+        on_touch_move,
+        *show_context_menu,
+        *context_menu_position,
+        close_context_menu,
+        context_button_ref,
+    );
+
+    item
 }

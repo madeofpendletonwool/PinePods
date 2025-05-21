@@ -9,7 +9,6 @@ use crate::requests::pod_req;
 use crate::requests::pod_req::PodcastExtra;
 use crate::requests::pod_req::{call_remove_podcasts, PodcastResponseExtra, RemovePodcastValues};
 use crate::requests::setting_reqs::call_add_custom_feed;
-use gloo_timers::callback::Timeout;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -223,10 +222,6 @@ fn render_podcasts(
                 <div class="podcast-grid">
                     {podcasts.iter().enumerate().map(|(index, podcast)| {
                         // Log each grid podcast for debugging
-                        web_sys::console::log_1(&format!("Rendering grid podcast #{}: {} with artwork: {:?}",
-                                                       index,
-                                                       podcast.podcastname,
-                                                       podcast.artworkurl).into());
 
                         // Create a key for this podcast
                         let podcast_key = format!("grid-podcast-{}-{}", podcast.podcastid, podcast.podcastname);
@@ -299,8 +294,6 @@ pub fn podcasts() -> Html {
     let feed_url = use_state(|| "".to_string());
     let pod_user = use_state(|| "".to_string());
     let pod_pass = use_state(|| "".to_string());
-    let error_message = use_state(|| None::<String>);
-    let info_message = use_state(|| None::<String>);
     let search_term = use_state(|| String::new());
 
     #[derive(Clone, PartialEq)]
@@ -579,21 +572,6 @@ pub fn podcasts() -> Html {
             pod_pass.set(input.value());
         })
     };
-    // Function to clear message
-    let clear_error = {
-        let error_message = error_message.clone();
-        Callback::from(move |_| {
-            error_message.set(None);
-        })
-    };
-
-    let clear_info = {
-        let info_message = info_message.clone();
-        Callback::from(move |_| {
-            info_message.set(None);
-        })
-    };
-
     // Ensure `onclick_restore` is correctly used
     let custom_loading = is_loading.clone();
     let add_custom_feed = {
@@ -602,21 +580,13 @@ pub fn podcasts() -> Html {
         let server_name = server_name.clone().unwrap_or_default();
         let user_id = user_id;
         let feed_url = (*feed_url).clone();
-        let error_message = error_message.clone();
-        let info_message = info_message.clone();
-        let clear_info = clear_info.clone();
-        let clear_error = clear_error.clone();
         let is_loading_call = custom_loading.clone();
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             let dispatch_call = dispatch_remove.clone();
-            let clear_info = clear_info.clone();
-            let clear_error = clear_error.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let feed_url = feed_url.clone();
-            let error_message = error_message.clone();
-            let info_message = info_message.clone();
             is_loading_call.set(true);
             let is_loading_wasm = is_loading_call.clone();
             let unstate_pod_user = (*pod_user).clone();
@@ -633,7 +603,9 @@ pub fn podcasts() -> Html {
                 .await
                 {
                     Ok(new_podcast) => {
-                        info_message.set(Some("Podcast Successfully Added".to_string()));
+                        dispatch_call.reduce_mut(|state| {
+                            state.info_message = Some("Podcast Successfully Added".to_string());
+                        });
                         dispatch_call.reduce_mut(move |state| {
                             if let Some(ref mut podcast_response) = state.podcast_feed_return_extra
                             {
@@ -649,11 +621,11 @@ pub fn podcasts() -> Html {
                                 });
                             }
                         });
-                        Timeout::new(5000, move || clear_info.emit(())).forget();
                     }
                     Err(e) => {
-                        error_message.set(Some(e.to_string()));
-                        Timeout::new(5000, move || clear_error.emit(())).forget();
+                        dispatch_call.reduce_mut(|state| {
+                            state.error_message = Some(format!("Failed to add podcast: {}", e));
+                        });
                     }
                 }
                 is_loading_wasm.set(false);
@@ -837,17 +809,6 @@ pub fn podcasts() -> Html {
         let selected_category = selected_category.clone();
         Callback::from(move |category: String| {
             selected_category.set(Some(category.clone()));
-        })
-    };
-
-    let clear_filter = {
-        let selected_category = selected_category.clone();
-        let search_term = search_term.clone();
-        let sort_direction = sort_direction.clone();
-        Callback::from(move |_: MouseEvent| {
-            selected_category.set(None);
-            search_term.set(String::new());
-            sort_direction.set(None);
         })
     };
 

@@ -102,6 +102,7 @@ try:
             auth_type VARCHAR(50) DEFAULT 'standard',
             oidc_provider_id INT,
             oidc_subject VARCHAR(255),
+            PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0,
             UNIQUE (Username)
         )
     """)
@@ -160,6 +161,25 @@ try:
     if cursor.fetchone()[0] == 0:
         cursor.execute("ALTER TABLE Users ADD COLUMN EnableRSSFeeds TINYINT(1) DEFAULT 0")
 
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.columns
+        WHERE table_name = 'Users'
+        AND column_name = 'PlaybackSpeed'
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE Users ADD COLUMN PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0")
+
+    # Add EnableRSSFeeds column if it doesn't exist
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.columns
+        WHERE table_name = 'Podcasts'
+        AND column_name = 'PlaybackSpeed'
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE Podcasts ADD COLUMN PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0")
+
 
     ensure_usernames_lowercase(cnx)
 
@@ -211,11 +231,25 @@ try:
         print("Created GpodderDevices table")
 
         # Create index for faster lookups
+        # Check if index exists before creating it
         cursor.execute("""
-            CREATE INDEX idx_gpodder_devices_userid
-            ON GpodderDevices(UserID)
+            SELECT COUNT(1) IndexExists FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE table_schema = DATABASE()
+            AND table_name = 'GpodderDevices'
+            AND index_name = 'idx_gpodder_devices_userid'
         """)
-        cnx.commit()
+        index_exists = cursor.fetchone()[0]
+
+        if index_exists == 0:
+            # Create index only if it doesn't exist
+            cursor.execute("""
+                CREATE INDEX idx_gpodder_devices_userid
+                ON GpodderDevices(UserID)
+            """)
+            cnx.commit()
+            print("Created index idx_gpodder_devices_userid")
+        else:
+            print("Index idx_gpodder_devices_userid already exists")
 
         # Create a table for subscription history/sync state
         cursor.execute("""
@@ -445,6 +479,7 @@ try:
         IsYouTubeChannel TINYINT(1) DEFAULT 0,
         NotificationsEnabled TINYINT(1) DEFAULT 0,
         FeedCutoffDays INT DEFAULT 0,
+        PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0,
         FOREIGN KEY (UserID) REFERENCES Users(UserID)
         )""")
 
@@ -995,18 +1030,54 @@ try:
         """)
         cnx.commit()
 
-        # Create indexes
-        cursor.execute("CREATE INDEX idx_playlists_userid ON Playlists(UserID)")
-        cnx.commit()
+        # Create indexes - check if they exist first
+        # Index 1: idx_playlists_userid
+        cursor.execute("""
+            SELECT COUNT(1) IndexExists FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE table_schema = DATABASE()
+            AND table_name = 'Playlists'
+            AND index_name = 'idx_playlists_userid'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("CREATE INDEX idx_playlists_userid ON Playlists(UserID)")
+            cnx.commit()
+            print("Created index idx_playlists_userid")
 
-        cursor.execute("CREATE INDEX idx_playlist_contents_playlistid ON PlaylistContents(PlaylistID)")
-        cnx.commit()
+        # Index 2: idx_playlist_contents_playlistid
+        cursor.execute("""
+            SELECT COUNT(1) IndexExists FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE table_schema = DATABASE()
+            AND table_name = 'PlaylistContents'
+            AND index_name = 'idx_playlist_contents_playlistid'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("CREATE INDEX idx_playlist_contents_playlistid ON PlaylistContents(PlaylistID)")
+            cnx.commit()
+            print("Created index idx_playlist_contents_playlistid")
 
-        cursor.execute("CREATE INDEX idx_playlist_contents_episodeid ON PlaylistContents(EpisodeID)")
-        cnx.commit()
+        # Index 3: idx_playlist_contents_episodeid
+        cursor.execute("""
+            SELECT COUNT(1) IndexExists FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE table_schema = DATABASE()
+            AND table_name = 'PlaylistContents'
+            AND index_name = 'idx_playlist_contents_episodeid'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("CREATE INDEX idx_playlist_contents_episodeid ON PlaylistContents(EpisodeID)")
+            cnx.commit()
+            print("Created index idx_playlist_contents_episodeid")
 
-        cursor.execute("CREATE INDEX idx_playlist_contents_videoid ON PlaylistContents(VideoID)")
-        cnx.commit()
+        # Index 4: idx_playlist_contents_videoid
+        cursor.execute("""
+            SELECT COUNT(1) IndexExists FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE table_schema = DATABASE()
+            AND table_name = 'PlaylistContents'
+            AND index_name = 'idx_playlist_contents_videoid'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("CREATE INDEX idx_playlist_contents_videoid ON PlaylistContents(VideoID)")
+            cnx.commit()
+            print("Created index idx_playlist_contents_videoid")
 
         # Define system playlists
         system_playlists = [

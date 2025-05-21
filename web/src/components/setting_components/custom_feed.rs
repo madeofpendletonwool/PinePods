@@ -1,6 +1,6 @@
 use crate::components::context::AppState;
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::call_add_custom_feed;
-use gloo_timers::callback::Timeout;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
@@ -8,11 +8,9 @@ use yewdux::prelude::*;
 #[function_component(CustomFeed)]
 pub fn custom_feed() -> Html {
     let feed_url = use_state(|| "".to_string());
-
+    let (_state, dispatch) = use_store::<AppState>();
     let pod_user = use_state(|| "".to_string());
     let pod_pass = use_state(|| "".to_string());
-    let error_message = use_state(|| None::<String>);
-    let info_message = use_state(|| None::<String>);
     let is_loading = use_state(|| false);
 
     // API key, server name, and other data can be fetched from AppState if required
@@ -43,45 +41,27 @@ pub fn custom_feed() -> Html {
             pod_pass.set(input.value());
         })
     };
-    // Function to clear message
-    let clear_error = {
-        let error_message = error_message.clone();
-        Callback::from(move |_| {
-            error_message.set(None);
-        })
-    };
 
-    let clear_info = {
-        let info_message = info_message.clone();
-        Callback::from(move |_| {
-            info_message.set(None);
-        })
-    };
-
-    // Ensure `onclick_restore` is correctly used
+    // Add custom feed button click handler
     let custom_loading = is_loading.clone();
     let add_custom_feed = {
         let api_key = api_key.unwrap_or_default();
         let server_name = server_name.unwrap_or_default();
         let user_id = user_id;
         let feed_url = (*feed_url).clone();
-        let error_message = error_message.clone();
-        let info_message = info_message.clone();
-        let clear_info = clear_info.clone();
-        let clear_error = clear_error.clone();
+        let dispatch = dispatch.clone();
         let is_loading_call = custom_loading.clone();
+
         Callback::from(move |_| {
-            let clear_info = clear_info.clone();
-            let clear_error = clear_error.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let feed_url = feed_url.clone();
-            let error_message = error_message.clone();
-            let info_message = info_message.clone();
+            let dispatch = dispatch.clone();
             is_loading_call.set(true);
             let is_loading_wasm = is_loading_call.clone();
             let unstate_pod_user = (*pod_user).clone();
             let unstate_pod_pass = (*pod_pass).clone();
+
             wasm_bindgen_futures::spawn_local(async move {
                 match call_add_custom_feed(
                     &server_name,
@@ -94,12 +74,20 @@ pub fn custom_feed() -> Html {
                 .await
                 {
                     Ok(_) => {
-                        info_message.set(Some("Podcast Successfully Added".to_string()));
-                        Timeout::new(5000, move || clear_info.emit(())).forget();
+                        // Update global state with success message
+                        dispatch.reduce_mut(|state| {
+                            state.info_message = Some("Podcast Successfully Added".to_string());
+                        });
                     }
                     Err(e) => {
-                        error_message.set(Some(e.to_string()));
-                        Timeout::new(5000, move || clear_error.emit(())).forget();
+                        // Format error message if you have a formatter function like in StartPageOptions
+                        let formatted_error = format_error_message(&e.to_string());
+
+                        // Update global state with error message
+                        dispatch.reduce_mut(|state| {
+                            state.error_message =
+                                Some(format!("Failed to add podcast: {}", formatted_error));
+                        });
                     }
                 }
                 is_loading_wasm.set(false);

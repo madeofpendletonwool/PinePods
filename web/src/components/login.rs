@@ -352,7 +352,7 @@ pub fn login() -> Html {
     use_effect_with(
         (), // Dependencies, an empty tuple here signifies no dependencies.
         move |_| {
-            let background_number = rand::thread_rng().gen_range(1..=9); // Assuming you have images named 1.jpg through 9.jpg.
+            let background_number = rand::rng().random_range(1..=9); // Assuming you have images named 1.jpg through 9.jpg.
             effect_background_image.set(format!(
                 "static/assets/backgrounds/{}.jpg",
                 background_number
@@ -1774,7 +1774,7 @@ pub fn login() -> Html {
     use_effect_with(
         (), // Dependencies, an empty tuple here signifies no dependencies.
         move |_| {
-            let background_number = rand::thread_rng().gen_range(1..=9); // Assuming you have images named 1.jpg through 9.jpg.
+            let background_number = rand::rng().random_range(1..=9); // Assuming you have images named 1.jpg through 9.jpg.
             effect_background_image.set(format!(
                 "static/assets/backgrounds/{}.jpg",
                 background_number

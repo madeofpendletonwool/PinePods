@@ -281,7 +281,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                     <button onclick={on_play_click} class="play-button">
                                     // <button class="play-button">
                                         <i class="ph ph-play"></i>
-                                        {"Play"}
+                                        <span style="margin-left: 8px;">{"Play"}</span>
                                     </button>
 
                                     </div>

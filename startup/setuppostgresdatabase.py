@@ -137,7 +137,8 @@ try:
             Pod_Sync_Type VARCHAR(50) DEFAULT 'None',
             GpodderLoginName VARCHAR(255) DEFAULT '',
             GpodderToken VARCHAR(255) DEFAULT '',
-            EnableRSSFeeds BOOLEAN DEFAULT FALSE
+            EnableRSSFeeds BOOLEAN DEFAULT FALSE,
+            PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0
         )
     """)
     cnx.commit()
@@ -198,6 +199,33 @@ try:
             FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
         )
     """)
+    cnx.commit()
+
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.table_constraints
+        WHERE constraint_name = 'PlaybackSpeed'
+        AND table_name = 'Users';
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("""
+            ALTER TABLE "Users" ADD COLUMN PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0;
+        """)
+        print("Column 'PlaybackSpeed' added to Users table")
+    cnx.commit()
+
+        # Now add foreign key
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.table_constraints
+        WHERE constraint_name = 'PlaybackSpeed'
+        AND table_name = 'Podcasts';
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("""
+            ALTER TABLE "Podcasts" ADD COLUMN PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0;
+        """)
+        print("Column 'PlaybackSpeed' added to Podcasts table")
     cnx.commit()
 
     ensure_usernames_lowercase(cnx)
@@ -565,6 +593,7 @@ try:
                 IsYouTubeChannel BOOLEAN DEFAULT FALSE,
                 NotificationsEnabled BOOLEAN DEFAULT FALSE,
                 FeedCutoffDays INT DEFAULT 0,
+                PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
             )
         """)

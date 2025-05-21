@@ -1,5 +1,6 @@
 // notification_center.rs
 use crate::components::context::AppState;
+use crate::requests::pod_req::RefreshProgress;
 use crate::requests::task_reqs::init_task_monitoring;
 use gloo_timers::callback::Interval;
 use gloo_timers::callback::Timeout;
@@ -31,79 +32,35 @@ pub struct TaskProgress {
     pub completion_time: Option<f64>, // JS timestamp for auto-cleanup
 }
 
-// Custom serde module to handle both string and integer values for item_id
-mod item_id_string_or_int {
-    use serde::{self, Deserializer, Serializer};
-    use std::fmt;
+impl TaskProgress {
+    // Create a TaskProgress object from RefreshProgress data
+    pub fn from_refresh_progress(progress: &RefreshProgress) -> Self {
+        let progress_percentage = if progress.total > 0 {
+            (progress.current as f64 / progress.total as f64) * 100.0
+        } else {
+            0.0
+        };
 
-    // A custom deserialize implementation that accepts either a string or an integer
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct StringOrIntVisitor;
-
-        impl<'de> serde::de::Visitor<'de> for StringOrIntVisitor {
-            type Value = Option<String>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("string or integer")
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(Some(value.to_owned()))
-            }
-
-            fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(Some(value))
-            }
-
-            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(Some(value.to_string()))
-            }
-
-            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(Some(value.to_string()))
-            }
-
-            fn visit_none<E>(self) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(None)
-            }
-
-            fn visit_unit<E>(self) -> Result<Self::Value, E>
-            where
-                E: serde::de::Error,
-            {
-                Ok(None)
-            }
-        }
-
-        deserializer.deserialize_any(StringOrIntVisitor)
-    }
-
-    // A simple serialization implementation that just converts to a string
-    pub fn serialize<S>(value: &Option<String>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match value {
-            Some(v) => serializer.serialize_str(v),
-            None => serializer.serialize_none(),
+        Self {
+            task_id: format!("feed_refresh_{}", js_sys::Date::now()), // Generate a unique ID
+            user_id: 0, // We'll use the user ID from the state later
+            item_id: None,
+            r#type: "feed_refresh".to_string(),
+            progress: progress_percentage,
+            status: "PROGRESS".to_string(),
+            started_at: format!("{}", js_sys::Date::now()),
+            completed_at: None,
+            details: Some({
+                let mut details = HashMap::new();
+                details.insert(
+                    "current_podcast".to_string(),
+                    progress.current_podcast.clone(),
+                );
+                details.insert("current".to_string(), progress.current.to_string());
+                details.insert("total".to_string(), progress.total.to_string());
+                details
+            }),
+            completion_time: None,
         }
     }
 }
