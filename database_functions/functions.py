@@ -4471,9 +4471,10 @@ def set_playback_speed_podcast(cnx, database_type: str, podcast_id: int, playbac
     cursor = cnx.cursor()
     try:
         if database_type == "postgresql":
-            query = 'UPDATE "Podcasts" SET PlaybackSpeed = %s WHERE PodcastID = %s'
+            query = 'UPDATE "Podcasts" SET PlaybackSpeed = %s, PlaybackSpeedCustomized = TRUE WHERE PodcastID = %s'
         else:  # MySQL or MariaDB
-            query = "UPDATE Podcasts SET PlaybackSpeed = %s WHERE PodcastID = %s"
+            query = "UPDATE Podcasts SET PlaybackSpeed = %s, PlaybackSpeedCustomized = TRUE WHERE PodcastID = %s"
+
         cursor.execute(query, (playback_speed, podcast_id))
         cnx.commit()
     except Exception as e:
@@ -4611,6 +4612,30 @@ def get_play_episode_details(cnx, database_type: str, user_id: int, podcast_id: 
 
         return final_playback_speed, start_skip, end_skip
 
+    finally:
+        cursor.close()
+
+def clear_podcast_playback_speed(cnx, database_type: str, podcast_id: int, user_id: int) -> bool:
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = '''
+                UPDATE "Podcasts"
+                SET PlaybackSpeed = 1.0, PlaybackSpeedCustomized = FALSE
+                WHERE PodcastID = %s AND UserID = %s
+            '''
+        else:
+            query = '''
+                UPDATE Podcasts
+                SET PlaybackSpeed = 1.0, PlaybackSpeedCustomized = FALSE
+                WHERE PodcastID = %s AND UserID = %s
+            '''
+        cursor.execute(query, (podcast_id, user_id))
+        cnx.commit()
+        return True
+    except Exception as e:
+        print(f"Error clearing podcast playback speed: {e}")
+        return False
     finally:
         cursor.close()
 

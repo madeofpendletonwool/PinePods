@@ -8,11 +8,11 @@ use crate::requests::pod_req::EpisodeDownload;
 use crate::requests::pod_req::FetchPodcasting2DataRequest;
 use crate::requests::pod_req::{
     call_add_history, call_check_episode_in_db, call_fetch_podcasting_2_data,
-    call_get_auto_skip_times, call_get_episode_id, call_get_podcast_id_from_ep,
-    call_get_queued_episodes, call_increment_listen_time, call_increment_played,
-    call_mark_episode_completed, call_queue_episode, call_record_listen_duration,
-    call_remove_queued_episode, HistoryAddRequest, MarkEpisodeCompletedRequest,
-    QueuePodcastRequest, RecordListenDurationRequest,
+    call_get_auto_skip_times, call_get_episode_id, call_get_play_episode_details,
+    call_get_podcast_id_from_ep, call_get_queued_episodes, call_increment_listen_time,
+    call_increment_played, call_mark_episode_completed, call_queue_episode,
+    call_record_listen_duration, call_remove_queued_episode, HistoryAddRequest,
+    MarkEpisodeCompletedRequest, QueuePodcastRequest, RecordListenDurationRequest,
 };
 use gloo_timers::callback::Interval;
 use js_sys::Array;
@@ -60,14 +60,12 @@ pub struct PlaybackControlProps {
 #[function_component(PlaybackControl)]
 pub fn playback_control(props: &PlaybackControlProps) -> Html {
     let is_open = use_state(|| false);
-
     let toggle_open = {
         let is_open = is_open.clone();
         Callback::from(move |_: MouseEvent| {
             is_open.set(!*is_open);
         })
     };
-
     let on_speed_change = {
         let on_speed_change = props.on_speed_change.clone();
         Callback::from(move |e: InputEvent| {
@@ -77,6 +75,9 @@ pub fn playback_control(props: &PlaybackControlProps) -> Html {
             }
         })
     };
+
+    // Format the playback speed to show just one decimal place
+    let display_speed = format!("{:.1}x", props.speed);
 
     html! {
         <div class="speed-control-container">
@@ -89,7 +90,7 @@ pub fn playback_control(props: &PlaybackControlProps) -> Html {
             <div class={classes!("speed-slider-container", "item_container-bg", (*is_open).then(|| "visible"))}>
                 <div class="speed-control-content item_container-bg">
                     <div class="speed-text">
-                        {format!("{}x", props.speed)}
+                        {display_speed}
                     </div>
                     <input
                         type="range"
@@ -1902,22 +1903,24 @@ pub fn on_play_click(
                 .await
                 {
                     Ok(podcast_id) => {
-                        match call_get_auto_skip_times(
+                        match call_get_play_episode_details(
                             &server_name_for_player,
                             &Some(api_key_for_player.clone()),
                             user_id,
                             podcast_id,
+                            episode_is_youtube,
                         )
                         .await
                         {
-                            Ok((start_skip, end_skip)) => {
+                            Ok((playback_speed, start_skip, end_skip)) => {
                                 let start_pos_sec =
                                     listen_duration_for_closure.unwrap_or(0).max(start_skip) as f64;
                                 let end_pos_sec = end_skip as f64;
 
                                 audio_dispatch_for_duration.reduce_mut(move |audio_state| {
                                     audio_state.audio_playing = Some(true);
-                                    audio_state.playback_speed = 1.0;
+                                    // Use the returned playback speed instead of hardcoded 1.0
+                                    audio_state.playback_speed = playback_speed as f64;
                                     audio_state.audio_volume = 100.0;
                                     audio_state.offline = Some(false);
                                     audio_state.currently_playing = Some(AudioPlayerProps {
@@ -1937,6 +1940,8 @@ pub fn on_play_click(
                                     audio_state.set_audio_source(src.to_string());
                                     if let Some(audio) = &audio_state.audio_element {
                                         audio.set_current_time(start_pos_sec);
+                                        // Set the playback speed on the audio element as well
+                                        audio.set_playback_rate(playback_speed as f64);
                                         let _ = audio.play();
                                     }
                                     audio_state.audio_playing = Some(true);
@@ -1945,7 +1950,7 @@ pub fn on_play_click(
 
                             Err(e) => {
                                 web_sys::console::log_1(
-                                    &format!("Error getting skip times: {}", e).into(),
+                                    &format!("Error getting episode detail: {}", e).into(),
                                 );
                             }
                         }
