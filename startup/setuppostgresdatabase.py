@@ -200,6 +200,26 @@ try:
     """)
     cnx.commit()
 
+    # TODO: create feedkeys table, feedkeysmap table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS "FeedKeys" (
+            FeedKeyID SERIAL PRIMARY KEY,
+            UserID INT,
+            FeedKey TEXT,
+            FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
+        )   
+    """)
+    cnx.commit()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS "FeedKeysMap" (
+            FeedKeyID INT,
+            PodcastID INT,
+            FOREIGN KEY (FeedKeyID) REFERENCES "FeedKeys"(FeedKeyID) ON DELETE CASCADE
+        )
+    """)
+    cnx.commit()
+
     cursor.execute("""
         SELECT COUNT(*)
         FROM information_schema.table_constraints
@@ -228,15 +248,6 @@ try:
     cnx.commit()
 
     ensure_usernames_lowercase(cnx)
-
-
-    cursor.execute("""CREATE TABLE IF NOT EXISTS "APIKeys" (
-                        APIKeyID SERIAL PRIMARY KEY,
-                        UserID INT,
-                        APIKey TEXT,
-                        Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
-                    )""")
 
 
     try:
