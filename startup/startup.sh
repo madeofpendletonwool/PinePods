@@ -61,6 +61,39 @@ A project created and written by Collin Pendleton
 collinp@gooseberrydevelopment.com
 EOF
 
+# Configure timezone based on TZ environment variable
+if [ -n "$TZ" ]; then
+    echo "Setting timezone to $TZ"
+    # For Alpine, we need to copy the zoneinfo file
+    if [ -f "/usr/share/zoneinfo/$TZ" ]; then
+        # Check if /etc/localtime is a mounted volume
+        if [ -f "/etc/localtime" ] && ! [ -L "/etc/localtime" ]; then
+            echo "Using mounted timezone file from host"
+        else
+            # If it's not mounted or is a symlink, we can modify it
+            cp /usr/share/zoneinfo/$TZ /etc/localtime
+            echo "$TZ" > /etc/timezone
+        fi
+    else
+        echo "Timezone $TZ not found, using UTC"
+        # Only modify if not mounted
+        if ! [ -f "/etc/localtime" ] || [ -L "/etc/localtime" ]; then
+            cp /usr/share/zoneinfo/UTC /etc/localtime
+            echo "UTC" > /etc/timezone
+        fi
+    fi
+else
+    echo "No timezone specified, using UTC"
+    # Only modify if not mounted
+    if ! [ -f "/etc/localtime" ] || [ -L "/etc/localtime" ]; then
+        cp /usr/share/zoneinfo/UTC /etc/localtime
+        echo "UTC" > /etc/timezone
+    fi
+fi
+
+# Export TZ to the environment for all child processes
+export TZ
+
 # Create required directories
 echo "Creating required directories..."
 mkdir -p /pinepods/cache

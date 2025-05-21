@@ -2121,23 +2121,95 @@ async def api_get_auto_skip_times(data: AutoSkipTimesRequest, cnx=Depends(get_da
 
     return AutoSkipTimesResponse(start_skip=start_skip, end_skip=end_skip)
 
-class SetPlaybackSpeed(BaseModel):
+class PlayEpisodeDetailsRequest(BaseModel):
+    podcast_id: int
+    user_id: int
+    is_youtube: bool = False
+
+class PlayEpisodeDetailsResponse(BaseModel):
+    playback_speed: float
+    start_skip: int
+    end_skip: int
+
+@app.post("/api/data/get_play_episode_details")
+async def api_get_play_episode_details(data: PlayEpisodeDetailsRequest,
+                                       cnx=Depends(get_database_connection),
+                                       api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                          detail="Your API key is either invalid or does not have correct permission")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        # Get all details in one function call
+        playback_speed, start_skip, end_skip = database_functions.functions.get_play_episode_details(
+            cnx,
+            database_type,
+            data.user_id,
+            data.podcast_id,
+            data.is_youtube
+        )
+
+        return PlayEpisodeDetailsResponse(
+            playback_speed=playback_speed,
+            start_skip=start_skip,
+            end_skip=end_skip
+        )
+    else:
+        raise HTTPException(status_code=403,
+                          detail="You can only get metadata for yourself!")
+
+class ClearPlaybackSpeedRequest(BaseModel):
+    podcast_id: int
+    user_id: int
+
+@app.post("/api/data/clear_podcast_playback_speed")
+async def api_clear_podcast_playback_speed(data: ClearPlaybackSpeedRequest,
+                                          cnx=Depends(get_database_connection),
+                                          api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                          detail="Your API key is either invalid or does not have correct permission")
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if key_id != data.user_id:
+        raise HTTPException(status_code=403,
+                          detail="You can only modify your own podcast settings!")
+
+    success = database_functions.functions.clear_podcast_playback_speed(
+        cnx,
+        database_type,
+        data.podcast_id,
+        data.user_id
+    )
+
+    if success:
+        return {"message": "Playback speed cleared successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to clear playback speed")
+
+class SetPlaybackSpeedPodcast(BaseModel):
     user_id: int
     podcast_id: int
     playback_speed: float
 
+class SetPlaybackSpeedUser(BaseModel):
+    user_id: int
+    playback_speed: float
+
 @app.post("/api/data/podcast/set_playback_speed")
-async def api_set_playback_speed_podcast(data: SetPlaybackSpeed, cnx=Depends(get_database_connection),
+async def api_set_playback_speed_podcast(data: SetPlaybackSpeedPodcast, cnx=Depends(get_database_connection),
                                 api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
-
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-
     if key_id == data.user_id or is_web_key:
         database_functions.functions.set_playback_speed_podcast(cnx, database_type, data.podcast_id, data.playback_speed)
         return {"detail": "Default podcast playback speed updated."}
@@ -2145,22 +2217,20 @@ async def api_set_playback_speed_podcast(data: SetPlaybackSpeed, cnx=Depends(get
         raise HTTPException(status_code=403, detail="You can only modify your own podcasts.")
 
 @app.post("/api/data/user/set_playback_speed")
-async def api_set_playback_speed_user(data: SetPlaybackSpeed, cnx=Depends(get_database_connection),
+async def api_set_playback_speed_user(data: SetPlaybackSpeedUser, cnx=Depends(get_database_connection),
                                 api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
-
     # Check if the provided API key is the web key
     is_web_key = api_key == base_webkey.web_key
-
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-
     if key_id == data.user_id or is_web_key:
         database_functions.functions.set_playback_speed_user(cnx, database_type, data.user_id, data.playback_speed)
         return {"detail": "Default playback speed updated."}
     else:
-        raise HTTPException(status_code=403, detail="You can only modify your own podcasts.")
+        raise HTTPException(status_code=403, detail="You can only modify your own settings.")
+
 
 class SaveEpisodeData(BaseModel):
     episode_id: int
@@ -3919,22 +3989,22 @@ async def api_get_playback_speed(data: GetPlaybackSpeed, cnx=Depends(get_databas
     if not is_valid_key:
         raise HTTPException(status_code=403,
                           detail="Your API key is either invalid or does not have correct permission")
-
     is_web_key = api_key == base_webkey.web_key
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-
     if key_id == data.user_id or is_web_key:
+        # Fix the parameter order to match the function definition
+        is_youtube = False  # Add the is_youtube parameter
         playback_speed = database_functions.functions.get_playback_speed(
-            database_type,
-            cnx,
-            data.user_id,
-            data.podcast_id
+            cnx,                # Connection should be first
+            database_type,      # Then database type
+            data.user_id,       # Then user_id
+            is_youtube,         # Then is_youtube parameter
+            data.podcast_id     # Then optional podcast_id
         )
         return {"playback_speed": playback_speed}
     else:
         raise HTTPException(status_code=403,
                           detail="You can only get metadata for yourself!")
-
 
 @app.get("/api/data/generate_mfa_secret/{user_id}")
 async def generate_mfa_secret(user_id: int, cnx=Depends(get_database_connection),

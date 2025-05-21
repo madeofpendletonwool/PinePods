@@ -205,6 +205,8 @@ pub fn search_bar() -> Html {
     let search_index_clone = search_index.clone();
     // State for toggling the dropdown in mobile view
     let mobile_dropdown_open = use_state(|| false);
+    // State for animation - separate from actual visibility to allow animation to complete
+    let mobile_dropdown_animating = use_state(|| false);
 
     let handle_submit = {
         let is_submitting = is_submitting.clone();
@@ -345,6 +347,7 @@ pub fn search_bar() -> Html {
     let on_search_click = {
         let handle_submit = handle_submit.clone();
         let mobile_dropdown_open = mobile_dropdown_open.clone();
+        let mobile_dropdown_animating = mobile_dropdown_animating.clone();
         Callback::from(move |_: MouseEvent| {
             if web_sys::window()
                 .unwrap()
@@ -354,14 +357,38 @@ pub fn search_bar() -> Html {
                 .unwrap()
                 < 768.0
             {
-                mobile_dropdown_open.set(!*mobile_dropdown_open);
+                if !*mobile_dropdown_open {
+                    // Opening the dropdown
+                    mobile_dropdown_open.set(true);
+                    mobile_dropdown_animating.set(true);
+                } else {
+                    // Closing the dropdown - start animation first
+                    mobile_dropdown_animating.set(false);
+
+                    // Set a timeout to actually close the dropdown after animation
+                    let mobile_dropdown_open_clone = mobile_dropdown_open.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        // Wait for animation to complete (300ms)
+                        let promise = js_sys::Promise::new(&mut |resolve, _| {
+                            web_sys::window()
+                                .unwrap()
+                                .set_timeout_with_callback_and_timeout_and_arguments_0(
+                                    &resolve, 300,
+                                )
+                                .unwrap();
+                        });
+                        let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+
+                        // Now actually close the dropdown
+                        mobile_dropdown_open_clone.set(false);
+                    });
+                }
             } else {
                 handle_submit();
             }
         })
     };
 
-    // Rest of your component code remains the same...
     let dropdown_open = use_state(|| false);
 
     let toggle_dropdown = {
@@ -436,7 +463,7 @@ pub fn search_bar() -> Html {
                     <input
                         type="search"
                         id="search-dropdown"
-                        class="search-input block p-2.5 w-full z-20 text-sm rounded-r-lg border hidden md:inline-flex"
+                        class="search-input search-input-custom-border block p-2.5 w-full z-20 text-sm rounded-r-lg border hidden md:inline-flex"
                         placeholder="Search"
                         required=true
                         oninput={on_input_change.clone()}
@@ -454,7 +481,7 @@ pub fn search_bar() -> Html {
                 {
                     if *mobile_dropdown_open {
                         html! {
-                            <div class="search-drop absolute top-full right-0 z-10 divide-y rounded-lg shadow p-4">
+                            <div class={if *mobile_dropdown_animating { "search-drop-solid dropdown-visible" } else { "search-drop-solid dropdown-hiding" }}>
                                 <div class="flex justify-between mb-4" role="group">
                                     <button
                                         type="button"
@@ -498,10 +525,19 @@ pub fn search_bar() -> Html {
 
                                 <input
                                     type="text"
-                                    class="search-input block p-2 w-full text-sm rounded-lg mb-4"
+                                    class="search-input search-input-dropdown-border block p-2 w-full text-sm rounded-lg mb-4"
                                     placeholder="Search"
                                     value={(*podcast_value).clone()}
                                     oninput={on_input_change.clone()}
+                                    onkeydown={
+                                        let handle_submit = handle_submit.clone();
+                                        Callback::from(move |e: KeyboardEvent| {
+                                            if e.key() == "Enter" {
+                                                e.prevent_default();
+                                                handle_submit();
+                                            }
+                                        })
+                                    }
                                 />
 
                                 <button
@@ -2228,6 +2264,12 @@ pub fn episode_item(
         }
     });
 
+    // Check if viewport is narrow (< 500px)
+    let is_narrow_viewport = {
+        let window = web_sys::window().expect("no global window exists");
+        window.inner_width().unwrap().as_f64().unwrap() < 500.0
+    };
+
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
     let preview_description = strip_images_from_html(&description);
@@ -2299,17 +2341,38 @@ pub fn episode_item(
                     </div>
                     {
                         if completed {
-                            html! {
-                                <div class="flex items-center space-x-2">
-                                    <span class="item_container-text">{ duration_clone }</span>
-                                    <span class="item_container-text">{ "-  Completed" }</span>
-                                </div>
+                            // For completed episodes
+                            if is_narrow_viewport {
+                                // In narrow viewports, just show "Completed"
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        <span class="item_container-text">{"Completed"}</span>
+                                    </div>
+                                }
+                            } else {
+                                // In wider viewports, show duration and "Completed"
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        <span class="item_container-text">{ duration_clone }</span>
+                                        <span class="item_container-text">{ "-  Completed" }</span>
+                                    </div>
+                                }
                             }
                         } else {
+                            // For in-progress episodes
                             if formatted_listen_duration.is_some() {
                                 html! {
                                     <div class="flex items-center space-x-2">
-                                        <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                        // Only show current position in wider viewports
+                                        {
+                                            if !is_narrow_viewport {
+                                                html! {
+                                                    <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
                                         <div class="progress-bar-container">
                                             <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
                                         </div>
@@ -2317,6 +2380,7 @@ pub fn episode_item(
                                     </div>
                                 }
                             } else {
+                                // For episodes with no listen progress
                                 html! {
                                     <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
                                 }
@@ -2403,6 +2467,7 @@ pub fn virtual_episode_item(
     let duration_clone = formatted_duration.clone();
     let duration_again = formatted_duration.clone();
     let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
+
     // Calculate the percentage of the episode that has been listened to
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
@@ -2411,6 +2476,12 @@ pub fn virtual_episode_item(
             0.0 // Avoid division by zero
         }
     });
+
+    // Check if viewport is narrow (< 500px)
+    let is_narrow_viewport = {
+        let window = web_sys::window().expect("no global window exists");
+        window.inner_width().unwrap().as_f64().unwrap() < 500.0
+    };
 
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
@@ -2496,17 +2567,38 @@ pub fn virtual_episode_item(
                     </div>
                     {
                         if completed {
-                            html! {
-                                <div class="flex items-center space-x-2">
-                                    <span class="item_container-text">{ duration_clone }</span>
-                                    <span class="item_container-text">{ "-  Completed" }</span>
-                                </div>
+                            // For completed episodes
+                            if is_narrow_viewport {
+                                // In narrow viewports, just show "Completed"
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        <span class="item_container-text">{"Completed"}</span>
+                                    </div>
+                                }
+                            } else {
+                                // In wider viewports, show duration and "Completed"
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        <span class="item_container-text">{ duration_clone }</span>
+                                        <span class="item_container-text">{ "-  Completed" }</span>
+                                    </div>
+                                }
                             }
                         } else {
+                            // For in-progress episodes
                             if formatted_listen_duration.is_some() {
                                 html! {
                                     <div class="flex items-center space-x-2">
-                                        <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                        // Only show current position in wider viewports
+                                        {
+                                            if !is_narrow_viewport {
+                                                html! {
+                                                    <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
                                         <div class="progress-bar-container">
                                             <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
                                         </div>
@@ -2514,6 +2606,7 @@ pub fn virtual_episode_item(
                                     </div>
                                 }
                             } else {
+                                // For episodes with no listen progress
                                 html! {
                                     <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
                                 }
@@ -2614,6 +2707,8 @@ pub fn download_episode_item(
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
     let formatted_duration = format_time(span_episode as f64);
+    let duration_clone = formatted_duration.clone();
+    let duration_again = formatted_duration.clone();
     let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
@@ -2622,6 +2717,13 @@ pub fn download_episode_item(
             0.0
         }
     });
+
+    // Check if viewport is narrow (< 500px)
+    let is_narrow_viewport = {
+        let window = web_sys::window().expect("no global window exists");
+        window.inner_width().unwrap().as_f64().unwrap() < 500.0
+    };
+
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
     let preview_description = strip_images_from_html(&description);
@@ -2696,24 +2798,46 @@ pub fn download_episode_item(
                     </div>
                     {
                         if completed {
-                            html! {
-                                <div class="flex items-center space-x-2">
-                                    <span class="item_container-text">{ formatted_duration.clone() }</span>
-                                    <span class="item_container-text">{ "-  Completed" }</span>
-                                </div>
-                            }
-                        } else {
-                            if formatted_listen_duration.is_some() {
+                            // For completed episodes
+                            if is_narrow_viewport {
+                                // In narrow viewports, just show "Completed"
                                 html! {
                                     <div class="flex items-center space-x-2">
-                                        <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
-                                        <div class="progress-bar-container">
-                                            <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
-                                        </div>
-                                        <span class="item_container-text">{ formatted_duration.clone() }</span>
+                                        <span class="item_container-text">{"Completed"}</span>
                                     </div>
                                 }
                             } else {
+                                // In wider viewports, show duration and "Completed"
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        <span class="item_container-text">{ duration_clone }</span>
+                                        <span class="item_container-text">{ "-  Completed" }</span>
+                                    </div>
+                                }
+                            }
+                        } else {
+                            // For in-progress episodes
+                            if formatted_listen_duration.is_some() {
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        // Only show current position in wider viewports
+                                        {
+                                            if !is_narrow_viewport {
+                                                html! {
+                                                    <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
+                                        </div>
+                                        <span class="item_container-text">{ duration_again }</span>
+                                    </div>
+                                }
+                            } else {
+                                // For episodes with no listen progress
                                 html! {
                                     <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
                                 }
@@ -2795,6 +2919,8 @@ pub fn queue_episode_item(
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
     let formatted_duration = format_time(span_episode as f64);
+    let duration_clone = formatted_duration.clone();
+    let duration_again = formatted_duration.clone();
     let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
     // Calculate the percentage of the episode that has been listened to
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
@@ -2804,6 +2930,13 @@ pub fn queue_episode_item(
             0.0 // Avoid division by zero
         }
     });
+
+    // Check if viewport is narrow (< 500px)
+    let is_narrow_viewport = {
+        let window = web_sys::window().expect("no global window exists");
+        window.inner_width().unwrap().as_f64().unwrap() < 500.0
+    };
+
     let checkbox_ep = episode.get_episode_id(Some(0));
     let should_show_buttons = !ep_url.is_empty();
     let preview_description = strip_images_from_html(&description);
@@ -2891,24 +3024,46 @@ pub fn queue_episode_item(
                     </div>
                     {
                         if completed {
-                            html! {
-                                <div class="flex items-center space-x-2">
-                                    <span class="item_container-text">{ formatted_duration.clone() }</span>
-                                    <span class="item_container-text">{ "-  Completed" }</span>
-                                </div>
-                            }
-                        } else {
-                            if formatted_listen_duration.is_some() {
+                            // For completed episodes
+                            if is_narrow_viewport {
+                                // In narrow viewports, just show "Completed"
                                 html! {
                                     <div class="flex items-center space-x-2">
-                                        <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
-                                        <div class="progress-bar-container">
-                                            <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
-                                        </div>
-                                        <span class="item_container-text">{ formatted_duration.clone() }</span>
+                                        <span class="item_container-text">{"Completed"}</span>
                                     </div>
                                 }
                             } else {
+                                // In wider viewports, show duration and "Completed"
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        <span class="item_container-text">{ duration_clone }</span>
+                                        <span class="item_container-text">{ "-  Completed" }</span>
+                                    </div>
+                                }
+                            }
+                        } else {
+                            // For in-progress episodes
+                            if formatted_listen_duration.is_some() {
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        // Only show current position in wider viewports
+                                        {
+                                            if !is_narrow_viewport {
+                                                html! {
+                                                    <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
+                                        </div>
+                                        <span class="item_container-text">{ duration_again }</span>
+                                    </div>
+                                }
+                            } else {
+                                // For episodes with no listen progress
                                 html! {
                                     <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
                                 }
@@ -2983,9 +3138,18 @@ pub fn person_episode_item(
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
     let formatted_duration = format_time(span_episode as f64);
+    let duration_clone = formatted_duration.clone();
+    let duration_again = formatted_duration.clone();
     let formatted_listen_duration = span_duration
         .filter(|&duration| duration > 0)
         .map(|ld| format_time(ld as f64));
+
+    // Check if viewport is narrow (< 500px)
+    let is_narrow_viewport = {
+        let window = web_sys::window().expect("no global window exists");
+        window.inner_width().unwrap().as_f64().unwrap() < 500.0
+    };
+
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
             (ld as f64 / episode_duration as f64) * 100.0
@@ -3064,24 +3228,46 @@ pub fn person_episode_item(
                     </div>
                     {
                         if completed {
-                            html! {
-                                <div class="flex items-center space-x-2">
-                                    <span class="item_container-text">{ formatted_duration.clone() }</span>
-                                    <span class="item_container-text">{ "-  Completed" }</span>
-                                </div>
-                            }
-                        } else {
-                            if formatted_listen_duration.is_some() {
+                            // For completed episodes
+                            if is_narrow_viewport {
+                                // In narrow viewports, just show "Completed"
                                 html! {
                                     <div class="flex items-center space-x-2">
-                                        <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
-                                        <div class="progress-bar-container">
-                                            <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
-                                        </div>
-                                        <span class="item_container-text">{ formatted_duration.clone() }</span>
+                                        <span class="item_container-text">{"Completed"}</span>
                                     </div>
                                 }
                             } else {
+                                // In wider viewports, show duration and "Completed"
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        <span class="item_container-text">{ duration_clone }</span>
+                                        <span class="item_container-text">{ "-  Completed" }</span>
+                                    </div>
+                                }
+                            }
+                        } else {
+                            // For in-progress episodes
+                            if formatted_listen_duration.is_some() {
+                                html! {
+                                    <div class="flex items-center space-x-2">
+                                        // Only show current position in wider viewports
+                                        {
+                                            if !is_narrow_viewport {
+                                                html! {
+                                                    <span class="item_container-text">{ formatted_listen_duration.clone() }</span>
+                                                }
+                                            } else {
+                                                html! {}
+                                            }
+                                        }
+                                        <div class="progress-bar-container">
+                                            <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
+                                        </div>
+                                        <span class="item_container-text">{ duration_again }</span>
+                                    </div>
+                                }
+                            } else {
+                                // For episodes with no listen progress
                                 html! {
                                     <span class="item_container-text">{ format!("{}", formatted_duration) }</span>
                                 }

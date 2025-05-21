@@ -1210,7 +1210,7 @@ pub fn epsiode() -> Html {
                         let episode_artwork_clone = episode.episode.episodeartwork.clone();
                         let episode_duration_clone = episode.episode.episodeduration.clone();
                         let podcast_of_episode = episode.episode.podcastid.clone();
-                        let episode_listened_clone = Option::from(0);
+                        let episode_listened_clone = episode.episode.listenduration.clone();
                         let episode_id_clone = episode.episode.episodeid.clone();
                         let episode_is_youtube = Some(episode.episode.is_youtube.clone());
 
@@ -1652,6 +1652,39 @@ pub fn epsiode() -> Html {
                         });
                         // let format_duration = format!("Duration: {} minutes", e / 60); // Assuming duration is in seconds
                         // let format_release = format!("Released on: {}", &episode.episode.EpisodePubDate);
+                        // Before creating the play toggle handler, add this:
+                        let listen_duration_percentage = if let Some(listen_duration) = episode.episode.listenduration {
+                            if episode.episode.episodeduration > 0 {
+                                (listen_duration as f64 / episode.episode.episodeduration as f64) * 100.0
+                            } else {
+                                0.0
+                            }
+                        } else {
+                            0.0
+                        };
+
+                        // In the Episode component rendering logic, add this where appropriate:
+                        let progress_bar = if let Some(listen_duration) = episode.episode.listenduration {
+                            if listen_duration > 0 {
+                                let listen_duration_formatted = format_time(listen_duration as f64);
+                                html! {
+                                    <div class="flex flex-col space-y-1 mt-2">
+                                        <div class="flex items-center space-x-2">
+                                            <span class="item_container-text">{listen_duration_formatted}</span>
+                                            <div class="progress-bar-container">
+                                                <div class="progress-bar" style={format!("width: {}%;", listen_duration_percentage)}></div>
+                                            </div>
+                                            <span class="item_container-text">{&format_duration}</span>
+                                        </div>
+                                    </div>
+                                }
+                            } else {
+                                html! {}
+                            }
+                        } else {
+                            html! {}
+                        };
+
                         let layout = if audio_state.is_mobile.unwrap_or(false) {
                             html! {
                                 <div class="mobile-layout">
@@ -1693,6 +1726,7 @@ pub fn epsiode() -> Html {
                                                 <span class="episode-duration">{"\u{00a0}-\u{00a0}"}</span>
                                                 <p class="episode-release-date">{ format_release }</p>
                                             </div>
+                                            { progress_bar }
 
 
                                             {
@@ -1903,6 +1937,7 @@ pub fn epsiode() -> Html {
                                             // <h2 class="episode-title">{ &episode.episode.episodetitle }</h2>
                                             <p class="episode-duration">{ format_duration }</p>
                                             <p class="episode-release-date">{ format_release }</p>
+                                            { progress_bar }
                                             {
                                                 if let Some(transcript) = &audio_state.episode_page_transcript {
                                                     if !transcript.is_empty() {
