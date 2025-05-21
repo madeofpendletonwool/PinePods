@@ -3647,11 +3647,11 @@ async def api_create_api_key(
 
 @app.post("/api/data/set_rss_key_podcasts")
 async def api_set_rss_key_podcasts(
-    user_id: int = Body(..., embed=True),
-    feed_key_id: int = Body(..., embed=True),
-    podcast_ids: Optional[List[int]] = Body(None, embed=True),
-    cnx=Depends(get_database_connection),
-    api_key: str = Depends(get_api_key_from_header)):
+        user_id: int = Body(..., embed=True),
+        feed_key_id: int = Body(..., embed=True),
+        podcast_ids: Optional[List[int]] = Body(None, embed=True),
+        cnx=Depends(get_database_connection),
+        api_key: str = Depends(get_api_key_from_header)):
     is_web_key = api_key == base_webkey.web_key
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
     if user_id == key_id or is_web_key:
