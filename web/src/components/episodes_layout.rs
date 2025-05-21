@@ -10,8 +10,8 @@ use crate::components::virtual_list::PodcastEpisodeVirtualList;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_check_podcast,
     call_clear_playback_speed, call_download_all_podcast, call_enable_auto_download,
-    call_fetch_podcasting_2_pod_data, call_get_auto_download_status, call_get_auto_skip_times,
-    call_get_feed_cutoff_days, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
+    call_fetch_podcasting_2_pod_data, call_get_auto_download_status, call_get_feed_cutoff_days,
+    call_get_play_episode_details, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
     call_get_podcast_notifications_status, call_remove_category, call_remove_podcasts_name,
     call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_notifications,
     call_update_feed_cutoff_days, AddCategoryRequest, AutoDownloadRequest,
@@ -478,6 +478,7 @@ pub fn episode_layout() -> Html {
         let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID);
         let effect_start_skip = start_skip.clone();
         let effect_end_skip = end_skip.clone();
+        let effect_playback_speed = playback_speed.clone();
         let effect_added = is_added.clone();
         let feed_cutoff_days = feed_cutoff_days.clone();
         let feed_cutoff_days_input = feed_cutoff_days_input.clone();
@@ -595,17 +596,19 @@ pub fn episode_layout() -> Html {
                                                 );
                                             }
                                         }
-                                        match call_get_auto_skip_times(
+                                        match call_get_play_episode_details(
                                             &server_name,
                                             &Some(api_key.clone().unwrap()),
                                             user_id,
-                                            id,
+                                            id,    // podcast_id
+                                            false, // is_youtube (probably false for most podcasts, adjust if needed)
                                         )
                                         .await
                                         {
-                                            Ok((start, end)) => {
+                                            Ok((speed, start, end)) => {
                                                 effect_start_skip.set(start);
                                                 effect_end_skip.set(end);
+                                                effect_playback_speed.set(speed as f64);
                                             }
                                             Err(e) => {
                                                 web_sys::console::log_1(
@@ -1521,7 +1524,7 @@ pub fn episode_layout() -> Html {
                                     <input
                                         type="number"
                                         id="playback-speed"
-                                        value={playback_speed_clone.to_string()}
+                                        value={format!("{:.1}", *playback_speed_clone)} // Format to 1 decimal place
                                         class="email-input border text-sm rounded-lg p-2.5 w-20"
                                         oninput={playback_speed_input_handler}
                                         min="0.5"

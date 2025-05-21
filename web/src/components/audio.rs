@@ -60,14 +60,12 @@ pub struct PlaybackControlProps {
 #[function_component(PlaybackControl)]
 pub fn playback_control(props: &PlaybackControlProps) -> Html {
     let is_open = use_state(|| false);
-
     let toggle_open = {
         let is_open = is_open.clone();
         Callback::from(move |_: MouseEvent| {
             is_open.set(!*is_open);
         })
     };
-
     let on_speed_change = {
         let on_speed_change = props.on_speed_change.clone();
         Callback::from(move |e: InputEvent| {
@@ -77,6 +75,9 @@ pub fn playback_control(props: &PlaybackControlProps) -> Html {
             }
         })
     };
+
+    // Format the playback speed to show just one decimal place
+    let display_speed = format!("{:.1}x", props.speed);
 
     html! {
         <div class="speed-control-container">
@@ -89,7 +90,7 @@ pub fn playback_control(props: &PlaybackControlProps) -> Html {
             <div class={classes!("speed-slider-container", "item_container-bg", (*is_open).then(|| "visible"))}>
                 <div class="speed-control-content item_container-bg">
                     <div class="speed-text">
-                        {format!("{}x", props.speed)}
+                        {display_speed}
                     </div>
                     <input
                         type="range"
