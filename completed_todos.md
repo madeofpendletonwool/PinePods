@@ -13,9 +13,22 @@ Major Version:
 
 0.7.9
 
-- []
+- [x] Return Gpodder info as part of get_stats
+- [] display gpodder info on the user stats page
+- [] 100 RSS feed limit
+- [] Add unique RSS feed keys to generated feeds
 - [x] Updated youtube search results page to be similar to new pod results page
 - [x] Improved search dropdown to be more compatible with more devices, also improved style
+- [] Fix downloads Layout
+- [] Finish playback speed Settings
+  - [] Fix issue with the numbers auto updating
+  - [] Playing works but results in really strange decimals
+- [] Fix known bugs with gpodder sync
+- [] Check youtube download Issues when changing the download time
+- [] Check opml import issues
+- [] Finish implementing long finger press - fix on iOS
+- [] Finish super small screen visual Improvements
+
 
 0.7.8
 

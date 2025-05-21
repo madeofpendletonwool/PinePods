@@ -2162,6 +2162,36 @@ async def api_get_play_episode_details(data: PlayEpisodeDetailsRequest,
         raise HTTPException(status_code=403,
                           detail="You can only get metadata for yourself!")
 
+class ClearPlaybackSpeedRequest(BaseModel):
+    podcast_id: int
+    user_id: int
+
+@app.post("/api/data/clear_podcast_playback_speed")
+async def api_clear_podcast_playback_speed(data: ClearPlaybackSpeedRequest,
+                                          cnx=Depends(get_database_connection),
+                                          api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                          detail="Your API key is either invalid or does not have correct permission")
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if key_id != data.user_id:
+        raise HTTPException(status_code=403,
+                          detail="You can only modify your own podcast settings!")
+
+    success = database_functions.functions.clear_podcast_playback_speed(
+        cnx,
+        database_type,
+        data.podcast_id,
+        data.user_id
+    )
+
+    if success:
+        return {"message": "Playback speed cleared successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to clear playback speed")
+
 class SetPlaybackSpeedPodcast(BaseModel):
     user_id: int
     podcast_id: int
