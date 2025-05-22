@@ -669,7 +669,7 @@ try:
             # No commit or rollback here, just like in your working example
 
     # Usage - should be called during app startup
-    add_playbackspeed_if_not_exist_users(cursor, cnx)
+    add_playbackspeed_if_not_exist_podcasts(cursor, cnx)
 
     def add_playbackspeed_customized_if_not_exist(cursor, cnx):
         try:
