@@ -591,6 +591,8 @@ try:
                 FeedCutoffDays INT DEFAULT 0,
                 PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0,
                 PlaybackSpeedCustomized BOOLEAN DEFAULT FALSE,
+                SponsorBlockCategories NOT NULL INT DEFAULT 0,
+                mindurationseconds NOT NULL INT DEFAULT 0,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
             )
         """)
@@ -716,6 +718,50 @@ try:
             print(f"Error adding feedcutoffdays column to Podcasts table: {e}")
 
     add_feed_cutoff_column_if_not_exist(cursor, cnx)
+
+    def add_sponsorblock_categories_column_if_not_exist(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='Podcasts'
+                AND column_name = 'sponsorblockcategories'
+            """)
+            existing_column = cursor.fetchone()
+
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN sponsorblockcategories INT DEFAULT 0
+                """)
+                print("Added 'sponsorblockcategories' column to 'Podcasts' table.")
+                cnx.commit()
+        except Exception as e:
+            print(f"Error adding sponsorblockcategories column to Podcasts table: {e}")
+
+    add_sponsorblock_categories_column_if_not_exist(cursor, cnx)
+
+    def add_min_duration_seconds_column_if_not_exist(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='Podcasts'
+                AND column_name = 'mindurationseconds'
+            """)
+            existing_column = cursor.fetchone()
+
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN mindurationseconds INT DEFAULT 0
+                """)
+                print("Added 'mindurationseconds' column to 'Podcasts' table.")
+                cnx.commit()
+        except Exception as e:
+            print(f"Error adding mindurationseconds column to Podcasts table: {e}")
+
+    add_min_duration_seconds_column_if_not_exist(cursor, cnx)
 
     cursor.execute("SELECT to_regclass('public.\"Podcasts\"')")
 
