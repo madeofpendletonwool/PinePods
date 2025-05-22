@@ -5516,14 +5516,14 @@ def get_api_info(database_type, cnx, user_id):
         cnx.row_factory = dict_row
         cursor = cnx.cursor()
         query = (
-            'SELECT APIKeyID, "APIKeys".UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, Created '
+            'SELECT APIKeyID, "APIKeys".UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, Created, ARRAY[]::integer[] AS PodcastIDs '
             'FROM "APIKeys" '
             'JOIN "Users" ON "APIKeys".UserID = "Users".UserID '
         )
     else:  # MySQL or MariaDB
         cursor = cnx.cursor(dictionary=True)
         query = (
-            "SELECT APIKeyID, APIKeys.UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, Created "
+            "SELECT APIKeyID, APIKeys.UserID, Username, RIGHT(APIKey, 4) as LastFourDigits, Created, '' AS PodcastIDs "
             "FROM APIKeys "
             "JOIN Users ON APIKeys.UserID = Users.UserID "
         )
@@ -5535,29 +5535,31 @@ def get_api_info(database_type, cnx, user_id):
         else:
             query += "WHERE APIKeys.UserID = %s"
 
-    
+    # TODO: remove after testing
     if database_type == 'postgresql':
         query += '''
         UNION ALL
-        SELECT FeedKeyID, FeedKeys.UserID, Username, RIGHT(FeedKey, 4) as LastFourDigits, Created, GROUP_CONCAT(PodcastID) as PodcastIDs
-        FROM "FeedKeys"
-        JOIN "Users" ON "FeedKeys".UserID = "Users".UserID 
-        JOIN "FeedKeyMap" ON "FeedKeys".FeedKeyID = "FeedKeyMap".FeedKeyID
+        SELECT "RssKeys".RssKeyID, "RssKeys".UserID, "Users".Username, RIGHT("RssKeys".RssKey, 4) as LastFourDigits, "RssKeys".Created, ARRAY_AGG("RssKeyMap".PodcastID) as PodcastIDs
+        FROM "RssKeys"
+        JOIN "Users" ON "RssKeys".UserID = "Users".UserID 
+        JOIN "RssKeyMap" ON "RssKeys".RssKeyID = "RssKeyMap".RssKeyID
+        GROUP BY "RssKeys".RssKeyID, "RssKeys".UserID, "Users".Username, "RssKeys".RssKey, "RssKeys".Created
         '''
     else:
         query += '''
         UNION ALL
-        SELECT FeedKeyID, FeedKeys.UserID, Username, RIGHT(FeedKey, 4) as LastFourDigits, Created, GROUP_CONCAT(PodcastID) as PodcastIDs
-        FROM FeedKeys
-        JOIN Users ON FeedKeys.UserID = Users.UserID 
-        JOIN FeedKeyMap ON FeedKeys.FeedKeyID = FeedKeyMap.FeedKeyID
+        SELECT RssKeys.RssKeyID, RssKeys.UserID, Users.Username, RIGHT(RssKeys.RssKey, 4) as LastFourDigits, RssKeys.Created, GROUP_CONCAT(CAST(RssKeyMap.PodcastID AS TEXT)) as PodcastIDs
+        FROM RssKeys
+        JOIN Users ON RssKeys.UserID = Users.UserID 
+        JOIN RssKeyMap ON RssKeys.RssKeyID = RssKeyMap.RssKeyID
+        GROUP BY RssKeys.RssKeyID, RssKeys.UserID, Users.Username, RssKeys.RssKey, RssKeys.Created
         '''
 
     if not is_admin:
         if database_type == 'postgresql':
-            query += 'WHERE "FeedKeys".UserID = %s'
+            query += 'WHERE "RssKeys".UserID = %s'
         else:
-            query += 'WHERE FeedKeys.UserID = %s'
+            query += 'WHERE RssKeys.UserID = %s'
 
     cursor.execute(query, (user_id, user_id) if not is_admin else ())
     rows = cursor.fetchall()
@@ -6706,7 +6708,7 @@ def get_rss_key_if_valid(cnx, database_type: str, passed_key: str, podcast_ids: 
         params = [passed_key]
         if database_type == "postgresql":
             query = '''
-                SELECT fk.userid, GROUP_CONCAT(fkm.podcastid) as podcastids
+                SELECT fk.userid, STRING_AGG(CAST(fkm.podcastid AS TEXT), ',') as podcastids
                 FROM "RssKeys" fk
                 LEFT JOIN "RssKeyMap" fkm ON fk.rsskeyid = fkm.rsskeyid
                 WHERE fk.rsskey = %s
@@ -14849,7 +14851,7 @@ def get_home_overview(database_type, cnx, user_id):
     return lowercase_keys(home_data)
 
 def get_playback_speed(cnx, database_type: str, user_id: int, is_youtube: bool, podcast_id: Optional[int] = None) -> float:
-     cursor = cnx.cursor()
+    cursor = cnx.cursor()
     if database_type == "postgresql":
         if podcast_id is None:
             query = 'SELECT PlaybackSpeed FROM "Users" WHERE UserID = %s'

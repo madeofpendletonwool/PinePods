@@ -205,6 +205,7 @@ try:
             RssKeyID SERIAL PRIMARY KEY,
             UserID INT,
             RssKey TEXT,
+            Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
         )   
     """)
