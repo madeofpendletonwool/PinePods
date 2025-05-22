@@ -3637,10 +3637,10 @@ async def api_create_api_key(
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
     if user_id == key_id or is_web_key:
         if rssonly:
-            new_api_key = database_functions.functions.create_rss_key(cnx, database_type, user_id, podcast_ids)
+            new_key = database_functions.functions.create_rss_key(cnx, database_type, user_id, podcast_ids)
         else:
-            new_api_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
-        return {"feed_key" if rssonly else "api_key": new_api_key}
+            new_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
+        return {"rss_key" if rssonly else "api_key": new_key}
     else:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
@@ -3648,14 +3648,14 @@ async def api_create_api_key(
 @app.post("/api/data/set_rss_key_podcasts")
 async def api_set_rss_key_podcasts(
         user_id: int = Body(..., embed=True),
-        feed_key_id: int = Body(..., embed=True),
+        rss_key_id: int = Body(..., embed=True),
         podcast_ids: Optional[List[int]] = Body(None, embed=True),
         cnx=Depends(get_database_connection),
         api_key: str = Depends(get_api_key_from_header)):
     is_web_key = api_key == base_webkey.web_key
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
     if user_id == key_id or is_web_key:
-        database_functions.functions.set_rss_key_podcasts(cnx, database_type, feed_key_id, podcast_ids)
+        database_functions.functions.set_rss_key_podcasts(cnx, database_type, rss_key_id, podcast_ids)
         return {"message": "Podcast IDs updated successfully"}
     else:
         raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
@@ -5701,12 +5701,16 @@ async def stream_episode(
     user_id: int = Query(..., alias='user_id'),
     source_type: str = Query(None, alias='type')
 ):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-    if not is_valid_key:
-        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
-
     is_web_key = api_key == base_webkey.web_key
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if not key_id and not is_web_key:
+        rss_key = database_functions.functions.get_rss_key_if_valid(cnx, database_type, api_key)
+        if not rss_key:
+            raise HTTPException(status_code=403, detail="Invalid API key")
+        key_id = rss_key.get('user_id')
+        universal_key = (not rss_key.get('podcast_ids') or len(rss_key.get('podcast_ids')) == 0 or -1 in rss_key.get('podcast_ids'))
+        if not universal_key and not database_functions.functions.validate_episode_access(cnx, database_type, episode_id, rss_key.get('podcast_ids')):
+            raise HTTPException(status_code=403, detail="You do not have permission to access this episode")
 
     if key_id == user_id or is_web_key:
         # Choose which lookup to use based on source_type
@@ -6025,15 +6029,14 @@ async def get_user_feed(
             domain = f'{request.url.scheme}://{request.url.hostname}'
 
 
-        feed_key = database_functions.functions.validate_feed_key(cnx, database_type, api_key, podcast_id)
+        rss_key = database_functions.functions.get_rss_key_if_valid(cnx, database_type, api_key, podcast_id)
         
         # TODO: remove this once backwards compatibility is no longer needed
-        if not feed_key:
-            # Use id_from_api_key to verify the API key from query param
+        if not rss_key:
             key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
             if not key_id:
                 raise HTTPException(status_code=403, detail="Invalid API key")
-            feed_key = {
+            rss_key = {
                 "podcast_ids": [ -1 ],
                 "user_id": key_id,
                 "key": api_key
@@ -6042,7 +6045,7 @@ async def get_user_feed(
         feed_content = database_functions.functions.generate_podcast_rss(
             database_type,
             cnx,
-            feed_key,
+            rss_key,
             limit,
             source_type,
             domain,

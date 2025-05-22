@@ -205,24 +205,23 @@ try:
                         APIKeyID INT AUTO_INCREMENT PRIMARY KEY,
                         UserID INT,
                         APIKey TEXT,
-                        RssOnly TINYINT DEFAULT 0,
                         Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                     )""")
     cnx.commit()
 
-    cursor.execute("""CREATE TABLE IF NOT EXISTS FeedKeys (
-                        FeedKeyID INT AUTO_INCREMENT PRIMARY KEY,
+    cursor.execute("""CREATE TABLE IF NOT EXISTS RssKeys (
+                        RssKeyID INT AUTO_INCREMENT PRIMARY KEY,
                         UserID INT,
-                        FeedKey TEXT,
+                        RssKey TEXT,
                         FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                     )""")
     cnx.commit()
 
-    cursor.execute("""CREATE TABLE IF NOT EXISTS FeedKeyMap (
-                        FeedKeyID INT,
+    cursor.execute("""CREATE TABLE IF NOT EXISTS RssKeyMap (
+                        RssKeyID INT,
                         PodcastID INT,
-                        FOREIGN KEY (FeedKeyID) REFERENCES FeedKeys(FeedKeyID) ON DELETE CASCADE
+                        FOREIGN KEY (RssKeyID) REFERENCES RssKeys(RssKeyID) ON DELETE CASCADE
                     )""")
     cnx.commit()
 

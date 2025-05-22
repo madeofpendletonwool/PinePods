@@ -5598,18 +5598,18 @@ def create_rss_key(cnx, database_type: str, user_id: int, podcast_ids: list[int]
 
     cursor = cnx.cursor()
     if database_type == "postgresql":
-        query = 'INSERT INTO "FeedKeys" (UserID, FeedKey) VALUES (%s, %s)'
+        query = 'INSERT INTO "RssKeys" (UserID, RssKey) VALUES (%s, %s)'
     else:
-        query = "INSERT INTO FeedKeys (UserID, FeedKey) VALUES (%s, %s)"
+        query = "INSERT INTO RssKeys (UserID, RssKey) VALUES (%s, %s)"
 
     cursor.execute(query, (user_id, api_key))
     
     if podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids:
         for podcast_id in podcast_ids:
             if database_type == "postgresql":
-                query = 'INSERT INTO "FeedKeyMap" (FeedKeyID, PodcastID) VALUES (%s, %s)'
+                query = 'INSERT INTO "RssKeyMap" (RssKeyID, PodcastID) VALUES (%s, %s)'
             else:
-                query = 'INSERT INTO FeedKeyMap (FeedKeyID, PodcastID) VALUES (%s, %s)'
+                query = 'INSERT INTO RssKeyMap (RssKeyID, PodcastID) VALUES (%s, %s)'
             cursor.execute(query, (api_key, podcast_id))
     
     cnx.commit()
@@ -5617,19 +5617,22 @@ def create_rss_key(cnx, database_type: str, user_id: int, podcast_ids: list[int]
 
     return api_key
 
-def set_rss_key_podcasts(cnx, database_type: str, feed_key_id: int, podcast_ids: list[int]):
+def set_rss_key_podcasts(cnx, database_type: str, rss_key_id: int, podcast_ids: list[int]):
     cursor = cnx.cursor()
     # delete existing podcast ids
     if database_type == "postgresql":
-        query = 'DELETE FROM "FeedKeyMap" WHERE FeedKeyID = %s'
+        query = 'DELETE FROM "RssKeyMap" WHERE RssKeyID = %s'
     else:
-        query = 'DELETE FROM "FeedKeyMap" WHERE FeedKeyID = %s'
-    cursor.execute(query, (feed_key_id,))
+        query = 'DELETE FROM RssKeyMap WHERE RssKeyID = %s'
+    cursor.execute(query, (rss_key_id,))
 
     # insert new podcast ids
     for podcast_id in podcast_ids:
-        query = 'INSERT INTO "FeedKeyMap" (FeedKeyID, PodcastID) VALUES (%s, %s)'
-        cursor.execute(query, (feed_key_id, podcast_id))
+        if database_type == "postgresql":
+            query = 'INSERT INTO "RssKeyMap" (RssKeyID, PodcastID) VALUES (%s, %s)'
+        else:
+            query = 'INSERT INTO RssKeyMap (RssKeyID, PodcastID) VALUES (%s, %s)'
+        cursor.execute(query, (rss_key_id, podcast_id))
 
     cnx.commit()
     cursor.close()
@@ -6280,14 +6283,14 @@ class PodcastFeed(feedgenerator.Rss201rev2Feed):
                 attrs={'href': item['artwork_url']})
 
 
-def generate_podcast_rss(database_type: str, cnx, feed_key: dict, limit: int, source_type: str, domain: str) -> str:
+def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, source_type: str, domain: str) -> str:
     from datetime import datetime as dt, timezone
     cursor = cnx.cursor()
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
-    user_id = feed_key.get('user_id')
-    podcast_ids = feed_key.get('podcast_ids')
-    key = feed_key.get('key')
+    user_id = rss_key.get('user_id')
+    podcast_ids = rss_key.get('podcast_ids')
+    key = rss_key.get('key')
     podcast_filter = (podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids)
     try:
         # Check if RSS feeds are enabled for user
@@ -6696,7 +6699,7 @@ def id_from_api_key(cnx, database_type: str, passed_key: str, rss_feed: bool = F
     finally:
         cursor.close()
 
-def validate_feed_key(cnx, database_type: str, passed_key: str, podcast_ids: Optional[List[int]] = None):
+def get_rss_key_if_valid(cnx, database_type: str, passed_key: str, podcast_ids: Optional[List[int]] = None):
     filter_podcast_ids = (podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids)
     cursor = cnx.cursor()
     try:
@@ -6704,17 +6707,17 @@ def validate_feed_key(cnx, database_type: str, passed_key: str, podcast_ids: Opt
         if database_type == "postgresql":
             query = '''
                 SELECT fk.userid, GROUP_CONCAT(fkm.podcastid) as podcastids
-                FROM "FeedKeys" fk
-                LEFT JOIN "FeedKeyMap" fkm ON fk.feedkeyid = fkm.feedkeyid
-                WHERE fk.feedkey = %s
+                FROM "RssKeys" fk
+                LEFT JOIN "RssKeyMap" fkm ON fk.rsskeyid = fkm.rsskeyid
+                WHERE fk.rsskey = %s
                 GROUP BY fk.userid
             '''
         else:
             query = '''
                 SELECT fk.UserID, GROUP_CONCAT(fkm.PodcastID) as podcastids
-                FROM FeedKeys fk
-                LEFT JOIN FeedKeyMap fkm ON fk.FeedKeyID = fkm.FeedKeyID
-                WHERE fk.FeedKey = %s
+                FROM RssKeys fk
+                LEFT JOIN RssKeyMap fkm ON fk.RssKeyID = fkm.RssKeyID
+                WHERE fk.RssKey = %s
                 GROUP BY fk.UserID
             '''
 
@@ -6768,12 +6771,40 @@ def validate_feed_key(cnx, database_type: str, passed_key: str, podcast_ids: Opt
             raise
 
     except Exception as e:
-        logging.error(f"Error in podcasts_from_feed_key: {e}")
+        logging.error(f"Error in podcasts_from_rss_key: {e}")
         return None
     finally:
         cursor.close()
 
-
+def validate_episode_access(cnx, database_type: str, episode_id: int, podcast_ids: Optional[List[int]] = []):
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            query = '''
+                SELECT COUNT(*)
+                FROM "Podcasts"
+                JOIN "Episodes" ON "Podcasts".PodcastID = "Episodes".PodcastID
+                JOIN "YouTubeVideos" ON "Podcasts".PodcastID = "YouTubeVideos".PodcastID
+                WHERE ("Episodes".EpisodeID = %s OR "YouTubeVideos".VideoID = %s)
+                AND ("Podcasts".PodcastID IN(%s))
+            '''
+        else:
+            query = '''
+                SELECT COUNT(*)
+                FROM "Podcasts"
+                JOIN "Episodes" ON "Podcasts".PodcastID = "Episodes".PodcastID
+                JOIN "YouTubeVideos" ON "Podcasts".PodcastID = "YouTubeVideos".PodcastID
+                WHERE ("Episodes".EpisodeID = %s OR "YouTubeVideos".VideoID = %s)
+                AND ("Podcasts".PodcastID IN(%s))
+            '''
+        cursor.execute(query, (episode_id, episode_id, podcast_ids))
+        result = cursor.fetchone()
+        return result[0] > 0
+    except Exception as e:
+        logging.error(f"Error in validate_episode_access: {e}")
+        return False
+    finally:
+        cursor.close()
 
 # def check_api_permission(cnx, passed_key):
 #     import tempfile
