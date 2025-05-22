@@ -1069,6 +1069,38 @@ def update_episode_count(cnx, database_type, podcast_id):
                 episode_count = episode_result[0]
             elif isinstance(episode_result, dict):
                 episode_count = episode_result["count"]
+                        # Get video count
+        cursor.execute(video_count_query, (podcast_id,))
+        video_result = cursor.fetchone()
+        video_count = 0
+        if video_result:
+            if isinstance(video_result, tuple):
+                video_count = video_result[0]
+            elif isinstance(video_result, dict):
+                video_count = video_result["count"]
+
+        # Total count
+        total_count = episode_count + video_count
+        # Update total count
+        cursor.execute(update_query, (total_count, podcast_id))
+        # Verify the update
+        cursor.execute(verify_query, (podcast_id,))
+        verify_result = cursor.fetchone()
+        final_count = 0
+        if verify_result:
+            if isinstance(verify_result, tuple):
+                final_count = verify_result[0]
+            elif isinstance(verify_result, dict):
+                final_count = verify_result["episodecount"]
+
+        cnx.commit()
+
+    except Exception as e:
+        print(f'Error updating content count for podcast {podcast_id}: {str(e)}')
+        cnx.rollback()
+        raise
+    finally:
+        cursor.close()
 
 def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_download, feed_cutoff, min_duration_seconds, username=None, password=None, websocket=False):
     import feedparser

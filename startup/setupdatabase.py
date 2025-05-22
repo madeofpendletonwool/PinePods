@@ -595,7 +595,7 @@ try:
             if not existing_column:
                 cursor.execute("""
                     ALTER TABLE Podcasts
-                    ADD COLUMN FeedCutoffDays NOT NULL INT DEFAULT 0
+                    ADD COLUMN FeedCutoffDays INT DEFAULT 0
                 """)
                 print("Added 'FeedCutoffDays' column to 'Podcasts' table.")
                 cnx.commit()
