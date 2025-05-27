@@ -1,6 +1,7 @@
 from mutagen.easyid3 import EasyID3
-from mutagen.id3 import ID3, APIC
+from mutagen.id3 import ID3, APIC, ID3NoHeaderError
 from mutagen.mp3 import MP3
+import mutagen
 import requests
 
 def add_podcast_metadata(file_path, metadata):
