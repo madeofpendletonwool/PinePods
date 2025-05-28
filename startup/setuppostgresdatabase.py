@@ -143,6 +143,31 @@ try:
     """)
     cnx.commit()
 
+    def add_playbackspeed_if_not_exist_users(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='Users'
+                AND column_name = 'playbackspeed'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE "Users"
+                    ADD COLUMN PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0
+                """)
+                print("Added 'PlaybackSpeed' column to 'Users' table.")
+                cnx.commit()
+            else:
+                print("Column 'PlaybackSpeed' already exists in 'Users' table.")
+        except Exception as e:
+            print(f"Error checking PlaybackSpeed column in Users table: {e}")
+            # Important: Don't try to commit here, as the transaction is already aborted
+
+    # Usage - should be called during app startup
+    add_playbackspeed_if_not_exist_users(cursor, cnx)
+
     # Create OIDCProviders next
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS "OIDCProviders" (
@@ -603,6 +628,7 @@ try:
                 NotificationsEnabled BOOLEAN DEFAULT FALSE,
                 FeedCutoffDays INT DEFAULT 0,
                 PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0,
+                PlaybackSpeedCustomized BOOLEAN DEFAULT FALSE,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
             )
         """)
@@ -650,11 +676,62 @@ try:
                 """)
                 print("Added 'IsYouTubeChannel' column to 'Podcasts' table.")
                 cnx.commit()
+            else:
+                print('IsYouTubeChannel column already exists')
         except Exception as e:
             print(f"Error adding IsYouTubeChannel column to Podcasts table: {e}")
 
     # Usage
     add_youtube_column_if_not_exist(cursor, cnx)
+
+    def add_playbackspeed_if_not_exist_podcasts(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='Podcasts'
+                AND column_name = 'playbackspeed'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0
+                """)
+                print("Added 'PlaybackSpeed' column to 'Podcasts' table.")
+                cnx.commit()
+            else:
+                print("Column 'PlaybackSpeed' already exists in 'Podcasts' table. ")
+        except Exception as e:
+            print(f"Error checking PlaybackSpeed column in Podcasts table: {e}")
+            # No commit or rollback here, just like in your working example
+
+    # Usage - should be called during app startup
+    add_playbackspeed_if_not_exist_users(cursor, cnx)
+
+    def add_playbackspeed_customized_if_not_exist(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='Podcasts'
+                AND column_name = 'playbackspeedcustomized'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN PlaybackSpeedCustomized BOOLEAN DEFAULT FALSE
+                """)
+                print("Added 'PlaybackSpeedCustomized' column to 'Podcasts' table.")
+                cnx.commit()
+            else:
+                print('PlaybackSpeedCustomized column already exists')
+        except Exception as e:
+            print(f"Error adding PlaybackSpeedCustomized column to Podcasts table: {e}")
+
+    # Usage - should be called during app startup
+    add_playbackspeed_customized_if_not_exist(cursor, cnx)
 
     def add_feed_cutoff_column_if_not_exist(cursor, cnx):
         try:

@@ -745,6 +745,12 @@ body {
     line-height: normal;
 }
 
+.search-input-dropdown-border {
+    border: 1px solid var(--border-color);
+    background-color: var(--background-color);
+}
+
+
 .search-input {
     padding: 5px 10px;
     background-color: var(--background-color);
@@ -770,12 +776,17 @@ body {
     border-radius: 4px;
 }
 
+/* Search component styles */
 .search-btn {
     background-color: transparent;
     color: var(--text-color);
     border-color: transparent;
-    /* Set border color to transparent */
     cursor: pointer;
+    transition: transform 0.2s ease;
+}
+
+.search-btn:hover, .search-btn:focus {
+    transform: scale(1.05);
 }
 
 .search-button:focus {
@@ -783,26 +794,121 @@ body {
     ring-color: var(--link-color);
 }
 
-.search-drop {
+/* Enhanced styling for the mobile dropdown */
+.search-drop-solid {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 10;
     background-color: var(--accent-color);
-    padding-bottom: 20px;
-    background-color: var(--transparent-background);
-    backdrop-filter: blur(10px);
-    /* Add margin to the bottom to space out the elements */
+    padding: 16px;
     margin-bottom: 10px;
+    /* More pronounced shadow for depth */
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06);
+    /* Rounded corners for modern look */
+    border-radius: 12px;
+    /* Subtle border */
+    border: 1px solid var(--border-color);
+    /* Add glass-like effect with slight opacity if supported */
+    background-color: var(--secondary-background);
 }
 
+/* Animation for showing and hiding dropdown */
+.dropdown-visible {
+    animation: dropdownFadeIn 0.3s ease-out forwards;
+    transform-origin: top center;
+}
+
+.dropdown-hiding {
+    animation: dropdownFadeOut 0.3s ease-in forwards;
+    transform-origin: top center;
+}
+
+@keyframes dropdownFadeIn {
+    0% {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.98);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes dropdownFadeOut {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.98);
+    }
+}
+
+/* Enhancing the styling for the buttons in dropdown */
 .search-drop-button {
     color: var(--text-color);
-    /* Add margin to the right to space out the buttons */
     margin-right: 10px;
-    /* Add padding to the bottom of the button */
-    padding-bottom: 10px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    background-color: var(--button-color);
+    border: 1px solid var(--border-color);
+}
+
+.search-drop-button:hover {
+    background-color: var(--container-button-color);
+    transform: translateY(-2px);
 }
 
 .search-drop-button.active {
     background-color: var(--hover-color);
     color: var(--text-color);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Input styling within dropdown */
+.search-drop-solid .search-input {
+    border-radius: 8px;
+    background-color: var(--container-background);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    transition: all 0.2s ease;
+    padding: 10px 12px;
+}
+
+.search-drop-solid .search-input:focus {
+    background-color: var(--container-background);
+    border-color: var(--hover-color);
+    box-shadow: 0 0 0 2px var(--hover-color);
+    outline: none;
+}
+
+/* Search button styling within dropdown */
+.search-drop-solid .search-btn {
+    width: 100%;
+    background-color: var(--hover-color);
+    color: var(--text-color);
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 4px;
+    border: none;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.search-drop-solid .search-btn:hover,
+.search-drop-solid .search-btn:focus {
+    background-color: var(--link-color);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.search-drop-solid .search-btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 /* Add this to your CSS */
@@ -812,12 +918,277 @@ body {
 }
 
 /* styles.css */
-
 .shorter-input {
     max-width: 88%;
-    /* Adjust this value to your liking */
     margin-bottom: 1px;
-    /* Adjust this value to create space between the input and the button */
+}
+
+/* Additional mobile styling */
+@media (max-width: 768px) {
+    .search-drop-solid {
+        width: 100%;
+        max-width: 300px;
+        right: 0;
+    }
+
+    /* Ensure the buttons are properly spaced */
+    .search-drop-button:last-child {
+        margin-right: 0;
+    }
+
+    /* Make the icons stand out more */
+    .search-drop-button img {
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+        transition: all 0.2s ease;
+    }
+
+    .search-drop-button:hover img,
+    .search-drop-button.active img {
+        filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
+        transform: scale(1.1);
+    }
+}
+
+/* Add this to your CSS */
+.relative.inline-flex {
+    display: flex;
+    align-items: center;
+}
+
+/* styles.css */
+.shorter-input {
+    max-width: 88%;
+    margin-bottom: 1px;
+}
+
+/* Additional mobile styling */
+@media (max-width: 768px) {
+    .search-drop-solid {
+        width: 100%;
+        max-width: 300px;
+        right: 0;
+    }
+
+    /* Ensure the buttons are properly spaced */
+    .search-drop-button:last-child {
+        margin-right: 0;
+    }
+
+    /* Make the icons stand out more */
+    .search-drop-button img {
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+        transition: all 0.2s ease;
+    }
+
+    .search-drop-button:hover img,
+    .search-drop-button.active img {
+        filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
+        transform: scale(1.1);
+    }
+}
+
+/* Enhancing the styling for the buttons in dropdown */
+.search-drop-button {
+    color: var(--text-color);
+    margin-right: 10px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid transparent;
+}
+
+.search-drop-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+}
+
+.search-drop-button.active {
+    background-color: var(--hover-color);
+    color: var(--text-color);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Input styling within dropdown */
+.search-drop-solid .search-input {
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    transition: all 0.2s ease;
+    padding: 10px 12px;
+}
+
+.search-drop-solid .search-input:focus {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 0 2px rgba(var(--hover-color-rgb, 0, 120, 212), 0.25);
+}
+
+/* Search button styling within dropdown */
+.search-drop-solid .search-btn {
+    width: 100%;
+    background-color: var(--hover-color, #0078d4);
+    color: #ffffff;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 4px;
+    border: none;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.search-drop-solid .search-btn:hover,
+.search-drop-solid .search-btn:focus {
+    background-color: var(--active-color, #106ebe);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.search-drop-solid .search-btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Add this to your CSS */
+.relative.inline-flex {
+    display: flex;
+    align-items: center;
+}
+
+/* styles.css */
+.shorter-input {
+    max-width: 88%;
+    margin-bottom: 1px;
+}
+
+/* Additional mobile styling */
+@media (max-width: 768px) {
+    .search-drop-solid {
+        width: 100%;
+        max-width: 300px;
+        right: 0;
+    }
+
+    /* Ensure the buttons are properly spaced */
+    .search-drop-button:last-child {
+        margin-right: 0;
+    }
+
+    /* Make the icons stand out more */
+    .search-drop-button img {
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+        transition: all 0.2s ease;
+    }
+
+    .search-drop-button:hover img,
+    .search-drop-button.active img {
+        filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
+        transform: scale(1.1);
+    }
+}
+
+/* Enhancing the styling for the buttons in dropdown */
+.search-drop-button {
+    color: var(--text-color);
+    margin-right: 10px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid transparent;
+}
+
+.search-drop-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    transform: translateY(-2px);
+}
+
+.search-drop-button.active {
+    background-color: var(--hover-color);
+    color: var(--text-color);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Input styling within dropdown */
+.search-drop-solid .search-input {
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-color);
+    transition: all 0.2s ease;
+    padding: 10px 12px;
+}
+
+.search-drop-solid .search-input:focus {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 0 0 2px rgba(var(--hover-color-rgb, 0, 120, 212), 0.25);
+}
+
+/* Search button styling within dropdown */
+.search-drop-solid .search-btn {
+    width: 100%;
+    background-color: var(--hover-color, #0078d4);
+    color: #ffffff;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 4px;
+    border: none;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.search-drop-solid .search-btn:hover,
+.search-drop-solid .search-btn:focus {
+    background-color: var(--active-color, #106ebe);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.search-drop-solid .search-btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Add this to your CSS */
+.relative.inline-flex {
+    display: flex;
+    align-items: center;
+}
+
+/* styles.css */
+.shorter-input {
+    max-width: 88%;
+    margin-bottom: 1px;
+}
+
+/* Additional mobile styling */
+@media (max-width: 768px) {
+    .search-drop-solid {
+        width: 100%;
+        max-width: 300px;
+        right: 0;
+    }
+
+    /* Ensure the buttons are properly spaced */
+    .search-drop-button:last-child {
+        margin-right: 0;
+    }
+
+    /* Make the icons stand out more */
+    .search-drop-button img {
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+        transition: all 0.2s ease;
+    }
+
+    .search-drop-button:hover img,
+    .search-drop-button.active img {
+        filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.3));
+        transform: scale(1.1);
+    }
 }
 
 .no-margin {
@@ -4129,6 +4500,15 @@ button.item-container-action-button.item-container-action-button {
     border-color: var(--border-color);
     /* ... other styles ... */
 }
+
+.search-input-custom-border {
+    border-style: solid;
+    border-width: 1px 1px 1px 0; /* top, right, bottom, left */
+    border-color: var(--border-color);
+    background-color: var(--background-color);
+    border-radius: 0 0.5rem 0.5rem 0; /* Keep rounded right corners */
+}
+
 
 .dropdown-container {
     background-color: var(--background-color);

@@ -2074,6 +2074,151 @@ pub async fn call_get_auto_download_status(
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct PlaybackSpeedRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub playback_speed: f64,
+}
+
+#[derive(Deserialize, Debug)]
+struct PlaybackSpeedResponse {
+    detail: String,
+}
+
+pub async fn call_set_playback_speed(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &PlaybackSpeedRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/podcast/set_playback_speed", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+    if response.ok() {
+        let response_body: PlaybackSpeedResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.detail)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to set playback speed: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ClearPlaybackSpeedRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+struct ClearPlaybackSpeedResponse {
+    message: String,
+}
+
+pub async fn call_clear_playback_speed(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &ClearPlaybackSpeedRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/clear_podcast_playback_speed", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+    if response.ok() {
+        let response_body: ClearPlaybackSpeedResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.message)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to clear playback speed: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetPlaybackSpeedRequest {
+    pub user_id: i32,
+    pub podcast_id: Option<i32>,
+}
+
+#[derive(Deserialize, Debug)]
+struct PlaybackSpeedGetResponse {
+    playback_speed: f64,
+}
+
+pub async fn call_get_podcast_playback_speed(
+    server_name: &String,
+    api_key: &Option<String>,
+    podcast_id: i32,
+    user_id: i32,
+) -> Result<f64, Error> {
+    let url = format!("{}/api/data/get_playback_speed", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_data = GetPlaybackSpeedRequest {
+        user_id,
+        podcast_id: Some(podcast_id),
+    };
+
+    let request_body = serde_json::to_string(&request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: PlaybackSpeedGetResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.playback_speed)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to get playback speed: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SkipTimesRequest {
     pub podcast_id: i32,
     pub start_skip: i32,
@@ -2168,6 +2313,64 @@ pub async fn call_get_auto_skip_times(
             .unwrap_or_else(|_| "Failed to read error message".to_string());
         Err(Error::msg(format!(
             "Failed to get auto skip times: {}",
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PlayEpisodeDetailsRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub is_youtube: bool,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PlayEpisodeDetailsResponse {
+    pub playback_speed: f32,
+    pub start_skip: i32,
+    pub end_skip: i32,
+}
+
+pub async fn call_get_play_episode_details(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: i32,
+    is_youtube: bool,
+) -> Result<(f32, i32, i32), Error> {
+    let url = format!("{}/api/data/get_play_episode_details", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(&PlayEpisodeDetailsRequest {
+        podcast_id,
+        user_id,
+        is_youtube,
+    })?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_data: PlayEpisodeDetailsResponse = response.json().await?;
+        Ok((
+            response_data.playback_speed,
+            response_data.start_skip,
+            response_data.end_skip,
+        ))
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!(
+            "Failed to get episode playback details: {}",
             error_text
         )))
     }

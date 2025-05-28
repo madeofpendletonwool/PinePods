@@ -129,6 +129,30 @@ try:
     """)
     cnx.commit()
 
+    # Function to add PlaybackSpeed to Users table for MySQL
+    def add_playbackspeed_if_not_exist_users_mysql(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Users'
+                AND COLUMN_NAME = 'PlaybackSpeed'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE Users
+                    ADD COLUMN PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0
+                """)
+                print("Added 'PlaybackSpeed' column to 'Users' table.")
+                cnx.commit()
+            else:
+                print("Column 'PlaybackSpeed' already exists in 'Users' table.")
+        except Exception as e:
+            print(f"Error checking PlaybackSpeed column in Users table: {e}")
+
+    add_playbackspeed_if_not_exist_users_mysql(cursor, cnx)
+
     # Add new columns to Users table if they don't exist
     add_column_if_not_exists(cursor, 'Users', 'auth_type', 'VARCHAR(50) DEFAULT \'standard\'')
     add_column_if_not_exists(cursor, 'Users', 'oidc_provider_id', 'INT')
@@ -494,6 +518,7 @@ try:
         NotificationsEnabled TINYINT(1) DEFAULT 0,
         FeedCutoffDays INT DEFAULT 0,
         PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0,
+        PlaybackSpeedCustomized TINYINT(1) DEFAULT 0,
         FOREIGN KEY (UserID) REFERENCES Users(UserID)
         )""")
 
@@ -520,6 +545,53 @@ try:
             print(f"Error adding IsYouTubeChannel column to Podcasts table: {e}")
 
     add_youtube_column_if_not_exist(cursor, cnx)
+
+    # Function to add PlaybackSpeed to Podcasts table for MySQL
+    def add_playbackspeed_if_not_exist_podcasts_mysql(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'PlaybackSpeed'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0
+                """)
+                print("Added 'PlaybackSpeed' column to 'Podcasts' table.")
+                cnx.commit()
+            else:
+                print("Column 'PlaybackSpeed' already exists in 'Podcasts' table.")
+        except Exception as e:
+            print(f"Error checking PlaybackSpeed column in Podcasts table: {e}")
+
+    # Function to add PlaybackSpeedCustomized to Podcasts table for MySQL
+    def add_playbackspeed_customized_if_not_exist_mysql(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'PlaybackSpeedCustomized'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN PlaybackSpeedCustomized TINYINT(1) DEFAULT 0
+                """)
+                print("Added 'PlaybackSpeedCustomized' column to 'Podcasts' table.")
+                cnx.commit()
+            else:
+                print("Column 'PlaybackSpeedCustomized' already exists in 'Podcasts' table.")
+        except Exception as e:
+            print(f"Error checking PlaybackSpeedCustomized column in Podcasts table: {e}")
+
+    add_playbackspeed_if_not_exist_podcasts_mysql(cursor, cnx)
+    add_playbackspeed_customized_if_not_exist_mysql(cursor, cnx)
 
     def add_feed_cutoff_column_if_not_exist(cursor, cnx):
         try:

@@ -111,11 +111,17 @@ pub fn theme() -> Html {
 
     let theme_options = vec![
         "Light",
+        "Soft Lavender",
+        "Minty Fresh",
+        "Warm Vanilla",
+        "Coastal Blue",
+        "Paper Cream",
         "Dark",
         "Nordic Light",
         "Nordic",
         "Abyss",
         "Dracula",
+        "Catppuccin Mocha Mauve",
         "Midnight Ocean",
         "Forest Depths",
         "Sunset Horizon",
@@ -129,7 +135,6 @@ pub fn theme() -> Html {
         "Greenie Meanie",
         "Wildberries",
         "Hot Dog Stand - MY EYES",
-        "Catppuccin Mocha Mauve",
     ];
 
     html! {
@@ -608,6 +613,116 @@ pub fn theme() -> Html {
                 root.style.setProperty('--thumb-color', '#b4befe');
                 root.style.setProperty('--unfilled-color', '#74c7ec');
                 root.style.setProperty('--check-box-color', '#cdd6f4');
+                break;
+
+            case 'Soft Lavender':
+                root.style.setProperty('--background-color', '#f5f0ff');
+                root.style.setProperty('--button-color', '#e0d5f5');
+                root.style.setProperty('--container-button-color', 'transparent');
+                root.style.setProperty('--button-text-color', '#614b8f');
+                root.style.setProperty('--text-color', '#50456e');
+                root.style.setProperty('--text-secondary-color', '#7c6a99');
+                root.style.setProperty('--border-color', '#bdb4d1');
+                root.style.setProperty('--accent-color', '#c9bcee');
+                root.style.setProperty('--prog-bar-color', '#9371d9');
+                root.style.setProperty('--error-color', '#e26295');
+                root.style.setProperty('--bonus-color', '#a990e5');
+                root.style.setProperty('--secondary-background', '#f0eaf8');
+                root.style.setProperty('--container-background', '#e8e1f7');
+                root.style.setProperty('--standout-color', '#8661c5');
+                root.style.setProperty('--hover-color', '#a47ee9');
+                root.style.setProperty('--link-color', '#7a58bf');
+                root.style.setProperty('--thumb-color', '#9371d9');
+                root.style.setProperty('--unfilled-color', '#d8d1e8');
+                root.style.setProperty('--check-box-color', '#50456e');
+                break;
+
+            case 'Minty Fresh':
+                root.style.setProperty('--background-color', '#f1f9f6');
+                root.style.setProperty('--button-color', '#d9efe7');
+                root.style.setProperty('--container-button-color', 'transparent');
+                root.style.setProperty('--button-text-color', '#2d6e5b');
+                root.style.setProperty('--text-color', '#2d6e5b');
+                root.style.setProperty('--text-secondary-color', '#5ba192');
+                root.style.setProperty('--border-color', '#b0d9cb');
+                root.style.setProperty('--accent-color', '#85c2b0');
+                root.style.setProperty('--prog-bar-color', '#3d9d82');
+                root.style.setProperty('--error-color', '#e77670');
+                root.style.setProperty('--bonus-color', '#65b7a1');
+                root.style.setProperty('--secondary-background', '#e7f6f1');
+                root.style.setProperty('--container-background', '#ddf0e8');
+                root.style.setProperty('--standout-color', '#25b78f');
+                root.style.setProperty('--hover-color', '#4dab92');
+                root.style.setProperty('--link-color', '#2d9278');
+                root.style.setProperty('--thumb-color', '#3d9d82');
+                root.style.setProperty('--unfilled-color', '#c9e6dd');
+                root.style.setProperty('--check-box-color', '#2d6e5b');
+                break;
+
+            case 'Warm Vanilla':
+                root.style.setProperty('--background-color', '#fdf6e9');
+                root.style.setProperty('--button-color', '#f2e3ca');
+                root.style.setProperty('--container-button-color', 'transparent');
+                root.style.setProperty('--button-text-color', '#865d30');
+                root.style.setProperty('--text-color', '#6d4922');
+                root.style.setProperty('--text-secondary-color', '#a08052');
+                root.style.setProperty('--border-color', '#d8c7a7');
+                root.style.setProperty('--accent-color', '#e6d1ac');
+                root.style.setProperty('--prog-bar-color', '#c6a06d');
+                root.style.setProperty('--error-color', '#d9684c');
+                root.style.setProperty('--bonus-color', '#d9b77e');
+                root.style.setProperty('--secondary-background', '#f8eede');
+                root.style.setProperty('--container-background', '#f5e7d1');
+                root.style.setProperty('--standout-color', '#b88c48');
+                root.style.setProperty('--hover-color', '#d9b165');
+                root.style.setProperty('--link-color', '#a17035');
+                root.style.setProperty('--thumb-color', '#c6a06d');
+                root.style.setProperty('--unfilled-color', '#e9dbc5');
+                root.style.setProperty('--check-box-color', '#6d4922');
+                break;
+
+            case 'Coastal Blue':
+                root.style.setProperty('--background-color', '#f0f5fa');
+                root.style.setProperty('--button-color', '#dde9f3');
+                root.style.setProperty('--container-button-color', 'transparent');
+                root.style.setProperty('--button-text-color', '#2c5d8f');
+                root.style.setProperty('--text-color', '#2c5d8f');
+                root.style.setProperty('--text-secondary-color', '#5c89b7');
+                root.style.setProperty('--border-color', '#b0cde3');
+                root.style.setProperty('--accent-color', '#8cb0d1');
+                root.style.setProperty('--prog-bar-color', '#4c87c5');
+                root.style.setProperty('--error-color', '#e86f6f');
+                root.style.setProperty('--bonus-color', '#71a0cc');
+                root.style.setProperty('--secondary-background', '#e8f0f8');
+                root.style.setProperty('--container-background', '#dee8f3');
+                root.style.setProperty('--standout-color', '#2e78af');
+                root.style.setProperty('--hover-color', '#5992ca');
+                root.style.setProperty('--link-color', '#2b6fb0');
+                root.style.setProperty('--thumb-color', '#4c87c5');
+                root.style.setProperty('--unfilled-color', '#cde0ee');
+                root.style.setProperty('--check-box-color', '#2c5d8f');
+                break;
+
+            case 'Paper Cream':
+                root.style.setProperty('--background-color', '#faf7f2');
+                root.style.setProperty('--button-color', '#ede9e1');
+                root.style.setProperty('--container-button-color', 'transparent');
+                root.style.setProperty('--button-text-color', '#5f584d');
+                root.style.setProperty('--text-color', '#4a4439');
+                root.style.setProperty('--text-secondary-color', '#847f74');
+                root.style.setProperty('--border-color', '#d3cec3');
+                root.style.setProperty('--accent-color', '#d8d0c0');
+                root.style.setProperty('--prog-bar-color', '#a19788');
+                root.style.setProperty('--error-color', '#d16c62');
+                root.style.setProperty('--bonus-color', '#c1b8a3');
+                root.style.setProperty('--secondary-background', '#f5f2ec');
+                root.style.setProperty('--container-background', '#eee9e0');
+                root.style.setProperty('--standout-color', '#847b6a');
+                root.style.setProperty('--hover-color', '#b3a894');
+                root.style.setProperty('--link-color', '#7d725f');
+                root.style.setProperty('--thumb-color', '#a19788');
+                root.style.setProperty('--unfilled-color', '#e3dfd5');
+                root.style.setProperty('--check-box-color', '#4a4439');
                 break;
 
             default:

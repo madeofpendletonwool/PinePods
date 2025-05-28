@@ -45,7 +45,8 @@ FROM alpine
 # Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 # Install runtime dependencies
-RUN apk add --no-cache nginx python3 openssl py3-pip bash mariadb-client postgresql-client curl cronie openrc ffmpeg supervisor
+RUN apk add --no-cache tzdata nginx python3 openssl py3-pip bash mariadb-client postgresql-client curl cronie openrc ffmpeg supervisor
+ENV TZ=UTC
 # Setup Python environment
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -85,6 +86,9 @@ COPY startup/nginx.conf /etc/nginx/nginx.conf
 # Copy script to start gpodder API
 COPY ./gpodder-api/start-gpodder.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/start-gpodder.sh
+
+RUN cp /usr/share/zoneinfo/UTC /etc/localtime && \
+    echo "UTC" > /etc/timezone
 
 # Expose ports
 EXPOSE 8080 8000
