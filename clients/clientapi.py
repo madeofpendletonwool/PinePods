@@ -74,6 +74,7 @@ import database_functions.oidc_state_manager
 import database_functions.valkey_client
 import database_functions.youtube
 import database_functions.tasks
+from database_functions.gpodder_router import gpodder_router
 from database_functions.db_client import create_database_connection, close_database_connection
 
 # # Use a try-except to handle potential import errors
@@ -115,6 +116,8 @@ origins = [
     "http://127.0.0.1",
     "*"
 ]
+
+app.include_router(gpodder_router)
 
 # app.add_middleware(
 #     CORSMiddleware,
@@ -617,10 +620,8 @@ async def api_podcast_details(podcast_id: str = Query(...), cnx=Depends(get_data
     is_web_key = api_key == base_webkey.web_key
 
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-    print('called the id')
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == user_id or is_web_key:
-        print('getting details')
         details = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
         print(f'got details {details}')
         if details is None:
@@ -812,12 +813,38 @@ async def fetch_podcast_feed(podcast_feed: str = Query(...), cnx=Depends(get_dat
     if not is_valid_key:
         raise HTTPException(status_code=403, detail="Invalid API key or insufficient permissions")
 
-    # Fetch the podcast feed data using httpx
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        response = await client.get(podcast_feed)
-        response.raise_for_status()  # Will raise an httpx.HTTPStatusError for 4XX/5XX responses
-        return Response(content=response.content, media_type="application/xml")
+    # Define headers that mimic a standard web browser
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Cache-Control": "max-age=0"
+    }
 
+    # Fetch the podcast feed data using httpx with browser-like headers
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.get(podcast_feed, headers=headers)
+            response.raise_for_status()  # Will raise an httpx.HTTPStatusError for 4XX/5XX responses
+            return Response(content=response.content, media_type="application/xml")
+    except httpx.HTTPStatusError as e:
+        # Add more detailed error logging
+        error_message = f"HTTP error fetching podcast feed: {str(e)}"
+        logging.error(error_message)
+        raise HTTPException(status_code=e.response.status_code,
+                           detail=f"Failed to fetch podcast feed: {e.response.reason_phrase}")
+    except httpx.RequestError as e:
+        # Handle request errors (network issues, etc.)
+        error_message = f"Request error fetching podcast feed: {str(e)}"
+        logging.error(error_message)
+        raise HTTPException(status_code=500, detail="Failed to fetch podcast feed due to network or connection issues")
+    except Exception as e:
+        # Catch-all for other unexpected errors
+        error_message = f"Unexpected error fetching podcast feed: {str(e)}"
+        logging.error(error_message)
+        raise HTTPException(status_code=500, detail="Unexpected error occurred while fetching the podcast feed")
 
 NAMESPACE = {'podcast': 'https://podcastindex.org/namespace/1.0'}
 
@@ -1017,11 +1044,8 @@ async def fetch_podcasting_2_data(
 
     try:
         # Get all the metadata
-        print('getting meta')
         episode_metadata = database_functions.functions.get_episode_metadata(database_type, cnx, episode_id, user_id)
-        print('getting id')
         podcast_id = database_functions.functions.get_podcast_id_from_episode(cnx, database_type, episode_id, user_id)
-        print('getting deets')
         podcast_feed = database_functions.functions.get_podcast_details(database_type, cnx, user_id, podcast_id)
 
         episode_url = episode_metadata['episodeurl']
@@ -1528,23 +1552,33 @@ async def api_add_podcast(
         if database_functions.functions.check_gpodder_settings(database_type, cnx, request.podcast_values.user_id):
             gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, request.podcast_values.user_id)
             gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, request.podcast_values.user_id)
+
+            if gpod_type == "gpodder":
+                default_device = database_functions.functions.get_default_gpodder_device(cnx, database_type, request.podcast_values.user_id)
+                device_name = default_device["name"] if default_device else f"pinepods-internal-{request.podcast_values.user_id}"
+
             if gpod_type == "nextcloud":
                 database_functions.functions.add_podcast_to_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, request.podcast_values.pod_feed_url)
             else:
-                database_functions.functions.add_podcast_to_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, request.podcast_values.pod_feed_url, "pinepods")
+                database_functions.functions.add_podcast_to_opodsync(cnx, database_type, request.podcast_values.user_id, gpodder_url, gpodder_login, gpodder_token, request.podcast_values.pod_feed_url, device_name)
 
-        podcast_id, first_episode_id = database_functions.functions.add_podcast(
+        result = database_functions.functions.add_podcast(
             cnx,
             database_type,
             request.podcast_values.dict(),
             request.podcast_values.user_id,
+            30,
             podcast_index_id=request.podcast_index_id
         )
 
+        if isinstance(result, tuple):
+            podcast_id, first_episode_id = result
+        else:
+            podcast_id = result
+            first_episode_id = None  # Or fetch it if needed
+
         if podcast_id:
             return {"success": True, "podcast_id": podcast_id, "first_episode_id": first_episode_id}
-        else:
-            return {"success": False}
     else:
         raise HTTPException(status_code=403,
                             detail="You can only add podcasts for yourself!")
@@ -1930,7 +1964,7 @@ async def api_delete_podcast(data: DeletePodcastData, cnx=Depends(get_database_c
     if key_id == data.user_id or is_web_key:
         database_functions.functions.delete_episode(database_type, cnx, data.episode_id,
                                                  data.user_id, data.is_youtube)
-        return {"detail": "Content deleted."}
+        return {"detail": "Episode(s) Deleted"}
     else:
         raise HTTPException(status_code=403,
                           detail="You can only delete content for yourself!")
@@ -2087,6 +2121,116 @@ async def api_get_auto_skip_times(data: AutoSkipTimesRequest, cnx=Depends(get_da
 
     return AutoSkipTimesResponse(start_skip=start_skip, end_skip=end_skip)
 
+class PlayEpisodeDetailsRequest(BaseModel):
+    podcast_id: int
+    user_id: int
+    is_youtube: bool = False
+
+class PlayEpisodeDetailsResponse(BaseModel):
+    playback_speed: float
+    start_skip: int
+    end_skip: int
+
+@app.post("/api/data/get_play_episode_details")
+async def api_get_play_episode_details(data: PlayEpisodeDetailsRequest,
+                                       cnx=Depends(get_database_connection),
+                                       api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                          detail="Your API key is either invalid or does not have correct permission")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        # Get all details in one function call
+        playback_speed, start_skip, end_skip = database_functions.functions.get_play_episode_details(
+            cnx,
+            database_type,
+            data.user_id,
+            data.podcast_id,
+            data.is_youtube
+        )
+
+        return PlayEpisodeDetailsResponse(
+            playback_speed=playback_speed,
+            start_skip=start_skip,
+            end_skip=end_skip
+        )
+    else:
+        raise HTTPException(status_code=403,
+                          detail="You can only get metadata for yourself!")
+
+class ClearPlaybackSpeedRequest(BaseModel):
+    podcast_id: int
+    user_id: int
+
+@app.post("/api/data/clear_podcast_playback_speed")
+async def api_clear_podcast_playback_speed(data: ClearPlaybackSpeedRequest,
+                                          cnx=Depends(get_database_connection),
+                                          api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                          detail="Your API key is either invalid or does not have correct permission")
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if key_id != data.user_id:
+        raise HTTPException(status_code=403,
+                          detail="You can only modify your own podcast settings!")
+
+    success = database_functions.functions.clear_podcast_playback_speed(
+        cnx,
+        database_type,
+        data.podcast_id,
+        data.user_id
+    )
+
+    if success:
+        return {"message": "Playback speed cleared successfully"}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to clear playback speed")
+
+class SetPlaybackSpeedPodcast(BaseModel):
+    user_id: int
+    podcast_id: int
+    playback_speed: float
+
+class SetPlaybackSpeedUser(BaseModel):
+    user_id: int
+    playback_speed: float
+
+@app.post("/api/data/podcast/set_playback_speed")
+async def api_set_playback_speed_podcast(data: SetPlaybackSpeedPodcast, cnx=Depends(get_database_connection),
+                                api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if key_id == data.user_id or is_web_key:
+        database_functions.functions.set_playback_speed_podcast(cnx, database_type, data.podcast_id, data.playback_speed)
+        return {"detail": "Default podcast playback speed updated."}
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify your own podcasts.")
+
+@app.post("/api/data/user/set_playback_speed")
+async def api_set_playback_speed_user(data: SetPlaybackSpeedUser, cnx=Depends(get_database_connection),
+                                api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if key_id == data.user_id or is_web_key:
+        database_functions.functions.set_playback_speed_user(cnx, database_type, data.user_id, data.playback_speed)
+        return {"detail": "Default playback speed updated."}
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify your own settings.")
+
 
 class SaveEpisodeData(BaseModel):
     episode_id: int
@@ -2198,6 +2342,55 @@ async def api_remove_category(data: RemoveCategoryData, cnx=Depends(get_database
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
 
+class UpdateFeedCutoffDaysData(BaseModel):
+    podcast_id: int
+    user_id: int
+    feed_cutoff_days: int
+
+@app.post("/api/data/update_feed_cutoff_days")
+async def api_update_feed_cutoff_days(data: UpdateFeedCutoffDaysData, cnx=Depends(get_database_connection),
+                                     api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id or is_web_key:
+        success = database_functions.functions.update_feed_cutoff_days(cnx, database_type, data.podcast_id, data.user_id, data.feed_cutoff_days)
+        if success:
+            return {"detail": "Feed cutoff days updated successfully!"}
+        else:
+            raise HTTPException(status_code=400, detail="Error updating feed cutoff days.")
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify settings of your own podcasts!")
+
+@app.get("/api/data/get_feed_cutoff_days")
+async def api_get_feed_cutoff_days(podcast_id: int, user_id: int, cnx=Depends(get_database_connection),
+                                  api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
+
+    # Check if the provided API key is the web key
+    is_web_key = api_key == base_webkey.web_key
+
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    # Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == user_id or is_web_key:
+        feed_cutoff_days = database_functions.functions.get_feed_cutoff_days(cnx, database_type, podcast_id, user_id)
+        if feed_cutoff_days is not None:
+            return {"podcast_id": podcast_id, "user_id": user_id, "feed_cutoff_days": feed_cutoff_days}
+        else:
+            raise HTTPException(status_code=404, detail="Podcast not found or does not belong to the user.")
+    else:
+        raise HTTPException(status_code=403, detail="You can only access settings of your own podcasts!")
+
 class TogglePodcastNotificationData(BaseModel):
     user_id: int
     podcast_id: int
@@ -2228,6 +2421,39 @@ async def api_toggle_podcast_notifications(
             return {"detail": "Podcast notification settings updated successfully"}
         else:
             raise HTTPException(status_code=400, detail="Error updating podcast notification settings")
+    else:
+        raise HTTPException(status_code=403, detail="You can only modify your own podcast settings")
+
+class SetPodcastFeedCutoff(BaseModel):
+    user_id: int
+    podcast_id: int
+    feed_cutoff: int
+
+@app.put("/api/data/podcast/set_feed_cutoff")
+async def api_toggle_podcast_notifications(
+    data: SetPodcastFeedCutoff,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+
+    if key_id == data.user_id or is_web_key:
+        success = database_functions.functions.set_feed_cutoff(
+            cnx,
+            database_type,
+            data.podcast_id,
+            data.user_id,
+            data.feed_cutoff
+        )
+        if success:
+            return {"detail": "Podcast feed cutoff setting updated successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Error updating podcast nfeed cutoff")
     else:
         raise HTTPException(status_code=403, detail="You can only modify your own podcast settings")
 
@@ -2465,17 +2691,13 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
     print(f"Running refresh process for user in job {user_id}")
     try:
         # First get total count of podcasts
-        print("Creating cursor")
         cursor = cnx.cursor()
-        print("Cursor created")
         if database_type == "postgresql":
-            print("Executing count query")
             cursor.execute('''
                 SELECT COUNT(*), array_agg("podcastname")
                 FROM "Podcasts"
                 WHERE "userid" = %s
             ''', (user_id,))
-            print("Count query executed")
         else:
             cursor.execute('''
                 SELECT COUNT(*), GROUP_CONCAT(PodcastName)
@@ -2483,16 +2705,11 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                 WHERE UserID = %s
             ''', (user_id,))
         count_result = cursor.fetchone()
-        print(f"Count result: {count_result}")
-
         # Handle both dictionary and tuple results
         if isinstance(count_result, dict):
             total_podcasts = count_result['count'] if count_result else 0
         else:
             total_podcasts = count_result[0] if count_result else 0
-
-        print(f"Total podcasts: {total_podcasts}")
-
         await websocket.send_json({
             "progress": {
                 "current": 0,
@@ -2501,6 +2718,30 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             }
         })
 
+        # Get default device information for sync
+        default_device_id = database_functions.functions.get_or_create_default_device(cnx, database_type, user_id)
+        default_device_name = None
+
+        if default_device_id:
+            # Get the device name
+            device_cursor = cnx.cursor()
+            if database_type == "postgresql":
+                device_query = 'SELECT DeviceName FROM "GpodderDevices" WHERE DeviceID = %s'
+            else:
+                device_query = "SELECT DeviceName FROM GpodderDevices WHERE DeviceID = %s"
+
+            device_cursor.execute(device_query, (default_device_id,))
+            device_result = device_cursor.fetchone()
+            device_cursor.close()
+
+            if device_result:
+                default_device_name = device_result[0] if isinstance(device_result, tuple) else device_result["devicename"]
+                print(f"Using default device for sync: {default_device_name} (ID: {default_device_id})")
+            else:
+                print("Default device ID found but no name - will use automatic fallback")
+        else:
+            print("No default device found - will use automatic fallback")
+
         if nextcloud_refresh:
             await websocket.send_json({"detail": "Refreshing Nextcloud subscriptions..."})
             print(f"Refreshing Nextcloud subscriptions for user {user_id}")
@@ -2508,25 +2749,26 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             pod_sync_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
             if pod_sync_type == "nextcloud":
                 await asyncio.to_thread(database_functions.functions.refresh_nextcloud_subscription,
-                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type)
+                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type,
+                                      default_device_id, default_device_name, False)
             else:
                 await asyncio.to_thread(database_functions.functions.refresh_gpodder_subscription,
-                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type)
+                                      database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, pod_sync_type,
+                                      default_device_id, default_device_name, False)
             await websocket.send_json({"detail": "Pod Sync subscription refresh complete."})
-
         # Get list of podcast names for progress updates
         print('Getting list')
         if database_type == "postgresql":
             cursor.execute('''
                 SELECT "podcastid", "podcastname", "feedurl", "artworkurl", "autodownload",
-                       "username", "password", "isyoutubechannel"
+                       "username", "password", "isyoutubechannel", "feedcutoffdays"
                 FROM "Podcasts"
                 WHERE "userid" = %s
             ''', (user_id,))
         else:
             cursor.execute('''
                 SELECT PodcastID, PodcastName, FeedURL, ArtworkURL, AutoDownload,
-                       Username, Password, IsYouTubeChannel
+                       Username, Password, IsYouTubeChannel, FeedCutoffDays
                 FROM Podcasts
                 WHERE UserID = %s
             ''', (user_id,))
@@ -2547,6 +2789,7 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                     username = podcast['username']
                     password = podcast['password']
                     is_youtube = podcast['isyoutubechannel']
+                    feed_cutoff = podcast['feedcutoffdays']
                 else:
                     podcast_id = podcast['PodcastID']
                     podcast_name = podcast['PodcastName']
@@ -2556,8 +2799,9 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                     username = podcast['Username']
                     password = podcast['Password']
                     is_youtube = podcast['IsYouTubeChannel']
+                    feed_cutoff = podcast['FeedCutoffDays']
             else:
-                podcast_id, podcast_name, feed_url, artwork_url, auto_download, username, password, is_youtube = podcast
+                podcast_id, podcast_name, feed_url, artwork_url, auto_download, username, password, is_youtube, feed_cutoff = podcast
 
             await websocket.send_json({
                 "progress": {
@@ -2568,7 +2812,7 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
             })
 
             # Refresh this podcast
-            print(f'is it youtube?: {is_youtube}')
+            # print(f'is it youtube?: {is_youtube}')
             try:
                 if is_youtube is True:
                     # Extract channel ID from feed URL
@@ -2579,7 +2823,8 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                         database_type,
                         podcast_id,
                         channel_id,
-                        cnx
+                        cnx,
+                        feed_cutoff
                     )
                     if youtube_episodes:
                         for episode in youtube_episodes:
@@ -2597,7 +2842,7 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
                         auto_download,
                         username,
                         password,
-                        True  # websocket=True
+                        True # websocket
                     )
 
                     if episodes:
@@ -2612,9 +2857,47 @@ async def run_refresh_process(user_id, nextcloud_refresh, websocket, cnx):
     except Exception as e:
         await websocket.send_json({"detail": f"Error during refresh: {e}"})
     finally:
+        # Clear explicit reference
         if cnx:
-            if not cnx.closed:
-                cnx.close()
+            try:
+                # Get connection type
+                connection_type = type(cnx).__name__
+                print(f"Closing connection of type: {connection_type}")
+
+                # For PooledMySQLConnection
+                if connection_type == "PooledMySQLConnection":
+                    print("Detected PooledMySQLConnection - using special handling")
+                    # DO NOTHING - don't try to close or modify it
+                    # Just let it go out of scope and be garbage collected
+                    pass
+                # Regular MySQL connection
+                elif "MySQL" in connection_type:
+                    print("Detected MySQL connection - using basic close")
+                    try:
+                        cnx.close()
+                    except Exception as e:
+                        print(f"MySQL close error (ignored): {e}")
+                # PostgreSQL connection
+                elif hasattr(cnx, 'closed'):
+                    print("Detected PostgreSQL connection")
+                    if not cnx.closed:
+                        cnx.close()
+                # Generic
+                elif hasattr(cnx, 'close'):
+                    print("Using generic close method")
+                    cnx.close()
+
+                print("Connection handling complete")
+            except Exception as e:
+                print(f"Connection handling error: {e}")
+
+            # Force drop reference regardless of what happened above
+            cnx = None
+
+        # Force garbage collection
+        import gc
+        gc.collect()
+        print("Garbage collection complete")
 
 @app.get("/api/data/get_stats")
 async def api_get_stats(user_id: int, cnx=Depends(get_database_connection),
@@ -2806,28 +3089,65 @@ class RemovePodcastData(BaseModel):
 async def api_remove_podcast_route(data: RemovePodcastData = Body(...), cnx=Depends(get_database_connection),
                                    api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
-
     elevated_access = await has_elevated_access(api_key, cnx)
-
     if not elevated_access:
         # Get user ID from API key
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove podcasts for other users")
+
+    # First, get the podcast ID and check if it's a YouTube channel
+    podcast_id = database_functions.functions.get_podcast_id(database_type, cnx, data.user_id, data.podcast_url, data.podcast_name)
+
+    if podcast_id is None:
+        raise HTTPException(status_code=404, detail="Podcast not found")
+
+    # Check if this is a YouTube channel
+    is_youtube = database_functions.functions.check_youtube_channel_id(cnx, database_type, podcast_id)
+
+    # Track if episodes have been handled
+    episodes_handled = False
+
     if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
+        logging.info('get cloud vals')
         gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
+
+        # Get the full gpodder settings to check URL
+        gpodder_settings = database_functions.functions.get_gpodder_settings(database_type, cnx, data.user_id)
+
+        logging.info('em cloud')
+        podcast_feed = database_functions.functions.get_podcast_feed_by_id(cnx, database_type, podcast_id)
         gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, data.user_id)
+
+        # Get the correct device name, matching what we do in add_podcast
+        device_name = f"pinepods-internal-{data.user_id}"  # Default device name
+        if gpod_type == "gpodder":
+            default_device = database_functions.functions.get_default_gpodder_device(cnx, database_type, data.user_id)
+            if default_device:
+                device_name = default_device["name"]
+
         if gpod_type == "nextcloud":
-            database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url)
+            database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed)
         else:
-            database_functions.functions.remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, data.podcast_url, "pinepods")
-    database_functions.functions.remove_podcast(cnx, database_type, data.podcast_name, data.podcast_url, data.user_id)
+            # Modified return value includes whether episodes were handled
+            success, episodes_handled = database_functions.functions.remove_podcast_from_opodsync(
+                cnx, database_type, data.user_id, gpodder_url, gpodder_login,
+                gpodder_token, podcast_feed, device_name
+            )
+
+    # Only run the appropriate remove function if episodes weren't already handled by gpodder sync
+    if not episodes_handled:
+        if is_youtube:
+            database_functions.functions.remove_youtube_channel(cnx, database_type, podcast_id, data.user_id)
+        else:
+            database_functions.functions.remove_podcast(cnx, database_type, data.podcast_name, data.podcast_url, data.user_id)
+    else:
+        logging.info('skipping remove - already handled by gpodder sync')
+
     return {"success": True}
 
 class RemovePodcastIDData(BaseModel):
@@ -2837,37 +3157,58 @@ class RemovePodcastIDData(BaseModel):
 
 @app.post("/api/data/remove_podcast_id")
 async def api_remove_podcast_route_id(data: RemovePodcastIDData = Body(...),
-                                    cnx=Depends(get_database_connection),
-                                    api_key: str = Depends(get_api_key_from_header)):
+                                   cnx=Depends(get_database_connection),
+                                   api_key: str = Depends(get_api_key_from_header)):
     is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
     if not is_valid_key:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
-
     elevated_access = await has_elevated_access(api_key, cnx)
     if not elevated_access:
         user_id_from_api_key = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
         if data.user_id != user_id_from_api_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="You are not authorized to remove content for other users")
-
     if data.is_youtube:
         database_functions.functions.remove_youtube_channel(cnx, database_type, data.podcast_id, data.user_id)
     else:
         # Existing podcast removal logic
         logging.info('check gpod')
+        episodes_handled = False  # Track whether episodes were already handled by gpodder sync
+
         if database_functions.functions.check_gpodder_settings(database_type, cnx, data.user_id):
             logging.info('get cloud vals')
             gpodder_url, gpodder_token, gpodder_login = database_functions.functions.get_nextcloud_settings(database_type, cnx, data.user_id)
+
+            # Get the full gpodder settings to check URL
+            gpodder_settings = database_functions.functions.get_gpodder_settings(database_type, cnx, data.user_id)
+
             logging.info('em cloud')
             podcast_feed = database_functions.functions.get_podcast_feed_by_id(cnx, database_type, data.podcast_id)
             gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, data.user_id)
+
+            # Get the correct device name, matching what we do in add_podcast
+            device_name = f"pinepods-internal-{data.user_id}"  # Default device name
+            if gpod_type == "gpodder":
+                default_device = database_functions.functions.get_default_gpodder_device(cnx, database_type, data.user_id)
+                if default_device:
+                    device_name = default_device["name"]
+
             if gpod_type == "nextcloud":
                 database_functions.functions.remove_podcast_from_nextcloud(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed)
             else:
-                database_functions.functions.remove_podcast_from_opodsync(cnx, database_type, gpodder_url, gpodder_login, gpodder_token, podcast_feed, "pinepods")
-        logging.info('rm pod id')
-        database_functions.functions.remove_podcast_id(cnx, database_type, data.podcast_id, data.user_id)
+                # Modified return value includes whether episodes were handled
+                success, episodes_handled = database_functions.functions.remove_podcast_from_opodsync(
+                    cnx, database_type, data.user_id, gpodder_url, gpodder_login,
+                    gpodder_token, podcast_feed, device_name
+                )
+
+        # Only run remove_podcast_id if episodes weren't already handled by gpodder sync
+        if not episodes_handled:
+            logging.info('rm pod id')
+            database_functions.functions.remove_podcast_id(cnx, database_type, data.podcast_id, data.user_id)
+        else:
+            logging.info('skipping rm pod id - already handled by gpodder sync')
 
     return {"success": True}
 
@@ -3637,6 +3978,33 @@ async def api_get_episode_metadata(data: EpisodeMetadata, cnx=Depends(get_databa
         raise HTTPException(status_code=403,
                           detail="You can only get metadata for yourself!")
 
+class GetPlaybackSpeed(BaseModel):
+    podcast_id: Optional[int] = None
+    user_id: int
+
+@app.post("/api/data/get_playback_speed")
+async def api_get_playback_speed(data: GetPlaybackSpeed, cnx=Depends(get_database_connection),
+                                 api_key: str = Depends(get_api_key_from_header)):
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(status_code=403,
+                          detail="Your API key is either invalid or does not have correct permission")
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if key_id == data.user_id or is_web_key:
+        # Fix the parameter order to match the function definition
+        is_youtube = False  # Add the is_youtube parameter
+        playback_speed = database_functions.functions.get_playback_speed(
+            cnx,                # Connection should be first
+            database_type,      # Then database type
+            data.user_id,       # Then user_id
+            is_youtube,         # Then is_youtube parameter
+            data.podcast_id     # Then optional podcast_id
+        )
+        return {"playback_speed": playback_speed}
+    else:
+        raise HTTPException(status_code=403,
+                          detail="You can only get metadata for yourself!")
 
 @app.get("/api/data/generate_mfa_secret/{user_id}")
 async def generate_mfa_secret(user_id: int, cnx=Depends(get_database_connection),
@@ -4072,7 +4440,7 @@ async def remove_queued_pod(data: QueueRmData, cnx=Depends(get_database_connecti
         result = database_functions.functions.remove_queued_pod(
             database_type, cnx, data.episode_id, data.user_id, data.is_youtube
         )
-        return {"data": result}
+        return result
     else:
         raise HTTPException(status_code=403,
                           detail=f"You can only remove {'videos' if data.is_youtube else 'episodes'} for your own queue!")
@@ -4731,7 +5099,6 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
         users = database_functions.functions.get_nextcloud_users(database_type, cnx)
     finally:
         close_database_connection(cnx)
-
     for user in users:
         # Handle both dictionary and tuple cases
         if isinstance(user, dict):
@@ -4740,24 +5107,97 @@ async def refresh_nextcloud_subscription(background_tasks: BackgroundTasks, is_a
                 gpodder_url = user["gpodderurl"]
                 gpodder_token = user["gpoddertoken"]
                 gpodder_login = user["gpodderloginname"]
+                sync_type = user.get("pod_sync_type", "None")
             else:
                 user_id = user["UserID"]
                 gpodder_url = user["GpodderUrl"]
                 gpodder_token = user["GpodderToken"]
                 gpodder_login = user["GpodderLoginName"]
+                sync_type = user.get("Pod_Sync_Type", "None")
         else:  # assuming tuple
-            user_id, gpodder_url, gpodder_token, gpodder_login = user
-        background_tasks.add_task(refresh_nextcloud_subscription_for_user, database_type, user_id, gpodder_url, gpodder_token, gpodder_login)
+            # Now handle 5 values instead of 4
+            if len(user) >= 5:
+                user_id, gpodder_url, gpodder_token, gpodder_login, sync_type = user
+            else:
+                user_id, gpodder_url, gpodder_token, gpodder_login = user
+                sync_type = "None"
+
+        # Pass the sync_type to the refresh function
+        background_tasks.add_task(
+            refresh_nextcloud_subscription_for_user,
+            database_type,
+            user_id,
+            gpodder_url,
+            gpodder_token,
+            gpodder_login,
+            sync_type  # Add this parameter
+        )
     return {"status": "success", "message": "Nextcloud subscriptions refresh initiated."}
 
-def refresh_nextcloud_subscription_for_user(c, user_id, gpodder_url, gpodder_token, gpodder_login):
+def refresh_nextcloud_subscription_for_user(database_type, user_id, gpodder_url, gpodder_token, gpodder_login, sync_type=None):
     cnx = create_database_connection()
     try:
-        gpod_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
-        if gpod_type == "nextcloud":
-            database_functions.functions.refresh_nextcloud_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
-        else:  # Assume gPodder
-            database_functions.functions.refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, gpodder_token, gpodder_login, gpod_type)
+        # If sync_type wasn't passed, try to get it from the database
+        if not sync_type:
+            sync_type = database_functions.functions.get_gpodder_type(cnx, database_type, user_id)
+
+        # Determine if this is internal based on URL
+        is_internal = gpodder_url == "http://localhost:8042"
+        print(f"Using {'internal' if is_internal else 'external'} gpodder API for user {user_id}")
+
+        # Special handling for nextcloud sync
+        if sync_type == "nextcloud":
+            print(f"Using nextcloud gpodder API for user {user_id}")
+            success = database_functions.functions.refresh_nextcloud_subscription(
+                database_type,
+                cnx,
+                user_id,
+                gpodder_url,
+                gpodder_token,
+                gpodder_login,
+                sync_type
+            )
+            return success
+        # For all other GPodder sync types, use the standard refresh function
+        elif sync_type in ["gpodder", "both", "external"]:
+            # Get default device ID
+            device_id = database_functions.functions.get_or_create_default_device(cnx, database_type, user_id)
+
+            # Get device name if we have a device ID
+            device_name = None
+            if device_id:
+                cursor = cnx.cursor()
+                if database_type == "postgresql":
+                    query = 'SELECT DeviceName FROM "GpodderDevices" WHERE DeviceID = %s'
+                else:
+                    query = "SELECT DeviceName FROM GpodderDevices WHERE DeviceID = %s"
+
+                cursor.execute(query, (device_id,))
+                result = cursor.fetchone()
+                cursor.close()
+
+                if result:
+                    device_name = result[0] if isinstance(result, tuple) else result["devicename"]
+
+            # Determine if this is a remote sync
+            is_remote = not is_internal and sync_type in ["external", "both"]
+
+            success = database_functions.functions.refresh_gpodder_subscription(
+                database_type,
+                cnx,
+                user_id,
+                gpodder_url,
+                gpodder_token,
+                gpodder_login,
+                sync_type,
+                device_id,
+                device_name,
+                is_remote
+            )
+            return success
+        else:
+            print(f"GPodder sync not enabled for user {user_id} (sync_type: {sync_type})")
+            return False
     finally:
         close_database_connection(cnx)
 
@@ -4928,6 +5368,7 @@ async def add_custom_pod(data: CustomPodcast, cnx=Depends(get_database_connectio
         # Assuming the rest of the code processes the podcast correctly
         try:
             podcast_id = database_functions.functions.add_custom_podcast(database_type, cnx, data.feed_url, data.user_id, data.username, data.password)
+            print('custom done')
             podcast_details = database_functions.functions.get_podcast_details(database_type, cnx, data.user_id, podcast_id)
             return {"data": podcast_details}
         except Exception as e:
@@ -5330,6 +5771,179 @@ async def stream_episode(
     else:
         raise HTTPException(status_code=403, detail="You do not have permission to access this episode")
 
+class UpdateGpodderSyncRequest(BaseModel):
+    enabled: bool
+
+@app.post("/api/data/gpodder/toggle")
+async def toggle_gpodder_sync(
+    request: UpdateGpodderSyncRequest,
+    background_tasks: BackgroundTasks,
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Enable or disable gpodder sync for the current user"""
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+    # Get the user ID from the API key
+    user_id_result = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    print(f"User ID result: {user_id_result}")
+    if isinstance(user_id_result, dict):
+        user_id = user_id_result.get('userid')
+    else:
+        user_id = user_id_result[0] if isinstance(user_id_result, tuple) else user_id_result
+    if not user_id:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+    try:
+        print(f"Request to toggle gpodder sync: {request.enabled}")
+        user_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+        # Get initial state
+        current_sync_type = user_data["sync_type"]
+        print(f"Current sync type: {current_sync_type}")
+        device_info = None
+        if request.enabled:
+            # Enable gpodder sync
+            result = database_functions.functions.set_gpodder_internal_sync(cnx, database_type, user_id)
+            if not result:
+                raise HTTPException(status_code=500, detail="Failed to enable gpodder sync")
+            device_info = result
+
+            # Get required parameters for refresh_gpodder_subscription
+            gpodder_settings = database_functions.functions.get_gpodder_settings(database_type, cnx, user_id)
+            gpodder_token = gpodder_settings.get("gpoddertoken", "")
+            gpodder_login = gpodder_settings.get("gpodderloginname", "")
+            print(gpodder_settings)
+
+            # Get the updated sync type after enabling
+            updated_user_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+            updated_sync_type = updated_user_data["sync_type"]
+            # gpodder_login = gpodder_settings.get("gpodderloginname", "")
+            # gpodder_token = gpodder_settings.get("gpoddertoken", "")
+            device_id = device_info.get("device_id") if device_info else None
+            device_name = device_info.get("device_name") if device_info else None
+
+            background_tasks.add_task(
+                refresh_gpodder_subscription_for_background,  # Use the wrapper function
+                database_type,
+                user_id,
+                'http://localhost:8042',
+                gpodder_token,
+                gpodder_login,
+                updated_sync_type,
+                device_id,
+                device_name,
+                False  # is_remote
+            )
+            print(f"Added background task to sync gpodder for user: {user_id}")
+        else:
+            # Disable gpodder sync
+            success = database_functions.functions.disable_gpodder_internal_sync(cnx, database_type, user_id)
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to disable gpodder sync")
+        # Get updated state after changes
+        updated_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+        new_sync_type = updated_data["sync_type"]
+        print(f"Updated sync type: {new_sync_type}")
+        response = {
+            "sync_type": new_sync_type,
+            "gpodder_enabled": new_sync_type in ["gpodder", "both"],
+            "external_enabled": new_sync_type in ["external", "both"],
+            "external_url": updated_data.get("gpodder_url") if new_sync_type in ["external", "both"] else None,
+            "api_url": "http://localhost:8042" if new_sync_type in ["gpodder", "both"] else None
+        }
+        # Add device information if available
+        if device_info and request.enabled:
+            response["device_name"] = device_info["device_name"]
+            response["device_id"] = device_info["device_id"]
+        print(f"Returning response: {response}")
+        return response
+    except Exception as e:
+        print(f"Error in toggle_gpodder_sync: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+def refresh_gpodder_subscription_for_background(database_type, user_id, gpodder_url, gpodder_token,
+                                               gpodder_login, sync_type, device_id=None, device_name=None, is_remote=False):
+    """Wrapper function for background tasks to ensure proper database connection handling"""
+    from database_functions.db_client import create_database_connection, close_database_connection
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Create a new connection explicitly for this background task
+    cnx = create_database_connection()
+
+    try:
+        print(f"Starting background refresh for user {user_id} with sync_type {sync_type}")
+        # Call the original function with our managed connection
+        success = database_functions.functions.refresh_gpodder_subscription(
+            database_type,
+            cnx,
+            user_id,
+            gpodder_url,
+            gpodder_token,
+            gpodder_login,
+            sync_type,
+            device_id,
+            device_name,
+            is_remote
+        )
+        return success
+    except Exception as e:
+        logger.error(f"Error in background gpodder refresh: {str(e)}")
+        return False
+    finally:
+        # Always close the connection we created
+        close_database_connection(cnx)
+        print(f"Closed database connection for background task for user {user_id}")
+# Helper function to generate a token for internal gpodder API
+def generate_gpodder_token(user_id):
+    import secrets
+    token = secrets.token_hex(16)
+    return f"internal_gpodder_{user_id}_{token}"
+
+@app.get("/api/data/gpodder/status")
+async def get_gpodder_status(
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Get the current gpodder sync status for the user"""
+    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
+    if not is_valid_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Your API key is either invalid or does not have correct permission"
+        )
+
+    # Get the user ID from the API key
+    user_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if not user_id:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+    try:
+        user_data = database_functions.functions.get_user_gpodder_status(cnx, database_type, user_id)
+
+        if not user_data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        sync_type = user_data["sync_type"]
+
+        return {
+            "sync_type": sync_type,
+            "gpodder_enabled": sync_type in ["gpodder", "both"],
+            "external_enabled": sync_type in ["external", "both"],
+            "external_url": user_data["gpodder_url"],
+                "api_url": "http://localhost:8042"  # Replace with actual API URL if needed
+        }
+    except Exception as e:
+        print(f"Error in get_gpodder_status: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
 class BackupUser(BaseModel):
     user_id: int
 
@@ -5640,10 +6254,10 @@ async def search_youtube_channels(
             detail=f"Error searching YouTube channels: {str(e)}"
         )
 
-def process_youtube_channel(podcast_id: int, channel_id: str):
+def process_youtube_channel(podcast_id: int, channel_id: str, feed_cutoff: int):
     cnx = create_database_connection()
     try:
-        database_functions.youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx)
+        database_functions.youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx, feed_cutoff)
     finally:
         close_database_connection(cnx)
 
@@ -5652,6 +6266,7 @@ async def subscribe_to_youtube_channel(
     channel_id: str,
     user_id: int,
     background_tasks: BackgroundTasks,
+    feed_cutoff: int = 30,
     cnx=Depends(get_database_connection),
     api_key: str = Depends(get_api_key_from_header)
 ):
@@ -5675,10 +6290,10 @@ async def subscribe_to_youtube_channel(
         channel_info = await database_functions.youtube.get_channel_info(channel_id)
 
         logger.info("Adding channel to database")
-        podcast_id = database_functions.functions.add_youtube_channel(cnx, database_type, channel_info, user_id)
+        podcast_id = database_functions.functions.add_youtube_channel(cnx, database_type, channel_info, user_id, feed_cutoff)
 
         logger.info(f"Starting background task for podcast_id {podcast_id}")
-        background_tasks.add_task(process_youtube_channel, podcast_id, channel_id)
+        background_tasks.add_task(process_youtube_channel, podcast_id, channel_id, feed_cutoff)
 
         logger.info("Subscription completed successfully")
         return {

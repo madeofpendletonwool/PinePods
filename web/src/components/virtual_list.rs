@@ -4,11 +4,11 @@ use super::gen_components::{
 use super::gen_funcs::{format_datetime, match_date_format, parse_date};
 use crate::components::audio::on_play_pause;
 use crate::components::context::{AppState, UIState};
-use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::{
     convert_time_to_seconds, sanitize_html_with_blank_target, truncate_description,
 };
 use crate::components::gen_funcs::{format_time, strip_images_from_html};
+use crate::components::safehtml::SafeHtml;
 use crate::requests::search_pods::Episode;
 use gloo::events::EventListener;
 use std::rc::Rc;
@@ -164,7 +164,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 episode_artwork_clone.clone(),
                 episode_duration_in_seconds,
                 episode_id_clone.clone(),
-                Some(0),
+                episode.listen_duration, // Use actual listen_duration instead of Some(0)
                 api_key_play.unwrap().unwrap(),
                 user_id_play.unwrap(),
                 server_name_play.unwrap(),
@@ -180,17 +180,32 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 .currently_playing
                 .as_ref()
                 .map_or(false, |current| {
-                    // Compare both title and URL for uniqueness since we don't have IDs
-                    current.title == episode.title.clone().unwrap_or_default() &&
-                    current.src == episode.enclosure_url.clone().unwrap_or_default()
+                    let title_match = current.title == episode.title.clone().unwrap_or_default();
+                    let url_match = current.src == episode.enclosure_url.clone().unwrap_or_default();
+
+                    // Add episode_id comparison
+                    let id_match = current.episode_id == episode.episode_id.unwrap_or(0);
+
+                    // If it's YouTube content, prioritize ID and title match over URL
+                    if episode.is_youtube.unwrap_or(false) {
+                        (id_match || title_match)
+                    } else {
+                        // For regular podcasts, use the original logic
+                        title_match && url_match
+                    }
                 });
 
             let is_playing = props.search_ui_state.audio_playing.unwrap_or(false);
 
-
             let episode_url_for_ep_item = episode_url_clone.clone();
             let should_show_buttons = !episode_url_for_ep_item.is_empty();
             let preview_description = strip_images_from_html(&description);
+
+            // Check if viewport is narrow (< 500px)
+            let is_narrow_viewport = {
+                let window = web_sys::window().expect("no global window exists");
+                window.inner_width().unwrap().as_f64().unwrap() < 500.0
+            };
 
             let make_shownotes_callback = {
                 let history = props.history.clone();
@@ -269,11 +284,22 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
 
                         {
                             if episode.completed.unwrap_or(false) {
-                                html! {
-                                    <div class="flex items-center space-x-2">
-                                        <span class="item_container-text">{ formatted_duration }</span>
-                                        <span class="item_container-text">{ "-  Completed" }</span>
-                                    </div>
+                                // For completed episodes
+                                if is_narrow_viewport {
+                                    // In narrow viewports, just show "Completed"
+                                    html! {
+                                        <div class="flex items-center space-x-2">
+                                            <span class="item_container-text">{"Completed"}</span>
+                                        </div>
+                                    }
+                                } else {
+                                    // In wider viewports, show duration and "Completed"
+                                    html! {
+                                        <div class="flex items-center space-x-2">
+                                            <span class="item_container-text">{ formatted_duration }</span>
+                                            <span class="item_container-text">{ "-  Completed" }</span>
+                                        </div>
+                                    }
                                 }
                             } else {
                                 if let Some(listen_duration) = episode.listen_duration {
@@ -284,7 +310,16 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                                     };
                                     html! {
                                         <div class="flex items-center space-x-2">
-                                            <span class="item_container-text">{ format_time(listen_duration as f64) }</span>
+                                            // Only show current position in wider viewports
+                                            {
+                                                if !is_narrow_viewport {
+                                                    html! {
+                                                        <span class="item_container-text">{ format_time(listen_duration as f64) }</span>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
                                             <div class="progress-bar-container">
                                                 <div class="progress-bar" style={ format!("width: {}%;", listen_duration_percentage) }></div>
                                             </div>
@@ -362,7 +397,6 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 let date_format = match_date_format(props.search_state.date_format.as_deref());
                 let datetime = parse_date(&episode.pub_date.clone().unwrap_or_default(), &props.search_state.user_tz);
                 let format_release = format_datetime(&datetime, &props.search_state.hour_preference, date_format);
-                let formatted_duration = format_time(episode.duration.clone().unwrap_or_default().parse().unwrap_or(0) as f64);
 
                 // Create the callback here where we have access to index
                 let modal_shownotes_callback = {
@@ -392,14 +426,16 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 html! {
                     <EpisodeModal
                         episode_id={episode.episode_id.unwrap_or(0)}
+                        episode_url={episode.enclosure_url.clone().unwrap()}
                         episode_artwork={episode.artwork.clone().unwrap_or_default()}
                         episode_title={episode.title.clone().unwrap_or_default()}
                         description={description}
                         format_release={format_release}
-                        duration={formatted_duration}
+                        duration={episode.duration.clone().unwrap_or_default().parse().unwrap_or(0) as i32}
                         on_close={on_modal_close.clone()}
                         on_show_notes={modal_shownotes_callback}
                         listen_duration_percentage={0.0}
+                        is_youtube={episode.is_youtube.unwrap()}
                     />
                 }
             } else {

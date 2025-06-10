@@ -9,13 +9,15 @@ use crate::components::podcast_layout::ClickedFeedURL;
 use crate::components::virtual_list::PodcastEpisodeVirtualList;
 use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_check_podcast,
-    call_download_all_podcast, call_enable_auto_download, call_fetch_podcasting_2_pod_data,
-    call_get_auto_download_status, call_get_auto_skip_times, call_get_podcast_id_from_ep,
-    call_get_podcast_id_from_ep_name, call_get_podcast_notifications_status, call_remove_category,
-    call_remove_podcasts_name, call_remove_youtube_channel, call_toggle_podcast_notifications,
-    AddCategoryRequest, AutoDownloadRequest, DownloadAllPodcastRequest,
-    FetchPodcasting2PodDataRequest, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
-    RemoveYouTubeChannelValues, SkipTimesRequest,
+    call_clear_playback_speed, call_download_all_podcast, call_enable_auto_download,
+    call_fetch_podcasting_2_pod_data, call_get_auto_download_status, call_get_feed_cutoff_days,
+    call_get_play_episode_details, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
+    call_get_podcast_notifications_status, call_remove_category, call_remove_podcasts_name,
+    call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_notifications,
+    call_update_feed_cutoff_days, AddCategoryRequest, AutoDownloadRequest,
+    ClearPlaybackSpeedRequest, DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest,
+    PlaybackSpeedRequest, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
+    RemoveYouTubeChannelValues, SkipTimesRequest, UpdateFeedCutoffDaysRequest,
 };
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
@@ -98,14 +100,6 @@ fn pause_icon() -> Html {
 #[derive(Properties, PartialEq)]
 pub struct Props {
     pub html: String,
-}
-
-#[function_component(SafeHtml)]
-pub fn safe_html(props: &Props) -> Html {
-    let div = gloo_utils::document().create_element("div").unwrap();
-    div.set_inner_html(&props.html.clone());
-
-    Html::VRef(div.into())
 }
 
 fn sanitize_html(html: &str) -> String {
@@ -191,6 +185,11 @@ pub fn episode_layout() -> Html {
     let completed_filter_state = use_state(|| CompletedFilter::ShowAll);
     let show_in_progress = use_state(|| false);
     let notification_status = use_state(|| false);
+    let feed_cutoff_days = use_state(|| 0);
+    let feed_cutoff_days_input = use_state(|| "0".to_string());
+    let playback_speed = use_state(|| 1.0);
+    let playback_speed_input = playback_speed.clone();
+    let playback_speed_clone = playback_speed.clone();
 
     let history = BrowserHistory::new();
     // let node_ref = use_node_ref();
@@ -479,7 +478,10 @@ pub fn episode_layout() -> Html {
         let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID);
         let effect_start_skip = start_skip.clone();
         let effect_end_skip = end_skip.clone();
+        let effect_playback_speed = playback_speed.clone();
         let effect_added = is_added.clone();
+        let feed_cutoff_days = feed_cutoff_days.clone();
+        let feed_cutoff_days_input = feed_cutoff_days_input.clone();
         let audio_dispatch = _dispatch.clone();
         let click_state = search_state.clone();
 
@@ -550,6 +552,28 @@ pub fn episode_layout() -> Html {
                                                 );
                                             }
                                         }
+                                        match call_get_feed_cutoff_days(
+                                            &server_name,
+                                            &Some(api_key.clone().unwrap()),
+                                            id,
+                                            user_id,
+                                        )
+                                        .await
+                                        {
+                                            Ok(days) => {
+                                                feed_cutoff_days.set(days);
+                                                feed_cutoff_days_input.set(days.to_string());
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!(
+                                                        "Error getting feed cutoff days: {}",
+                                                        e
+                                                    )
+                                                    .into(),
+                                                );
+                                            }
+                                        }
                                         // Add notification status check here
                                         match call_get_podcast_notifications_status(
                                             server_name.clone(),
@@ -572,17 +596,19 @@ pub fn episode_layout() -> Html {
                                                 );
                                             }
                                         }
-                                        match call_get_auto_skip_times(
+                                        match call_get_play_episode_details(
                                             &server_name,
                                             &Some(api_key.clone().unwrap()),
                                             user_id,
-                                            id,
+                                            id,    // podcast_id
+                                            false, // is_youtube (probably false for most podcasts, adjust if needed)
                                         )
                                         .await
                                         {
-                                            Ok((start, end)) => {
+                                            Ok((speed, start, end)) => {
                                                 effect_start_skip.set(start);
                                                 effect_end_skip.set(end);
+                                                effect_playback_speed.set(speed as f64);
                                             }
                                             Err(e) => {
                                                 web_sys::console::log_1(
@@ -991,6 +1017,182 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let playback_speed_input_handler = Callback::from(move |e: InputEvent| {
+        if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+            let value = input.value().parse::<f64>().unwrap_or(1.0);
+            // Constrain to reasonable values (0.5 to 3.0)
+            let value = value.max(0.5).min(2.0);
+            playback_speed_input.set(value);
+        }
+    });
+
+    // Create the save playback speed function
+    let save_playback_speed = {
+        let playback_speed = playback_speed.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+        let podcast_id = podcast_id.clone();
+        let dispatch = _search_dispatch.clone();
+
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            let call_dispatch = dispatch.clone();
+            let speed = *playback_speed;
+            let api_key = api_key.clone();
+            let user_id = user_id.clone().unwrap();
+            let server_name = server_name.clone();
+            let podcast_id = *podcast_id;
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    let request = PlaybackSpeedRequest {
+                        podcast_id,
+                        user_id,
+                        playback_speed: speed,
+                    };
+
+                    match call_set_playback_speed(&server_name, &api_key, &request).await {
+                        Ok(_) => {
+                            call_dispatch.reduce_mut(|state| {
+                                state.info_message =
+                                    Option::from("Playback speed updated".to_string())
+                            });
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error updating playback speed: {}", e).into(),
+                            );
+                            call_dispatch.reduce_mut(|state| {
+                                state.error_message =
+                                    Option::from("Error updating playback speed".to_string())
+                            });
+                        }
+                    }
+                }
+            });
+        })
+    };
+
+    // Create the clear playback speed function
+    let clear_playback_speed = {
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let server_name = server_name.clone();
+        let podcast_id = podcast_id.clone();
+        let dispatch = _search_dispatch.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            let call_dispatch = dispatch.clone();
+            let api_key = api_key.clone();
+            let user_id = user_id.clone().unwrap();
+            let server_name = server_name.clone();
+            let podcast_id = *podcast_id;
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    let request = ClearPlaybackSpeedRequest {
+                        podcast_id,
+                        user_id,
+                    };
+                    match call_clear_playback_speed(&server_name, &api_key, &request).await {
+                        Ok(_) => {
+                            call_dispatch.reduce_mut(|state| {
+                                state.info_message =
+                                    Option::from("Playback speed reset to default".to_string())
+                            });
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error resetting playback speed: {}", e).into(),
+                            );
+                            call_dispatch.reduce_mut(|state| {
+                                state.error_message =
+                                    Option::from("Error resetting playback speed".to_string())
+                            });
+                        }
+                    }
+                }
+            });
+        })
+    };
+
+    // Add this callback for handling input changes
+    let feed_cutoff_days_input_handler = {
+        let feed_cutoff_days_input = feed_cutoff_days_input.clone();
+
+        Callback::from(move |e: InputEvent| {
+            if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                feed_cutoff_days_input.set(input.value());
+            }
+        })
+    };
+
+    // Add this callback for saving the feed cutoff days
+    let save_feed_cutoff_days = {
+        let dispatch_vid = _search_dispatch.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let podcast_id = podcast_id.clone();
+        let feed_cutoff_days_input = feed_cutoff_days_input.clone();
+        let feed_cutoff_days = feed_cutoff_days.clone();
+        let user_id = search_state.user_details.as_ref().map(|ud| ud.UserID);
+
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            let dispatch_wasm = dispatch_vid.clone();
+
+            // Extract the values directly without creating intermediate variables
+            if let (Some(server_val), Some(key_val), Some(user_val)) = (
+                server_name.as_ref(),
+                api_key.as_ref().and_then(|k| k.as_ref()),
+                user_id,
+            ) {
+                let pod_id = *podcast_id;
+                let days_str = (*feed_cutoff_days_input).clone();
+                let days = days_str.parse::<i32>().unwrap_or(0);
+                let request_data = UpdateFeedCutoffDaysRequest {
+                    podcast_id: pod_id,
+                    user_id: user_val,
+                    feed_cutoff_days: days,
+                };
+
+                // Clone everything needed for the async block
+                let server_val = server_val.clone();
+                let key_val = key_val.clone();
+                let feed_cutoff_days = feed_cutoff_days.clone();
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_update_feed_cutoff_days(&server_val, &Some(key_val), &request_data)
+                        .await
+                    {
+                        Ok(_) => {
+                            feed_cutoff_days.set(days);
+                            dispatch_wasm.reduce_mut(|state| {
+                                state.info_message =
+                                    Option::from("Youtube Episode Limit Updated!".to_string())
+                            });
+                            // No need to update a ClickedFeedURL or PodcastInfo struct
+                            // Just update the state
+                        }
+                        Err(err) => {
+                            web_sys::console::log_1(
+                                &format!("Error updating feed cutoff days: {}", err).into(),
+                            );
+                            dispatch_wasm.reduce_mut(|state| {
+                                state.error_message = Option::from(format!(
+                                    "Error updating feed cutoff days: {:?}",
+                                    err
+                                ))
+                            });
+                        }
+                    }
+                });
+            }
+        })
+    };
+
     let toggle_notifications = {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
@@ -1315,6 +1517,37 @@ pub fn episode_layout() -> Html {
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                 </label>
                             </div>
+
+                            <div class="mt-4">
+                                <label for="playback-speed" class="block mb-2 text-sm font-medium">{"Default Playback Speed:"}</label>
+                                <div class="flex items-center space-x-2">
+                                    <input
+                                        type="number"
+                                        id="playback-speed"
+                                        value={format!("{:.1}", *playback_speed_clone)} // Format to 1 decimal place
+                                        class="email-input border text-sm rounded-lg p-2.5 w-20"
+                                        oninput={playback_speed_input_handler}
+                                        min="0.5"
+                                        max="2.0"
+                                        step="0.1"
+                                    />
+                                    <span class="text-sm">{"x"}</span>
+                                    <button
+                                        class="download-button font-bold py-2 px-4 rounded"
+                                        onclick={save_playback_speed}
+                                    >
+                                        {"Save"}
+                                    </button>
+                                    <button
+                                        class="clear-button bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
+                                        onclick={clear_playback_speed}
+                                    >
+                                        {"Reset"}
+                                    </button>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">{"Sets the default playback speed for this podcast. Range: 0.5x - 2.0x. Reset to use your global default."}</p>
+                            </div>
+
                             <div class="mt-4">
                                 <label for="auto-skip" class="block mb-2 text-sm font-medium">{"Auto Skip Intros and Outros:"}</label>
                                 <div class="flex items-center space-x-2">
@@ -1356,6 +1589,36 @@ pub fn episode_layout() -> Html {
                                     </button>
                                 </div>
                             </div>
+
+                            {
+                                if podcast_info.unwrap().is_youtube.unwrap() {
+                                    html! {
+                                        <div class="mt-4">
+                                            <label for="feed-cutoff" class="block mb-2 text-sm font-medium">{"Youtube Download Episode Limit (days):"}</label>
+                                            <div class="flex items-center space-x-2">
+                                                <input
+                                                    type="number"
+                                                    id="feed-cutoff"
+                                                    value={(*feed_cutoff_days_input).clone()}
+                                                    class="email-input border text-sm rounded-lg p-2.5 w-24"
+                                                    oninput={feed_cutoff_days_input_handler}
+                                                    min="0"
+                                                />
+                                                <span class="text-sm text-gray-500">{"0 = No limit"}</span>
+                                                <button
+                                                    class="download-button font-bold py-2 px-4 rounded"
+                                                    onclick={save_feed_cutoff_days}
+                                                >
+                                                    {"Save"}
+                                                </button>
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-1">{"Adjusts how long Youtube Feed audio is retained when downloaded to be streamed via the server. Youtube episodes will be removed after to free up space."}</p>
+                                        </div>
+                                    }
+                                } else {
+                                    html! {}  // Render nothing if it's not a YouTube podcast
+                                }
+                            }
                             // Categories section of the modal
                             <div>
                                 <label for="category_adjust" class="block mb-2 text-sm font-medium">
@@ -1616,19 +1879,13 @@ pub fn episode_layout() -> Html {
                                 let call_podcast_id = response_body.podcast_id;
                                 callback_podcast_id.set(call_podcast_id);
 
-                                // Handle first episode ID differently since it's now Option<Vec<FirstEpisodeInfo>>
-                                if let Some(first_episodes) = &response_body.first_episode_id {
-                                    if !first_episodes.is_empty() {
-                                        // Get the episode_id from the first episode in the array
-                                        let episode_id = Some(first_episodes[0].episode_id);
-
-                                        // Use the episode_id for further processing if needed
-                                        app_dispatch.reduce_mut(|state| {
-                                            state.selected_episode_id = episode_id;
-                                            // Now this matches Option<i32>
-                                        });
-                                    }
-                                }
+                                // Since first_episode_id is now an i32, use it directly
+                                let episode_id = Some(response_body.first_episode_id);
+                                // Use the episode_id for further processing
+                                app_dispatch.reduce_mut(|state| {
+                                    state.selected_episode_id = episode_id;
+                                    // Now this matches Option<i32>
+                                });
 
                                 // Fetch episodes - podcast_id is now direct i32
                                 match call_get_podcast_episodes(
@@ -2000,7 +2257,7 @@ pub fn episode_layout() -> Html {
                                                                 html! {}
                                                             }
                                                         }
-                                                        <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-4"} style="width: 60px; height: 60px;">
+                                                        <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class={"item-container-button font-bold py-2 px-4 rounded-full self-center mr-4"} style="width: 60px; height: 60px;">
                                                             { button_content }
                                                         </button>
                                                         {

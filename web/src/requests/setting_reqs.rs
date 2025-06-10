@@ -273,6 +273,7 @@ pub async fn call_set_password(
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct DeleteUserResponse {
     pub status: String,
 }
@@ -1399,6 +1400,281 @@ pub async fn call_add_gpodder_server(
     }
 }
 
+// Get user's default GPodder device - matches the EXACT route in your backend
+pub async fn call_get_default_gpodder_device(
+    server_name: &str,
+    api_key: &str,
+) -> Result<GpodderDevice, gloo::net::Error> {
+    // Use the exact same route as defined in your backend
+    let url = format!("{}/api/gpodder/default_device", server_name);
+
+    // Log the request URL for debugging
+    web_sys::console::log_1(&format!("Fetching default device from: {}", url).into());
+
+    let response = gloo::net::http::Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await?
+        .json::<GpodderDevice>()
+        .await?;
+
+    Ok(response)
+}
+
+// Set a device as the default - with support for remote devices
+pub async fn call_set_default_gpodder_device(
+    server_name: &str,
+    api_key: &str,
+    device_id: i32,
+    device_name: Option<String>,
+    is_remote: bool,
+) -> Result<ApiResponse<()>, gloo::net::Error> {
+    let mut url = format!("{}/api/gpodder/set_default/{}", server_name, device_id);
+
+    // Add query parameters for remote devices
+    if device_id < 0 || is_remote {
+        if let Some(name) = &device_name {
+            url = format!(
+                "{}?device_name={}&is_remote=true",
+                url,
+                js_sys::encode_uri_component(name)
+            );
+        }
+    }
+
+    // Log the request URL for debugging
+    web_sys::console::log_1(&format!("Setting default device at: {}", url).into());
+
+    let response = gloo::net::http::Request::post(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await?
+        .json::<ApiResponse<()>>()
+        .await?;
+
+    Ok(response)
+}
+
+// API structures
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GpodderDevice {
+    pub id: i32,
+    pub name: String,
+    pub r#type: String, // Using r# prefix because "type" is a reserved keyword
+    pub caption: Option<String>,
+    pub last_sync: Option<String>,
+    pub is_active: bool,
+    pub is_remote: Option<bool>,
+    pub is_default: Option<bool>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CreateDeviceRequest {
+    pub user_id: i32,
+    pub device_name: String,
+    pub device_type: String,
+    pub device_caption: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SyncRequest {
+    pub user_id: i32,
+    pub device_id: Option<i32>,
+    pub device_name: Option<String>,
+    pub is_remote: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ApiResponse<T> {
+    pub success: bool,
+    pub message: String,
+    pub data: Option<T>,
+}
+
+// Get user's GPodder devices
+pub async fn call_get_gpodder_devices(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<Vec<GpodderDevice>, gloo::net::Error> {
+    let url = format!("{}/api/gpodder/devices/{}", server_name, user_id);
+
+    let response = gloo::net::http::Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await?
+        .json::<Vec<GpodderDevice>>()
+        .await?;
+
+    Ok(response)
+}
+
+// Create a new GPodder device
+pub async fn call_create_gpodder_device(
+    server_name: &str,
+    api_key: &str,
+    request: CreateDeviceRequest,
+) -> Result<GpodderDevice, gloo::net::Error> {
+    let url = format!("{}/api/gpodder/devices", server_name);
+
+    let response = gloo::net::http::Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request)?
+        .send()
+        .await?
+        .json::<GpodderDevice>()
+        .await?;
+
+    Ok(response)
+}
+
+// Force full sync with GPodder
+pub async fn call_force_full_sync(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    device_id: Option<i32>,
+    device_name: Option<String>,
+    is_remote: bool,
+) -> Result<ApiResponse<()>, gloo::net::Error> {
+    let url = format!("{}/api/gpodder/sync/force", server_name);
+
+    let request = SyncRequest {
+        user_id,
+        device_id,
+        device_name,
+        is_remote,
+    };
+
+    let response = gloo::net::http::Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request)?
+        .send()
+        .await?
+        .json::<ApiResponse<()>>()
+        .await?;
+
+    Ok(response)
+}
+
+// Sync from GPodder
+pub async fn call_sync_with_gpodder(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    device_id: Option<i32>,
+    device_name: Option<String>,
+    is_remote: bool,
+) -> Result<ApiResponse<()>, gloo::net::Error> {
+    let url = format!("{}/api/gpodder/sync", server_name);
+
+    // Create the request with all necessary fields
+    let request = SyncRequest {
+        user_id,
+        device_id,
+        device_name,
+        is_remote,
+    };
+
+    // Log the request for debugging
+    web_sys::console::log_1(&format!("Sending sync request: {:?}", &request).into());
+
+    let response = gloo::net::http::Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request)?
+        .send()
+        .await?
+        .json::<ApiResponse<()>>()
+        .await?;
+
+    Ok(response)
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GpodderApiToggleRequest {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GpodderApiStatusResponse {
+    pub sync_type: String,
+    pub gpodder_enabled: bool,
+    pub external_enabled: bool,
+    pub external_url: Option<String>,
+    pub api_url: Option<String>, // Changed to Option<String>
+}
+
+// Get GPodder API status
+pub async fn call_get_gpodder_api_status(
+    server_name: &str,
+    api_key: &str,
+) -> Result<GpodderApiStatusResponse, gloo::net::Error> {
+    let url = format!("{}/api/data/gpodder/status", server_name);
+
+    let response = gloo::net::http::Request::get(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await?
+        .json::<GpodderApiStatusResponse>()
+        .await?;
+
+    Ok(response)
+}
+
+// Toggle GPodder API
+pub async fn call_toggle_gpodder_api(
+    server_name: &str,
+    api_key: &str,
+    enabled: bool,
+) -> Result<GpodderApiStatusResponse, gloo::net::Error> {
+    let url = format!("{}/api/data/gpodder/toggle", server_name);
+
+    let request = GpodderApiToggleRequest { enabled };
+
+    let response = gloo::net::http::Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request)?
+        .send()
+        .await?
+        .json::<GpodderApiStatusResponse>()
+        .await?;
+
+    Ok(response)
+}
+
+// Test GPodder connection
+pub async fn call_test_gpodder_connection(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    gpodder_url: &str,
+    gpodder_username: &str,
+    gpodder_password: &str,
+) -> Result<ApiResponse<serde_json::Value>, gloo::net::Error> {
+    let url = format!(
+        "{}/api/gpodder/test-connection?user_id={}&gpodder_url={}&gpodder_username={}&gpodder_password={}",
+        server_name,
+        user_id,
+        urlencoding::encode(gpodder_url),
+        urlencoding::encode(gpodder_username),
+        urlencoding::encode(gpodder_password)
+    );
+
+    let response = gloo::net::http::Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await?
+        .json::<ApiResponse<serde_json::Value>>()
+        .await?;
+
+    Ok(response)
+}
+
 #[derive(Deserialize, Debug)]
 pub struct NextcloudCheckResponse {
     pub(crate) data: bool,
@@ -1491,6 +1767,7 @@ pub struct RemoveSyncRequest {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct RemoveSyncResponse {
     success: bool,
     message: String,
@@ -1821,6 +2098,7 @@ pub struct AddOIDCProviderRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct OIDCProvider {
     pub provider_id: i32,
     pub provider_name: String,
@@ -1911,6 +2189,7 @@ pub async fn call_list_oidc_providers(
 
 // First, create a struct to match the JSON response for getting startpage
 #[derive(Deserialize)]
+#[allow(non_snake_case)]
 struct StartPageResponse {
     StartPage: String,
 }
@@ -1944,6 +2223,7 @@ pub struct SetStartPageRequest {
 // Struct for the set startpage response
 #[derive(Deserialize)]
 #[allow(non_snake_case)]
+#[allow(dead_code)]
 struct SetStartPageResponse {
     success: bool,
     message: String,

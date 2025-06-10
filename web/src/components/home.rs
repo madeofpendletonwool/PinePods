@@ -251,15 +251,15 @@ pub fn home() -> Html {
                                     server_name_clone.unwrap_or_default(),
                                     api_key_clone,
                                     &history_clone,
-                                    podcast.podcastindexid,
+                                    podcast.podcastindexid.unwrap_or_default(),
                                     podcast.podcastname.clone(),
                                     podcast.feedurl.clone().unwrap_or_default(),
                                     podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
                                     podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
                                     podcast.artworkurl.clone().unwrap_or_default(),
-                                    podcast.explicit,
+                                    podcast.explicit.unwrap_or(false),
                                     podcast.episodecount.unwrap_or(0),
-                                    Some(podcast.categories.clone()),
+                                    Some(podcast.categories.clone().unwrap_or_else(|| String::from("No Categories Found"))),
                                     podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
                                     user_id.unwrap(),
                                     podcast.is_youtube,
@@ -285,7 +285,7 @@ pub fn home() -> Html {
                         <div class="section-container">
                             <h2 class="text-2xl font-bold mb-4 item_container-text">{"Smart Playlists"}</h2>
                             if let Some(playlists) = &state.playlists {
-                                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                <div class="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                     {
                                         playlists.iter().map(|playlist| {
                                             let history_clone = history.clone();

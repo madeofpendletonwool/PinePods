@@ -2,11 +2,11 @@ use super::gen_components::{empty_message, FallbackImage, UseScrollToTop};
 use crate::components::audio::on_play_click_shared;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
-use crate::components::episodes_layout::SafeHtml;
 use crate::components::gen_funcs::{
     format_datetime, format_time, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
 use crate::components::notification_center::ToastNotification;
+use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req::call_get_episode_by_url_key;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
@@ -281,7 +281,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                     <button onclick={on_play_click} class="play-button">
                                     // <button class="play-button">
                                         <i class="ph ph-play"></i>
-                                        {"Play"}
+                                        <span style="margin-left: 8px;">{"Play"}</span>
                                     </button>
 
                                     </div>

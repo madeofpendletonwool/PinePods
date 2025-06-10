@@ -12,6 +12,7 @@ pub(crate) mod playlist_detail;
 pub(crate) mod playlists;
 pub(crate) mod queue;
 pub(crate) mod routes;
+pub(crate) mod safehtml;
 pub(crate) mod saved;
 pub(crate) mod search;
 pub(crate) mod settings;

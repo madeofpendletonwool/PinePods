@@ -137,10 +137,36 @@ try:
             Pod_Sync_Type VARCHAR(50) DEFAULT 'None',
             GpodderLoginName VARCHAR(255) DEFAULT '',
             GpodderToken VARCHAR(255) DEFAULT '',
-            EnableRSSFeeds BOOLEAN DEFAULT FALSE
+            EnableRSSFeeds BOOLEAN DEFAULT FALSE,
+            PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0
         )
     """)
     cnx.commit()
+
+    def add_playbackspeed_if_not_exist_users(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='Users'
+                AND column_name = 'playbackspeed'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE "Users"
+                    ADD COLUMN PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0
+                """)
+                print("Added 'PlaybackSpeed' column to 'Users' table.")
+                cnx.commit()
+            else:
+                print("Column 'PlaybackSpeed' already exists in 'Users' table.")
+        except Exception as e:
+            print(f"Error checking PlaybackSpeed column in Users table: {e}")
+            # Important: Don't try to commit here, as the transaction is already aborted
+
+    # Usage - should be called during app startup
+    add_playbackspeed_if_not_exist_users(cursor, cnx)
 
     # Create OIDCProviders next
     cursor.execute("""
@@ -209,6 +235,50 @@ try:
                         Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
                     )""")
+
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "GpodderDevices" (
+                DeviceID SERIAL PRIMARY KEY,
+                UserID INT NOT NULL,
+                DeviceName VARCHAR(255) NOT NULL,
+                DeviceType VARCHAR(50) DEFAULT 'desktop',
+                DeviceCaption VARCHAR(255),
+                IsDefault BOOLEAN DEFAULT FALSE,
+                LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                IsActive BOOLEAN DEFAULT TRUE,
+                FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                UNIQUE(UserID, DeviceName)
+            )
+        """)
+        cnx.commit()
+        print("Created GpodderDevices table")
+
+        # Create index for faster lookups
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_gpodder_devices_userid
+            ON "GpodderDevices"(UserID)
+        """)
+        cnx.commit()
+
+        # Create a table for subscription history/sync state
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS "GpodderSyncState" (
+                SyncStateID SERIAL PRIMARY KEY,
+                UserID INT NOT NULL,
+                DeviceID INT NOT NULL,
+                LastTimestamp BIGINT DEFAULT 0,
+                EpisodesTimestamp BIGINT DEFAULT 0,
+                FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                UNIQUE(UserID, DeviceID)
+            )
+        """)
+        cnx.commit()
+        print("Created GpodderSyncState table")
+    except Exception as e:
+        print(f"Error creating GPodder tables: {e}")
 
     cursor.execute("""CREATE TABLE IF NOT EXISTS "UserStats" (
                         UserStatsID SERIAL PRIMARY KEY,
@@ -518,12 +588,38 @@ try:
                 Password TEXT,
                 IsYouTubeChannel BOOLEAN DEFAULT FALSE,
                 NotificationsEnabled BOOLEAN DEFAULT FALSE,
+                FeedCutoffDays INT DEFAULT 0,
+                PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0,
+                PlaybackSpeedCustomized BOOLEAN DEFAULT FALSE,
                 FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
             )
         """)
         cnx.commit()  # Ensure changes are committed
     except Exception as e:
         print(f"Error adding Podcasts table: {e}")
+
+    try:
+        # Add unique constraint on UserID and FeedURL to fix the ON CONFLICT error
+        cursor.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'podcasts_userid_feedurl_key'
+                ) THEN
+                    -- Add the constraint if it doesn't exist
+                    ALTER TABLE "Podcasts"
+                    ADD CONSTRAINT podcasts_userid_feedurl_key
+                    UNIQUE (UserID, FeedURL);
+                END IF;
+            END
+            $$;
+        """)
+        cnx.commit()
+        print("Added unique constraint on UserID and FeedURL to Podcasts table")
+    except Exception as e:
+        print(f"Error adding unique constraint to Podcasts table: {e}")
 
     def add_youtube_column_if_not_exist(cursor, cnx):
         try:
@@ -542,13 +638,84 @@ try:
                 """)
                 print("Added 'IsYouTubeChannel' column to 'Podcasts' table.")
                 cnx.commit()
+            else:
+                print('IsYouTubeChannel column already exists')
         except Exception as e:
             print(f"Error adding IsYouTubeChannel column to Podcasts table: {e}")
 
     # Usage
     add_youtube_column_if_not_exist(cursor, cnx)
 
+    def add_playbackspeed_if_not_exist_podcasts(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='Podcasts'
+                AND column_name = 'playbackspeed'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0
+                """)
+                print("Added 'PlaybackSpeed' column to 'Podcasts' table.")
+                cnx.commit()
+            else:
+                print("Column 'PlaybackSpeed' already exists in 'Podcasts' table. ")
+        except Exception as e:
+            print(f"Error checking PlaybackSpeed column in Podcasts table: {e}")
+            # No commit or rollback here, just like in your working example
 
+    # Usage - should be called during app startup
+    add_playbackspeed_if_not_exist_users(cursor, cnx)
+
+    def add_playbackspeed_customized_if_not_exist(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='Podcasts'
+                AND column_name = 'playbackspeedcustomized'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN PlaybackSpeedCustomized BOOLEAN DEFAULT FALSE
+                """)
+                print("Added 'PlaybackSpeedCustomized' column to 'Podcasts' table.")
+                cnx.commit()
+            else:
+                print('PlaybackSpeedCustomized column already exists')
+        except Exception as e:
+            print(f"Error adding PlaybackSpeedCustomized column to Podcasts table: {e}")
+
+    # Usage - should be called during app startup
+    add_playbackspeed_customized_if_not_exist(cursor, cnx)
+
+    def add_feed_cutoff_column_if_not_exist(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name='Podcasts'
+                AND column_name = 'feedcutoffdays'
+            """)
+            existing_column = cursor.fetchone()
+
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN "feedcutoffdays" INT DEFAULT 0
+                """)
+                print("Added 'feedcutoffdays' column to 'Podcasts' table.")
+                cnx.commit()
+        except Exception as e:
+            print(f"Error adding feedcutoffdays column to Podcasts table: {e}")
+
+    add_feed_cutoff_column_if_not_exist(cursor, cnx)
 
     cursor.execute("SELECT to_regclass('public.\"Podcasts\"')")
 
@@ -1081,12 +1248,18 @@ try:
                             IncludeUnplayed,
                             IncludePartiallyPlayed,
                             IncludePlayed,
-                            IconName
+                            IconName,
+                            TimeFilterHours,
+                            PlayProgressMin,
+                            PlayProgressMax
                         ) VALUES (
                             1,
                             %s,
                             %s,
                             TRUE,
+                            %s,
+                            %s,
+                            %s,
                             %s,
                             %s,
                             %s,
@@ -1106,7 +1279,10 @@ try:
                         playlist.get('include_unplayed', True),
                         playlist.get('include_partially_played', True),
                         playlist.get('include_played', False),
-                        playlist.get('icon_name', 'ph-playlist')
+                        playlist.get('icon_name', 'ph-playlist'),
+                        playlist.get('time_filter_hours'),
+                        playlist.get('play_progress_min'),
+                        playlist.get('play_progress_max')
                     ))
                     cnx.commit()
                     print(f"Successfully added system playlist: {playlist['name']}")

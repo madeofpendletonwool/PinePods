@@ -201,13 +201,14 @@ pub fn settings() -> Html {
                         <div id="accordion-collapse" data-accordion="collapse" class="bg-custom-light">
                             <AccordionItem title="Change Theme" content={html!{ <setting_components::theme_options::ThemeOptions /> }} position={AccordionItemPosition::First}/>
                             <AccordionItem title="Account Settings" content={html!{ <setting_components::user_self_settings::UserSelfSettings /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title="Playback Settings" content={html!{ <setting_components::playback_settings::PlaybackSettings /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="MFA Settings" content={html!{ <setting_components::mfa_settings::MFAOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Export/Backup Podcasts" content={html!{ <setting_components::export_settings::ExportOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Import Podcasts" content={html!{ <setting_components::import_options::ImportOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Default Login Page" content={html!{ <setting_components::start_page_options::StartPageOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Notification Settings" content={html!{ <setting_components::notifications::NotificationOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Add Custom Feed" content={html!{ <setting_components::custom_feed::CustomFeed /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title="Connect Nextcloud/Gpodder Podcast Sync" content={html!{ <setting_components::nextcloud_options::NextcloudOptions /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title="Podcast Sync" content={html!{ <setting_components::nextcloud_options::SyncOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Enable/Disable RSS Feeds" content={html!{ <setting_components::rss_feeds::RSSFeedSettings /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Api Keys" content={html!{ <setting_components::api_keys::APIKeys /> }} position={AccordionItemPosition::Middle}/>
                         </div>

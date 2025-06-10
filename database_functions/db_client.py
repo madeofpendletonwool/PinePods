@@ -95,9 +95,29 @@ def create_database_connection():
         raise RuntimeError("Unable to connect to the database")
 
 def close_database_connection(cnx):
-    """Close a database connection and return it to the pool"""
+    """Close a database connection and handle both PostgreSQL and MySQL connections properly"""
+    if cnx is None:
+        return
+
     try:
-        pool.return_connection(cnx)
+        # First determine the connection type
+        is_psql = hasattr(cnx, 'closed')  # PostgreSQL has a 'closed' attribute
+
+        if is_psql:
+            # PostgreSQL connection - try to return to pool first
+            try:
+                if not cnx.closed and pool is not None:
+                    pool.return_connection(cnx)
+                    return
+            except Exception as pool_err:
+                print(f"Could not return connection to pool: {str(pool_err)}")
+                # Fall back to direct close if return fails
+                if not cnx.closed:
+                    cnx.close()
+        else:
+            # MySQL connection - just close directly, don't try to use the pool
+            if hasattr(cnx, 'close'):
+                cnx.close()
     except Exception as e:
         print(f"Error closing connection: {str(e)}")
         logger.error(f"Error closing connection: {str(e)}")

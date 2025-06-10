@@ -5,8 +5,14 @@
 # PinePods :evergreen_tree:
 [![Discord](https://img.shields.io/badge/discord-join%20chat-5B5EA6)](https://discord.gg/bKzHRa4GNc)
 [![Chat on Matrix](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#pinepods:matrix.org)
-![Docker Container Build](https://github.com/madeofpendletonwool/PinePods/actions/workflows/docker-publish.yml/badge.svg)
+[![Docker Container Build](https://github.com/madeofpendletonwool/PinePods/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/madeofpendletonwool/PinePods/actions)
 [![GitHub Release](https://img.shields.io/github/v/release/madeofpendletonwool/pinepods)](https://github.com/madeofpendletonwool/PinePods/releases)
+
+# 👶 Currently on Baby Break 🍼
+
+*Taking some time off to welcome our newest family member!*
+
+---
 
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
 - [Getting Started](#getting-started)
@@ -18,6 +24,7 @@
       - [Admin User Info](#admin-user-info)
       - [Proxy Info](#proxy-info)
       - [Note on the Search API](#note-on-the-search-api)
+      - [Timezone Configuration](#timezone-configuration)
       - [Client API Vars](#client-api-vars)
       - [Start it up!](#start-it-up)
     - [Linux Client Install :computer:](#linux-client-install-computer)
@@ -118,10 +125,15 @@ services:
       DEBUG_MODE: false
       PUID: ${UID:-911}
       PGID: ${GID:-911}
+      # Add timezone configuration
+      TZ: "America/New_York"
     volumes:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
+      # Timezone volumes, HIGHLY optional. Read the timezone notes below
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     depends_on:
       - db
       - valkey
@@ -174,11 +186,16 @@ services:
       DEBUG_MODE: false
       PUID: ${UID:-911}
       PGID: ${GID:-911}
+      # Add timezone configuration
+      TZ: "America/New_York"
 
     volumes:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
+      # Timezone volumes, HIGHLY optional. Read the timezone notes below
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     depends_on:
       - db
       - valkey
@@ -220,6 +237,71 @@ Above is an api that I maintain. I do not guarantee 100% uptime on this api thou
 
 https://www.pinepods.online/docs/API/search_api
 
+#### Timezone Configuration
+
+PinePods supports displaying timestamps in your local timezone instead of UTC. This helps improve readability and prevents confusion when viewing timestamps such as "last sync" times in the gpodder API. Note that this configuration is specifically for logs. Each user sets their own timezone settings on first login. That is seperate from this server timezone config.
+
+##### Setting the Timezone
+
+You have two main options for configuring the timezone in PinePods:
+
+##### Option 1: Using the TZ Environment Variable (Recommended)
+
+Add the `TZ` environment variable to your docker-compose.yml file:
+
+```yaml
+services:
+  pinepods:
+    image: madeofpendletonwool/pinepods:latest
+    environment:
+      # Other environment variables...
+      TZ: "America/Chicago"  # Set your preferred timezone
+```
+
+This method works consistently across all operating systems (Linux, macOS, Windows) and is the recommended approach.
+
+##### Option 2: Mounting Host Timezone Files (Linux Only)
+
+On Linux systems, you can mount the host's timezone files:
+
+```yaml
+services:
+  pinepods:
+    image: madeofpendletonwool/pinepods:latest
+    volumes:
+      # Other volumes...
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+```
+
+**Note**: This method only works reliably on Linux hosts. For macOS and Windows users, please use the TZ environment variable (Option 1).
+
+##### Priority
+
+If both methods are used:
+1. The TZ environment variable takes precedence
+2. Mounted timezone files are used as a fallback
+
+##### Common Timezone Values
+
+Here are some common timezone identifiers:
+- `America/New_York` - Eastern Time
+- `America/Chicago` - Central Time
+- `America/Denver` - Mountain Time
+- `America/Los_Angeles` - Pacific Time
+- `Europe/London` - United Kingdom
+- `Europe/Berlin` - Central Europe
+- `Asia/Tokyo` - Japan
+- `Australia/Sydney` - Australia Eastern
+
+For a complete list of valid timezone identifiers, see the [IANA Time Zone Database](https://www.iana.org/time-zones).
+
+##### Troubleshooting Timezones
+
+- I'm on macOS and timezone settings aren't working
+
+macOS uses a different timezone file format than Linux. You must use the TZ environment variable method on macOS.
+
 
 #### Start it up!
 
@@ -240,7 +322,7 @@ Adding the Helm Repository
 First, add the Pinepods Helm repository:
 
 ```
-helm repo add pinepods http://helm.pinepods.online/PinePods
+helm repo add pinepods http://helm.pinepods.online
 helm repo update
 ```
 #### Installing the Chart

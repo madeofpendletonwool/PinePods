@@ -125,6 +125,40 @@ pub fn user_stats() -> Html {
                                             <p class="stats-label">{"Episodes Downloaded"}</p>
                                             <p class="stats-value">{ &stats.EpisodesDownloaded }</p>
                                         </div>
+                                        <div class="stats-card">
+                                            <p class="stats-label">{"Podcast Sync Status"}</p>
+                                            {
+                                                if let Some(stats) = user_stats {
+                                                    let sync_status = match stats.Pod_Sync_Type.as_str() {
+                                                        "None" => html! { <p class="stats-value">{"Not Syncing"}</p> },
+                                                        _ => {
+                                                            let sync_type = if stats.Pod_Sync_Type == "gpodder" {
+                                                                if stats.GpodderUrl == "http://localhost:8042" {
+                                                                    "Internal gpodder"
+                                                                } else {
+                                                                    "External gpodder"
+                                                                }
+                                                            } else if stats.Pod_Sync_Type == "nextcloud" {
+                                                                "Nextcloud"
+                                                            } else {
+                                                                "Unknown sync type"
+                                                            };
+
+                                                            html! {
+                                                                <>
+                                                                    <p class="stats-value">{sync_type}</p>
+                                                                    <p class="stats-detail">{&stats.GpodderUrl}</p>
+                                                                </>
+                                                            }
+                                                        }
+                                                    };
+                                                    sync_status
+                                                } else {
+                                                    html! { <p class="stats-value">{"Loading..."}</p> }
+                                                }
+                                            }
+                                        </div>
+
                                         <div class="large-card col-span-1 md:col-span-3">
                                             <img src="static/assets/favicon.png" alt="Pinepods Logo" class="large-card-image"/>
                                             <p class="large-card-paragraph item_container-text">{ format!("Current Version: {}", display_version) }</p>

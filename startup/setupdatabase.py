@@ -102,6 +102,7 @@ try:
             auth_type VARCHAR(50) DEFAULT 'standard',
             oidc_provider_id INT,
             oidc_subject VARCHAR(255),
+            PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0,
             UNIQUE (Username)
         )
     """)
@@ -127,6 +128,30 @@ try:
         )
     """)
     cnx.commit()
+
+    # Function to add PlaybackSpeed to Users table for MySQL
+    def add_playbackspeed_if_not_exist_users_mysql(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Users'
+                AND COLUMN_NAME = 'PlaybackSpeed'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE Users
+                    ADD COLUMN PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0
+                """)
+                print("Added 'PlaybackSpeed' column to 'Users' table.")
+                cnx.commit()
+            else:
+                print("Column 'PlaybackSpeed' already exists in 'Users' table.")
+        except Exception as e:
+            print(f"Error checking PlaybackSpeed column in Users table: {e}")
+
+    add_playbackspeed_if_not_exist_users_mysql(cursor, cnx)
 
     # Add new columns to Users table if they don't exist
     add_column_if_not_exists(cursor, 'Users', 'auth_type', 'VARCHAR(50) DEFAULT \'standard\'')
@@ -160,6 +185,25 @@ try:
     if cursor.fetchone()[0] == 0:
         cursor.execute("ALTER TABLE Users ADD COLUMN EnableRSSFeeds TINYINT(1) DEFAULT 0")
 
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.columns
+        WHERE table_name = 'Users'
+        AND column_name = 'PlaybackSpeed'
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE Users ADD COLUMN PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0")
+
+    # Add EnableRSSFeeds column if it doesn't exist
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.columns
+        WHERE table_name = 'Podcasts'
+        AND column_name = 'PlaybackSpeed'
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("ALTER TABLE Podcasts ADD COLUMN PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0")
+
 
     ensure_usernames_lowercase(cnx)
 
@@ -189,6 +233,64 @@ try:
                         Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                     )""")
+
+
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS GpodderDevices (
+                DeviceID INT AUTO_INCREMENT PRIMARY KEY,
+                UserID INT NOT NULL,
+                DeviceName VARCHAR(255) NOT NULL,
+                DeviceType VARCHAR(50) DEFAULT 'desktop',
+                DeviceCaption VARCHAR(255),
+                IsDefault BOOLEAN DEFAULT FALSE,
+                LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                IsActive BOOLEAN DEFAULT TRUE,
+                FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                UNIQUE(UserID, DeviceName)
+            )
+        """)
+        cnx.commit()
+        print("Created GpodderDevices table")
+
+        # Create index for faster lookups
+        # Check if index exists before creating it
+        cursor.execute("""
+            SELECT COUNT(1) IndexExists FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE table_schema = DATABASE()
+            AND table_name = 'GpodderDevices'
+            AND index_name = 'idx_gpodder_devices_userid'
+        """)
+        index_exists = cursor.fetchone()[0]
+
+        if index_exists == 0:
+            # Create index only if it doesn't exist
+            cursor.execute("""
+                CREATE INDEX idx_gpodder_devices_userid
+                ON GpodderDevices(UserID)
+            """)
+            cnx.commit()
+            print("Created index idx_gpodder_devices_userid")
+        else:
+            print("Index idx_gpodder_devices_userid already exists")
+
+        # Create a table for subscription history/sync state
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS GpodderSyncState (
+                SyncStateID INT AUTO_INCREMENT PRIMARY KEY,
+                UserID INT NOT NULL,
+                DeviceID INT NOT NULL,
+                LastTimestamp BIGINT DEFAULT 0,
+                EpisodesTimestamp BIGINT DEFAULT 0,
+                FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+                UNIQUE(UserID, DeviceID)
+            )
+        """)
+        cnx.commit()
+        print("Created GpodderSyncState table")
+    except Exception as e:
+        print(f"Error creating GPodder tables: {e}")
 
     cursor.execute("""CREATE TABLE IF NOT EXISTS UserStats (
                         UserStatsID INT AUTO_INCREMENT PRIMARY KEY,
@@ -399,6 +501,9 @@ try:
         Password TEXT,
         IsYouTubeChannel TINYINT(1) DEFAULT 0,
         NotificationsEnabled TINYINT(1) DEFAULT 0,
+        FeedCutoffDays INT DEFAULT 0,
+        PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0,
+        PlaybackSpeedCustomized TINYINT(1) DEFAULT 0,
         FOREIGN KEY (UserID) REFERENCES Users(UserID)
         )""")
 
@@ -425,6 +530,77 @@ try:
             print(f"Error adding IsYouTubeChannel column to Podcasts table: {e}")
 
     add_youtube_column_if_not_exist(cursor, cnx)
+
+    # Function to add PlaybackSpeed to Podcasts table for MySQL
+    def add_playbackspeed_if_not_exist_podcasts_mysql(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'PlaybackSpeed'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0
+                """)
+                print("Added 'PlaybackSpeed' column to 'Podcasts' table.")
+                cnx.commit()
+            else:
+                print("Column 'PlaybackSpeed' already exists in 'Podcasts' table.")
+        except Exception as e:
+            print(f"Error checking PlaybackSpeed column in Podcasts table: {e}")
+
+    # Function to add PlaybackSpeedCustomized to Podcasts table for MySQL
+    def add_playbackspeed_customized_if_not_exist_mysql(cursor, cnx):
+        try:
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'PlaybackSpeedCustomized'
+            """)
+            existing_column = cursor.fetchone()
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN PlaybackSpeedCustomized TINYINT(1) DEFAULT 0
+                """)
+                print("Added 'PlaybackSpeedCustomized' column to 'Podcasts' table.")
+                cnx.commit()
+            else:
+                print("Column 'PlaybackSpeedCustomized' already exists in 'Podcasts' table.")
+        except Exception as e:
+            print(f"Error checking PlaybackSpeedCustomized column in Podcasts table: {e}")
+
+    add_playbackspeed_if_not_exist_podcasts_mysql(cursor, cnx)
+    add_playbackspeed_customized_if_not_exist_mysql(cursor, cnx)
+
+    def add_feed_cutoff_column_if_not_exist(cursor, cnx):
+        try:
+            # Check if column exists in MySQL
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'FeedCutoffDays'
+                AND TABLE_SCHEMA = DATABASE()
+            """)
+            existing_column = cursor.fetchone()
+
+            if not existing_column:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN FeedCutoffDays INT DEFAULT 0
+                """)
+                print("Added 'FeedCutoffDays' column to 'Podcasts' table.")
+                cnx.commit()
+        except Exception as e:
+            print(f"Error adding FeedCutoffDays column to Podcasts table: {e}")
+
+    add_feed_cutoff_column_if_not_exist(cursor, cnx)
 
     def add_user_pass_columns_if_not_exist(cursor, cnx):
         try:
@@ -891,18 +1067,54 @@ try:
         """)
         cnx.commit()
 
-        # Create indexes
-        cursor.execute("CREATE INDEX idx_playlists_userid ON Playlists(UserID)")
-        cnx.commit()
+        # Create indexes - check if they exist first
+        # Index 1: idx_playlists_userid
+        cursor.execute("""
+            SELECT COUNT(1) IndexExists FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE table_schema = DATABASE()
+            AND table_name = 'Playlists'
+            AND index_name = 'idx_playlists_userid'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("CREATE INDEX idx_playlists_userid ON Playlists(UserID)")
+            cnx.commit()
+            print("Created index idx_playlists_userid")
 
-        cursor.execute("CREATE INDEX idx_playlist_contents_playlistid ON PlaylistContents(PlaylistID)")
-        cnx.commit()
+        # Index 2: idx_playlist_contents_playlistid
+        cursor.execute("""
+            SELECT COUNT(1) IndexExists FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE table_schema = DATABASE()
+            AND table_name = 'PlaylistContents'
+            AND index_name = 'idx_playlist_contents_playlistid'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("CREATE INDEX idx_playlist_contents_playlistid ON PlaylistContents(PlaylistID)")
+            cnx.commit()
+            print("Created index idx_playlist_contents_playlistid")
 
-        cursor.execute("CREATE INDEX idx_playlist_contents_episodeid ON PlaylistContents(EpisodeID)")
-        cnx.commit()
+        # Index 3: idx_playlist_contents_episodeid
+        cursor.execute("""
+            SELECT COUNT(1) IndexExists FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE table_schema = DATABASE()
+            AND table_name = 'PlaylistContents'
+            AND index_name = 'idx_playlist_contents_episodeid'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("CREATE INDEX idx_playlist_contents_episodeid ON PlaylistContents(EpisodeID)")
+            cnx.commit()
+            print("Created index idx_playlist_contents_episodeid")
 
-        cursor.execute("CREATE INDEX idx_playlist_contents_videoid ON PlaylistContents(VideoID)")
-        cnx.commit()
+        # Index 4: idx_playlist_contents_videoid
+        cursor.execute("""
+            SELECT COUNT(1) IndexExists FROM INFORMATION_SCHEMA.STATISTICS
+            WHERE table_schema = DATABASE()
+            AND table_name = 'PlaylistContents'
+            AND index_name = 'idx_playlist_contents_videoid'
+        """)
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("CREATE INDEX idx_playlist_contents_videoid ON PlaylistContents(VideoID)")
+            cnx.commit()
+            print("Created index idx_playlist_contents_videoid")
 
         # Define system playlists
         system_playlists = [

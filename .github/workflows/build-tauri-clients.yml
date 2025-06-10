@@ -77,7 +77,7 @@ jobs:
 
       - uses: hecrj/setup-rust-action@v2
         with:
-          rust-version: 1.81
+          rust-version: 1.86
           targets: wasm32-unknown-unknown
 
       # Install cargo-binstall for macOS runners using direct download
@@ -145,7 +145,7 @@ jobs:
         run: |
           cd web/src-tauri
           cat tauri.conf.json
-          export RUSTFLAGS="--cfg=web_sys_unstable_apis"
+          export RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\""
           cargo tauri build
           pwd
           ls
@@ -157,7 +157,7 @@ jobs:
         run: |
           cd web/src-tauri
           Get-Content tauri.conf.json
-          $env:RUSTFLAGS="--cfg=web_sys_unstable_apis"
+          $env:RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=`"wasm_js`""
           cargo tauri build
           ls target/release/bundle
         shell: pwsh

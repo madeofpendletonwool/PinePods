@@ -1,6 +1,7 @@
 use anyhow::{Context, Error};
 // use futures_util::stream::StreamExt;
 use crate::components::context::AppState;
+use crate::components::notification_center::TaskProgress;
 use futures::StreamExt;
 use gloo::net::websocket::WebSocketError;
 use gloo::net::websocket::{futures::WebSocket, Message};
@@ -138,7 +139,7 @@ pub struct FirstEpisodeInfo {
 pub struct PodcastStatusResponse {
     pub success: bool,
     pub podcast_id: i32,
-    pub first_episode_id: Option<Vec<FirstEpisodeInfo>>,
+    pub first_episode_id: i32,
 }
 
 pub async fn call_add_podcast(
@@ -193,37 +194,41 @@ pub struct RemovePodcastValues {
     pub is_youtube: bool,
 }
 
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+pub struct RemovePodcastResponse {
+    pub success: bool,
+}
+
 pub async fn call_remove_podcasts(
     server_name: &String,
     api_key: &Option<String>,
     remove_podcast: &RemovePodcastValues,
 ) -> Result<bool, Error> {
     let url = format!("{}/api/data/remove_podcast_id", server_name);
-
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-
     // Serialize `added_podcast` into JSON
     let json_body = serde_json::to_string(remove_podcast)?;
-
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
         .body(json_body)?
         .send()
         .await?;
-
     let response_text = response
         .text()
         .await
         .unwrap_or_else(|_| "Failed to get response text".to_string());
-
     if response.ok() {
-        match serde_json::from_str::<PodcastStatusResponse>(&response_text) {
+        match serde_json::from_str::<RemovePodcastResponse>(&response_text) {
             Ok(parsed_response) => Ok(parsed_response.success),
-            Err(_parse_error) => Err(anyhow::Error::msg("Failed to parse response")),
+            Err(_parse_error) => {
+                // Add debug logging to see what's being received
+                web_sys::console::log_1(&format!("Response text: {}", response_text).into());
+                Err(anyhow::Error::msg("Failed to parse response"))
+            }
         }
     } else {
         Err(anyhow::Error::msg(format!(
@@ -246,31 +251,31 @@ pub async fn call_remove_podcasts_name(
     remove_podcast: &RemovePodcastValuesName,
 ) -> Result<bool, Error> {
     let url = format!("{}/api/data/remove_podcast", server_name);
-
     // Convert Option<String> to Option<&str>
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-
     // Serialize `added_podcast` into JSON
     let json_body = serde_json::to_string(remove_podcast)?;
-
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
         .body(json_body)?
         .send()
         .await?;
-
     let response_text = response
         .text()
         .await
         .unwrap_or_else(|_| "Failed to get response text".to_string());
-
     if response.ok() {
-        match serde_json::from_str::<PodcastStatusResponse>(&response_text) {
+        // Use the new simpler response struct
+        match serde_json::from_str::<RemovePodcastResponse>(&response_text) {
             Ok(parsed_response) => Ok(parsed_response.success),
-            Err(_parse_error) => Err(anyhow::Error::msg("Failed to parse response")),
+            Err(_parse_error) => {
+                // Add debug logging
+                web_sys::console::log_1(&format!("Response text: {}", response_text).into());
+                Err(anyhow::Error::msg("Failed to parse response"))
+            }
         }
     } else {
         Err(anyhow::Error::msg(format!(
@@ -640,23 +645,19 @@ pub async fn call_remove_queued_episode(
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-
     let request_body = serde_json::to_string(request_data)
         .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
-
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
         .body(request_body)?
         .send()
         .await?;
-
     if response.ok() {
-        let success_message = response
-            .text()
-            .await
-            .unwrap_or_else(|_| String::from("Item removed successfully"));
-        Ok(success_message)
+        // Use the same QueueResponse struct to deserialize the response
+        let response_body: QueueResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.data)
     } else {
         let error_text = response
             .text()
@@ -697,6 +698,9 @@ pub struct QueuedEpisode {
     pub listenduration: Option<i32>,
     pub episodeid: i32,
     pub completed: bool,
+    pub saved: bool,      // Added field
+    pub queued: bool,     // Added field
+    pub downloaded: bool, // Added field
     pub is_youtube: bool,
 }
 
@@ -801,6 +805,9 @@ pub struct SavedEpisode {
     pub episodeid: i32,
     pub websiteurl: String,
     pub completed: bool,
+    pub saved: bool,      // Added field
+    pub queued: bool,     // Added field
+    pub downloaded: bool, // Added field
     pub is_youtube: bool,
 }
 
@@ -1057,6 +1064,12 @@ pub struct EpisodeDownload {
     pub podcastid: i32,
     pub podcastindexid: Option<i64>,
     pub completed: bool,
+    #[serde(rename = "is_queued")]
+    pub queued: bool,
+    #[serde(rename = "is_saved")]
+    pub saved: bool,
+    #[serde(rename = "is_downloaded")]
+    pub downloaded: bool,
     pub is_youtube: bool,
 }
 
@@ -1210,36 +1223,43 @@ pub async fn call_remove_downloaded_episode(
     request_data: &DownloadEpisodeRequest,
 ) -> Result<String, Error> {
     let url = format!("{}/api/data/delete_episode", server_name);
-
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-
     let request_body = serde_json::to_string(request_data)
         .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
-
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
         .body(request_body)?
         .send()
         .await?;
-
     if response.ok() {
-        let success_text = response.text().await.unwrap_or_else(|_| {
+        let response_text = response.text().await.unwrap_or_else(|_| {
             if request_data.is_youtube {
                 String::from("Video deleted successfully")
             } else {
                 String::from("Episode deleted successfully")
             }
         });
-        Ok(success_text)
+
+        // Try to parse as JSON first
+        if let Ok(json_value) = serde_json::from_str::<serde_json::Value>(&response_text) {
+            // If it's a JSON object with a "detail" field, extract that message
+            if let Some(detail) = json_value.get("detail") {
+                if let Some(message) = detail.as_str() {
+                    return Ok(message.to_string());
+                }
+            }
+        }
+
+        // If not JSON or no "detail" field, return the text as is
+        Ok(response_text)
     } else {
         let error_text = response
             .text()
             .await
             .unwrap_or_else(|_| String::from("Failed to read error message"));
-
         Err(anyhow::Error::msg(format!(
             "Failed to delete {}: {} - {}",
             if request_data.is_youtube {
@@ -2054,6 +2074,151 @@ pub async fn call_get_auto_download_status(
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+pub struct PlaybackSpeedRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub playback_speed: f64,
+}
+
+#[derive(Deserialize, Debug)]
+struct PlaybackSpeedResponse {
+    detail: String,
+}
+
+pub async fn call_set_playback_speed(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &PlaybackSpeedRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/podcast/set_playback_speed", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+    if response.ok() {
+        let response_body: PlaybackSpeedResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.detail)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to set playback speed: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ClearPlaybackSpeedRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+struct ClearPlaybackSpeedResponse {
+    message: String,
+}
+
+pub async fn call_clear_playback_speed(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &ClearPlaybackSpeedRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/clear_podcast_playback_speed", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+    if response.ok() {
+        let response_body: ClearPlaybackSpeedResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.message)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to clear playback speed: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct GetPlaybackSpeedRequest {
+    pub user_id: i32,
+    pub podcast_id: Option<i32>,
+}
+
+#[derive(Deserialize, Debug)]
+struct PlaybackSpeedGetResponse {
+    playback_speed: f64,
+}
+
+pub async fn call_get_podcast_playback_speed(
+    server_name: &String,
+    api_key: &Option<String>,
+    podcast_id: i32,
+    user_id: i32,
+) -> Result<f64, Error> {
+    let url = format!("{}/api/data/get_playback_speed", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_data = GetPlaybackSpeedRequest {
+        user_id,
+        podcast_id: Some(podcast_id),
+    };
+
+    let request_body = serde_json::to_string(&request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: PlaybackSpeedGetResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.playback_speed)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to get playback speed: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SkipTimesRequest {
     pub podcast_id: i32,
     pub start_skip: i32,
@@ -2153,6 +2318,64 @@ pub async fn call_get_auto_skip_times(
     }
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PlayEpisodeDetailsRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub is_youtube: bool,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct PlayEpisodeDetailsResponse {
+    pub playback_speed: f32,
+    pub start_skip: i32,
+    pub end_skip: i32,
+}
+
+pub async fn call_get_play_episode_details(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: i32,
+    is_youtube: bool,
+) -> Result<(f32, i32, i32), Error> {
+    let url = format!("{}/api/data/get_play_episode_details", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(&PlayEpisodeDetailsRequest {
+        podcast_id,
+        user_id,
+        is_youtube,
+    })?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key_ref)
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_data: PlayEpisodeDetailsResponse = response.json().await?;
+        Ok((
+            response_data.playback_speed,
+            response_data.start_skip,
+            response_data.end_skip,
+        ))
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Failed to read error message".to_string());
+        Err(Error::msg(format!(
+            "Failed to get episode playback details: {}",
+            error_text
+        )))
+    }
+}
+
 #[derive(Deserialize)]
 struct VersionResponse {
     data: String,
@@ -2224,7 +2447,7 @@ pub async fn connect_to_episode_websocket(
     user_id: &i32,
     api_key: &str,
     nextcloud_refresh: bool,
-    dispatch: Dispatch<AppState>, // Add dispatch parameter
+    dispatch: Dispatch<AppState>,
 ) -> Result<Vec<EpisodeWebsocketResponse>, Error> {
     let clean_server_name = server_name
         .trim_start_matches("http://")
@@ -2250,6 +2473,48 @@ pub async fn connect_to_episode_websocket(
     let (_write, mut read) = websocket.split();
     let mut episodes = Vec::new();
 
+    // Create a task for the refresh operation
+    let refresh_task_id = format!("feed_refresh_{}", js_sys::Date::now());
+
+    // Add a starting task to show in notification center
+    dispatch.reduce_mut(|state| {
+        // Initialize active_tasks if it doesn't exist
+        if state.active_tasks.is_none() {
+            state.active_tasks = Some(Vec::new());
+        }
+
+        // Create an initial task
+        if let Some(tasks) = &mut state.active_tasks {
+            let initial_task = TaskProgress {
+                task_id: refresh_task_id.clone(),
+                user_id: *user_id,
+                item_id: None,
+                r#type: "feed_refresh".to_string(),
+                progress: 0.0,
+                status: "STARTED".to_string(),
+                started_at: format!("{}", js_sys::Date::now()),
+                completed_at: None,
+                details: Some({
+                    let mut details = HashMap::new();
+                    details.insert(
+                        "status_text".to_string(),
+                        "Starting feed refresh...".to_string(),
+                    );
+                    details
+                }),
+                completion_time: None,
+            };
+
+            // Check if there's already a feed refresh task and remove it
+            tasks.retain(|task| {
+                task.r#type != "feed_refresh" || task.status == "SUCCESS" || task.status == "FAILED"
+            });
+
+            // Add the new task
+            tasks.push(initial_task);
+        }
+    });
+
     while let Some(msg) = read.next().await {
         match msg {
             Ok(Message::Text(text)) => {
@@ -2259,8 +2524,53 @@ pub async fn connect_to_episode_websocket(
                         // Handle progress updates
                         match serde_json::from_value::<RefreshProgress>(progress.clone()) {
                             Ok(progress_data) => {
+                                // Update the state for the drawer display
                                 dispatch.reduce_mut(|state| {
-                                    state.refresh_progress = Some(progress_data);
+                                    state.refresh_progress = Some(progress_data.clone());
+
+                                    // Also update the task in the notification center
+                                    if let Some(tasks) = &mut state.active_tasks {
+                                        // Find and update the feed refresh task
+                                        if let Some(task) =
+                                            tasks.iter_mut().find(|t| t.task_id == refresh_task_id)
+                                        {
+                                            let progress_percentage = if progress_data.total > 0 {
+                                                (progress_data.current as f64
+                                                    / progress_data.total as f64)
+                                                    * 100.0
+                                            } else {
+                                                0.0
+                                            };
+
+                                            task.progress = progress_percentage;
+                                            task.status = "PROGRESS".to_string();
+
+                                            // Update the details
+                                            if let Some(details) = &mut task.details {
+                                                details.insert(
+                                                    "current_podcast".to_string(),
+                                                    progress_data.current_podcast.clone(),
+                                                );
+                                                details.insert(
+                                                    "current".to_string(),
+                                                    progress_data.current.to_string(),
+                                                );
+                                                details.insert(
+                                                    "total".to_string(),
+                                                    progress_data.total.to_string(),
+                                                );
+                                                details.insert(
+                                                    "status_text".to_string(),
+                                                    format!(
+                                                        "Refreshing {}/{}: {}",
+                                                        progress_data.current,
+                                                        progress_data.total,
+                                                        progress_data.current_podcast
+                                                    ),
+                                                );
+                                            }
+                                        }
+                                    }
                                 });
                             }
                             Err(e) => {
@@ -2299,17 +2609,58 @@ pub async fn connect_to_episode_websocket(
             }
             Err(WebSocketError::ConnectionClose(close_event)) => {
                 console::log_1(&format!("WebSocket closed: {:?}", close_event).into());
-                // Clear progress when websocket closes
+
+                // Mark task as completed when websocket closes
                 dispatch.reduce_mut(|state| {
+                    // Clear progress indicator
                     state.refresh_progress = None;
+
+                    // Update task status
+                    if let Some(tasks) = &mut state.active_tasks {
+                        if let Some(task) = tasks.iter_mut().find(|t| t.task_id == refresh_task_id)
+                        {
+                            task.status = "SUCCESS".to_string();
+                            task.progress = 100.0;
+                            task.completed_at = Some(format!("{}", js_sys::Date::now()));
+                            task.completion_time = Some(js_sys::Date::now());
+
+                            // Update status text
+                            if let Some(details) = &mut task.details {
+                                details.insert(
+                                    "status_text".to_string(),
+                                    "Feed refresh completed".to_string(),
+                                );
+                            }
+                        }
+                    }
                 });
                 break;
             }
             Err(e) => {
                 console::log_1(&format!("WebSocket error: {:?}", e).into());
-                // Clear progress on error
+
+                // Mark task as failed on error
                 dispatch.reduce_mut(|state| {
+                    // Clear progress indicator
                     state.refresh_progress = None;
+
+                    // Update task status to failed
+                    if let Some(tasks) = &mut state.active_tasks {
+                        if let Some(task) = tasks.iter_mut().find(|t| t.task_id == refresh_task_id)
+                        {
+                            task.status = "FAILED".to_string();
+                            task.completed_at = Some(format!("{}", js_sys::Date::now()));
+                            task.completion_time = Some(js_sys::Date::now());
+
+                            // Update status text
+                            if let Some(details) = &mut task.details {
+                                details.insert(
+                                    "status_text".to_string(),
+                                    format!("Feed refresh failed: {:?}", e),
+                                );
+                            }
+                        }
+                    }
                 });
                 break;
             }
@@ -2447,6 +2798,108 @@ pub async fn call_add_category(
 }
 
 #[derive(Serialize)]
+pub struct UpdateFeedCutoffDaysRequest {
+    pub(crate) podcast_id: i32,
+    pub(crate) user_id: i32,
+    pub(crate) feed_cutoff_days: i32,
+}
+
+#[derive(Serialize)]
+pub struct GetFeedCutoffDaysRequest {
+    pub(crate) podcast_id: i32,
+    pub(crate) user_id: i32,
+}
+
+pub async fn call_update_feed_cutoff_days(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &UpdateFeedCutoffDaysRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/update_feed_cutoff_days", server_name);
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let success_message = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Feed cutoff days updated successfully"));
+        Ok(success_message)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to update feed cutoff days: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+pub async fn call_get_feed_cutoff_days(
+    server_name: &String,
+    api_key: &Option<String>,
+    podcast_id: i32,
+    user_id: i32,
+) -> Result<i32, Error> {
+    let url = format!(
+        "{}/api/data/get_feed_cutoff_days?podcast_id={}&user_id={}",
+        server_name, podcast_id, user_id
+    );
+
+    // Convert Option<String> to Option<&str>
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_text = response
+            .text()
+            .await
+            .map_err(|e| anyhow::Error::msg(format!("Failed to read response: {}", e)))?;
+
+        let response_data: serde_json::Value = serde_json::from_str(&response_text)
+            .map_err(|e| anyhow::Error::msg(format!("Failed to parse JSON: {}", e)))?;
+
+        let feed_cutoff_days = response_data["feed_cutoff_days"]
+            .as_i64()
+            .ok_or_else(|| anyhow::Error::msg("Feed cutoff days not found in response"))?;
+
+        Ok(feed_cutoff_days as i32)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to get feed cutoff days: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+#[derive(Serialize)]
 pub struct RemoveCategoryRequest {
     pub(crate) podcast_id: i32,
     pub(crate) user_id: i32,
@@ -2573,6 +3026,7 @@ pub async fn call_get_podcast_notifications_status(
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct YouTubeSubscribeResponse {
     pub success: bool,
     pub podcast_id: i32,
@@ -2619,6 +3073,11 @@ pub struct RemoveYouTubeChannelValues {
     pub channel_url: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct YoutubeChannelResponse {
+    pub success: bool,
+}
+
 pub async fn call_remove_youtube_channel(
     server_name: &String,
     api_key: &Option<String>,
@@ -2628,7 +3087,6 @@ pub async fn call_remove_youtube_channel(
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
-
     let json_body = serde_json::to_string(remove_channel)?;
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
@@ -2636,14 +3094,12 @@ pub async fn call_remove_youtube_channel(
         .body(json_body)?
         .send()
         .await?;
-
     let response_text = response
         .text()
         .await
         .unwrap_or_else(|_| "Failed to get response text".to_string());
-
     if response.ok() {
-        match serde_json::from_str::<PodcastStatusResponse>(&response_text) {
+        match serde_json::from_str::<YoutubeChannelResponse>(&response_text) {
             Ok(parsed_response) => Ok(parsed_response.success),
             Err(_parse_error) => Err(anyhow::Error::msg("Failed to parse response")),
         }
@@ -2694,15 +3150,15 @@ pub async fn call_check_youtube_channel(
 pub struct HomePodcast {
     pub podcastid: i32,
     pub podcastname: String,
-    pub podcastindexid: i64,
+    pub podcastindexid: Option<i64>,
     pub artworkurl: Option<String>,
     pub author: Option<String>,
-    pub categories: String,
+    pub categories: Option<String>,
     pub description: Option<String>,
     pub episodecount: Option<i32>,
     pub feedurl: Option<String>,
     pub websiteurl: Option<String>,
-    pub explicit: bool,
+    pub explicit: Option<bool>,
     pub is_youtube: bool, // This maps to isyoutubechannel in the DB
     pub play_count: i32,
     pub total_listen_time: Option<i32>,
@@ -2891,6 +3347,7 @@ pub struct CreatePlaylistRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct CreatePlaylistResponse {
     pub detail: String,
     pub playlist_id: i32,

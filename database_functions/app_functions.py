@@ -105,6 +105,29 @@ def sync_subscription_change_gpodder(gpodder_url, gpodder_login, auth, add, remo
     print(f"Subscription changes synced with gPodder: {response.text}")
 
 
+def sync_subscription_change_gpodder_session(session, gpodder_url, gpodder_login, add, remove):
+    """Sync subscription changes using session-based authentication"""
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    payload = {
+        "add": add,
+        "remove": remove
+    }
+
+    try:
+        response = session.post(
+            f"{gpodder_url}/api/2/subscriptions/{gpodder_login}/default.json",
+            json=payload
+        )
+        response.raise_for_status()
+        logger.info(f"Subscription changes synced with gPodder using session: {response.text}")
+        return True
+    except Exception as e:
+        logger.error(f"Error syncing subscription changes with session: {str(e)}")
+        return False
+
 def sync_episode_actions(nextcloud_url, headers):
     print('test')
     # Implement fetching and creating episode actions
@@ -118,32 +141,40 @@ def get_podcast_values(feed_url, user_id, username: Optional[str] = None, passwo
 
     # Use requests to fetch the feed content
     try:
+        # Simpler headers that worked in the original version
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
             'Accept-Language': 'en-US,en;q=0.9',
         }
         print(f"Fetching URL: {feed_url}")
-        print(f"Headers: {headers}")
+
         if username and password:
             print(f"Using auth for user: {username}")
             response = requests.get(feed_url, headers=headers, auth=HTTPBasicAuth(username, password))
         else:
             response = requests.get(feed_url, headers=headers)
 
-        response.raise_for_status()  # Raise an exception for HTTP errors
+        response.raise_for_status()
+        # Use binary content which worked in the original version
         feed_content = response.content
+
     except requests.RequestException as e:
-        print(f"Response headers: {response.headers}")
-        print(f"Response content: {response.content}")
+        try:
+            if 'response' in locals():
+                print(f"Response headers: {response.headers}")
+                print(f"Response content: {response.content[:500]}")
+        except:
+            pass
         raise ValueError(f"Error fetching the feed: {str(e)}")
 
     # Parse the feed
     d = feedparser.parse(feed_content)
+    print(f"Feed parsed - title: {d.feed.get('title', 'Unknown')}")
 
-    # Initialize podcast_values as a dictionary
+    # Initialize podcast_values as in the original version that worked
     podcast_values = {
         'pod_title': d.feed.title if hasattr(d.feed, 'title') else None,
-        'pod_artwork': d.feed.image.href if hasattr(d.feed, 'image') and hasattr(d.feed.image, 'href') else None,
+        'pod_artwork': None,  # We'll set this with multiple checks below
         'pod_author': d.feed.author if hasattr(d.feed, 'author') else None,
         'categories': [],
         'pod_description': d.feed.description if hasattr(d.feed, 'description') else None,
@@ -154,36 +185,73 @@ def get_podcast_values(feed_url, user_id, username: Optional[str] = None, passwo
         'user_id': user_id
     }
 
-    if not podcast_values['pod_artwork'] and hasattr(d.feed, 'itunes_image'):
-        podcast_values['pod_artwork'] = d.feed.itunes_image['href']
+    # Enhanced image URL extraction combining both approaches
+    if hasattr(d.feed, 'image'):
+        if hasattr(d.feed.image, 'href'):
+            podcast_values['pod_artwork'] = d.feed.image.href
+        elif hasattr(d.feed.image, 'url'):  # Added for news feed format
+            podcast_values['pod_artwork'] = d.feed.image.url
+        elif isinstance(d.feed.image, dict):
+            if 'href' in d.feed.image:
+                podcast_values['pod_artwork'] = d.feed.image['href']
+            elif 'url' in d.feed.image:
+                podcast_values['pod_artwork'] = d.feed.image['url']
 
+    # iTunes image fallback
+    if not podcast_values['pod_artwork'] and hasattr(d.feed, 'itunes_image'):
+        if hasattr(d.feed.itunes_image, 'href'):
+            podcast_values['pod_artwork'] = d.feed.itunes_image.href
+        elif isinstance(d.feed.itunes_image, dict) and 'href' in d.feed.itunes_image:
+            podcast_values['pod_artwork'] = d.feed.itunes_image['href']
+
+    # Author fallback
     if not podcast_values['pod_author'] and hasattr(d.feed, 'itunes_author'):
         podcast_values['pod_author'] = d.feed.itunes_author
 
-    # Extracting categories, primarily from iTunes
-    if hasattr(d.feed, 'itunes_category'):
-        for cat in d.feed.itunes_category:
-            podcast_values['categories'].append(cat['text'])
-            if 'itunes_category' in cat:
-                for subcat in cat['itunes_category']:
-                    podcast_values['categories'].append(subcat['text'])
+    # Description fallbacks
+    if not podcast_values['pod_description']:
+        if hasattr(d.feed, 'subtitle'):
+            podcast_values['pod_description'] = d.feed.subtitle
+        elif hasattr(d.feed, 'itunes_summary'):
+            podcast_values['pod_description'] = d.feed.itunes_summary
 
-    # Now, check if categories list is empty after attempting to populate it
+    # Category extraction with robust error handling
+    try:
+        if hasattr(d.feed, 'itunes_category'):
+            if isinstance(d.feed.itunes_category, list):
+                for cat in d.feed.itunes_category:
+                    if isinstance(cat, dict) and 'text' in cat:
+                        podcast_values['categories'].append(cat['text'])
+                    elif hasattr(cat, 'text'):
+                        podcast_values['categories'].append(cat.text)
+            elif isinstance(d.feed.itunes_category, dict) and 'text' in d.feed.itunes_category:
+                podcast_values['categories'].append(d.feed.itunes_category['text'])
+    except Exception as e:
+        print(f"Error extracting categories: {e}")
+
+    # Handle empty categories
     if not podcast_values['categories']:
-        podcast_values['categories'] = ""  # Set to empty string if no categories found
+        podcast_values['categories'] = {'1': 'Podcasts'}  # Default category
     else:
         categories_dict = {str(i): cat for i, cat in enumerate(podcast_values['categories'], start=1)}
-        podcast_values['categories'] = json.dumps(categories_dict)  # Serialize populated categories dict
+        podcast_values['categories'] = categories_dict
 
-    if not podcast_values['pod_description'] and hasattr(d.feed, 'itunes_summary'):
-        podcast_values['pod_description'] = d.feed.itunes_summary
+    # Add explicit check with robust handling
+    try:
+        if hasattr(d.feed, 'itunes_explicit'):
+            if isinstance(d.feed.itunes_explicit, str):
+                podcast_values['pod_explicit'] = d.feed.itunes_explicit.lower() in ('yes', 'true', '1')
+            elif isinstance(d.feed.itunes_explicit, bool):
+                podcast_values['pod_explicit'] = d.feed.itunes_explicit
+    except Exception as e:
+        print(f"Error checking explicit flag: {e}")
 
-    # Check for explicit content
-    if hasattr(d.feed, 'itunes_explicit'):
-        podcast_values['pod_explicit'] = d.feed.itunes_explicit == 'yes'
+    # Print values for debugging
+    print("Extracted podcast values:")
+    for key, value in podcast_values.items():
+        print(f"{key}: {value}")
 
     return podcast_values
-
 
 
 
