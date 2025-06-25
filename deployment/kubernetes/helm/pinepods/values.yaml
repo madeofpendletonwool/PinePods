@@ -112,6 +112,10 @@ externalDatabase:
   user: postgres
   password: ""
   database: pinepods_database
+  existingSecret:
+    enabled: false
+    name: existing-secret
+    key: password
 
 resources: {}
 

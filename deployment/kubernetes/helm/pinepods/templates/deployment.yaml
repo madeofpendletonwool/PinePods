@@ -28,6 +28,14 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ include "pinepods.fullname" $ }}-env
+          env:
+            {{ if (and (not .Values.postgresql.enabled) (.Values.externalDatabase.existingSecret.enabled)) -}}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalDatabase.existingSecret.name }}
+                  key: {{ .Values.externalDatabase.existingSecret.key }}
+            {{- end }}
           volumeMounts:
             {{- if .Values.persistence.enabled }}
             - name: downloads
