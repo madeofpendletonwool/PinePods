@@ -141,7 +141,6 @@ env:
   # -- Default admin username
   USERNAME: "admin"
   # -- Default admin password
-  # Consider using a secret for production environments
   PASSWORD: "password"
   # -- Admin full name
   FULLNAME: "Admin User"
