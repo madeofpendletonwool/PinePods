@@ -20,7 +20,7 @@
 {{- end }}
 
 {{- define "pinepods.valkey.fullname" -}}
-{{- printf "%s-valkey" (include "pinepods.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- printf "%s-valkey-primary" (include "pinepods.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{- define "pinepods.labels" -}}
