@@ -1432,7 +1432,7 @@ pub fn episode_layout() -> Html {
         use_effect_with(
             (page_state_clone.clone(), rss_key_state.is_none()),
             move |(current_page_state, rss_key_is_none)| {
-                if matches!(current_page_state, PageState::RSSFeed) && *rss_key_is_none {
+                if matches!(**current_page_state, PageState::RSSFeed) && *rss_key_is_none {
                     if let (Some(server_name), Some(api_key)) =
                         (server_name.clone(), api_key.clone())
                     {

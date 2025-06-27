@@ -6086,12 +6086,14 @@ async def get_user_feed(
     user_id: int,
     api_key: str,  # Now a query parameter
     limit: int = 100,
-    podcast_id: Optional[List[int]] = None,
+    podcast_id: Optional[int] = None,
     source_type: str = Query(None, alias='type'),
     cnx=Depends(get_database_connection)
 ):
     """Get RSS feed for all podcasts or a specific podcast"""
     print(f'user: {user_id}, api: {api_key}')
+    print(f'podcast_id parameter: {podcast_id}, type: {type(podcast_id)}')
+    print(f'podcast_id_list will be: {[podcast_id] if podcast_id is not None else None}')
     try:
         if reverse_proxy == "True":
             domain = f'{proxy_protocol}://{proxy_host}'
@@ -6099,7 +6101,10 @@ async def get_user_feed(
             domain = f'{request.url.scheme}://{request.url.hostname}'
 
 
-        rss_key = database_functions.functions.get_rss_key_if_valid(cnx, database_type, api_key, podcast_id)
+        # Convert single podcast_id to list format if provided
+        podcast_id_list = [podcast_id] if podcast_id is not None else None
+
+        rss_key = database_functions.functions.get_rss_key_if_valid(cnx, database_type, api_key, podcast_id_list)
 
         # TODO: remove this once backwards compatibility is no longer needed
         if not rss_key:
@@ -6111,7 +6116,7 @@ async def get_user_feed(
                 "user_id": key_id,
                 "key": api_key
             }
-
+        
         feed_content = database_functions.functions.generate_podcast_rss(
             database_type,
             cnx,
@@ -6119,7 +6124,7 @@ async def get_user_feed(
             limit,
             source_type,
             domain,
-            podcast_id
+            podcast_id=podcast_id_list
         )
         return Response(
             content=feed_content,

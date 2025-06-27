@@ -6462,10 +6462,17 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
     key = rss_key.get('key')
     
     # If podcast_id parameter is provided, use it; otherwise use RSS key podcast_ids
+    print(f'DEBUG: podcast_id param: {podcast_id}, type: {type(podcast_id)}')
+    print(f'DEBUG: rss_key podcast_ids: {podcast_ids}, type: {type(podcast_ids)}')
+    
+    explicit_podcast_filter = False
     if podcast_id and len(podcast_id) > 0:
         podcast_ids = podcast_id
+        explicit_podcast_filter = True
+        print(f'DEBUG: Using explicit podcast filter, podcast_ids set to: {podcast_ids}')
     
-    podcast_filter = (podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids)
+    podcast_filter = explicit_podcast_filter or (podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids)
+    print(f'DEBUG: podcast_filter: {podcast_filter}, explicit_podcast_filter: {explicit_podcast_filter}')
     try:
         # Check if RSS feeds are enabled for user
         if not get_rss_feed_status(cnx, database_type, user_id):
@@ -6534,8 +6541,12 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
 
         params = [domain, key, user_id]
         if podcast_filter:
-            base_query += f' AND {"pp.podcastid" if database_type == "postgresql" else "pp.PodcastID"} IN %s'
-            params.append(tuple(podcast_ids))
+            if database_type == "postgresql":
+                base_query += ' AND pp.podcastid = ANY(%s)'
+                params.append(podcast_ids)
+            else:
+                base_query += ' AND pp.PodcastID IN %s'
+                params.append(tuple(podcast_ids))
 
         if not source_type or source_type == "youtube":
             if base_query:
@@ -6582,11 +6593,18 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
             params += [domain, key, user_id]
 
             if podcast_filter:
-                base_query += f' AND {"y.podcastid" if database_type == "postgresql" else "y.PodcastID"} IN %s'
-                params.append(tuple(podcast_ids))
+                if database_type == "postgresql":
+                    base_query += ' AND y.podcastid = ANY(%s)'
+                    params.append(podcast_ids)
+                else:
+                    base_query += ' AND y.PodcastID IN %s'
+                    params.append(tuple(podcast_ids))
 
-        base_query += f' ORDER BY 7 DESC LIMIT %s'
-        params.append(limit)
+        base_query += f' ORDER BY 7 DESC'
+        # Only apply limit if no specific podcast is requested
+        if not explicit_podcast_filter:
+            base_query += ' LIMIT %s'
+            params.append(limit)
         cursor.execute(base_query, tuple(params))
         print('q1')
         # Get column names and create result mapping
@@ -6909,12 +6927,12 @@ def get_rss_key_if_valid(cnx, database_type: str, passed_key: str, podcast_ids: 
             
             # Convert podcast_ids string to list of integers
             podcast_ids_list = []
-            if podcast_ids:
+            if key_podcast_ids:
                 podcast_ids_list = [int(pid) for pid in key_podcast_ids.split(',')]
 
             if filter_podcast_ids:
                 if not podcast_ids_list or len(podcast_ids_list) == 0 or -1 in podcast_ids_list:
-                    podcast_ids_list = filter_podcast_ids
+                    podcast_ids_list = podcast_ids
                 else:
                     podcast_ids_list = [pid for pid in podcast_ids_list if pid in podcast_ids]
 
@@ -6934,7 +6952,7 @@ def get_rss_key_if_valid(cnx, database_type: str, passed_key: str, podcast_ids: 
                     podcast_ids_list = [int(pid) for pid in key_podcast_ids.split(',')]
                 if filter_podcast_ids:
                     if not podcast_ids_list or len(podcast_ids_list) == 0 or -1 in podcast_ids_list:
-                        podcast_ids_list = filter_podcast_ids
+                        podcast_ids_list = podcast_ids
                     else:
                         podcast_ids_list = [pid for pid in podcast_ids_list if pid in podcast_ids]
                 return {
