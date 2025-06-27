@@ -28,13 +28,6 @@ spec:
           envFrom:
             - secretRef:
                 name: {{ include "pinepods.fullname" $ }}-env
-          env:
-            - name: DB_HOST
-              value: {{ include "pinepods.postgresql.fullname" . }}
-            - name: VALKEY_HOST
-              value: {{ include "pinepods.valkey.fullname" . }}
-            - name: VALKEY_PORT
-              value: "{{ .Values.valkey.service.port }}"
           volumeMounts:
             {{- if .Values.persistence.enabled }}
             - name: downloads
