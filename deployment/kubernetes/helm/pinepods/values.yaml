@@ -88,7 +88,20 @@ postgresql:
     password: "supersecretpassword"
     # -- PostgreSQL database name
     database: pinepods_database
-  resources: {}
+  # -- PostgreSQL resource configuration
+  # Default values provide good performance for most deployments
+  # Increase for larger deployments or high concurrent usage
+  resources:
+    requests:
+      # -- Memory request for PostgreSQL container
+      memory: 512Mi
+      # -- CPU request for PostgreSQL container
+      cpu: 250m
+    limits:
+      # -- Memory limit for PostgreSQL container
+      memory: 2Gi
+      # -- CPU limit for PostgreSQL container
+      cpu: 1000m
   # Run on control planes if needed
   # tolerations:
   #   - key: "node-role.kubernetes.io/control-plane"
