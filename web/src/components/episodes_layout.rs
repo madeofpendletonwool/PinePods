@@ -12,12 +12,13 @@ use crate::requests::pod_req::{
     call_clear_playback_speed, call_download_all_podcast, call_enable_auto_download,
     call_fetch_podcasting_2_pod_data, call_get_auto_download_status, call_get_feed_cutoff_days,
     call_get_play_episode_details, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
-    call_get_podcast_notifications_status, call_remove_category, call_remove_podcasts_name,
-    call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_notifications,
-    call_update_feed_cutoff_days, AddCategoryRequest, AutoDownloadRequest,
-    ClearPlaybackSpeedRequest, DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest,
-    PlaybackSpeedRequest, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
-    RemoveYouTubeChannelValues, SkipTimesRequest, UpdateFeedCutoffDaysRequest,
+    call_get_podcast_notifications_status, call_get_rss_key, call_remove_category,
+    call_remove_podcasts_name, call_remove_youtube_channel, call_set_playback_speed,
+    call_toggle_podcast_notifications, call_update_feed_cutoff_days, AddCategoryRequest,
+    AutoDownloadRequest, ClearPlaybackSpeedRequest, DownloadAllPodcastRequest,
+    FetchPodcasting2PodDataRequest, PlaybackSpeedRequest, PodcastValues, RemoveCategoryRequest,
+    RemovePodcastValuesName, RemoveYouTubeChannelValues, SkipTimesRequest,
+    UpdateFeedCutoffDaysRequest,
 };
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
@@ -190,6 +191,7 @@ pub fn episode_layout() -> Html {
     let playback_speed = use_state(|| 1.0);
     let playback_speed_input = playback_speed.clone();
     let playback_speed_clone = playback_speed.clone();
+    let rss_key_state = use_state(|| None::<String>);
 
     let history = BrowserHistory::new();
     // let node_ref = use_node_ref();
@@ -1417,15 +1419,56 @@ pub fn episode_layout() -> Html {
         });
     }
 
-    let rss_feed_modal = {
-        let rss_url = format!(
-            "{}/{}?api_key={}&podcast_id={}",
-            get_rss_base_url(),
-            user_id.clone().unwrap_or_default(),
-            // Replace the double unwrap with a safe fallback
-            api_key.clone().flatten().unwrap_or_default(),
-            *podcast_id
+    // Fetch RSS key when RSS feed modal is shown
+    {
+        let rss_key_state = rss_key_state.clone();
+        let server_name = search_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.server_name.clone());
+        let api_key = api_key.clone().flatten();
+        let page_state_clone = page_state.clone();
+
+        use_effect_with(
+            (page_state_clone.clone(), rss_key_state.is_none()),
+            move |(current_page_state, rss_key_is_none)| {
+                if matches!(current_page_state, PageState::RSSFeed) && *rss_key_is_none {
+                    if let (Some(server_name), Some(api_key)) =
+                        (server_name.clone(), api_key.clone())
+                    {
+                        let rss_key_state = rss_key_state.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match call_get_rss_key(&server_name, &Some(api_key)).await {
+                                Ok(rss_key) => {
+                                    rss_key_state.set(Some(rss_key));
+                                }
+                                Err(e) => {
+                                    web_sys::console::log_1(
+                                        &format!("Failed to fetch RSS key: {}", e).into(),
+                                    );
+                                }
+                            }
+                        });
+                    }
+                }
+                || ()
+            },
         );
+    }
+
+    let rss_feed_modal = {
+        let rss_key_state_clone = rss_key_state.clone();
+
+        let rss_url = match (*rss_key_state_clone).as_ref() {
+            Some(rss_key) => format!(
+                "{}/{}?api_key={}&podcast_id={}",
+                get_rss_base_url(),
+                user_id.clone().unwrap_or_default(),
+                rss_key,
+                *podcast_id
+            ),
+            None => "Loading RSS key...".to_string(),
+        };
 
         let copy_onclick = {
             let rss_url = rss_url.clone();

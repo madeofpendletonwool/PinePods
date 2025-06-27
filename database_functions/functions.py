@@ -5733,11 +5733,13 @@ def create_rss_key(cnx, database_type: str, user_id: int, podcast_ids: list[int]
 
     cursor = cnx.cursor()
     if database_type == "postgresql":
-        query = 'INSERT INTO "RssKeys" (UserID, RssKey) VALUES (%s, %s)'
+        query = 'INSERT INTO "RssKeys" (UserID, RssKey) VALUES (%s, %s) RETURNING RssKeyID'
+        cursor.execute(query, (user_id, api_key))
+        rss_key_id = cursor.fetchone()[0]
     else:
         query = "INSERT INTO RssKeys (UserID, RssKey) VALUES (%s, %s)"
-
-    cursor.execute(query, (user_id, api_key))
+        cursor.execute(query, (user_id, api_key))
+        rss_key_id = cursor.lastrowid
     
     if podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids:
         for podcast_id in podcast_ids:
@@ -5745,7 +5747,7 @@ def create_rss_key(cnx, database_type: str, user_id: int, podcast_ids: list[int]
                 query = 'INSERT INTO "RssKeyMap" (RssKeyID, PodcastID) VALUES (%s, %s)'
             else:
                 query = 'INSERT INTO RssKeyMap (RssKeyID, PodcastID) VALUES (%s, %s)'
-            cursor.execute(query, (api_key, podcast_id))
+            cursor.execute(query, (rss_key_id, podcast_id))
     
     cnx.commit()
     cursor.close()
@@ -6343,11 +6345,43 @@ def toggle_rss_feeds(cnx, database_type: str, user_id: int) -> bool:
             )
         else:
             cursor.execute(
-                "UPDATE Users SET EnableRSSFeeds = %s WHERE UserID = %s",
+                "UPDATE Users Set EnableRSSFeeds = %s WHERE UserID = %s",
                 (new_status, user_id)
             )
         cnx.commit()
+        
+        # If enabling RSS feeds, create an RSS key if one doesn't exist
+        if new_status:
+            # Check if user already has an RSS key
+            if database_type == "postgresql":
+                cursor.execute('SELECT RssKeyID FROM "RssKeys" WHERE UserID = %s', (user_id,))
+            else:
+                cursor.execute("SELECT RssKeyID FROM RssKeys WHERE UserID = %s", (user_id,))
+            
+            existing_key = cursor.fetchone()
+            if not existing_key:
+                # Create RSS key for all podcasts (-1 means all)
+                create_rss_key(cnx, database_type, user_id, [-1])
+                logging.info(f"Created RSS key for user {user_id}")
+        
         return new_status
+    finally:
+        cursor.close()
+
+
+def get_user_rss_key(cnx, database_type: str, user_id: int) -> str:
+    """Get the RSS key for a user"""
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            cursor.execute('SELECT RssKey FROM "RssKeys" WHERE UserID = %s', (user_id,))
+        else:
+            cursor.execute("SELECT RssKey FROM RssKeys WHERE UserID = %s", (user_id,))
+        
+        result = cursor.fetchone()
+        if result:
+            return result[0] if isinstance(result, tuple) else result['rsskey']
+        return None
     finally:
         cursor.close()
 
@@ -6418,7 +6452,7 @@ class PodcastFeed(feedgenerator.Rss201rev2Feed):
                 attrs={'href': item['artwork_url']})
 
 
-def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, source_type: str, domain: str) -> str:
+def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, source_type: str, domain: str, podcast_id: Optional[List[int]] = None) -> str:
     from datetime import datetime as dt, timezone
     cursor = cnx.cursor()
     logging.basicConfig(level=logging.INFO)
@@ -6426,6 +6460,11 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
     user_id = rss_key.get('user_id')
     podcast_ids = rss_key.get('podcast_ids')
     key = rss_key.get('key')
+    
+    # If podcast_id parameter is provided, use it; otherwise use RSS key podcast_ids
+    if podcast_id and len(podcast_id) > 0:
+        podcast_ids = podcast_id
+    
     podcast_filter = (podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids)
     try:
         # Check if RSS feeds are enabled for user

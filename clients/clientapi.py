@@ -6148,6 +6148,27 @@ async def toggle_rss_feeds(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/data/rss_key")
+async def get_user_rss_key(
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Get the RSS key for the current user"""
+    try:
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        if not key_id:
+            raise HTTPException(status_code=403, detail="Invalid API key")
+
+        rss_key = database_functions.functions.get_user_rss_key(cnx, database_type, key_id)
+        if not rss_key:
+            raise HTTPException(status_code=404, detail="No RSS key found. Please enable RSS feeds first.")
+
+        return {"rss_key": rss_key}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class YouTubeChannel(BaseModel):
     channel_id: str
     name: str
