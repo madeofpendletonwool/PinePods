@@ -573,10 +573,13 @@ def migration_004_default_users(conn, db_type: str):
             alphabet = string.ascii_letters + string.digits
             api_key = ''.join(secrets.choice(alphabet) for _ in range(64))
             cursor.execute(f'INSERT INTO {table_prefix}APIKeys{table_suffix} (UserID, APIKey) VALUES (1, %s)', (api_key,))
-            
-            # Write API key to temp file for web service
-            with open("/tmp/web_api_key.txt", "w") as f:
-                f.write(api_key)
+        else:
+            # Extract API key from existing record
+            api_key = result[0] if isinstance(result, tuple) else result['apikey']
+        
+        # Always write API key to temp file for web service (file may not exist after container restart)
+        with open("/tmp/web_api_key.txt", "w") as f:
+            f.write(api_key)
         
         logger.info("Created default users successfully")
         

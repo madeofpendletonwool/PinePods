@@ -6764,9 +6764,9 @@ async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_conne
         print('start of startup')
         # Verify if the API key is valid
         is_valid = database_functions.functions.verify_api_key(cnx, database_type, request.api_key)
-        is_web_key = database_functions.functions.get_web_key(cnx, database_type)
+        web_key = database_functions.functions.get_web_key(cnx, database_type)
         # Check if the provided API key is the web key
-        is_web_key = request.api_key == base_webkey.web_key
+        is_web_key = request.api_key == web_key
 
         if not is_valid or not is_web_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or unauthorized API key")
