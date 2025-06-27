@@ -8,10 +8,6 @@
 [![Docker Container Build](https://github.com/madeofpendletonwool/PinePods/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/madeofpendletonwool/PinePods/actions)
 [![GitHub Release](https://img.shields.io/github/v/release/madeofpendletonwool/pinepods)](https://github.com/madeofpendletonwool/PinePods/releases)
 
-# 👶 Currently on Baby Break 🍼
-
-*Taking some time off to welcome our newest family member!*
-
 ---
 
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
