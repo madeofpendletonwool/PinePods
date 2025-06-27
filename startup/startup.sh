@@ -103,13 +103,8 @@ mkdir -p /opt/pinepods/certs
 mkdir -p /var/log/supervisor  # Make sure supervisor log directory exists
 
 # Database Setup
-if [[ $DB_TYPE == "postgresql" ]]; then
-    echo "Using PostgreSQL database"
-    /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setuppostgresdatabase.py
-else
-    echo "Using MySQL/MariaDB database"
-    /wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setupdatabase.py
-fi
+echo "Using $DB_TYPE database"
+/wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setup_database_new.py
 echo "Database validation complete"
 
 # Set up cron jobs
