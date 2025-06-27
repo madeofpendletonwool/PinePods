@@ -366,7 +366,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
 
             # Add episodes to database
             first_episode_id = add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'],
-                                          podcast_values['pod_artwork'], False, feed_cutoff, username, password, websocket=False)
+                                          podcast_values['pod_artwork'], False, username=username, password=password, websocket=False)
             print("episodes added")
             return podcast_id, first_episode_id
 

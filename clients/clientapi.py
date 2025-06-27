@@ -795,7 +795,7 @@ def process_opml_import(import_request: OPMLImportRequest, database_type):
         try:
             with get_db_connection() as cnx:
                 podcast_values = database_functions.app_functions.get_podcast_values(podcast_url, import_request.user_id, None, None, False)
-                database_functions.functions.add_podcast(cnx, database_type, podcast_values, import_request.user_id)
+                database_functions.functions.add_podcast(cnx, database_type, podcast_values, import_request.user_id, 30)
                 database_functions.import_progress.import_progress_manager.update_progress(import_request.user_id, index, podcast_url)
         except Exception as e:
             print(f"Error importing podcast {podcast_url}: {str(e)}")
@@ -6100,7 +6100,7 @@ async def get_user_feed(
 
 
         rss_key = database_functions.functions.get_rss_key_if_valid(cnx, database_type, api_key, podcast_id)
-        
+
         # TODO: remove this once backwards compatibility is no longer needed
         if not rss_key:
             key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)

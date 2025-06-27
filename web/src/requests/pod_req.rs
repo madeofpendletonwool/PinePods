@@ -1064,12 +1064,9 @@ pub struct EpisodeDownload {
     pub podcastid: i32,
     pub podcastindexid: Option<i64>,
     pub completed: bool,
-    #[serde(rename = "is_queued")]
-    pub queued: bool,
-    #[serde(rename = "is_saved")]
-    pub saved: bool,
-    #[serde(rename = "is_downloaded")]
-    pub downloaded: bool,
+    pub queued: bool,     // Remove #[serde(rename = "is_queued")]
+    pub saved: bool,      // Remove #[serde(rename = "is_saved")]
+    pub downloaded: bool, // Remove #[serde(rename = "is_downloaded")]
     pub is_youtube: bool,
 }
 

@@ -1,0 +1,981 @@
+"""
+Migration Definitions for PinePods Database Schema
+
+This file contains all database migrations in chronological order.
+Each migration is versioned and idempotent.
+"""
+
+import logging
+import os
+import sys
+from cryptography.fernet import Fernet
+import string
+import secrets
+import random
+from typing import Any
+
+# Add pinepods to path for imports
+sys.path.append('/pinepods')
+
+from database_functions.migrations import Migration, get_migration_manager, register_migration
+
+# Import password hashing utilities
+try:
+    from passlib.hash import argon2
+    from argon2 import PasswordHasher
+    from argon2.exceptions import HashingError
+except ImportError:
+    pass
+
+logger = logging.getLogger(__name__)
+
+
+def generate_random_password(length=12):
+    """Generate a random password"""
+    characters = string.ascii_letters + string.digits + string.punctuation
+    return ''.join(random.choice(characters) for i in range(length))
+
+
+def hash_password(password: str):
+    """Hash password using Argon2"""
+    try:
+        ph = PasswordHasher()
+        return ph.hash(password)
+    except (HashingError, NameError) as e:
+        logger.error(f"Error hashing password: {e}")
+        return None
+
+
+def safe_execute_sql(cursor, sql: str, params=None, conn=None):
+    """Safely execute SQL with error handling"""
+    try:
+        if params:
+            cursor.execute(sql, params)
+        else:
+            cursor.execute(sql)
+        return True
+    except Exception as e:
+        error_msg = str(e).lower()
+        # These are expected errors when objects already exist
+        expected_errors = [
+            'already exists',
+            'duplicate column',
+            'duplicate key name',
+            'constraint already exists',
+            'relation already exists'
+        ]
+        
+        if any(expected in error_msg for expected in expected_errors):
+            logger.info(f"Skipping SQL (object already exists): {error_msg}")
+            # For PostgreSQL, we need to rollback the transaction and start fresh
+            if conn and 'current transaction is aborted' in str(e).lower():
+                try:
+                    conn.rollback()
+                except:
+                    pass
+            return True
+        else:
+            logger.warning(f"SQL execution warning: {e}")
+            # For PostgreSQL, rollback if transaction is aborted
+            if conn and 'current transaction is aborted' in str(e).lower():
+                try:
+                    conn.rollback()
+                except:
+                    pass
+            return False
+
+
+def check_constraint_exists(cursor, db_type: str, table_name: str, constraint_name: str) -> bool:
+    """Check if a constraint exists"""
+    try:
+        if db_type == 'postgresql':
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.table_constraints
+                WHERE constraint_name = %s AND table_name = %s
+            """, (constraint_name, table_name.strip('"')))
+        else:  # mysql
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.table_constraints
+                WHERE constraint_name = %s AND table_name = %s
+                AND table_schema = DATABASE()
+            """, (constraint_name, table_name))
+        
+        return cursor.fetchone()[0] > 0
+    except:
+        return False
+
+
+def check_index_exists(cursor, db_type: str, index_name: str) -> bool:
+    """Check if an index exists"""
+    try:
+        if db_type == 'postgresql':
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM pg_indexes
+                WHERE indexname = %s
+            """, (index_name,))
+        else:  # mysql
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.statistics
+                WHERE index_name = %s AND table_schema = DATABASE()
+            """, (index_name,))
+        
+        return cursor.fetchone()[0] > 0
+    except:
+        return False
+
+
+def safe_add_constraint(cursor, db_type: str, sql: str, table_name: str, constraint_name: str, conn=None):
+    """Safely add a constraint if it doesn't exist"""
+    if not check_constraint_exists(cursor, db_type, table_name, constraint_name):
+        try:
+            cursor.execute(sql)
+            logger.info(f"Added constraint {constraint_name}")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to add constraint {constraint_name}: {e}")
+            return False
+    else:
+        logger.info(f"Constraint {constraint_name} already exists, skipping")
+        return True
+
+
+def safe_add_index(cursor, db_type: str, sql: str, index_name: str, conn=None):
+    """Safely add an index if it doesn't exist"""
+    if not check_index_exists(cursor, db_type, index_name):
+        try:
+            cursor.execute(sql)
+            logger.info(f"Added index {index_name}")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to add index {index_name}: {e}")
+            return False
+    else:
+        logger.info(f"Index {index_name} already exists, skipping")
+        return True
+
+
+# Migration 001: Core Tables Creation
+@register_migration("001", "create_core_tables", "Create core database tables (Users, OIDCProviders, APIKeys, etc.)")
+def migration_001_core_tables(conn, db_type: str):
+    """Create core database tables"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == 'postgresql':
+            # Create Users table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "Users" (
+                    UserID SERIAL PRIMARY KEY,
+                    Fullname VARCHAR(255),
+                    Username VARCHAR(255) UNIQUE,
+                    Email VARCHAR(255),
+                    Hashed_PW VARCHAR(500),
+                    IsAdmin BOOLEAN,
+                    Reset_Code TEXT,
+                    Reset_Expiry TIMESTAMP,
+                    MFA_Secret VARCHAR(70),
+                    TimeZone VARCHAR(50) DEFAULT 'UTC',
+                    TimeFormat INT DEFAULT 24,
+                    DateFormat VARCHAR(3) DEFAULT 'ISO',
+                    FirstLogin BOOLEAN DEFAULT false,
+                    GpodderUrl VARCHAR(255) DEFAULT '',
+                    Pod_Sync_Type VARCHAR(50) DEFAULT 'None',
+                    GpodderLoginName VARCHAR(255) DEFAULT '',
+                    GpodderToken VARCHAR(255) DEFAULT '',
+                    EnableRSSFeeds BOOLEAN DEFAULT FALSE,
+                    auth_type VARCHAR(50) DEFAULT 'standard',
+                    oidc_provider_id INT,
+                    oidc_subject VARCHAR(255),
+                    PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0
+                )
+            """)
+            
+            # Create OIDCProviders table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "OIDCProviders" (
+                    ProviderID SERIAL PRIMARY KEY,
+                    ProviderName VARCHAR(255) NOT NULL,
+                    ClientID VARCHAR(255) NOT NULL,
+                    ClientSecret VARCHAR(500) NOT NULL,
+                    AuthorizationURL VARCHAR(255) NOT NULL,
+                    TokenURL VARCHAR(255) NOT NULL,
+                    UserInfoURL VARCHAR(255) NOT NULL,
+                    Scope VARCHAR(255) DEFAULT 'openid email profile',
+                    ButtonColor VARCHAR(50) DEFAULT '#000000',
+                    ButtonText VARCHAR(255) NOT NULL,
+                    ButtonTextColor VARCHAR(50) DEFAULT '#000000',
+                    IconSVG TEXT,
+                    Enabled BOOLEAN DEFAULT true,
+                    Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    Modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Add foreign key constraint
+            safe_add_constraint(cursor, db_type, """
+                ALTER TABLE "Users"
+                ADD CONSTRAINT fk_oidc_provider
+                FOREIGN KEY (oidc_provider_id)
+                REFERENCES "OIDCProviders"(ProviderID)
+            """, "Users", "fk_oidc_provider")
+            
+        else:  # mysql
+            # Create Users table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS Users (
+                    UserID INT AUTO_INCREMENT PRIMARY KEY,
+                    Fullname VARCHAR(255),
+                    Username VARCHAR(255) UNIQUE,
+                    Email VARCHAR(255),
+                    Hashed_PW CHAR(255),
+                    IsAdmin TINYINT(1),
+                    Reset_Code TEXT,
+                    Reset_Expiry DATETIME,
+                    MFA_Secret VARCHAR(70),
+                    TimeZone VARCHAR(50) DEFAULT 'UTC',
+                    TimeFormat INT DEFAULT 24,
+                    DateFormat VARCHAR(3) DEFAULT 'ISO',
+                    FirstLogin TINYINT(1) DEFAULT 0,
+                    GpodderUrl VARCHAR(255) DEFAULT '',
+                    Pod_Sync_Type VARCHAR(50) DEFAULT 'None',
+                    GpodderLoginName VARCHAR(255) DEFAULT '',
+                    GpodderToken VARCHAR(255) DEFAULT '',
+                    EnableRSSFeeds TINYINT(1) DEFAULT 0,
+                    auth_type VARCHAR(50) DEFAULT 'standard',
+                    oidc_provider_id INT,
+                    oidc_subject VARCHAR(255),
+                    PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0
+                )
+            """)
+            
+            # Create OIDCProviders table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS OIDCProviders (
+                    ProviderID INT AUTO_INCREMENT PRIMARY KEY,
+                    ProviderName VARCHAR(255) NOT NULL,
+                    ClientID VARCHAR(255) NOT NULL,
+                    ClientSecret VARCHAR(500) NOT NULL,
+                    AuthorizationURL VARCHAR(255) NOT NULL,
+                    TokenURL VARCHAR(255) NOT NULL,
+                    UserInfoURL VARCHAR(255) NOT NULL,
+                    Scope VARCHAR(255) DEFAULT 'openid email profile',
+                    ButtonColor VARCHAR(50) DEFAULT '#000000',
+                    ButtonText VARCHAR(255) NOT NULL,
+                    ButtonTextColor VARCHAR(50) DEFAULT '#000000',
+                    IconSVG TEXT,
+                    Enabled TINYINT(1) DEFAULT 1,
+                    Created DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    Modified DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Add foreign key constraint
+            safe_add_constraint(cursor, db_type, """
+                ALTER TABLE Users
+                ADD CONSTRAINT fk_oidc_provider
+                FOREIGN KEY (oidc_provider_id)
+                REFERENCES OIDCProviders(ProviderID)
+            """, "Users", "fk_oidc_provider")
+        
+        # Create API and RSS key tables (same for both databases)
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+        
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {table_prefix}APIKeys{table_suffix} (
+                APIKeyID {'SERIAL' if db_type == 'postgresql' else 'INT AUTO_INCREMENT'} PRIMARY KEY,
+                UserID INT,
+                APIKey TEXT,
+                Created {'TIMESTAMP' if db_type == 'postgresql' else 'TIMESTAMP'} DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (UserID) REFERENCES {table_prefix}Users{table_suffix}(UserID) ON DELETE CASCADE
+            )
+        """)
+        
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {table_prefix}RssKeys{table_suffix} (
+                RssKeyID {'SERIAL' if db_type == 'postgresql' else 'INT AUTO_INCREMENT'} PRIMARY KEY,
+                UserID INT,
+                RssKey TEXT,
+                Created {'TIMESTAMP' if db_type == 'postgresql' else 'TIMESTAMP'} DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (UserID) REFERENCES {table_prefix}Users{table_suffix}(UserID) ON DELETE CASCADE
+            )
+        """)
+        
+        cursor.execute(f"""
+            CREATE TABLE IF NOT EXISTS {table_prefix}RssKeyMap{table_suffix} (
+                RssKeyID INT,
+                PodcastID INT,
+                FOREIGN KEY (RssKeyID) REFERENCES {table_prefix}RssKeys{table_suffix}(RssKeyID) ON DELETE CASCADE
+            )
+        """)
+        
+        logger.info("Created core tables successfully")
+        
+    finally:
+        cursor.close()
+
+
+# Migration 002: App Settings and Configuration Tables
+@register_migration("002", "app_settings", "Create app settings and configuration tables", requires=["001"])
+def migration_002_app_settings(conn, db_type: str):
+    """Create app settings and configuration tables"""
+    cursor = conn.cursor()
+    
+    try:
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+        
+        # Generate encryption key
+        key = Fernet.generate_key()
+        
+        if db_type == 'postgresql':
+            # Create AppSettings table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "AppSettings" (
+                    AppSettingsID SERIAL PRIMARY KEY,
+                    SelfServiceUser BOOLEAN DEFAULT false,
+                    DownloadEnabled BOOLEAN DEFAULT true,
+                    EncryptionKey BYTEA,
+                    NewsFeedSubscribed BOOLEAN DEFAULT false
+                )
+            """)
+            
+            # Insert default settings if not exists
+            cursor.execute('SELECT COUNT(*) FROM "AppSettings" WHERE AppSettingsID = 1')
+            count = cursor.fetchone()[0]
+            if count == 0:
+                cursor.execute("""
+                    INSERT INTO "AppSettings" (SelfServiceUser, DownloadEnabled, EncryptionKey)
+                    VALUES (false, true, %s)
+                """, (key,))
+            
+            # Create EmailSettings table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EmailSettings" (
+                    EmailSettingsID SERIAL PRIMARY KEY,
+                    Server_Name VARCHAR(255),
+                    Server_Port INT,
+                    From_Email VARCHAR(255),
+                    Send_Mode VARCHAR(255),
+                    Encryption VARCHAR(255),
+                    Auth_Required BOOLEAN,
+                    Username VARCHAR(255),
+                    Password VARCHAR(255)
+                )
+            """)
+            
+        else:  # mysql
+            # Create AppSettings table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS AppSettings (
+                    AppSettingsID INT AUTO_INCREMENT PRIMARY KEY,
+                    SelfServiceUser TINYINT(1) DEFAULT 0,
+                    DownloadEnabled TINYINT(1) DEFAULT 1,
+                    EncryptionKey BINARY(44),
+                    NewsFeedSubscribed TINYINT(1) DEFAULT 0
+                )
+            """)
+            
+            # Insert default settings if not exists
+            cursor.execute("SELECT COUNT(*) FROM AppSettings WHERE AppSettingsID = 1")
+            count = cursor.fetchone()[0]
+            if count == 0:
+                cursor.execute("""
+                    INSERT INTO AppSettings (SelfServiceUser, DownloadEnabled, EncryptionKey)
+                    VALUES (0, 1, %s)
+                """, (key,))
+            
+            # Create EmailSettings table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS EmailSettings (
+                    EmailSettingsID INT AUTO_INCREMENT PRIMARY KEY,
+                    Server_Name VARCHAR(255),
+                    Server_Port INT,
+                    From_Email VARCHAR(255),
+                    Send_Mode VARCHAR(255),
+                    Encryption VARCHAR(255),
+                    Auth_Required TINYINT(1),
+                    Username VARCHAR(255),
+                    Password VARCHAR(255)
+                )
+            """)
+        
+        # Insert default email settings if not exists
+        cursor.execute(f"SELECT COUNT(*) FROM {table_prefix}EmailSettings{table_suffix}")
+        rows = cursor.fetchone()
+        if rows[0] == 0:
+            cursor.execute(f"""
+                INSERT INTO {table_prefix}EmailSettings{table_suffix} 
+                (Server_Name, Server_Port, From_Email, Send_Mode, Encryption, Auth_Required, Username, Password)
+                VALUES ('default_server', 587, 'default_email@domain.com', 'default_mode', 'default_encryption', 
+                       {'true' if db_type == 'postgresql' else '1'}, 'default_username', 'default_password')
+            """)
+        
+        logger.info("Created app settings tables successfully")
+        
+    finally:
+        cursor.close()
+
+
+# Migration 003: User Management Tables
+@register_migration("003", "user_tables", "Create user stats and settings tables", requires=["001"])
+def migration_003_user_tables(conn, db_type: str):
+    """Create user management tables"""
+    cursor = conn.cursor()
+    
+    try:
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+        
+        # Create UserStats table
+        if db_type == 'postgresql':
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "UserStats" (
+                    UserStatsID SERIAL PRIMARY KEY,
+                    UserID INT UNIQUE,
+                    UserCreated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PodcastsPlayed INT DEFAULT 0,
+                    TimeListened INT DEFAULT 0,
+                    PodcastsAdded INT DEFAULT 0,
+                    EpisodesSaved INT DEFAULT 0,
+                    EpisodesDownloaded INT DEFAULT 0,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "UserSettings" (
+                    usersettingid SERIAL PRIMARY KEY,
+                    userid INT UNIQUE,
+                    theme VARCHAR(255) DEFAULT 'Nordic',
+                    startpage VARCHAR(255) DEFAULT 'home',
+                    FOREIGN KEY (userid) REFERENCES "Users"(userid)
+                )
+            """)
+        else:  # mysql
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS UserStats (
+                    UserStatsID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT UNIQUE,
+                    UserCreated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PodcastsPlayed INT DEFAULT 0,
+                    TimeListened INT DEFAULT 0,
+                    PodcastsAdded INT DEFAULT 0,
+                    EpisodesSaved INT DEFAULT 0,
+                    EpisodesDownloaded INT DEFAULT 0,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS UserSettings (
+                    UserSettingID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT UNIQUE,
+                    Theme VARCHAR(255) DEFAULT 'Nordic',
+                    StartPage VARCHAR(255) DEFAULT 'home',
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID)
+                )
+            """)
+        
+        logger.info("Created user management tables successfully")
+        
+    finally:
+        cursor.close()
+
+
+# Migration 004: Default Users Creation
+@register_migration("004", "default_users", "Create default background tasks and admin users", requires=["001", "003"])
+def migration_004_default_users(conn, db_type: str):
+    """Create default users"""
+    cursor = conn.cursor()
+    
+    try:
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+        
+        # Create background tasks user
+        random_password = generate_random_password()
+        hashed_password = hash_password(random_password)
+        
+        if hashed_password:
+            if db_type == 'postgresql':
+                cursor.execute("""
+                    INSERT INTO "Users" (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (Username) DO NOTHING
+                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False))
+            else:  # mysql
+                cursor.execute("""
+                    INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, ('Background Tasks', 'background_tasks', 'inactive', hashed_password, False))
+        
+        # Create admin user from environment variables if provided
+        admin_fullname = os.environ.get("FULLNAME")
+        admin_username = os.environ.get("USERNAME")
+        admin_email = os.environ.get("EMAIL")
+        admin_pw = os.environ.get("PASSWORD")
+        
+        admin_created = False
+        if all([admin_fullname, admin_username, admin_email, admin_pw]):
+            hashed_pw = hash_password(admin_pw)
+            if hashed_pw:
+                if db_type == 'postgresql':
+                    cursor.execute("""
+                        INSERT INTO "Users" (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (Username) DO NOTHING
+                        RETURNING UserID
+                    """, (admin_fullname, admin_username, admin_email, hashed_pw, True))
+                    admin_created = cursor.fetchone() is not None
+                else:  # mysql
+                    cursor.execute("""
+                        INSERT IGNORE INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (admin_fullname, admin_username, admin_email, hashed_pw, True))
+                    admin_created = cursor.rowcount > 0
+        
+        # Create user stats and settings for default users
+        if db_type == 'postgresql':
+            cursor.execute("""
+                INSERT INTO "UserStats" (UserID) VALUES (1)
+                ON CONFLICT (UserID) DO NOTHING
+            """)
+            cursor.execute("""
+                INSERT INTO "UserSettings" (UserID, Theme) VALUES (1, 'Nordic')
+                ON CONFLICT (UserID) DO NOTHING
+            """)
+            if admin_created:
+                cursor.execute("""
+                    INSERT INTO "UserStats" (UserID) VALUES (2)
+                    ON CONFLICT (UserID) DO NOTHING
+                """)
+                cursor.execute("""
+                    INSERT INTO "UserSettings" (UserID, Theme) VALUES (2, 'Nordic')
+                    ON CONFLICT (UserID) DO NOTHING
+                """)
+        else:  # mysql
+            cursor.execute("INSERT IGNORE INTO UserStats (UserID) VALUES (1)")
+            cursor.execute("INSERT IGNORE INTO UserSettings (UserID, Theme) VALUES (1, 'Nordic')")
+            if admin_created:
+                cursor.execute("INSERT IGNORE INTO UserStats (UserID) VALUES (2)")
+                cursor.execute("INSERT IGNORE INTO UserSettings (UserID, Theme) VALUES (2, 'Nordic')")
+        
+        # Create API key for background tasks user
+        cursor.execute(f'SELECT APIKey FROM {table_prefix}APIKeys{table_suffix} WHERE UserID = 1')
+        result = cursor.fetchone()
+        
+        if not result:
+            alphabet = string.ascii_letters + string.digits
+            api_key = ''.join(secrets.choice(alphabet) for _ in range(64))
+            cursor.execute(f'INSERT INTO {table_prefix}APIKeys{table_suffix} (UserID, APIKey) VALUES (1, %s)', (api_key,))
+            
+            # Write API key to temp file for web service
+            with open("/tmp/web_api_key.txt", "w") as f:
+                f.write(api_key)
+        
+        logger.info("Created default users successfully")
+        
+    finally:
+        cursor.close()
+
+
+# Migration 005: Podcast and Episode Tables
+@register_migration("005", "podcast_episode_tables", "Create podcast and episode management tables", requires=["001"])
+def migration_005_podcast_episode_tables(conn, db_type: str):
+    """Create podcast and episode tables"""
+    cursor = conn.cursor()
+    
+    try:
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+        
+        if db_type == 'postgresql':
+            # Create Podcasts table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "Podcasts" (
+                    PodcastID SERIAL PRIMARY KEY,
+                    PodcastIndexID INT,
+                    PodcastName TEXT,
+                    ArtworkURL TEXT,
+                    Author TEXT,
+                    Categories TEXT,
+                    Description TEXT,
+                    EpisodeCount INT,
+                    FeedURL TEXT,
+                    WebsiteURL TEXT,
+                    Explicit BOOLEAN,
+                    UserID INT,
+                    AutoDownload BOOLEAN DEFAULT FALSE,
+                    StartSkip INT DEFAULT 0,
+                    EndSkip INT DEFAULT 0,
+                    Username TEXT,
+                    Password TEXT,
+                    IsYouTubeChannel BOOLEAN DEFAULT FALSE,
+                    NotificationsEnabled BOOLEAN DEFAULT FALSE,
+                    FeedCutoffDays INT DEFAULT 0,
+                    PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0,
+                    PlaybackSpeedCustomized BOOLEAN DEFAULT FALSE,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
+                )
+            """)
+            
+            # Add unique constraint
+            safe_add_constraint(cursor, db_type, """
+                ALTER TABLE "Podcasts"
+                ADD CONSTRAINT podcasts_userid_feedurl_key
+                UNIQUE (UserID, FeedURL)
+            """, "Podcasts", "podcasts_userid_feedurl_key")
+            
+            # Create Episodes table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "Episodes" (
+                    EpisodeID SERIAL PRIMARY KEY,
+                    PodcastID INT,
+                    EpisodeTitle TEXT,
+                    EpisodeDescription TEXT,
+                    EpisodeURL TEXT,
+                    EpisodeArtwork TEXT,
+                    EpisodePubDate TIMESTAMP,
+                    EpisodeDuration INT,
+                    Completed BOOLEAN DEFAULT FALSE,
+                    FOREIGN KEY (PodcastID) REFERENCES "Podcasts"(PodcastID)
+                )
+            """)
+            
+            # Create YouTube Videos table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "YouTubeVideos" (
+                    VideoID SERIAL PRIMARY KEY,
+                    PodcastID INT,
+                    VideoTitle TEXT,
+                    VideoDescription TEXT,
+                    VideoURL TEXT,
+                    ThumbnailURL TEXT,
+                    PublishedAt TIMESTAMP,
+                    Duration INT,
+                    YouTubeVideoID TEXT,
+                    Completed BOOLEAN DEFAULT FALSE,
+                    ListenPosition INT DEFAULT 0,
+                    FOREIGN KEY (PodcastID) REFERENCES "Podcasts"(PodcastID)
+                )
+            """)
+            
+        else:  # mysql
+            # Create Podcasts table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS Podcasts (
+                    PodcastID INT AUTO_INCREMENT PRIMARY KEY,
+                    PodcastIndexID INT,
+                    PodcastName TEXT,
+                    ArtworkURL TEXT,
+                    Author TEXT,
+                    Categories TEXT,
+                    Description TEXT,
+                    EpisodeCount INT,
+                    FeedURL TEXT,
+                    WebsiteURL TEXT,
+                    Explicit TINYINT(1),
+                    UserID INT,
+                    AutoDownload TINYINT(1) DEFAULT 0,
+                    StartSkip INT DEFAULT 0,
+                    EndSkip INT DEFAULT 0,
+                    Username TEXT,
+                    Password TEXT,
+                    IsYouTubeChannel TINYINT(1) DEFAULT 0,
+                    NotificationsEnabled TINYINT(1) DEFAULT 0,
+                    FeedCutoffDays INT DEFAULT 0,
+                    PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0,
+                    PlaybackSpeedCustomized TINYINT(1) DEFAULT 0,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID)
+                )
+            """)
+            
+            # Create Episodes table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS Episodes (
+                    EpisodeID INT AUTO_INCREMENT PRIMARY KEY,
+                    PodcastID INT,
+                    EpisodeTitle TEXT,
+                    EpisodeDescription TEXT,
+                    EpisodeURL TEXT,
+                    EpisodeArtwork TEXT,
+                    EpisodePubDate DATETIME,
+                    EpisodeDuration INT,
+                    Completed TINYINT(1) DEFAULT 0,
+                    FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
+                )
+            """)
+            
+            # Create YouTube Videos table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS YouTubeVideos (
+                    VideoID INT AUTO_INCREMENT PRIMARY KEY,
+                    PodcastID INT,
+                    VideoTitle TEXT,
+                    VideoDescription TEXT,
+                    VideoURL TEXT,
+                    ThumbnailURL TEXT,
+                    PublishedAt TIMESTAMP,
+                    Duration INT,
+                    YouTubeVideoID TEXT,
+                    Completed TINYINT(1) DEFAULT 0,
+                    ListenPosition INT DEFAULT 0,
+                    FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
+                )
+            """)
+        
+        # Create indexes for performance
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_podcasts_userid ON {table_prefix}Podcasts{table_suffix}(UserID)', 'idx_podcasts_userid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_episodes_podcastid ON {table_prefix}Episodes{table_suffix}(PodcastID)', 'idx_episodes_podcastid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_episodes_episodepubdate ON {table_prefix}Episodes{table_suffix}(EpisodePubDate)', 'idx_episodes_episodepubdate')
+        
+        logger.info("Created podcast and episode tables successfully")
+        
+    finally:
+        cursor.close()
+
+
+# Migration 006: User Activity Tables
+@register_migration("006", "user_activity_tables", "Create user activity tracking tables", requires=["005"])
+def migration_006_user_activity_tables(conn, db_type: str):
+    """Create user activity tracking tables"""
+    cursor = conn.cursor()
+    
+    try:
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+        
+        if db_type == 'postgresql':
+            # User Episode History
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "UserEpisodeHistory" (
+                    UserEpisodeHistoryID SERIAL PRIMARY KEY,
+                    UserID INT,
+                    EpisodeID INT,
+                    ListenDate TIMESTAMP,
+                    ListenDuration INT,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
+                )
+            """)
+            
+            # User Video History
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "UserVideoHistory" (
+                    UserVideoHistoryID SERIAL PRIMARY KEY,
+                    UserID INT,
+                    VideoID INT,
+                    ListenDate TIMESTAMP,
+                    ListenDuration INT DEFAULT 0,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+                    FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID)
+                )
+            """)
+            
+            # Add unique constraints
+            safe_add_constraint(cursor, db_type, """
+                ALTER TABLE "UserEpisodeHistory"
+                ADD CONSTRAINT user_episode_unique
+                UNIQUE (UserID, EpisodeID)
+            """, "UserEpisodeHistory", "user_episode_unique")
+            
+            safe_add_constraint(cursor, db_type, """
+                ALTER TABLE "UserVideoHistory"
+                ADD CONSTRAINT user_video_unique
+                UNIQUE (UserID, VideoID)
+            """, "UserVideoHistory", "user_video_unique")
+            
+        else:  # mysql
+            # User Episode History
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS UserEpisodeHistory (
+                    UserEpisodeHistoryID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT,
+                    EpisodeID INT,
+                    ListenDate DATETIME,
+                    ListenDuration INT,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID),
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+                )
+            """)
+            
+            # User Video History
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS UserVideoHistory (
+                    UserVideoHistoryID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT,
+                    VideoID INT,
+                    ListenDate TIMESTAMP,
+                    ListenDuration INT DEFAULT 0,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID),
+                    FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID)
+                )
+            """)
+        
+        logger.info("Created user activity tables successfully")
+        
+    finally:
+        cursor.close()
+
+
+# Migration 007: Queue and Download Tables
+@register_migration("007", "queue_download_tables", "Create queue and download management tables", requires=["005"])
+def migration_007_queue_download_tables(conn, db_type: str):
+    """Create queue and download tables"""
+    cursor = conn.cursor()
+    
+    try:
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+        
+        if db_type == 'postgresql':
+            # Episode Queue
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "EpisodeQueue" (
+                    QueueID SERIAL PRIMARY KEY,
+                    QueueDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UserID INT,
+                    EpisodeID INT,
+                    QueuePosition INT NOT NULL DEFAULT 0,
+                    is_youtube BOOLEAN DEFAULT FALSE,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID)
+                )
+            """)
+            
+            # Saved Episodes and Videos
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "SavedEpisodes" (
+                    SaveID SERIAL PRIMARY KEY,
+                    UserID INT,
+                    EpisodeID INT,
+                    SaveDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "SavedVideos" (
+                    SaveID SERIAL PRIMARY KEY,
+                    UserID INT,
+                    VideoID INT,
+                    SaveDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+                    FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID)
+                )
+            """)
+            
+            # Downloaded Episodes and Videos
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "DownloadedEpisodes" (
+                    DownloadID SERIAL PRIMARY KEY,
+                    UserID INT,
+                    EpisodeID INT,
+                    DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    DownloadedSize INT,
+                    DownloadedLocation VARCHAR(255),
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "DownloadedVideos" (
+                    DownloadID SERIAL PRIMARY KEY,
+                    UserID INT,
+                    VideoID INT,
+                    DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    DownloadedSize INT,
+                    DownloadedLocation VARCHAR(255),
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID),
+                    FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID)
+                )
+            """)
+            
+        else:  # mysql
+            # Episode Queue
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS EpisodeQueue (
+                    QueueID INT AUTO_INCREMENT PRIMARY KEY,
+                    QueueDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UserID INT,
+                    EpisodeID INT,
+                    QueuePosition INT NOT NULL DEFAULT 0,
+                    is_youtube TINYINT(1) DEFAULT 0,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID)
+                )
+            """)
+            
+            # Saved Episodes and Videos
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS SavedEpisodes (
+                    SaveID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT,
+                    EpisodeID INT,
+                    SaveDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID),
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS SavedVideos (
+                    SaveID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT,
+                    VideoID INT,
+                    SaveDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID),
+                    FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID)
+                )
+            """)
+            
+            # Downloaded Episodes and Videos
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS DownloadedEpisodes (
+                    DownloadID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT,
+                    EpisodeID INT,
+                    DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    DownloadedSize INT,
+                    DownloadedLocation VARCHAR(255),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID),
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS DownloadedVideos (
+                    DownloadID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT,
+                    VideoID INT,
+                    DownloadedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    DownloadedSize INT,
+                    DownloadedLocation VARCHAR(255),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID),
+                    FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID)
+                )
+            """)
+        
+        logger.info("Created queue and download tables successfully")
+        
+    finally:
+        cursor.close()
+
+
+def register_all_migrations():
+    """Register all migrations with the migration manager"""
+    # Migrations are auto-registered via decorators
+    logger.info("All migrations registered")
+
+
+if __name__ == "__main__":
+    # Register all migrations and run them
+    register_all_migrations()
+    from database_functions.migrations import run_all_migrations
+    success = run_all_migrations()
+    sys.exit(0 if success else 1)
