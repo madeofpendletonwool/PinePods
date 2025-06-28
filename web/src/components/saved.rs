@@ -202,98 +202,32 @@ pub fn saved() -> Html {
                             <div>
                                 <h1 class="text-2xl item_container-text font-bold text-center mb-4">{"Saved"}</h1>
                             </div>
-                            <div class="flex justify-between items-center mb-4">
-                                <div class="flex gap-4">
-                                    // Search input
-                                    <div class="filter-dropdown filter-button relative">
-                                    <input
-                                        type="text"
-                                        class="filter-input appearance-none pr-8 rounded-lg"
-                                        placeholder="Search"
-                                        value={(*episode_search_term).clone()}
-                                        oninput={let episode_search_term = episode_search_term.clone();
-                                            Callback::from(move |e: InputEvent| {
-                                                if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
-                                                    episode_search_term.set(input.value());
-                                                }
-                                            })
-                                        }
-                                    />
-                                        <i class="ph ph-magnifying-glass absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                            // Modern mobile-friendly filter bar
+                            <div class="mb-6 space-y-4">
+                                // Combined search and sort bar (seamless design)
+                                <div class="flex gap-0 h-12">
+                                    // Search input (left half)
+                                    <div class="flex-1 relative">
+                                        <input
+                                            type="text"
+                                            class="w-full h-full pl-4 pr-12 text-base rounded-l-xl border-2 border-r border-color bg-background-color text-text-color placeholder-text-color-muted focus:outline-none focus:border-accent-color focus:z-10 relative transition-colors"
+                                            placeholder="Search saved episodes..."
+                                            value={(*episode_search_term).clone()}
+                                            oninput={let episode_search_term = episode_search_term.clone();
+                                                Callback::from(move |e: InputEvent| {
+                                                    if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                                                        episode_search_term.set(input.value());
+                                                    }
+                                                })
+                                            }
+                                        />
+                                        <i class="ph ph-magnifying-glass absolute right-4 top-1/2 -translate-y-1/2 text-xl text-text-color-muted pointer-events-none"></i>
                                     </div>
 
-                                    // Filter buttons
-                                    <button
-                                        onclick={
-                                            let show_completed = show_completed.clone();
-                                            let show_in_progress = show_in_progress.clone();
-                                            let episode_search_term = episode_search_term.clone();
-                                            Callback::from(move |_| {
-                                                show_completed.set(false);
-                                                show_in_progress.set(false);
-                                                episode_search_term.set(String::new());
-                                            })
-                                        }
-                                        class="filter-button font-medium py-2 px-2 rounded inline-flex items-center"
-                                    >
-                                        <i class="ph ph-broom text-2xl"></i>
-                                        <span class="text-lg ml-2 hidden md:inline">{"Clear"}</span>
-                                    </button>
-                                    <button
-                                        onclick={let show_completed = show_completed.clone();
-                                            Callback::from(move |_| {
-                                                show_completed.set(!*show_completed);
-                                                // Ensure only one filter is active at a time
-                                                if *show_completed {
-                                                    show_in_prog_button.set(false);
-                                                }
-                                            })
-                                        }
-                                        class={classes!(
-                                            "filter-button",
-                                            "font-medium",
-                                            "py-2",
-                                            "px-2",
-                                            "rounded",
-                                            "inline-flex",
-                                            "items-center",
-                                            if *show_completed { "bg-accent-color" } else { "" }
-                                        )}
-                                    >
-                                        <i class="ph ph-check-circle text-2xl"></i>
-                                        <span class="text-lg ml-2 hidden md:inline">{"Completed"}</span>
-                                    </button>
-
-                                    <button
-                                        onclick={let show_in_progress = show_in_progress.clone();
-                                            Callback::from(move |_| {
-                                                show_in_progress.set(!*show_in_progress);
-                                                // Ensure only one filter is active at a time
-                                                if *show_in_progress {
-                                                    show_completed.set(false);
-                                                }
-                                            })
-                                        }
-                                        class={classes!(
-                                            "filter-button",
-                                            "font-medium",
-                                            "py-2",
-                                            "px-2",
-                                            "rounded",
-                                            "inline-flex",
-                                            "items-center",
-                                            if *show_in_progress { "bg-accent-color" } else { "" }
-                                        )}
-                                    >
-                                        <i class="ph ph-hourglass-medium text-2xl"></i>
-                                        <span class="text-lg ml-2 hidden md:inline">{"In Progress"}</span>
-                                    </button>
-
-                                    // Sort dropdown
-                                    <div class="filter-dropdown font-medium rounded relative">
-                                        // Normal select for screens > 530px
+                                    // Sort dropdown (right half)
+                                    <div class="flex-shrink-0 relative min-w-[160px]">
                                         <select
-                                            class="category-select appearance-none pr-8 hidden sm:block"
+                                            class="appearance-none w-full h-full pl-4 pr-12 text-sm font-medium rounded-r-xl border-2 border-l-0 border-color bg-background-color text-text-color focus:outline-none focus:border-accent-color focus:z-10 relative transition-colors"
                                             onchange={
                                                 let episode_sort_direction = episode_sort_direction.clone();
                                                 Callback::from(move |e: Event| {
@@ -315,42 +249,84 @@ pub fn saved() -> Html {
                                             <option value="oldest">{"Oldest First"}</option>
                                             <option value="shortest">{"Shortest First"}</option>
                                             <option value="longest">{"Longest First"}</option>
-                                            <option value="title_az">{"Title A to Z"}</option>
-                                            <option value="title_za">{"Title Z to A"}</option>
+                                            <option value="title_az">{"Title A-Z"}</option>
+                                            <option value="title_za">{"Title Z-A"}</option>
                                         </select>
-
-                                        // Icon button with dropdown for screens <= 530px
-                                        <div class="block sm:hidden relative">
-                                            <select
-                                                class="category-select appearance-none pr-8 pl-8 w-20"
-                                                onchange={
-                                                    let episode_sort_direction = episode_sort_direction.clone();
-                                                    Callback::from(move |e: Event| {
-                                                        let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
-                                                        let value = target.value();
-                                                        match value.as_str() {
-                                                            "newest" => episode_sort_direction.set(Some(SavedSortDirection::NewestFirst)),
-                                                            "oldest" => episode_sort_direction.set(Some(SavedSortDirection::OldestFirst)),
-                                                            "shortest" => episode_sort_direction.set(Some(SavedSortDirection::ShortestFirst)),
-                                                            "longest" => episode_sort_direction.set(Some(SavedSortDirection::LongestFirst)),
-                                                            "title_az" => episode_sort_direction.set(Some(SavedSortDirection::TitleAZ)),
-                                                            "title_za" => episode_sort_direction.set(Some(SavedSortDirection::TitleZA)),
-                                                            _ => episode_sort_direction.set(None),
-                                                        }
-                                                    })
-                                                }
-                                                style="background-image: none;"
-                                            >
-                                                <i class="ph ph-sort-ascending absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-2xl pointer-events-none"></i>
-                                                <option value="newest" selected=true>{"Newest"}</option>
-                                                <option value="oldest">{"Oldest"}</option>
-                                                <option value="shortest">{"Shortest"}</option>
-                                                <option value="longest">{"Longest"}</option>
-                                                <option value="title_az">{"A -> Z"}</option>
-                                                <option value="title_za">{"Z -> A"}</option>
-                                            </select>
-                                        </div>
+                                        <i class="ph ph-caret-down absolute right-4 top-1/2 -translate-y-1/2 text-lg text-text-color-muted pointer-events-none"></i>
                                     </div>
+                                </div>
+
+                                // Filter chips (horizontal scroll on mobile)
+                                <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+                                    // Clear all filters
+                                    <button
+                                        onclick={
+                                            let show_completed = show_completed.clone();
+                                            let show_in_progress = show_in_progress.clone();
+                                            let episode_search_term = episode_search_term.clone();
+                                            Callback::from(move |_| {
+                                                show_completed.set(false);
+                                                show_in_progress.set(false);
+                                                episode_search_term.set(String::new());
+                                            })
+                                        }
+                                        class="filter-chip flex items-center gap-2 px-4 py-2 rounded-full border-2 border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white transition-all duration-200 whitespace-nowrap min-h-[44px]"
+                                    >
+                                        <i class="ph ph-broom text-lg"></i>
+                                        <span class="text-sm font-medium">{"Clear All"}</span>
+                                    </button>
+
+                                    // Completed filter chip
+                                    <button
+                                        onclick={let show_completed = show_completed.clone();
+                                            let show_in_progress = show_in_progress.clone();
+                                            Callback::from(move |_| {
+                                                show_completed.set(!*show_completed);
+                                                if *show_completed {
+                                                    show_in_progress.set(false);
+                                                }
+                                            })
+                                        }
+                                        class={classes!(
+                                            "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2", 
+                                            "rounded-full", "border-2", "transition-all", "duration-200", 
+                                            "whitespace-nowrap", "min-h-[44px]",
+                                            if *show_completed { 
+                                                "bg-accent-color text-white border-accent-color" 
+                                            } else { 
+                                                "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white" 
+                                            }
+                                        )}
+                                    >
+                                        <i class="ph ph-check-circle text-lg"></i>
+                                        <span class="text-sm font-medium">{"Completed"}</span>
+                                    </button>
+
+                                    // In progress filter chip
+                                    <button
+                                        onclick={let show_in_progress = show_in_progress.clone();
+                                            let show_completed = show_completed.clone();
+                                            Callback::from(move |_| {
+                                                show_in_progress.set(!*show_in_progress);
+                                                if *show_in_progress {
+                                                    show_completed.set(false);
+                                                }
+                                            })
+                                        }
+                                        class={classes!(
+                                            "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2", 
+                                            "rounded-full", "border-2", "transition-all", "duration-200", 
+                                            "whitespace-nowrap", "min-h-[44px]",
+                                            if *show_in_progress { 
+                                                "bg-accent-color text-white border-accent-color" 
+                                            } else { 
+                                                "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white" 
+                                            }
+                                        )}
+                                    >
+                                        <i class="ph ph-hourglass-medium text-lg"></i>
+                                        <span class="text-sm font-medium">{"In Progress"}</span>
+                                    </button>
                                 </div>
                             </div>
 
