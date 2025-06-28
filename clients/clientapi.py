@@ -6085,7 +6085,7 @@ async def get_user_feed(
     request: Request,
     user_id: int,
     api_key: str,  # Now a query parameter
-    limit: int = 100,
+    limit: int = 1000,
     podcast_id: Optional[int] = None,
     source_type: str = Query(None, alias='type'),
     cnx=Depends(get_database_connection)
@@ -6116,7 +6116,7 @@ async def get_user_feed(
                 "user_id": key_id,
                 "key": api_key
             }
-        
+
         feed_content = database_functions.functions.generate_podcast_rss(
             database_type,
             cnx,
