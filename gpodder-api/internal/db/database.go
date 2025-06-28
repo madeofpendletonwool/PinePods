@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"net/url"
 	"os"
 	"pinepods/gpodder-api/config"
@@ -60,13 +61,43 @@ func NewDatabase(cfg config.DatabaseConfig) (*Database, error) {
 
 	fmt.Println("Successfully connected to the database")
 
-	// Run migrations to ensure schema is up to date
-	if err := RunMigrations(db, cfg.Type); err != nil {
+	// Run migrations with retry logic for table dependencies
+	if err := runMigrationsWithRetry(db, cfg.Type); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
 	return &Database{DB: db, Type: cfg.Type}, nil
+}
+
+// runMigrationsWithRetry runs migrations with retry logic for dependency issues
+func runMigrationsWithRetry(db *sql.DB, dbType string) error {
+	maxRetries := 10
+	retryDelay := 3 * time.Second
+	
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		err := RunMigrations(db, dbType)
+		if err == nil {
+			log.Println("Migrations completed successfully")
+			return nil
+		}
+		
+		// Check if the error is due to missing prerequisite tables
+		if strings.Contains(err.Error(), "required table") && strings.Contains(err.Error(), "does not exist") {
+			log.Printf("Attempt %d/%d: Required PinePods tables not ready yet, retrying in %v... Error: %v", 
+				attempt, maxRetries, retryDelay, err)
+			
+			if attempt < maxRetries {
+				time.Sleep(retryDelay)
+				continue
+			}
+		}
+		
+		// For other errors, fail immediately
+		return err
+	}
+	
+	return fmt.Errorf("failed to run migrations after %d attempts", maxRetries)
 }
 
 // connectPostgreSQL connects to a PostgreSQL database

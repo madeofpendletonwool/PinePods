@@ -104,7 +104,8 @@ mkdir -p /var/log/supervisor  # Make sure supervisor log directory exists
 
 # Database Setup
 echo "Using $DB_TYPE database"
-/wait-for-it.sh "${DB_HOST}:${DB_PORT}" --timeout=60 --strict -- python3 /pinepods/startup/setup_database_new.py
+# The setup_database_new.py script now includes proper database readiness checking
+python3 /pinepods/startup/setup_database_new.py
 echo "Database validation complete"
 
 # Set up cron jobs
