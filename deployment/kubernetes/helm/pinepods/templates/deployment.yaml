@@ -29,12 +29,13 @@ spec:
             - secretRef:
                 name: {{ include "pinepods.fullname" $ }}-env
           env:
-            - name: DB_HOST
-              value: {{ include "pinepods.postgresql.fullname" . }}
-            - name: VALKEY_HOST
-              value: {{ include "pinepods.valkey.fullname" . }}
-            - name: VALKEY_PORT
-              value: "{{ .Values.valkey.service.port }}"
+            {{ if (and (not .Values.postgresql.enabled) (.Values.externalDatabase.existingSecret.enabled)) -}}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalDatabase.existingSecret.name }}
+                  key: {{ .Values.externalDatabase.existingSecret.key }}
+            {{- end }}
           volumeMounts:
             {{- if .Values.persistence.enabled }}
             - name: downloads

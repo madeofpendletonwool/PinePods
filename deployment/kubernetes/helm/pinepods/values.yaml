@@ -125,6 +125,10 @@ externalDatabase:
   user: postgres
   password: ""
   database: pinepods_database
+  existingSecret:
+    enabled: false
+    name: existing-secret
+    key: password
 
 resources: {}
 
@@ -159,18 +163,6 @@ env:
   FULLNAME: "Admin User"
   # -- Admin email address
   EMAIL: "admin@example.com"
-  
-  # Database Configuration
-  # -- Database type (postgresql only for now)
-  DB_TYPE: "postgresql"
-  # -- Database user
-  # This should match postgresql.auth.username if using included PostgreSQL
-  DB_USER: "postgres"
-  # -- Database name
-  # This should match postgresql.auth.database if using included PostgreSQL
-  DB_NAME: "pinepods_database"
-  # -- Database port
-  DB_PORT: "5432"
   
   # Valkey Configuration
   # -- Valkey host
