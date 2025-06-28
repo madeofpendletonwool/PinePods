@@ -757,20 +757,46 @@ func updateSubscriptions(database *db.Database) gin.HandlerFunc {
 
 		// Remove podcasts
 		for _, url := range toRemove {
-			// Remove from Podcasts table
+			// First delete related episodes and their dependencies to avoid foreign key constraint violations
 			if database.IsPostgreSQLDB() {
-				query = `
-					DELETE FROM "Podcasts"
-					WHERE UserID = $1 AND FeedURL = $2
-				`
+				// Delete related data in correct order for PostgreSQL
+				deleteQueries := []string{
+					`DELETE FROM "PlaylistContents" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "EpisodeQueue" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "YouTubeVideos" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2)`,
+					`DELETE FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2)`,
+					`DELETE FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2`,
+				}
+				for _, deleteQuery := range deleteQueries {
+					_, err = tx.Exec(deleteQuery, userID, url)
+					if err != nil {
+						log.Printf("Error executing delete query: %v", err)
+						break
+					}
+				}
 			} else {
-				query = `
-					DELETE FROM Podcasts
-					WHERE UserID = ? AND FeedURL = ?
-				`
+				// Delete related data in correct order for MySQL/MariaDB
+				deleteQueries := []string{
+					`DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM YouTubeVideos WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?)`,
+					`DELETE FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?)`,
+					`DELETE FROM Podcasts WHERE UserID = ? AND FeedURL = ?`,
+				}
+				for _, deleteQuery := range deleteQueries {
+					_, err = tx.Exec(deleteQuery, userID, url)
+					if err != nil {
+						log.Printf("Error executing delete query: %v", err)
+						break
+					}
+				}
 			}
-
-			_, err = tx.Exec(query, userID, url)
 
 			if err != nil {
 				log.Printf("Error removing podcast: %v", err)
@@ -1137,20 +1163,46 @@ func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 				return
 			}
 
-			// Remove from Podcasts table
+			// First delete related episodes and their dependencies to avoid foreign key constraint violations
 			if database.IsPostgreSQLDB() {
-				query = `
-					DELETE FROM "Podcasts"
-					WHERE UserID = $1 AND FeedURL = $2
-				`
+				// Delete related data in correct order for PostgreSQL
+				deleteQueries := []string{
+					`DELETE FROM "PlaylistContents" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "EpisodeQueue" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "YouTubeVideos" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2)`,
+					`DELETE FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2)`,
+					`DELETE FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2`,
+				}
+				for _, deleteQuery := range deleteQueries {
+					_, err = tx.Exec(deleteQuery, userID, cleanURL)
+					if err != nil {
+						log.Printf("[ERROR] uploadSubscriptionChanges: Error executing delete query: %v", err)
+						break
+					}
+				}
 			} else {
-				query = `
-					DELETE FROM Podcasts
-					WHERE UserID = ? AND FeedURL = ?
-				`
+				// Delete related data in correct order for MySQL/MariaDB
+				deleteQueries := []string{
+					`DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM YouTubeVideos WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?)`,
+					`DELETE FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?)`,
+					`DELETE FROM Podcasts WHERE UserID = ? AND FeedURL = ?`,
+				}
+				for _, deleteQuery := range deleteQueries {
+					_, err = tx.Exec(deleteQuery, userID, cleanURL)
+					if err != nil {
+						log.Printf("[ERROR] uploadSubscriptionChanges: Error executing delete query: %v", err)
+						break
+					}
+				}
 			}
-
-			_, err = tx.Exec(query, userID, cleanURL)
 
 			if err != nil {
 				log.Printf("[ERROR] uploadSubscriptionChanges: Error removing podcast: %v", err)
@@ -1734,17 +1786,45 @@ func updateSubscriptionsSimple(database *db.Database) gin.HandlerFunc {
 
 		// Remove podcasts
 		for _, url := range toRemove {
-			// Remove from Podcasts table
+			// First delete related episodes and their dependencies to avoid foreign key constraint violations
 			if database.IsPostgreSQLDB() {
-				_, err = tx.Exec(`
-					DELETE FROM "Podcasts"
-					WHERE UserID = $1 AND FeedURL = $2
-				`, userID, url)
+				// Delete related data in correct order for PostgreSQL
+				deleteQueries := []string{
+					`DELETE FROM "PlaylistContents" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "SavedEpisodes" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "EpisodeQueue" WHERE EpisodeID IN (SELECT EpisodeID FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2))`,
+					`DELETE FROM "YouTubeVideos" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2)`,
+					`DELETE FROM "Episodes" WHERE PodcastID IN (SELECT PodcastID FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2)`,
+					`DELETE FROM "Podcasts" WHERE UserID = $1 AND FeedURL = $2`,
+				}
+				for _, deleteQuery := range deleteQueries {
+					_, err = tx.Exec(deleteQuery, userID, url)
+					if err != nil {
+						log.Printf("Error executing delete query: %v", err)
+						break
+					}
+				}
 			} else {
-				_, err = tx.Exec(`
-					DELETE FROM Podcasts
-					WHERE UserID = ? AND FeedURL = ?
-				`, userID, url)
+				// Delete related data in correct order for MySQL/MariaDB
+				deleteQueries := []string{
+					`DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?))`,
+					`DELETE FROM YouTubeVideos WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?)`,
+					`DELETE FROM Episodes WHERE PodcastID IN (SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?)`,
+					`DELETE FROM Podcasts WHERE UserID = ? AND FeedURL = ?`,
+				}
+				for _, deleteQuery := range deleteQueries {
+					_, err = tx.Exec(deleteQuery, userID, url)
+					if err != nil {
+						log.Printf("Error executing delete query: %v", err)
+						break
+					}
+				}
 			}
 
 			if err != nil {

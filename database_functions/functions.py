@@ -271,7 +271,7 @@ def add_podcast(cnx, database_type, podcast_values, user_id, feed_cutoff, userna
 
             # Now proceed with add_episodes as normal
             first_episode_id = add_episodes(cnx, database_type, podcast_id, podcast_values['pod_feed_url'],
-                                            podcast_values['pod_artwork'], False, username, password)
+                                            podcast_values['pod_artwork'], False, username=username, password=password)
             print("Episodes added for existing podcast")
             # Return both IDs like we do for new podcasts
             return podcast_id, first_episode_id
@@ -2902,7 +2902,7 @@ def refresh_pods_for_user(cnx, database_type, podcast_id):
         else:
             episodes = add_episodes(cnx, database_type, podcast_id, feed_url,
                                   artwork_url, auto_download,
-                                  username, password, websocket=True)
+                                  username=username, password=password, websocket=True)
             new_episodes.extend(episodes)
 
     cursor.close()
@@ -2965,7 +2965,7 @@ def refresh_pods(cnx, database_type):
                 youtube.process_youtube_videos(database_type, podcast_id, channel_id, cnx, feed_cutoff)
             else:
                 add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url,
-                           auto_download, feed_cutoff, username, password, websocket=False)
+                           auto_download, username=username, password=password, websocket=False)
         except Exception as e:
             print(f"Error refreshing podcast {podcast_id}: {str(e)}")
             continue
@@ -5674,7 +5674,7 @@ def get_api_info(database_type, cnx, user_id):
         UNION ALL
         SELECT "RssKeys".RssKeyID, "RssKeys".UserID, "Users".Username, RIGHT("RssKeys".RssKey, 4) as LastFourDigits, "RssKeys".Created, ARRAY_AGG("RssKeyMap".PodcastID) as PodcastIDs
         FROM "RssKeys"
-        JOIN "Users" ON "RssKeys".UserID = "Users".UserID 
+        JOIN "Users" ON "RssKeys".UserID = "Users".UserID
         JOIN "RssKeyMap" ON "RssKeys".RssKeyID = "RssKeyMap".RssKeyID
         GROUP BY "RssKeys".RssKeyID, "RssKeys".UserID, "Users".Username, "RssKeys".RssKey, "RssKeys".Created
         '''
@@ -5683,7 +5683,7 @@ def get_api_info(database_type, cnx, user_id):
         UNION ALL
         SELECT RssKeys.RssKeyID, RssKeys.UserID, Users.Username, RIGHT(RssKeys.RssKey, 4) as LastFourDigits, RssKeys.Created, GROUP_CONCAT(CAST(RssKeyMap.PodcastID AS TEXT)) as PodcastIDs
         FROM RssKeys
-        JOIN Users ON RssKeys.UserID = Users.UserID 
+        JOIN Users ON RssKeys.UserID = Users.UserID
         JOIN RssKeyMap ON RssKeys.RssKeyID = RssKeyMap.RssKeyID
         GROUP BY RssKeys.RssKeyID, RssKeys.UserID, Users.Username, RssKeys.RssKey, RssKeys.Created
         '''
@@ -5733,20 +5733,22 @@ def create_rss_key(cnx, database_type: str, user_id: int, podcast_ids: list[int]
 
     cursor = cnx.cursor()
     if database_type == "postgresql":
-        query = 'INSERT INTO "RssKeys" (UserID, RssKey) VALUES (%s, %s)'
+        query = 'INSERT INTO "RssKeys" (UserID, RssKey) VALUES (%s, %s) RETURNING RssKeyID'
+        cursor.execute(query, (user_id, api_key))
+        rss_key_id = cursor.fetchone()[0]
     else:
         query = "INSERT INTO RssKeys (UserID, RssKey) VALUES (%s, %s)"
+        cursor.execute(query, (user_id, api_key))
+        rss_key_id = cursor.lastrowid
 
-    cursor.execute(query, (user_id, api_key))
-    
     if podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids:
         for podcast_id in podcast_ids:
             if database_type == "postgresql":
                 query = 'INSERT INTO "RssKeyMap" (RssKeyID, PodcastID) VALUES (%s, %s)'
             else:
                 query = 'INSERT INTO RssKeyMap (RssKeyID, PodcastID) VALUES (%s, %s)'
-            cursor.execute(query, (api_key, podcast_id))
-    
+            cursor.execute(query, (rss_key_id, podcast_id))
+
     cnx.commit()
     cursor.close()
 
@@ -5771,7 +5773,7 @@ def set_rss_key_podcasts(cnx, database_type: str, rss_key_id: int, podcast_ids: 
 
     cnx.commit()
     cursor.close()
-    
+
 
 def get_user_api_key(cnx, database_type, user_id):
     cursor = cnx.cursor()
@@ -6343,11 +6345,43 @@ def toggle_rss_feeds(cnx, database_type: str, user_id: int) -> bool:
             )
         else:
             cursor.execute(
-                "UPDATE Users SET EnableRSSFeeds = %s WHERE UserID = %s",
+                "UPDATE Users Set EnableRSSFeeds = %s WHERE UserID = %s",
                 (new_status, user_id)
             )
         cnx.commit()
+
+        # If enabling RSS feeds, create an RSS key if one doesn't exist
+        if new_status:
+            # Check if user already has an RSS key
+            if database_type == "postgresql":
+                cursor.execute('SELECT RssKeyID FROM "RssKeys" WHERE UserID = %s', (user_id,))
+            else:
+                cursor.execute("SELECT RssKeyID FROM RssKeys WHERE UserID = %s", (user_id,))
+
+            existing_key = cursor.fetchone()
+            if not existing_key:
+                # Create RSS key for all podcasts (-1 means all)
+                create_rss_key(cnx, database_type, user_id, [-1])
+                logging.info(f"Created RSS key for user {user_id}")
+
         return new_status
+    finally:
+        cursor.close()
+
+
+def get_user_rss_key(cnx, database_type: str, user_id: int) -> str:
+    """Get the RSS key for a user"""
+    cursor = cnx.cursor()
+    try:
+        if database_type == "postgresql":
+            cursor.execute('SELECT RssKey FROM "RssKeys" WHERE UserID = %s', (user_id,))
+        else:
+            cursor.execute("SELECT RssKey FROM RssKeys WHERE UserID = %s", (user_id,))
+
+        result = cursor.fetchone()
+        if result:
+            return result[0] if isinstance(result, tuple) else result['rsskey']
+        return None
     finally:
         cursor.close()
 
@@ -6418,7 +6452,7 @@ class PodcastFeed(feedgenerator.Rss201rev2Feed):
                 attrs={'href': item['artwork_url']})
 
 
-def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, source_type: str, domain: str) -> str:
+def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, source_type: str, domain: str, podcast_id: Optional[List[int]] = None) -> str:
     from datetime import datetime as dt, timezone
     cursor = cnx.cursor()
     logging.basicConfig(level=logging.INFO)
@@ -6426,7 +6460,19 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
     user_id = rss_key.get('user_id')
     podcast_ids = rss_key.get('podcast_ids')
     key = rss_key.get('key')
-    podcast_filter = (podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids)
+
+    # If podcast_id parameter is provided, use it; otherwise use RSS key podcast_ids
+    print(f'DEBUG: podcast_id param: {podcast_id}, type: {type(podcast_id)}')
+    print(f'DEBUG: rss_key podcast_ids: {podcast_ids}, type: {type(podcast_ids)}')
+
+    explicit_podcast_filter = False
+    if podcast_id and len(podcast_id) > 0:
+        podcast_ids = podcast_id
+        explicit_podcast_filter = True
+        print(f'DEBUG: Using explicit podcast filter, podcast_ids set to: {podcast_ids}')
+
+    podcast_filter = explicit_podcast_filter or (podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids)
+    print(f'DEBUG: podcast_filter: {podcast_filter}, explicit_podcast_filter: {explicit_podcast_filter}')
     try:
         # Check if RSS feeds are enabled for user
         if not get_rss_feed_status(cnx, database_type, user_id):
@@ -6453,9 +6499,9 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                         e.podcastid,
                         e.episodetitle,
                         e.episodedescription,
-                        CASE WHEN de.episodeid IS NULL 
-                                THEN e.episodeurl 
-                                ELSE CONCAT(CAST(%s AS TEXT), '/api/data/stream/', e.episodeid, '?api_key=', CAST(%s AS TEXT), '&user_id=', pp.userid) 
+                        CASE WHEN de.episodeid IS NULL
+                                THEN e.episodeurl
+                                ELSE CONCAT(CAST(%s AS TEXT), '/api/data/stream/', e.episodeid, '?api_key=', CAST(%s AS TEXT), '&user_id=', pp.userid)
                         END as episodeurl,
                         e.episodeartwork,
                         e.episodepubdate,
@@ -6466,7 +6512,7 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                         pp.description as podcastdescription
                     FROM "Episodes" e
                     JOIN "Podcasts" pp ON e.podcastid = pp.podcastid
-                    LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid 
+                    LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid
                     WHERE pp.userid = %s
                 '''
             else:
@@ -6476,9 +6522,9 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                         e.PodcastID,
                         e.EpisodeTitle,
                         e.EpisodeDescription,
-                        CASE WHEN de.EpisodeID IS NULL 
-                                THEN e.EpisodeURL 
-                                ELSE CONCAT(CAST(%s AS TEXT), '/api/data/stream/', CAST(y.EpisodeID AS TEXT), '?api_key=', CAST(%s AS TEXT), '&user_id=', pp.UserID) 
+                        CASE WHEN de.EpisodeID IS NULL
+                                THEN e.EpisodeURL
+                                ELSE CONCAT(CAST(%s AS TEXT), '/api/data/stream/', CAST(y.EpisodeID AS TEXT), '?api_key=', CAST(%s AS TEXT), '&user_id=', pp.UserID)
                         END as EpisodeURL,
                         e.EpisodeArtwork,
                         e.EpisodePubDate,
@@ -6495,8 +6541,12 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
 
         params = [domain, key, user_id]
         if podcast_filter:
-            base_query += f' AND {"pp.podcastid" if database_type == "postgresql" else "pp.PodcastID"} IN %s'
-            params.append(tuple(podcast_ids))
+            if database_type == "postgresql":
+                base_query += ' AND pp.podcastid = ANY(%s)'
+                params.append(podcast_ids)
+            else:
+                base_query += ' AND pp.PodcastID IN %s'
+                params.append(tuple(podcast_ids))
 
         if not source_type or source_type == "youtube":
             if base_query:
@@ -6543,11 +6593,18 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
             params += [domain, key, user_id]
 
             if podcast_filter:
-                base_query += f' AND {"y.podcastid" if database_type == "postgresql" else "y.PodcastID"} IN %s'
-                params.append(tuple(podcast_ids))
+                if database_type == "postgresql":
+                    base_query += ' AND y.podcastid = ANY(%s)'
+                    params.append(podcast_ids)
+                else:
+                    base_query += ' AND y.PodcastID IN %s'
+                    params.append(tuple(podcast_ids))
 
-        base_query += f' ORDER BY 7 DESC LIMIT %s'
-        params.append(limit)
+        base_query += f' ORDER BY 7 DESC'
+        # Only apply limit if no specific podcast is requested
+        if not explicit_podcast_filter:
+            base_query += ' LIMIT %s'
+            params.append(limit)
         cursor.execute(base_query, tuple(params))
         print('q1')
         # Get column names and create result mapping
@@ -6666,8 +6723,6 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
         for episode in episodes:
             try:
                 episode_image = episode.get('episodeartwork') or episode.get('artworkurl', '')
-                logger.info(f"Episode {episode.get('episodetitle')} artwork: {episode_image}")
-
                 feed.add_item(
                     title=str(episode.get('episodetitle', 'Untitled Episode')),
                     link=str(episode.get('episodeurl', '')),
@@ -6867,15 +6922,15 @@ def get_rss_key_if_valid(cnx, database_type: str, passed_key: str, podcast_ids: 
             user_id = get_value_from_result(result, 'userid')
             key_podcast_ids = get_value_from_result(result, 'podcastids')
             logging.info(f"Successfully extracted user_id: {user_id} and podcast_ids: {key_podcast_ids}")
-            
+
             # Convert podcast_ids string to list of integers
             podcast_ids_list = []
-            if podcast_ids:
+            if key_podcast_ids:
                 podcast_ids_list = [int(pid) for pid in key_podcast_ids.split(',')]
 
             if filter_podcast_ids:
                 if not podcast_ids_list or len(podcast_ids_list) == 0 or -1 in podcast_ids_list:
-                    podcast_ids_list = filter_podcast_ids
+                    podcast_ids_list = podcast_ids
                 else:
                     podcast_ids_list = [pid for pid in podcast_ids_list if pid in podcast_ids]
 
@@ -6895,7 +6950,7 @@ def get_rss_key_if_valid(cnx, database_type: str, passed_key: str, podcast_ids: 
                     podcast_ids_list = [int(pid) for pid in key_podcast_ids.split(',')]
                 if filter_podcast_ids:
                     if not podcast_ids_list or len(podcast_ids_list) == 0 or -1 in podcast_ids_list:
-                        podcast_ids_list = filter_podcast_ids
+                        podcast_ids_list = podcast_ids
                     else:
                         podcast_ids_list = [pid for pid in podcast_ids_list if pid in podcast_ids]
                 return {
@@ -12842,17 +12897,28 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
                     actual_device_name = default_device["name"]
                     print(f"Using default device: {actual_device_name} (ID: {device_id})")
                 else:
-                    # No default device, create one
+                    # No default device, create one with proper naming pattern
+                    if is_internal_api:
+                        # Use internal device naming pattern
+                        device_name_to_use = f"pinepods-internal-{user_id}"
+                        device_type_to_use = "server"
+                        device_caption_to_use = f"PinePods Internal Device {user_id}"
+                    else:
+                        # Use default device pattern for external gPodder
+                        device_name_to_use = "pinepods_default"
+                        device_type_to_use = "desktop"
+                        device_caption_to_use = "Pinepods Default Device"
+
                     device_id = create_or_update_device(
                         cnx,
                         database_type,
                         user_id,
-                        "pinepods_default",
-                        "desktop",
-                        "Pinepods Default Device",
+                        device_name_to_use,
+                        device_type_to_use,
+                        device_caption_to_use,
                         True  # Set as default
                     )
-                    actual_device_name = "pinepods_default"
+                    actual_device_name = device_name_to_use
                     print(f"Created new default device: {actual_device_name} (ID: {device_id})")
         else:
             # No device specified, use default
@@ -12862,17 +12928,28 @@ def refresh_gpodder_subscription(database_type, cnx, user_id, gpodder_url, encry
                 actual_device_name = default_device["name"]
                 print(f"Using default device: {actual_device_name} (ID: {device_id})")
             else:
-                # No devices exist, create a default one
+                # No devices exist, create a default one with proper naming pattern
+                if is_internal_api:
+                    # Use internal device naming pattern
+                    device_name_to_use = f"pinepods-internal-{user_id}"
+                    device_type_to_use = "server"
+                    device_caption_to_use = f"PinePods Internal Device {user_id}"
+                else:
+                    # Use default device pattern for external gPodder
+                    device_name_to_use = "pinepods_default"
+                    device_type_to_use = "desktop"
+                    device_caption_to_use = "Pinepods Default Device"
+
                 device_id = create_or_update_device(
                     cnx,
                     database_type,
                     user_id,
-                    "pinepods_default",
-                    "desktop",
-                    "Pinepods Default Device",
+                    device_name_to_use,
+                    device_type_to_use,
+                    device_caption_to_use,
                     True  # Set as default
                 )
-                actual_device_name = "pinepods_default"
+                actual_device_name = device_name_to_use
                 print(f"Created new default device: {actual_device_name} (ID: {device_id})")
 
         # For remote devices, we might need to skip checking local timestamps

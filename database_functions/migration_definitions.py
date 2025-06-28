@@ -573,10 +573,13 @@ def migration_004_default_users(conn, db_type: str):
             alphabet = string.ascii_letters + string.digits
             api_key = ''.join(secrets.choice(alphabet) for _ in range(64))
             cursor.execute(f'INSERT INTO {table_prefix}APIKeys{table_suffix} (UserID, APIKey) VALUES (1, %s)', (api_key,))
-            
-            # Write API key to temp file for web service
-            with open("/tmp/web_api_key.txt", "w") as f:
-                f.write(api_key)
+        else:
+            # Extract API key from existing record
+            api_key = result[0] if isinstance(result, tuple) else result['apikey']
+        
+        # Always write API key to temp file for web service (file may not exist after container restart)
+        with open("/tmp/web_api_key.txt", "w") as f:
+            f.write(api_key)
         
         logger.info("Created default users successfully")
         
@@ -962,6 +965,559 @@ def migration_007_queue_download_tables(conn, db_type: str):
             """)
         
         logger.info("Created queue and download tables successfully")
+        
+    finally:
+        cursor.close()
+
+
+@register_migration("008", "gpodder_tables", "Create GPodder sync tables", requires=["001"])
+def migration_008_gpodder_tables(conn, db_type: str):
+    """Create GPodder sync tables"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "GpodderDevices" (
+                    DeviceID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceName VARCHAR(255) NOT NULL,
+                    DeviceType VARCHAR(50) DEFAULT 'desktop',
+                    DeviceCaption VARCHAR(255),
+                    IsDefault BOOLEAN DEFAULT FALSE,
+                    LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    IsActive BOOLEAN DEFAULT TRUE,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceName)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_gpodder_devices_userid
+                ON "GpodderDevices"(UserID)
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "GpodderSyncState" (
+                    SyncStateID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    LastTimestamp BIGINT DEFAULT 0,
+                    EpisodesTimestamp BIGINT DEFAULT 0,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID)
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS GpodderDevices (
+                    DeviceID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceName VARCHAR(255) NOT NULL,
+                    DeviceType VARCHAR(50) DEFAULT 'desktop',
+                    DeviceCaption VARCHAR(255),
+                    IsDefault BOOLEAN DEFAULT FALSE,
+                    LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    IsActive BOOLEAN DEFAULT TRUE,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceName)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE INDEX idx_gpodder_devices_userid
+                ON GpodderDevices(UserID)
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS GpodderSyncState (
+                    SyncStateID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    LastTimestamp BIGINT DEFAULT 0,
+                    EpisodesTimestamp BIGINT DEFAULT 0,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID)
+                )
+            """)
+        
+        logger.info("Created GPodder tables")
+        
+    finally:
+        cursor.close()
+
+
+@register_migration("009", "people_sharing_tables", "Create people and episode sharing tables", requires=["005"])
+def migration_009_people_sharing_tables(conn, db_type: str):
+    """Create people and episode sharing tables"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "People" (
+                    PersonID SERIAL PRIMARY KEY,
+                    Name VARCHAR(255) NOT NULL,
+                    UserID INT NOT NULL,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "PeopleEpisodes" (
+                    PeopleEpisodeID SERIAL PRIMARY KEY,
+                    PersonID INT NOT NULL,
+                    EpisodeID INT NOT NULL,
+                    AddedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (PersonID) REFERENCES "People"(PersonID) ON DELETE CASCADE,
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "SharedEpisodes" (
+                    SharedEpisodeID SERIAL PRIMARY KEY,
+                    EpisodeID INT NOT NULL,
+                    SharedBy INT NOT NULL,
+                    SharedWith INT,
+                    ShareCode TEXT UNIQUE,
+                    ExpirationDate TIMESTAMP,
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (SharedBy) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (SharedWith) REFERENCES "Users"(UserID) ON DELETE CASCADE
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS People (
+                    PersonID INT AUTO_INCREMENT PRIMARY KEY,
+                    Name VARCHAR(255) NOT NULL,
+                    UserID INT NOT NULL,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS PeopleEpisodes (
+                    PeopleEpisodeID INT AUTO_INCREMENT PRIMARY KEY,
+                    PersonID INT NOT NULL,
+                    EpisodeID INT NOT NULL,
+                    AddedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (PersonID) REFERENCES People(PersonID) ON DELETE CASCADE,
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS SharedEpisodes (
+                    SharedEpisodeID INT AUTO_INCREMENT PRIMARY KEY,
+                    EpisodeID INT NOT NULL,
+                    SharedBy INT NOT NULL,
+                    SharedWith INT,
+                    ShareCode TEXT,
+                    ExpirationDate TIMESTAMP,
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (SharedBy) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (SharedWith) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE(ShareCode)
+                )
+            """)
+        
+        logger.info("Created people and sharing tables")
+        
+    finally:
+        cursor.close()
+
+
+@register_migration("010", "playlist_tables", "Create playlist management tables", requires=["005"])
+def migration_010_playlist_tables(conn, db_type: str):
+    """Create playlist management tables"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "Playlists" (
+                    PlaylistID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(255) NOT NULL,
+                    Description TEXT,
+                    IsSystemPlaylist BOOLEAN NOT NULL DEFAULT FALSE,
+                    PodcastIDs INTEGER[],
+                    IncludeUnplayed BOOLEAN NOT NULL DEFAULT TRUE,
+                    IncludePartiallyPlayed BOOLEAN NOT NULL DEFAULT TRUE,
+                    IncludePlayed BOOLEAN NOT NULL DEFAULT FALSE,
+                    MinDuration INTEGER,
+                    MaxDuration INTEGER,
+                    SortOrder VARCHAR(50) NOT NULL DEFAULT 'date_desc'
+                        CHECK (SortOrder IN ('date_asc', 'date_desc',
+                                           'duration_asc', 'duration_desc',
+                                           'listen_progress', 'completion')),
+                    GroupByPodcast BOOLEAN NOT NULL DEFAULT FALSE,
+                    MaxEpisodes INTEGER,
+                    PlayProgressMin FLOAT,
+                    PlayProgressMax FLOAT,
+                    TimeFilterHours INTEGER,
+                    LastUpdated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    Created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    IconName VARCHAR(50) NOT NULL DEFAULT 'ph-playlist',
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, Name),
+                    CHECK (PlayProgressMin IS NULL OR (PlayProgressMin >= 0 AND PlayProgressMin <= 100)),
+                    CHECK (PlayProgressMax IS NULL OR (PlayProgressMax >= 0 AND PlayProgressMax <= 100)),
+                    CHECK (PlayProgressMin IS NULL OR PlayProgressMax IS NULL OR PlayProgressMin <= PlayProgressMax),
+                    CHECK (MinDuration IS NULL OR MinDuration >= 0),
+                    CHECK (MaxDuration IS NULL OR MaxDuration >= 0)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "PlaylistContents" (
+                    PlaylistContentID SERIAL PRIMARY KEY,
+                    PlaylistID INT,
+                    EpisodeID INT,
+                    VideoID INT,
+                    Position INT,
+                    DateAdded TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (PlaylistID) REFERENCES "Playlists"(PlaylistID) ON DELETE CASCADE,
+                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES "YouTubeVideos"(VideoID) ON DELETE CASCADE,
+                    CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+                )
+            """)
+            
+            # Create indexes for better performance
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_playlists_userid ON "Playlists"(UserID);
+                CREATE INDEX IF NOT EXISTS idx_playlist_contents_playlistid ON "PlaylistContents"(PlaylistID);
+                CREATE INDEX IF NOT EXISTS idx_playlist_contents_episodeid ON "PlaylistContents"(EpisodeID);
+                CREATE INDEX IF NOT EXISTS idx_playlist_contents_videoid ON "PlaylistContents"(VideoID);
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS Playlists (
+                    PlaylistID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(255) NOT NULL,
+                    Description TEXT,
+                    IsSystemPlaylist BOOLEAN NOT NULL DEFAULT FALSE,
+                    PodcastIDs JSON,
+                    IncludeUnplayed BOOLEAN NOT NULL DEFAULT TRUE,
+                    IncludePartiallyPlayed BOOLEAN NOT NULL DEFAULT TRUE,
+                    IncludePlayed BOOLEAN NOT NULL DEFAULT FALSE,
+                    MinDuration INT,
+                    MaxDuration INT,
+                    SortOrder VARCHAR(50) NOT NULL DEFAULT 'date_desc'
+                        CHECK (SortOrder IN ('date_asc', 'date_desc',
+                                           'duration_asc', 'duration_desc',
+                                           'listen_progress', 'completion')),
+                    GroupByPodcast BOOLEAN NOT NULL DEFAULT FALSE,
+                    MaxEpisodes INT,
+                    PlayProgressMin FLOAT,
+                    PlayProgressMax FLOAT,
+                    TimeFilterHours INT,
+                    LastUpdated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    Created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    IconName VARCHAR(50) NOT NULL DEFAULT 'ph-playlist',
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, Name),
+                    CHECK (PlayProgressMin IS NULL OR (PlayProgressMin >= 0 AND PlayProgressMin <= 100)),
+                    CHECK (PlayProgressMax IS NULL OR (PlayProgressMax >= 0 AND PlayProgressMax <= 100)),
+                    CHECK (PlayProgressMin IS NULL OR PlayProgressMax IS NULL OR PlayProgressMin <= PlayProgressMax),
+                    CHECK (MinDuration IS NULL OR MinDuration >= 0),
+                    CHECK (MaxDuration IS NULL OR MaxDuration >= 0)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS PlaylistContents (
+                    PlaylistContentID INT AUTO_INCREMENT PRIMARY KEY,
+                    PlaylistID INT,
+                    EpisodeID INT,
+                    VideoID INT,
+                    Position INT,
+                    DateAdded TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (PlaylistID) REFERENCES Playlists(PlaylistID) ON DELETE CASCADE,
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID) ON DELETE CASCADE,
+                    CHECK ((EpisodeID IS NOT NULL AND VideoID IS NULL) OR (EpisodeID IS NULL AND VideoID IS NOT NULL))
+                )
+            """)
+            
+            # Create indexes for better performance (MySQL doesn't support IF NOT EXISTS for indexes)
+            try:
+                cursor.execute("CREATE INDEX idx_playlists_userid ON Playlists(UserID)")
+            except:
+                pass  # Index may already exist
+            try:
+                cursor.execute("CREATE INDEX idx_playlist_contents_playlistid ON PlaylistContents(PlaylistID)")
+            except:
+                pass  # Index may already exist
+            try:
+                cursor.execute("CREATE INDEX idx_playlist_contents_episodeid ON PlaylistContents(EpisodeID)")
+            except:
+                pass  # Index may already exist
+            try:
+                cursor.execute("CREATE INDEX idx_playlist_contents_videoid ON PlaylistContents(VideoID)")
+            except:
+                pass  # Index may already exist
+        
+        logger.info("Created playlist tables")
+        
+    finally:
+        cursor.close()
+
+
+@register_migration("011", "session_notification_tables", "Create session and notification tables", requires=["001"])
+def migration_011_session_notification_tables(conn, db_type: str):
+    """Create session and notification tables"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "Sessions" (
+                    SessionID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    SessionToken TEXT NOT NULL,
+                    ExpirationTime TIMESTAMP NOT NULL,
+                    IsActive BOOLEAN DEFAULT TRUE,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "UserNotificationSettings" (
+                    SettingID SERIAL PRIMARY KEY,
+                    UserID INT,
+                    Platform VARCHAR(50) NOT NULL,
+                    Enabled BOOLEAN DEFAULT TRUE,
+                    NtfyTopic VARCHAR(255),
+                    NtfyServerUrl VARCHAR(255) DEFAULT 'https://ntfy.sh',
+                    GotifyUrl VARCHAR(255),
+                    GotifyToken VARCHAR(255),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, Platform)
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS Sessions (
+                    SessionID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    SessionToken TEXT NOT NULL,
+                    ExpirationTime TIMESTAMP NOT NULL,
+                    IsActive BOOLEAN DEFAULT TRUE,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS UserNotificationSettings (
+                    SettingID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT,
+                    Platform VARCHAR(50) NOT NULL,
+                    Enabled BOOLEAN DEFAULT TRUE,
+                    NtfyTopic VARCHAR(255),
+                    NtfyServerUrl VARCHAR(255) DEFAULT 'https://ntfy.sh',
+                    GotifyUrl VARCHAR(255),
+                    GotifyToken VARCHAR(255),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, Platform)
+                )
+            """)
+        
+        logger.info("Created session and notification tables")
+        
+    finally:
+        cursor.close()
+
+
+@register_migration("012", "create_system_playlists", "Create default system playlists", requires=["010"])
+def migration_012_create_system_playlists(conn, db_type: str):
+    """Create default system playlists"""
+    cursor = conn.cursor()
+    
+    try:
+        # Define system playlists
+        system_playlists = [
+            {
+                'name': 'Quick Listens',
+                'description': 'Short episodes under 15 minutes, perfect for quick breaks',
+                'min_duration': None,
+                'max_duration': 900,  # 15 minutes
+                'sort_order': 'duration_asc',
+                'icon_name': 'ph-fast-forward'
+            },
+            {
+                'name': 'Longform',
+                'description': 'Extended episodes over 1 hour, ideal for long drives or deep dives',
+                'min_duration': 3600,  # 1 hour
+                'max_duration': None,
+                'sort_order': 'duration_desc',
+                'icon_name': 'ph-car'
+            },
+            {
+                'name': 'Currently Listening',
+                'description': 'Episodes you\'ve started but haven\'t finished',
+                'min_duration': None,
+                'max_duration': None,
+                'sort_order': 'date_desc',
+                'include_unplayed': False,
+                'include_partially_played': True,
+                'include_played': False,
+                'icon_name': 'ph-play'
+            },
+            {
+                'name': 'Fresh Releases',
+                'description': 'Latest episodes from the last 24 hours',
+                'min_duration': None,
+                'max_duration': None,
+                'sort_order': 'date_desc',
+                'include_unplayed': True,
+                'include_partially_played': False,
+                'include_played': False,
+                'time_filter_hours': 24,
+                'icon_name': 'ph-sparkle'
+            },
+            {
+                'name': 'Weekend Marathon',
+                'description': 'Longer episodes (30+ minutes) perfect for weekend listening',
+                'min_duration': 1800,  # 30 minutes
+                'max_duration': None,
+                'sort_order': 'duration_desc',
+                'group_by_podcast': True,
+                'icon_name': 'ph-couch'
+            },
+            {
+                'name': 'Commuter Mix',
+                'description': 'Episodes between 20-40 minutes, ideal for average commute times',
+                'min_duration': 1200,  # 20 minutes
+                'max_duration': 2400,  # 40 minutes
+                'sort_order': 'date_desc',
+                'icon_name': 'ph-train'
+            },
+            {
+                'name': 'Almost Done',
+                'description': 'Episodes you\'re close to finishing (75%+ complete)',
+                'min_duration': None,
+                'max_duration': None,
+                'sort_order': 'date_asc',
+                'include_unplayed': False,
+                'include_partially_played': True,
+                'include_played': False,
+                'play_progress_min': 75.0,
+                'play_progress_max': None,
+                'icon_name': 'ph-hourglass'
+            }
+        ]
+
+        # Insert system playlists for background tasks user (UserID = 1)
+        for playlist in system_playlists:
+            try:
+                # First check if this playlist already exists
+                if db_type == "postgresql":
+                    cursor.execute("""
+                        SELECT COUNT(*)
+                        FROM "Playlists"
+                        WHERE UserID = 1 AND Name = %s AND IsSystemPlaylist = TRUE
+                    """, (playlist['name'],))
+                else:
+                    cursor.execute("""
+                        SELECT COUNT(*)
+                        FROM Playlists
+                        WHERE UserID = 1 AND Name = %s AND IsSystemPlaylist = TRUE
+                    """, (playlist['name'],))
+
+                if cursor.fetchone()[0] == 0:
+                    if db_type == "postgresql":
+                        cursor.execute("""
+                            INSERT INTO "Playlists" (
+                                UserID,
+                                Name,
+                                Description,
+                                IsSystemPlaylist,
+                                MinDuration,
+                                MaxDuration,
+                                SortOrder,
+                                GroupByPodcast,
+                                IncludeUnplayed,
+                                IncludePartiallyPlayed,
+                                IncludePlayed,
+                                IconName,
+                                TimeFilterHours,
+                                PlayProgressMin,
+                                PlayProgressMax
+                            ) VALUES (
+                                1, %s, %s, TRUE, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                            )
+                        """, (
+                            playlist['name'],
+                            playlist['description'],
+                            playlist.get('min_duration'),
+                            playlist.get('max_duration'),
+                            playlist.get('sort_order', 'date_asc'),
+                            playlist.get('group_by_podcast', False),
+                            playlist.get('include_unplayed', True),
+                            playlist.get('include_partially_played', True),
+                            playlist.get('include_played', False),
+                            playlist.get('icon_name', 'ph-playlist'),
+                            playlist.get('time_filter_hours'),
+                            playlist.get('play_progress_min'),
+                            playlist.get('play_progress_max')
+                        ))
+                    else:
+                        cursor.execute("""
+                            INSERT INTO Playlists (
+                                UserID,
+                                Name,
+                                Description,
+                                IsSystemPlaylist,
+                                MinDuration,
+                                MaxDuration,
+                                SortOrder,
+                                GroupByPodcast,
+                                IncludeUnplayed,
+                                IncludePartiallyPlayed,
+                                IncludePlayed,
+                                IconName,
+                                TimeFilterHours,
+                                PlayProgressMin,
+                                PlayProgressMax
+                            ) VALUES (
+                                1, %s, %s, TRUE, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                            )
+                        """, (
+                            playlist['name'],
+                            playlist['description'],
+                            playlist.get('min_duration'),
+                            playlist.get('max_duration'),
+                            playlist.get('sort_order', 'date_asc'),
+                            playlist.get('group_by_podcast', False),
+                            playlist.get('include_unplayed', True),
+                            playlist.get('include_partially_played', True),
+                            playlist.get('include_played', False),
+                            playlist.get('icon_name', 'ph-playlist'),
+                            playlist.get('time_filter_hours'),
+                            playlist.get('play_progress_min'),
+                            playlist.get('play_progress_max')
+                        ))
+                    
+                    logger.info(f"Created system playlist: {playlist['name']}")
+                else:
+                    logger.info(f"System playlist already exists: {playlist['name']}")
+
+            except Exception as e:
+                logger.error(f"Error creating system playlist {playlist['name']}: {e}")
+                continue
+
+        logger.info("System playlists creation completed")
         
     finally:
         cursor.close()

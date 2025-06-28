@@ -162,9 +162,40 @@ func ApplyMigration(db *sql.DB, migration Migration, dbType string) error {
 	return nil
 }
 
+// checkRequiredTables verifies that required PinePods tables exist before running migrations
+func checkRequiredTables(db *sql.DB, dbType string) error {
+	log.Println("Checking for required PinePods tables...")
+	
+	requiredTables := []string{"Users", "GpodderDevices"}
+	
+	for _, table := range requiredTables {
+		var query string
+		if dbType == "postgresql" {
+			query = `SELECT 1 FROM "` + table + `" LIMIT 1`
+		} else {
+			query = `SELECT 1 FROM ` + table + ` LIMIT 1`
+		}
+		
+		_, err := db.Exec(query)
+		if err != nil {
+			log.Printf("Required table %s does not exist or is not accessible: %v", table, err)
+			return fmt.Errorf("required table %s does not exist - please ensure PinePods main migrations have run first", table)
+		}
+		log.Printf("Required table %s exists", table)
+	}
+	
+	log.Println("All required tables found")
+	return nil
+}
+
 // RunMigrations runs all pending migrations
 func RunMigrations(db *sql.DB, dbType string) error {
 	log.Println("Starting gpodder API migrations...")
+
+	// Check that required PinePods tables exist first
+	if err := checkRequiredTables(db, dbType); err != nil {
+		return fmt.Errorf("prerequisite check failed: %w", err)
+	}
 
 	// Ensure migrations table exists
 	if err := EnsureMigrationsTable(db, dbType); err != nil {

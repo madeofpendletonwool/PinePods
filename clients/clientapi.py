@@ -6085,13 +6085,15 @@ async def get_user_feed(
     request: Request,
     user_id: int,
     api_key: str,  # Now a query parameter
-    limit: int = 100,
-    podcast_id: Optional[List[int]] = None,
+    limit: int = 1000,
+    podcast_id: Optional[int] = None,
     source_type: str = Query(None, alias='type'),
     cnx=Depends(get_database_connection)
 ):
     """Get RSS feed for all podcasts or a specific podcast"""
     print(f'user: {user_id}, api: {api_key}')
+    print(f'podcast_id parameter: {podcast_id}, type: {type(podcast_id)}')
+    print(f'podcast_id_list will be: {[podcast_id] if podcast_id is not None else None}')
     try:
         if reverse_proxy == "True":
             domain = f'{proxy_protocol}://{proxy_host}'
@@ -6099,7 +6101,10 @@ async def get_user_feed(
             domain = f'{request.url.scheme}://{request.url.hostname}'
 
 
-        rss_key = database_functions.functions.get_rss_key_if_valid(cnx, database_type, api_key, podcast_id)
+        # Convert single podcast_id to list format if provided
+        podcast_id_list = [podcast_id] if podcast_id is not None else None
+
+        rss_key = database_functions.functions.get_rss_key_if_valid(cnx, database_type, api_key, podcast_id_list)
 
         # TODO: remove this once backwards compatibility is no longer needed
         if not rss_key:
@@ -6119,7 +6124,7 @@ async def get_user_feed(
             limit,
             source_type,
             domain,
-            podcast_id
+            podcast_id=podcast_id_list
         )
         return Response(
             content=feed_content,
@@ -6143,6 +6148,27 @@ async def toggle_rss_feeds(
 
         new_status = database_functions.functions.set_rss_feed_status(cnx, database_type, user_id, enable)
         return {"status": "success", "enabled": new_status}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/data/rss_key")
+async def get_user_rss_key(
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Get the RSS key for the current user"""
+    try:
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        if not key_id:
+            raise HTTPException(status_code=403, detail="Invalid API key")
+
+        rss_key = database_functions.functions.get_user_rss_key(cnx, database_type, key_id)
+        if not rss_key:
+            raise HTTPException(status_code=404, detail="No RSS key found. Please enable RSS feeds first.")
+
+        return {"rss_key": rss_key}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -6764,9 +6790,9 @@ async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_conne
         print('start of startup')
         # Verify if the API key is valid
         is_valid = database_functions.functions.verify_api_key(cnx, database_type, request.api_key)
-        is_web_key = database_functions.functions.get_web_key(cnx, database_type)
+        web_key = database_functions.functions.get_web_key(cnx, database_type)
         # Check if the provided API key is the web key
-        is_web_key = request.api_key == base_webkey.web_key
+        is_web_key = request.api_key == web_key
 
         if not is_valid or not is_web_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or unauthorized API key")
