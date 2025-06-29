@@ -151,8 +151,13 @@ pub fn queue() -> Html {
                 } else {
                     {
                         html! {
-                            <div>
-                            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Queue"}</h1>
+                            // Modern mobile-friendly queue page with full box title
+                            <div class="mb-2">
+                                // Full box page indicator
+                                <div class="bg-background-color px-4 py-2 rounded-lg border-2 border-color text-sm font-medium text-text-color-muted flex items-center gap-2 w-fit">
+                                    <i class="ph ph-queue text-accent-color"></i>
+                                    {"Queue"}
+                                </div>
                             </div>
                         }
                     }

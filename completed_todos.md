@@ -10,14 +10,24 @@ Major Version:
 - [ ] Make sure youtube entirely works on homepage
 - [ ] Fix Virtual Line Spacing on Playlist Page
 - [ ] Update /home/collinp/Documents/github/PinePods/web/src-tauri/com.gooseberrydevelopment.pinepods.metainfo.xml file along with flatpak automation. This must be done on each release
+- [ ] Fix episode spacing on queue page. The context button still shows even on smallest screens
+- [ ] Check youtube download Issues when changing the download time
 
 0.7.9
 
-- [] Check youtube download Issues when changing the download time
-- [] Fix downloads Layout
-- [] Finish implementing long finger press - fix on iOS
-- [] Finish super small screen visual Improvements
+- [] Finish implementing long finger press - fix on iOS (close, it doesn't auto close when clicking away currently)
 - [] Finish making UI css adjustments
+- [] Fix error where refreshing on episode layout page causes panic
+- [] Test everything in mysql
+- [] Test everything in postgres
+- [] Test upgrades from previous in postgres
+- [] Test upgrades from previous in mysql
+- [] Test fresh postgres
+- [] Test fresh mysql
+- [] Package upgrades
+- [] Test tauri
+- [x] Fix downloads Layout
+- [x] Finish super small screen visual Improvements
 - [x] Return Gpodder info as part of get_stats
 - [x] Allow for custom server Timezone
 - [x] display gpodder info on the user stats page

@@ -199,13 +199,15 @@ pub fn saved() -> Html {
                 } else {
                     html! {
                         <>
-                            <div>
-                                <h1 class="text-2xl item_container-text font-bold text-center mb-4">{"Saved"}</h1>
-                            </div>
-                            // Modern mobile-friendly filter bar
-                            <div class="mb-6 space-y-4">
-                                // Combined search and sort bar (seamless design)
-                                <div class="flex gap-0 h-12">
+                            // Modern mobile-friendly filter bar with tab-style page title
+                            <div class="mb-6 space-y-4 mt-4">
+                                // Combined search and sort bar with tab-style title (seamless design)
+                                <div class="flex gap-0 h-12 relative">
+                                    // Tab-style page indicator
+                                    <div class="absolute -top-6 left-4 bg-background-color px-3 py-1 rounded-t-lg border-2 border-b-0 border-color text-xs font-medium text-text-color-muted flex items-center gap-1">
+                                        <i class="ph ph-bookmark text-accent-color"></i>
+                                        {"Saved"}
+                                    </div>
                                     // Search input (left half)
                                     <div class="flex-1 relative">
                                         <input
@@ -288,13 +290,13 @@ pub fn saved() -> Html {
                                             })
                                         }
                                         class={classes!(
-                                            "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2", 
-                                            "rounded-full", "border-2", "transition-all", "duration-200", 
+                                            "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2",
+                                            "rounded-full", "border-2", "transition-all", "duration-200",
                                             "whitespace-nowrap", "min-h-[44px]",
-                                            if *show_completed { 
-                                                "bg-accent-color text-white border-accent-color" 
-                                            } else { 
-                                                "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white" 
+                                            if *show_completed {
+                                                "bg-accent-color text-white border-accent-color"
+                                            } else {
+                                                "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white"
                                             }
                                         )}
                                     >
@@ -314,13 +316,13 @@ pub fn saved() -> Html {
                                             })
                                         }
                                         class={classes!(
-                                            "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2", 
-                                            "rounded-full", "border-2", "transition-all", "duration-200", 
+                                            "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2",
+                                            "rounded-full", "border-2", "transition-all", "duration-200",
                                             "whitespace-nowrap", "min-h-[44px]",
-                                            if *show_in_progress { 
-                                                "bg-accent-color text-white border-accent-color" 
-                                            } else { 
-                                                "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white" 
+                                            if *show_in_progress {
+                                                "bg-accent-color text-white border-accent-color"
+                                            } else {
+                                                "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white"
                                             }
                                         )}
                                     >
@@ -529,8 +531,11 @@ pub fn saved_episode(props: &SavedEpisodeProps) -> Html {
     };
 
     // Setup long press detection
-    let (on_touch_start, on_touch_end, on_touch_move, is_long_press) =
+    let (on_touch_start, on_touch_end, on_touch_move, is_long_press_state, is_pressing_state) =
         use_long_press(on_long_press, Some(600)); // 600ms for long press
+
+    let is_long_press = is_long_press_state;
+    let is_pressing = is_pressing_state;
 
     // When long press is detected through the hook, update our state
     {
@@ -690,6 +695,7 @@ pub fn saved_episode(props: &SavedEpisodeProps) -> Html {
         *context_menu_position,
         close_context_menu,
         context_button_ref,
+        is_pressing,
     );
 
     item
