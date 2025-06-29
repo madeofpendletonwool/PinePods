@@ -17,6 +17,7 @@ Major Version:
 - [] Fix downloads Layout
 - [] Finish implementing long finger press - fix on iOS
 - [] Finish super small screen visual Improvements
+- [] Finish making UI css adjustments
 - [x] Return Gpodder info as part of get_stats
 - [x] Allow for custom server Timezone
 - [x] display gpodder info on the user stats page
