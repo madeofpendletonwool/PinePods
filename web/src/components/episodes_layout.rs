@@ -2430,16 +2430,17 @@ pub fn episode_layout() -> Html {
                                 }
                             }
                             {
-                                // Add this right after the podcast info section but before the episode list
+                                // Modern mobile-friendly filter bar
                                 html! {
-                                    <div class="flex justify-between items-center mb-4">
-                                        <div class="flex gap-4">
-                                            // Search input (existing)
-                                            <div class="filter-dropdown download-button relative">
+                                    <div class="mb-6 space-y-4">
+                                        // Combined search and sort bar (seamless design)
+                                        <div class="flex gap-0 h-12">
+                                            // Search input (left half)
+                                            <div class="flex-1 relative">
                                                 <input
                                                     type="text"
-                                                    class="filter-input appearance-none pr-8"
-                                                    placeholder="Search"
+                                                    class="w-full h-full pl-4 pr-12 text-base rounded-l-xl border-2 border-r border-color bg-background-color text-text-color placeholder-text-color-muted focus:outline-none focus:border-accent-color focus:z-10 relative transition-colors"
+                                                    placeholder="Search podcast episodes..."
                                                     value={(*episode_search_term).clone()}
                                                     oninput={
                                                         let episode_search_term = episode_search_term.clone();
@@ -2450,90 +2451,13 @@ pub fn episode_layout() -> Html {
                                                         })
                                                     }
                                                 />
-                                                <i class="ph ph-magnifying-glass absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                                                <i class="ph ph-magnifying-glass absolute right-4 top-1/2 -translate-y-1/2 text-xl text-text-color-muted pointer-events-none"></i>
                                             </div>
 
-                                            // Clear filter button
-                                            <button
-                                                onclick={
-                                                    let show_in_progress = show_in_progress.clone();
-                                                    let episode_search_term = episode_search_term.clone();
-                                                    let completed_filter_state = completed_filter_state.clone();
-                                                    Callback::from(move |_| {
-                                                        completed_filter_state.set(CompletedFilter::ShowAll);
-                                                        show_in_progress.set(false);
-                                                        episode_search_term.set(String::new());
-                                                    })
-                                                }
-                                                class="filter-button h-14 font-medium px-2 rounded inline-flex items-center"
-                                            >
-                                                <i class="ph ph-broom text-2xl"></i>
-                                                <span class="text-lg ml-2 hidden md:inline">{"Clear"}</span>
-                                            </button>
-
-                                            // Completed filter button
-                                            <button
-                                                onclick={
-                                                    let completed_filter_state = completed_filter_state.clone();
-                                                    Callback::from(move |_| {
-                                                        completed_filter_state.set(match *completed_filter_state {
-                                                            CompletedFilter::ShowAll => CompletedFilter::ShowOnly,
-                                                            CompletedFilter::ShowOnly => CompletedFilter::Hide,
-                                                            CompletedFilter::Hide => CompletedFilter::ShowAll,
-                                                        });
-                                                    })
-                                                }
-                                                title={completed_title}
-                                                class={classes!(
-                                                    "filter-button",
-                                                    "h-14",
-                                                    "font-medium",
-                                                    "px-2",
-                                                    "rounded",
-                                                    "inline-flex",
-                                                    "items-center",
-                                                    match *completed_filter_state {
-                                                        CompletedFilter::ShowOnly => "bg-accent-color",
-                                                        CompletedFilter::Hide => "bg-alert-color",
-                                                        CompletedFilter::ShowAll => ""
-                                                    }
-                                                )}
-                                            >
-                                                <i class={classes!("ph", completed_icon, "text-2xl")}></i>
-                                                <span class="text-lg ml-2 hidden md:inline">{completed_text}</span>
-                                            </button>
-
-                                            // In Progress filter button
-                                            <button
-                                                onclick={
-                                                    let show_in_progress = show_in_progress.clone();
-                                                    Callback::from(move |_| {
-                                                        show_in_progress.set(!*show_in_progress);
-                                                        // Ensure only one filter is active at a time
-                                                        // if !*show_in_progress {
-                                                        //     completed_filter_state.set(CompletedFilter::ShowAll);
-                                                        // }
-                                                    })
-                                                }
-                                                class={classes!(
-                                                    "filter-button",
-                                                    "h-14",
-                                                    "font-medium",
-                                                    "px-2",
-                                                    "rounded",
-                                                    "inline-flex",
-                                                    "items-center",
-                                                    if *show_in_progress { "bg-accent-color" } else { "" }
-                                                )}
-                                            >
-                                                <i class="ph ph-hourglass-medium text-2xl"></i>
-                                                <span class="text-lg ml-2 hidden md:inline">{"In Progress"}</span>
-                                            </button>
-
-                                            // Sort dropdown (existing)
-                                            <div class="filter-dropdown font-bold rounded relative">
+                                            // Sort dropdown (right half)
+                                            <div class="flex-shrink-0 relative min-w-[160px]">
                                                 <select
-                                                    class="category-select appearance-none pr-8"
+                                                    class="appearance-none w-full h-full pl-4 pr-12 text-sm font-medium rounded-r-xl border-2 border-l-0 border-color bg-background-color text-text-color focus:outline-none focus:border-accent-color focus:z-10 relative transition-colors"
                                                     onchange={
                                                         let episode_sort_direction = episode_sort_direction.clone();
                                                         Callback::from(move |e: Event| {
@@ -2555,10 +2479,83 @@ pub fn episode_layout() -> Html {
                                                     <option value="oldest">{"Oldest First"}</option>
                                                     <option value="shortest">{"Shortest First"}</option>
                                                     <option value="longest">{"Longest First"}</option>
-                                                    <option value="title_az">{"Title A to Z"}</option>
-                                                    <option value="title_za">{"Title Z to A"}</option>
+                                                    <option value="title_az">{"Title A-Z"}</option>
+                                                    <option value="title_za">{"Title Z-A"}</option>
                                                 </select>
+                                                <i class="ph ph-caret-down absolute right-4 top-1/2 -translate-y-1/2 text-lg text-text-color-muted pointer-events-none"></i>
                                             </div>
+                                        </div>
+
+                                        // Filter chips (horizontal scroll on mobile)
+                                        <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+                                            // Clear all filters
+                                            <button
+                                                onclick={
+                                                    let show_in_progress = show_in_progress.clone();
+                                                    let episode_search_term = episode_search_term.clone();
+                                                    let completed_filter_state = completed_filter_state.clone();
+                                                    Callback::from(move |_| {
+                                                        completed_filter_state.set(CompletedFilter::ShowAll);
+                                                        show_in_progress.set(false);
+                                                        episode_search_term.set(String::new());
+                                                    })
+                                                }
+                                                class="filter-chip flex items-center gap-2 px-4 py-2 rounded-full border-2 border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white transition-all duration-200 whitespace-nowrap min-h-[44px]"
+                                            >
+                                                <i class="ph ph-broom text-lg"></i>
+                                                <span class="text-sm font-medium">{"Clear All"}</span>
+                                            </button>
+
+                                            // Completed filter chip (3-state)
+                                            <button
+                                                onclick={
+                                                    let completed_filter_state = completed_filter_state.clone();
+                                                    Callback::from(move |_| {
+                                                        completed_filter_state.set(match *completed_filter_state {
+                                                            CompletedFilter::ShowAll => CompletedFilter::ShowOnly,
+                                                            CompletedFilter::ShowOnly => CompletedFilter::Hide,
+                                                            CompletedFilter::Hide => CompletedFilter::ShowAll,
+                                                        });
+                                                    })
+                                                }
+                                                title={completed_title}
+                                                class={classes!(
+                                                    "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2", 
+                                                    "rounded-full", "border-2", "transition-all", "duration-200", 
+                                                    "whitespace-nowrap", "min-h-[44px]",
+                                                    match *completed_filter_state {
+                                                        CompletedFilter::ShowOnly => "bg-accent-color text-white border-accent-color",
+                                                        CompletedFilter::Hide => "bg-alert-color text-white border-alert-color",
+                                                        CompletedFilter::ShowAll => "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white"
+                                                    }
+                                                )}
+                                            >
+                                                <i class={classes!("ph", completed_icon, "text-lg")}></i>
+                                                <span class="text-sm font-medium">{completed_text}</span>
+                                            </button>
+
+                                            // In progress filter chip
+                                            <button
+                                                onclick={
+                                                    let show_in_progress = show_in_progress.clone();
+                                                    Callback::from(move |_| {
+                                                        show_in_progress.set(!*show_in_progress);
+                                                    })
+                                                }
+                                                class={classes!(
+                                                    "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2", 
+                                                    "rounded-full", "border-2", "transition-all", "duration-200", 
+                                                    "whitespace-nowrap", "min-h-[44px]",
+                                                    if *show_in_progress { 
+                                                        "bg-accent-color text-white border-accent-color" 
+                                                    } else { 
+                                                        "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white" 
+                                                    }
+                                                )}
+                                            >
+                                                <i class="ph ph-hourglass-medium text-lg"></i>
+                                                <span class="text-sm font-medium">{"In Progress"}</span>
+                                            </button>
                                         </div>
                                     </div>
                                 }
