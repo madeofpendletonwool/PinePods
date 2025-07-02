@@ -17,18 +17,20 @@ Major Version:
 
 - [] Finish implementing long finger press - fix on iOS (close, it doesn't auto close when clicking away currently)
 - [] Finish making UI css adjustments
-- [] Fix error where refreshing on episode layout page causes panic
+- [x] Fix error where refreshing on episode layout page causes panic
 - [] Test everything in mysql
 - [] Test everything in postgres
 - [] Test upgrades from previous in postgres
 - [] Test upgrades from previous in mysql
 - [] Test fresh postgres
 - [] Test fresh mysql
+- [] External Podcast sync
 - [] Package upgrades
 - [] Test tauri
 - [x] Fix downloads Layout
 - [x] Finish super small screen visual Improvements
 - [x] Return Gpodder info as part of get_stats
+
 - [x] Allow for custom server Timezone
 - [x] display gpodder info on the user stats page
 - [x] 100 RSS feed limit

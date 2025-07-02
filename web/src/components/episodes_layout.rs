@@ -1634,32 +1634,36 @@ pub fn episode_layout() -> Html {
                             </div>
 
                             {
-                                if podcast_info.unwrap().is_youtube.unwrap() {
-                                    html! {
-                                        <div class="mt-4">
-                                            <label for="feed-cutoff" class="block mb-2 text-sm font-medium">{"Youtube Download Episode Limit (days):"}</label>
-                                            <div class="flex items-center space-x-2">
-                                                <input
-                                                    type="number"
-                                                    id="feed-cutoff"
-                                                    value={(*feed_cutoff_days_input).clone()}
-                                                    class="email-input border text-sm rounded-lg p-2.5 w-24"
-                                                    oninput={feed_cutoff_days_input_handler}
-                                                    min="0"
-                                                />
-                                                <span class="text-sm text-gray-500">{"0 = No limit"}</span>
-                                                <button
-                                                    class="download-button font-bold py-2 px-4 rounded"
-                                                    onclick={save_feed_cutoff_days}
-                                                >
-                                                    {"Save"}
-                                                </button>
+                                if let Some(info) = &podcast_info {
+                                    if info.is_youtube.unwrap_or(false) {
+                                        html! {
+                                            <div class="mt-4">
+                                                <label for="feed-cutoff" class="block mb-2 text-sm font-medium">{"Youtube Download Episode Limit (days):"}</label>
+                                                <div class="flex items-center space-x-2">
+                                                    <input
+                                                        type="number"
+                                                        id="feed-cutoff"
+                                                        value={(*feed_cutoff_days_input).clone()}
+                                                        class="email-input border text-sm rounded-lg p-2.5 w-24"
+                                                        oninput={feed_cutoff_days_input_handler}
+                                                        min="0"
+                                                    />
+                                                    <span class="text-sm text-gray-500">{"0 = No limit"}</span>
+                                                    <button
+                                                        class="download-button font-bold py-2 px-4 rounded"
+                                                        onclick={save_feed_cutoff_days}
+                                                    >
+                                                        {"Save"}
+                                                    </button>
+                                                </div>
+                                                <p class="text-xs text-gray-500 mt-1">{"Adjusts how long Youtube Feed audio is retained when downloaded to be streamed via the server. Youtube episodes will be removed after to free up space."}</p>
                                             </div>
-                                            <p class="text-xs text-gray-500 mt-1">{"Adjusts how long Youtube Feed audio is retained when downloaded to be streamed via the server. Youtube episodes will be removed after to free up space."}</p>
-                                        </div>
+                                        }
+                                    } else {
+                                        html! {}  // Render nothing if it's not a YouTube podcast
                                     }
                                 } else {
-                                    html! {}  // Render nothing if it's not a YouTube podcast
+                                    html! {}  // Render nothing if podcast_info is None
                                 }
                             }
                             // Categories section of the modal
@@ -2561,9 +2565,9 @@ pub fn episode_layout() -> Html {
                                 }
                             }
                             {
-                                if let Some(_) = podcast_feed_results {
-                                    let podcast_link_clone = clicked_podcast_info.clone().unwrap().feedurl.clone();
-                                    let podcast_title = clicked_podcast_info.clone().unwrap().podcastname.clone();
+                                if let (Some(_), Some(podcast_info)) = (podcast_feed_results, &clicked_podcast_info) {
+                                    let podcast_link_clone = podcast_info.feedurl.clone();
+                                    let podcast_title = podcast_info.podcastname.clone();
 
                                     html! {
                                         <PodcastEpisodeVirtualList

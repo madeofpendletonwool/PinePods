@@ -1523,20 +1523,20 @@ def remove_old_youtube_videos(cnx, database_type: str, podcast_id: int, cutoff_d
             placeholders = ','.join(['%s'] * len(video_ids))
 
             if database_type == "postgresql":
-                # Delete from all related tables
-                delete_playlist_contents = f'DELETE FROM "PlaylistContents" WHERE EpisodeID IN ({placeholders})'
-                delete_history = f'DELETE FROM "UserEpisodeHistory" WHERE EpisodeID IN ({placeholders})'
-                delete_downloaded = f'DELETE FROM "DownloadedEpisodes" WHERE EpisodeID IN ({placeholders})'
-                delete_saved = f'DELETE FROM "SavedEpisodes" WHERE EpisodeID IN ({placeholders})'
-                delete_queue = f'DELETE FROM "EpisodeQueue" WHERE EpisodeID IN ({placeholders})'
+                # Delete from all related YouTube video tables
+                delete_playlist_contents = f'DELETE FROM "PlaylistContents" WHERE VideoID IN ({placeholders})'
+                delete_history = f'DELETE FROM "UserVideoHistory" WHERE VideoID IN ({placeholders})'
+                delete_downloaded = f'DELETE FROM "DownloadedVideos" WHERE VideoID IN ({placeholders})'
+                delete_saved = f'DELETE FROM "SavedVideos" WHERE VideoID IN ({placeholders})'
+                delete_queue = f'DELETE FROM "EpisodeQueue" WHERE EpisodeID IN ({placeholders}) AND is_youtube = true'
                 delete_videos = f'DELETE FROM "YouTubeVideos" WHERE VideoID IN ({placeholders})'
             else:
-                # Delete from all related tables
-                delete_playlist_contents = f'DELETE FROM PlaylistContents WHERE EpisodeID IN ({placeholders})'
-                delete_history = f'DELETE FROM UserEpisodeHistory WHERE EpisodeID IN ({placeholders})'
-                delete_downloaded = f'DELETE FROM DownloadedEpisodes WHERE EpisodeID IN ({placeholders})'
-                delete_saved = f'DELETE FROM SavedEpisodes WHERE EpisodeID IN ({placeholders})'
-                delete_queue = f'DELETE FROM EpisodeQueue WHERE EpisodeID IN ({placeholders})'
+                # Delete from all related YouTube video tables
+                delete_playlist_contents = f'DELETE FROM PlaylistContents WHERE VideoID IN ({placeholders})'
+                delete_history = f'DELETE FROM UserVideoHistory WHERE VideoID IN ({placeholders})'
+                delete_downloaded = f'DELETE FROM DownloadedVideos WHERE VideoID IN ({placeholders})'
+                delete_saved = f'DELETE FROM SavedVideos WHERE VideoID IN ({placeholders})'
+                delete_queue = f'DELETE FROM EpisodeQueue WHERE EpisodeID IN ({placeholders}) AND is_youtube = 1'
                 delete_videos = f'DELETE FROM YouTubeVideos WHERE VideoID IN ({placeholders})'
 
             # Execute all deletion statements
