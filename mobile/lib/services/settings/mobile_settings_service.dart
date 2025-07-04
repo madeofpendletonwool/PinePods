@@ -66,6 +66,19 @@ class MobileSettingsService extends SettingsService {
   }
 
   @override
+  int? get pinepodsUserId => _sharedPreferences.getInt('pinepods_user_id');
+
+  @override
+  set pinepodsUserId(int? value) {
+    if (value == null) {
+      _sharedPreferences.remove('pinepods_user_id');
+    } else {
+      _sharedPreferences.setInt('pinepods_user_id', value);
+    }
+    settingsNotifier.sink.add('pinepods_user_id');
+  }
+
+  @override
   bool get deleteDownloadedPlayedEpisodes => _sharedPreferences.getBool('deleteDownloadedPlayedEpisodes') ?? false;
 
   @override

@@ -27,7 +27,7 @@ dependencies:
   flutter_launcher_icons: ^0.14.2
   flutter_spinkit: ^5.0.0
   html: ^0.15.0
-  intl: ^0.19.0
+  intl: ^0.20.2
   intl_translation: ^0.20.0
   just_audio: ^0.9.46
   logging: ^1.0.2
@@ -65,8 +65,8 @@ dependency_overrides:
   flutter_layout_grid: ^2.0.5
 
 flutter_icons:
-  image_path_android: "../images/favicon.png"
-  image_path_ios: "../images/icon-512.png"
+  image_path_android: "assets/images/favicon.png"
+  image_path_ios: "assets/images/icon-192.png"
   remove_alpha_ios: true
   android: true
   ios: true
@@ -75,18 +75,17 @@ flutter:
   uses-material-design: true
 
   assets:
-    - ../images/favicon.png
-    - ../images/icon-192.png
-    - ../images/icon-512.png
-    - ../images/1.jpg
-    - ../images/2.jpg
-    - ../images/3.jpg
-    - ../images/4.jpg
-    - ../images/5.jpg
-    - ../images/6.jpg
-    - ../images/7.jpg
-    - ../images/8.jpg
-    - ../images/9.jpg
+    - assets/images/favicon.png
+    - assets/images/icon-192.png
+    - assets/images/1.jpg
+    - assets/images/2.jpg
+    - assets/images/3.jpg
+    - assets/images/4.jpg
+    - assets/images/5.jpg
+    - assets/images/6.jpg
+    - assets/images/7.jpg
+    - assets/images/8.jpg
+    - assets/images/9.jpg
 
     # Certificate authorities
     - assets/ca/lets-encrypt-r3.pem

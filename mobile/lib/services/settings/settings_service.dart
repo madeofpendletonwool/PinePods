@@ -68,4 +68,7 @@ abstract class SettingsService {
 
   String? get pinepodsApiKey;
   set pinepodsApiKey(String? value);
+
+  int? get pinepodsUserId;
+  set pinepodsUserId(int? value);
 }

@@ -22,7 +22,7 @@ ThemeData _buildLightTheme() {
     bottomAppBarTheme: const BottomAppBarTheme().copyWith(
       color: const Color(0xffffffff),
     ),
-    cardTheme: const CardTheme().copyWith(
+    cardTheme: const CardThemeData().copyWith(
       color: const Color(0xffffa900),
       shadowColor: const Color(0xfff57c00),
     ),
@@ -92,7 +92,7 @@ ThemeData _buildDarkTheme() {
     bottomAppBarTheme: const BottomAppBarTheme().copyWith(
       color: const Color(0xff222222),
     ),
-    cardTheme: const CardTheme().copyWith(
+    cardTheme: const CardThemeData().copyWith(
       color: const Color(0xff444444),
       shadowColor: const Color(0x77ffffff),
     ),

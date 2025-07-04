@@ -1,9 +1,8 @@
 // lib/ui/auth/pinepods_startup_login.dart
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/services/pinepods/login_service.dart';
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'dart:math';
 
 class PinepodsStartupLogin extends StatefulWidget {
@@ -22,10 +21,15 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
   final _serverController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _mfaController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
   bool _isLoading = false;
+  bool _showMfaField = false;
   String _errorMessage = '';
+  String? _tempServerUrl;
+  String? _tempApiKey;
+  int? _tempUserId;
 
   // List of background images - you can add your own images to assets/images/
   final List<String> _backgroundImages = [
@@ -50,64 +54,6 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
     _selectedBackground = _backgroundImages[random.nextInt(_backgroundImages.length)];
   }
 
-  Future<bool> _verifyPinepodsInstance(String serverUrl) async {
-    final normalizedUrl = serverUrl.trim().replaceAll(RegExp(r'/$'), '');
-    final url = Uri.parse('$normalizedUrl/api/pinepods_check');
-
-    try {
-      final response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['pinepods_instance'] == true;
-      }
-      return false;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Future<String?> _login(String serverUrl, String username, String password) async {
-    final normalizedUrl = serverUrl.trim().replaceAll(RegExp(r'/$'), '');
-    final credentials = base64Encode(utf8.encode('$username:$password'));
-    final authHeader = 'Basic $credentials';
-    final url = Uri.parse('$normalizedUrl/api/data/get_key');
-
-    try {
-      final response = await http.get(
-        url,
-        headers: {'Authorization': authHeader},
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['retrieved_key'];
-      }
-      return null;
-    } catch (e) {
-      return null;
-    }
-  }
-
-  Future<bool> _verifyApiKey(String serverUrl, String apiKey) async {
-    final url = Uri.parse('$serverUrl/api/data/verify_key');
-
-    try {
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': apiKey},
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['status'] == 'success';
-      }
-      return false;
-    } catch (e) {
-      return false;
-    }
-  }
-
   Future<void> _connectToPinepods() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -120,54 +66,47 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
 
     try {
       final serverUrl = _serverController.text.trim();
+      final username = _usernameController.text.trim();
+      final password = _passwordController.text;
+      final mfaCode = _showMfaField ? _mfaController.text.trim() : null;
 
-      // Step 1: Verify this is a PinePods server
-      final isPinepods = await _verifyPinepodsInstance(serverUrl);
-      if (!isPinepods) {
-        setState(() {
-          _errorMessage = 'Not a valid PinePods server';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // Step 2: Get API key
-      final apiKey = await _login(
+      final result = await PinepodsLoginService.login(
         serverUrl,
-        _usernameController.text.trim(),
-        _passwordController.text,
+        username,
+        password,
+        mfaCode: mfaCode,
       );
 
-      if (apiKey == null) {
+      if (result.isSuccess) {
+        // Save the connection details including user ID
+        final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+        settingsBloc.setPinepodsServer(result.serverUrl!);
+        settingsBloc.setPinepodsApiKey(result.apiKey!);
+        settingsBloc.setPinepodsUserId(result.userId!);
+
         setState(() {
-          _errorMessage = 'Login failed. Check your credentials.';
           _isLoading = false;
         });
-        return;
-      }
 
-      // Step 3: Verify API key
-      final isValidKey = await _verifyApiKey(serverUrl, apiKey);
-      if (!isValidKey) {
+        // Call success callback
+        if (widget.onLoginSuccess != null) {
+          widget.onLoginSuccess!();
+        }
+      } else if (result.requiresMfa) {
+        // Store temporary credentials and show MFA field
         setState(() {
-          _errorMessage = 'API key verification failed';
+          _tempServerUrl = result.serverUrl;
+          _tempApiKey = result.apiKey;
+          _tempUserId = result.userId;
+          _showMfaField = true;
+          _isLoading = false;
+          _errorMessage = 'Please enter your MFA code';
+        });
+      } else {
+        setState(() {
+          _errorMessage = result.errorMessage ?? 'Login failed';
           _isLoading = false;
         });
-        return;
-      }
-
-      // Step 4: Save the connection details
-      var settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-      settingsBloc.setPinepodsServer(serverUrl);
-      settingsBloc.setPinepodsApiKey(apiKey);
-
-      setState(() {
-        _isLoading = false;
-      });
-
-      // Call success callback
-      if (widget.onLoginSuccess != null) {
-        widget.onLoginSuccess!();
       }
     } catch (e) {
       setState(() {
@@ -176,6 +115,18 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
       });
     }
   }
+
+  void _resetMfa() {
+    setState(() {
+      _showMfaField = false;
+      _tempServerUrl = null;
+      _tempApiKey = null;
+      _tempUserId = null;
+      _mfaController.clear();
+      _errorMessage = '';
+    });
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -209,10 +160,39 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         // App Logo/Title
-                        Icon(
-                          Icons.headset,
-                          size: 64,
-                          color: Theme.of(context).primaryColor,
+                        Container(
+                          width: 80,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Image.asset(
+                              'assets/images/favicon.png',
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).primaryColor,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Icon(
+                                    Icons.headset,
+                                    size: 48,
+                                    color: Colors.white,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -293,9 +273,48 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                             }
                             return null;
                           },
-                          textInputAction: TextInputAction.done,
-                          onFieldSubmitted: (_) => _connectToPinepods(),
+                          textInputAction: _showMfaField ? TextInputAction.next : TextInputAction.done,
+                          onFieldSubmitted: (_) {
+                            if (!_showMfaField) {
+                              _connectToPinepods();
+                            }
+                          },
+                          enabled: !_showMfaField,
                         ),
+                        
+                        // MFA Field (shown when MFA is required)
+                        if (_showMfaField) ...[
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _mfaController,
+                            decoration: InputDecoration(
+                              labelText: 'MFA Code',
+                              hintText: 'Enter 6-digit code',
+                              prefixIcon: const Icon(Icons.security),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              suffixIcon: IconButton(
+                                icon: const Icon(Icons.close),
+                                onPressed: _resetMfa,
+                                tooltip: 'Cancel MFA',
+                              ),
+                            ),
+                            keyboardType: TextInputType.number,
+                            maxLength: 6,
+                            validator: (value) {
+                              if (_showMfaField && (value == null || value.isEmpty)) {
+                                return 'Please enter your MFA code';
+                              }
+                              if (_showMfaField && value!.length != 6) {
+                                return 'MFA code must be 6 digits';
+                              }
+                              return null;
+                            },
+                            textInputAction: TextInputAction.done,
+                            onFieldSubmitted: (_) => _connectToPinepods(),
+                          ),
+                        ],
 
                         // Error Message
                         if (_errorMessage.isNotEmpty) ...[
@@ -341,9 +360,9 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                               strokeWidth: 2,
                             ),
                           )
-                              : const Text(
-                            'Connect to PinePods',
-                            style: TextStyle(fontSize: 16),
+                              : Text(
+                            _showMfaField ? 'Verify MFA Code' : 'Connect to PinePods',
+                            style: const TextStyle(fontSize: 16),
                           ),
                         ),
 
@@ -374,6 +393,7 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
     _serverController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
+    _mfaController.dispose();
     super.dispose();
   }
 }

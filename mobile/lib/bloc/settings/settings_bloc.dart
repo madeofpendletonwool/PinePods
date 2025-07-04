@@ -29,6 +29,7 @@ class SettingsBloc extends Bloc {
   final BehaviorSubject<int> _layoutMode = BehaviorSubject<int>();
   final BehaviorSubject<String?> _pinepodsServer = BehaviorSubject<String?>();
   final BehaviorSubject<String?> _pinepodsApiKey = BehaviorSubject<String?>();
+  final BehaviorSubject<int?> _pinepodsUserId = BehaviorSubject<int?>();
   var _currentSettings = AppSettings.sensibleDefaults();
 
   SettingsBloc(this._settingsService) {
@@ -61,6 +62,7 @@ class SettingsBloc extends Bloc {
       layout: _settingsService.layoutMode,
       pinepodsServer: _settingsService.pinepodsServer,
       pinepodsApiKey: _settingsService.pinepodsApiKey,
+      pinepodsUserId: _settingsService.pinepodsUserId,
     );
 
     _settings.add(_currentSettings);
@@ -157,6 +159,12 @@ class SettingsBloc extends Bloc {
       _settingsService.pinepodsApiKey = apiKey;
     });
 
+    _pinepodsUserId.listen((userId) {
+      _currentSettings = _currentSettings.copyWith(pinepodsUserId: userId);
+      _settings.add(_currentSettings);
+      _settingsService.pinepodsUserId = userId;
+    });
+
     _layoutMode.listen((mode) {
       _currentSettings = _currentSettings.copyWith(layout: mode);
       _settings.add(_currentSettings);
@@ -196,6 +204,8 @@ class SettingsBloc extends Bloc {
 
   void Function(String?) get setPinepodsApiKey => _pinepodsApiKey.add;
 
+  void Function(int?) get setPinepodsUserId => _pinepodsUserId.add;
+
   AppSettings get currentSettings => _settings.value;
 
   @override
@@ -215,6 +225,7 @@ class SettingsBloc extends Bloc {
     _layoutMode.close();
     _pinepodsServer.close();
     _pinepodsApiKey.close();
+    _pinepodsUserId.close();
     _settings.close();
   }
 }

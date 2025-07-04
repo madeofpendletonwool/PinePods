@@ -46,6 +46,7 @@ import 'package:pinepods_mobile/ui/widgets/search_slide_route.dart';
 import 'package:pinepods_mobile/ui/pinepods/home.dart';
 import 'package:pinepods_mobile/ui/pinepods/feed.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlists.dart';
+import 'package:pinepods_mobile/ui/auth/auth_wrapper.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -190,6 +191,9 @@ class AnytimePodcastAppState extends State<AnytimePodcastApp> {
             podcastService: widget.podcastService!,
           ),
           dispose: (_, value) => value.dispose(),
+        ),
+        Provider<AudioPlayerService>(
+          create: (_) => widget.audioPlayerService,
         )
       ],
       child: MaterialApp(
@@ -211,7 +215,9 @@ class AnytimePodcastAppState extends State<AnytimePodcastApp> {
         theme: theme,
         // Uncomment builder below to enable accessibility checker tool.
         // builder: (context, child) => AccessibilityTools(child: child),
-        home: const AnytimeHomePage(title: 'Anytime Podcast Player'),
+        home: const AuthWrapper(
+          child: AnytimeHomePage(title: 'PinePods Podcast Player'),
+        ),
       ),
     );
   }
@@ -484,34 +490,35 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                 currentIndex: index,
                 onTap: pager.changePage,
                 items: <BottomNavigationBarItem>[
+                  // 0: Home
                   BottomNavigationBarItem(
-                    icon: index == 0 ? const Icon(Icons.library_music) : const Icon(Icons.library_music_outlined),
-                    label: L.of(context)!.library,
-                  ),
-                  // To be fleshed out later.
-                  // BottomNavigationBarItem(
-                  //   icon: index == 0 ? Icon(Icons.article_rounded) : Icon(Icons.article_outlined),
-                  //   label: 'Episodes',
-                  // ),
-                  BottomNavigationBarItem(
-                    icon: index == 4? const Icon(Icons.home) : const Icon(Icons.home_outlined),
+                    icon: index == 0 ? const Icon(Icons.home) : const Icon(Icons.home_outlined),
                     label: 'Home',
                   ),
+                  // 1: Feed  
                   BottomNavigationBarItem(
-                    icon: index == 5 ? const Icon(Icons.rss_feed) : const Icon(Icons.rss_feed_outlined),
+                    icon: index == 1 ? const Icon(Icons.rss_feed) : const Icon(Icons.rss_feed_outlined),
                     label: 'Feed',
                   ),
+                  // 2: Queue
                   BottomNavigationBarItem(
-                    icon: index == 3 ? const Icon(Icons.playlist_play) : const Icon(Icons.playlist_play_outlined),
+                    icon: index == 2 ? const Icon(Icons.queue_music) : const Icon(Icons.queue_music_outlined),
+                    label: 'Queue',
+                  ),
+                  // 3: Saved
+                  BottomNavigationBarItem(
+                    icon: index == 3 ? const Icon(Icons.bookmark) : const Icon(Icons.bookmark_outline),
+                    label: 'Saved',
+                  ),
+                  // 4: Downloads
+                  BottomNavigationBarItem(
+                    icon: index == 4 ? const Icon(Icons.download) : const Icon(Icons.download_outlined),
+                    label: 'Downloads',
+                  ),
+                  // 5: Playlists
+                  BottomNavigationBarItem(
+                    icon: index == 5 ? const Icon(Icons.playlist_play) : const Icon(Icons.playlist_play_outlined),
                     label: 'Playlists',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: index == 1 ? const Icon(Icons.explore) : const Icon(Icons.explore_outlined),
-                    label: L.of(context)!.discover,
-                  ),
-                  BottomNavigationBarItem(
-                    icon: index == 2 ? const Icon(Icons.download) : const Icon(Icons.download_outlined),
-                    label: L.of(context)!.downloads,
                   ),
                 ],
               );
@@ -521,20 +528,21 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
   }
 
   Widget _fragment(int? index, EpisodeBloc searchBloc) {
-    if (index == 0) {
-      return const Library();
-    } else if (index == 4) {
-      return const PinepodsHome();  // New component
-    } else if (index == 5) {
-      return const PinepodsFeed();  // New component
-    } else if (index == 5) {
-      return const PinepodsPlaylists();
-    } else if (index == 3) {
-      return const Discovery(
-        categories: true,
-      );
-    } else {
-      return const Downloads();
+    switch (index) {
+      case 0:
+        return const PinepodsHome(); // Home
+      case 1:
+        return const PinepodsFeed(); // Feed
+      case 2:
+        return const Library(); // Queue (using Library as placeholder for now)
+      case 3:
+        return const Library(); // Saved (using Library as placeholder for now)
+      case 4:
+        return const Downloads(); // Downloads
+      case 5:
+        return const PinepodsPlaylists(); // Playlists
+      default:
+        return const PinepodsHome(); // Default to Home
     }
   }
 
