@@ -120,6 +120,7 @@ postgresql:
 # External database configuration
 # Only used when postgresql.enabled is false
 externalDatabase:
+  type: postgresql
   host: ""
   port: 5432
   user: postgres
