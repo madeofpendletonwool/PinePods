@@ -1,4 +1,4 @@
-// lib/ui/pinepods/feed.dart
+// lib/ui/pinepods/queue.dart
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
@@ -10,30 +10,29 @@ import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
 
-class PinepodsFeed extends StatefulWidget {
-  // Constructor with optional key parameter
-  const PinepodsFeed({Key? key}) : super(key: key);
+class PinepodsQueue extends StatefulWidget {
+  const PinepodsQueue({Key? key}) : super(key: key);
 
   @override
-  State<PinepodsFeed> createState() => _PinepodsFeedState();
+  State<PinepodsQueue> createState() => _PinepodsQueueState();
 }
 
-class _PinepodsFeedState extends State<PinepodsFeed> {
+class _PinepodsQueueState extends State<PinepodsQueue> {
   bool _isLoading = false;
   String _errorMessage = '';
   List<PinepodsEpisode> _episodes = [];
   final PinepodsService _pinepodsService = PinepodsService();
   PinepodsAudioService? _audioService;
-  int? _contextMenuEpisodeIndex; // Index of episode showing context menu
+  int? _contextMenuEpisodeIndex;
 
   @override
   void initState() {
     super.initState();
-    _loadRecentEpisodes();
+    _loadQueuedEpisodes();
   }
 
   void _initializeAudioService() {
-    if (_audioService != null) return; // Already initialized
+    if (_audioService != null) return;
     
     try {
       final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
@@ -46,11 +45,10 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       );
     } catch (e) {
       // Provider not available - audio service will remain null
-      // This is fine, we'll handle it in the play method
     }
   }
 
-  Future<void> _loadRecentEpisodes() async {
+  Future<void> _loadQueuedEpisodes() async {
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -70,13 +68,10 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
         return;
       }
 
-      // Set credentials in the service
       _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
-
-      // Use the stored user ID from login
       final userId = settings.pinepodsUserId!;
 
-      final episodes = await _pinepodsService.getRecentEpisodes(userId);
+      final episodes = await _pinepodsService.getQueuedEpisodes(userId);
       
       setState(() {
         _episodes = episodes;
@@ -84,18 +79,17 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'Failed to load recent episodes: ${e.toString()}';
+        _errorMessage = 'Failed to load queued episodes: ${e.toString()}';
         _isLoading = false;
       });
     }
   }
 
   Future<void> _refresh() async {
-    await _loadRecentEpisodes();
+    await _loadQueuedEpisodes();
   }
 
   Future<void> _playEpisode(PinepodsEpisode episode) async {
-    // Try to initialize audio service if not already done
     _initializeAudioService();
     
     if (_audioService == null) {
@@ -109,7 +103,6 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
     }
 
     try {
-      // Show loading indicator
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
@@ -127,13 +120,11 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
         ),
       );
 
-      // Start playing the episode with full PinePods integration
       await _audioService!.playPinepodsEpisode(
         pinepodsEpisode: episode,
-        resume: episode.isStarted, // Resume if episode was previously started
+        resume: episode.isStarted,
       );
 
-      // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Now playing: ${episode.episodeTitle}'),
@@ -142,7 +133,6 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
         ),
       );
     } catch (e) {
-      // Show error message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to play episode: ${e.toString()}'),
@@ -176,7 +166,6 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       return;
     }
 
-    // Set credentials if not already set
     _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
     try {
@@ -187,24 +176,8 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       );
 
       if (success) {
-        // Update local state
         setState(() {
-          _episodes[episodeIndex] = PinepodsEpisode(
-            podcastName: episode.podcastName,
-            episodeTitle: episode.episodeTitle,
-            episodePubDate: episode.episodePubDate,
-            episodeDescription: episode.episodeDescription,
-            episodeArtwork: episode.episodeArtwork,
-            episodeUrl: episode.episodeUrl,
-            episodeDuration: episode.episodeDuration,
-            listenDuration: episode.listenDuration,
-            episodeId: episode.episodeId,
-            completed: episode.completed,
-            saved: true, // Mark as saved
-            queued: episode.queued,
-            downloaded: episode.downloaded,
-            isYoutube: episode.isYoutube,
-          );
+          _episodes[episodeIndex] = _updateEpisodeProperty(_episodes[episodeIndex], saved: true);
         });
         _showSnackBar('Episode saved!', Colors.green);
       } else {
@@ -228,7 +201,6 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       return;
     }
 
-    // Set credentials if not already set
     _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
     try {
@@ -239,24 +211,8 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       );
 
       if (success) {
-        // Update local state
         setState(() {
-          _episodes[episodeIndex] = PinepodsEpisode(
-            podcastName: episode.podcastName,
-            episodeTitle: episode.episodeTitle,
-            episodePubDate: episode.episodePubDate,
-            episodeDescription: episode.episodeDescription,
-            episodeArtwork: episode.episodeArtwork,
-            episodeUrl: episode.episodeUrl,
-            episodeDuration: episode.episodeDuration,
-            listenDuration: episode.listenDuration,
-            episodeId: episode.episodeId,
-            completed: episode.completed,
-            saved: false, // Mark as not saved
-            queued: episode.queued,
-            downloaded: episode.downloaded,
-            isYoutube: episode.isYoutube,
-          );
+          _episodes[episodeIndex] = _updateEpisodeProperty(_episodes[episodeIndex], saved: false);
         });
         _showSnackBar('Removed from saved episodes', Colors.orange);
       } else {
@@ -361,12 +317,15 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
           episode.isYoutube,
         );
         if (success) {
+          // REMOVE the episode from the list since it's no longer queued
           setState(() {
-            _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: false);
+            _episodes.removeAt(episodeIndex);
           });
           _showSnackBar('Removed from queue', Colors.orange);
         }
       } else {
+        // This shouldn't happen since all episodes here are already queued
+        // But just in case, we'll handle it
         success = await _pinepodsService.queueEpisode(
           episode.episodeId,
           userId,
@@ -441,7 +400,6 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
     _hideContextMenu();
   }
 
-  // Helper method to update episode properties efficiently
   PinepodsEpisode _updateEpisodeProperty(
     PinepodsEpisode episode, {
     bool? saved,
@@ -483,12 +441,11 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
     super.dispose();
   }
 
-
   @override
   Widget build(BuildContext context) {
     // Show context menu as a modal overlay if needed
     if (_contextMenuEpisodeIndex != null) {
-      final episodeIndex = _contextMenuEpisodeIndex!; // Store locally to avoid null issues
+      final episodeIndex = _contextMenuEpisodeIndex!;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         showDialog(
           context: context,
@@ -527,7 +484,6 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
           ),
         );
       });
-      // Reset the context menu index after storing it locally
       _contextMenuEpisodeIndex = null;
     }
     
@@ -539,7 +495,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
             children: [
               CircularProgressIndicator(),
               SizedBox(height: 16),
-              Text('Loading recent episodes...'),
+              Text('Loading queue...'),
             ],
           ),
         ),
@@ -586,13 +542,13 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.inbox_outlined,
+                Icons.queue_music_outlined,
                 size: 64,
                 color: Colors.grey,
               ),
               SizedBox(height: 16),
               Text(
-                'No recent episodes found',
+                'No queued episodes',
                 style: TextStyle(
                   fontSize: 18,
                   color: Colors.grey,
@@ -600,7 +556,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
               ),
               SizedBox(height: 8),
               Text(
-                'Episodes from the last 30 days will appear here',
+                'Episodes you queue will appear here',
                 style: TextStyle(
                   color: Colors.grey,
                 ),
@@ -627,7 +583,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    'Recent Episodes',
+                    'Queue',
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -663,193 +619,4 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       ),
     );
   }
-
-  Widget _buildEpisodeCard(PinepodsEpisode episode, int episodeIndex) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
-      elevation: 1,
-      child: InkWell(
-        onTap: () {
-          // TODO: Navigate to episode details or start playing
-        },
-        onLongPress: () => _showContextMenu(episodeIndex),
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(12.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Episode artwork (smaller)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: episode.episodeArtwork.isNotEmpty
-                    ? Image.network(
-                        episode.episodeArtwork,
-                        width: 50,
-                        height: 50,
-                        fit: BoxFit.cover,
-                        cacheWidth: 100, // Optimize memory usage
-                        cacheHeight: 100,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[300],
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Icon(
-                              Icons.music_note,
-                              color: Colors.grey,
-                              size: 24,
-                            ),
-                          );
-                        },
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[200],
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Center(
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                            ),
-                          );
-                        },
-                      )
-                    : Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(
-                          Icons.music_note,
-                          color: Colors.grey,
-                          size: 24,
-                        ),
-                      ),
-              ),
-              const SizedBox(width: 12),
-              
-              // Episode info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      episode.episodeTitle,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      episode.podcastName,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).primaryColor,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          episode.formattedPubDate,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          episode.formattedDuration,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                    
-                    // Progress bar if episode has been started
-                    if (episode.isStarted) ...[
-                      const SizedBox(height: 6),
-                      LinearProgressIndicator(
-                        value: episode.progressPercentage / 100,
-                        backgroundColor: Colors.grey[300],
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Theme.of(context).primaryColor,
-                        ),
-                        minHeight: 2,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              
-              // Action button (just play)
-              IconButton(
-                icon: Icon(
-                  episode.completed ? Icons.replay : Icons.play_arrow,
-                  color: Theme.of(context).primaryColor,
-                ),
-                onPressed: () => _playEpisode(episode),
-                iconSize: 24,
-                padding: const EdgeInsets.all(8),
-                constraints: const BoxConstraints(
-                  minWidth: 40,
-                  minHeight: 40,
-                ),
-              ),
-              
-              // Status indicators (compact)
-              if (episode.saved || episode.downloaded || episode.queued)
-                SizedBox(
-                  width: 20,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (episode.saved)
-                        Icon(
-                          Icons.bookmark,
-                          color: Colors.orange[600],
-                          size: 14,
-                        ),
-                      if (episode.downloaded)
-                        Icon(
-                          Icons.download_done,
-                          color: Colors.blue[600],
-                          size: 14,
-                        ),
-                      if (episode.queued)
-                        Icon(
-                          Icons.queue_music,
-                          color: Colors.purple[600],
-                          size: 14,
-                        ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
 }

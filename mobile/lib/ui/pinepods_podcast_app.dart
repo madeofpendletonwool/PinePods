@@ -45,6 +45,8 @@ import 'package:pinepods_mobile/ui/widgets/layout_selector.dart';
 import 'package:pinepods_mobile/ui/widgets/search_slide_route.dart';
 import 'package:pinepods_mobile/ui/pinepods/home.dart';
 import 'package:pinepods_mobile/ui/pinepods/feed.dart';
+import 'package:pinepods_mobile/ui/pinepods/saved.dart';
+import 'package:pinepods_mobile/ui/pinepods/queue.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlists.dart';
 import 'package:pinepods_mobile/ui/auth/auth_wrapper.dart';
 import 'package:app_links/app_links.dart';
@@ -59,10 +61,10 @@ import 'package:url_launcher/url_launcher.dart';
 
 var theme = Themes.lightTheme().themeData;
 
-/// Anytime is a Podcast player. You can search and subscribe to podcasts,
+/// PinePods is a Podcast player. You can search and subscribe to podcasts,
 /// download and stream episodes and view the latest podcast charts.
 // ignore: must_be_immutable
-class AnytimePodcastApp extends StatefulWidget {
+class PinepodsPodcastApp extends StatefulWidget {
   final Repository repository;
   late PodcastApi podcastApi;
   late DownloadService downloadService;
@@ -73,7 +75,7 @@ class AnytimePodcastApp extends StatefulWidget {
   MobileSettingsService mobileSettingsService;
   List<int> certificateAuthorityBytes;
 
-  AnytimePodcastApp({
+  PinepodsPodcastApp({
     super.key,
     required this.mobileSettingsService,
     required this.certificateAuthorityBytes,
@@ -111,10 +113,10 @@ class AnytimePodcastApp extends StatefulWidget {
   }
 
   @override
-  AnytimePodcastAppState createState() => AnytimePodcastAppState();
+  PinepodsPodcastAppState createState() => PinepodsPodcastAppState();
 }
 
-class AnytimePodcastAppState extends State<AnytimePodcastApp> {
+class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
   ThemeData? theme;
 
   @override
@@ -534,9 +536,9 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
       case 1:
         return const PinepodsFeed(); // Feed
       case 2:
-        return const Library(); // Queue (using Library as placeholder for now)
+        return const PinepodsQueue(); // Queue
       case 3:
-        return const Library(); // Saved (using Library as placeholder for now)
+        return const PinepodsSaved(); // Saved
       case 4:
         return const Downloads(); // Downloads
       case 5:
@@ -556,10 +558,10 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
       case 'about':
         showAboutDialog(
             context: context,
-            applicationName: 'Anytime Podcast Player',
+            applicationName: 'PinePods Podcast Player',
             applicationVersion: 'v${Environment.projectVersion}',
             applicationIcon: Image.asset(
-              'assets/images/anytime-logo-s.png',
+              'assets/images/pinepods-logo.png',
               width: 52.0,
               height: 52.0,
             ),
@@ -682,7 +684,7 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
 
 class TitleWidget extends StatelessWidget {
   final TextStyle _titleTheme1 = theme.textTheme.bodyMedium!.copyWith(
-    color: const Color.fromARGB(255, 255, 153, 0),
+    color: const Color(0xFF539e8a),
     fontWeight: FontWeight.bold,
     fontFamily: 'MontserratRegular',
     fontSize: 18,
@@ -713,11 +715,11 @@ class TitleWidget extends StatelessWidget {
       child: Row(
         children: <Widget>[
           Text(
-            'Anytime ',
+            'Pine',
             style: _titleTheme1,
           ),
           Text(
-            'Player',
+            'Pods',
             style: Theme.of(context).brightness == Brightness.light ? _titleTheme2Light : _titleTheme2Dark,
           ),
         ],

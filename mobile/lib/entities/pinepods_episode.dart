@@ -95,6 +95,22 @@ class PinepodsEpisode {
     return listenDuration != null && listenDuration! > 0;
   }
 
+  /// Format listen duration from seconds to MM:SS or HH:MM:SS
+  String get formattedListenDuration {
+    if (listenDuration == null || listenDuration! <= 0) return '0:00';
+    
+    final duration = listenDuration!;
+    final hours = duration ~/ 3600;
+    final minutes = (duration % 3600) ~/ 60;
+    final seconds = duration % 60;
+    
+    if (hours > 0) {
+      return '${hours.toString().padLeft(1, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    } else {
+      return '${minutes.toString().padLeft(1, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+  }
+
   /// Format the publish date to a more readable format
   String get formattedPubDate {
     try {

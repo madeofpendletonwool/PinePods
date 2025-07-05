@@ -515,6 +515,327 @@ class PinepodsService {
     }
   }
 
+  // Download episode to server
+  Future<bool> downloadEpisode(int episodeId, int userId, bool isYoutube) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/download_podcast');
+    print('Making API call to: $url');
+    
+    try {
+      final requestBody = jsonEncode({
+        'episode_id': episodeId,
+        'user_id': userId,
+        'is_youtube': isYoutube,
+      });
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: requestBody,
+      );
+
+      print('Download episode response: ${response.statusCode} - ${response.body}');
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error downloading episode: $e');
+      return false;
+    }
+  }
+
+  // Delete downloaded episode from server
+  Future<bool> deleteEpisode(int episodeId, int userId, bool isYoutube) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/delete_episode');
+    print('Making API call to: $url');
+    
+    try {
+      final requestBody = jsonEncode({
+        'episode_id': episodeId,
+        'user_id': userId,
+        'is_youtube': isYoutube,
+      });
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: requestBody,
+      );
+
+      print('Delete episode response: ${response.statusCode} - ${response.body}');
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error deleting episode: $e');
+      return false;
+    }
+  }
+
+  // Mark episode as completed
+  Future<bool> markEpisodeCompleted(int episodeId, int userId, bool isYoutube) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/mark_episode_completed');
+    print('Making API call to: $url');
+    
+    try {
+      final requestBody = jsonEncode({
+        'episode_id': episodeId,
+        'user_id': userId,
+        'is_youtube': isYoutube,
+      });
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: requestBody,
+      );
+
+      print('Mark completed response: ${response.statusCode} - ${response.body}');
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error marking episode completed: $e');
+      return false;
+    }
+  }
+
+  // Mark episode as uncompleted
+  Future<bool> markEpisodeUncompleted(int episodeId, int userId, bool isYoutube) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/mark_episode_uncompleted');
+    print('Making API call to: $url');
+    
+    try {
+      final requestBody = jsonEncode({
+        'episode_id': episodeId,
+        'user_id': userId,
+        'is_youtube': isYoutube,
+      });
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: requestBody,
+      );
+
+      print('Mark uncompleted response: ${response.statusCode} - ${response.body}');
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error marking episode uncompleted: $e');
+      return false;
+    }
+  }
+
+  // Remove episode from queue  
+  Future<bool> removeQueuedEpisode(int episodeId, int userId, bool isYoutube) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/remove_queued_pod');
+    print('Making API call to: $url');
+    
+    try {
+      final requestBody = jsonEncode({
+        'episode_id': episodeId,
+        'user_id': userId,
+        'is_youtube': isYoutube,
+      });
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: requestBody,
+      );
+
+      print('Remove queued response: ${response.statusCode} - ${response.body}');
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error removing queued episode: $e');
+      return false;
+    }
+  }
+
+  // Get queued episodes
+  Future<List<PinepodsEpisode>> getQueuedEpisodes(int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/get_queued_episodes?user_id=$userId');
+    print('Making API call to: $url');
+    
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+        },
+      );
+
+      print('Queued episodes response: ${response.statusCode} - ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final episodesList = data['data'] as List<dynamic>? ?? [];
+        
+        return episodesList.map((episodeData) {
+          return PinepodsEpisode(
+            podcastName: episodeData['podcastname'] ?? '',
+            episodeTitle: episodeData['episodetitle'] ?? '',
+            episodePubDate: episodeData['episodepubdate'] ?? '',
+            episodeDescription: episodeData['episodedescription'] ?? '',
+            episodeArtwork: episodeData['episodeartwork'] ?? '',
+            episodeUrl: episodeData['episodeurl'] ?? '',
+            episodeDuration: episodeData['episodeduration'] ?? 0,
+            listenDuration: episodeData['listenduration'] ?? 0,
+            episodeId: episodeData['episodeid'] ?? 0,
+            completed: episodeData['completed'] ?? false,
+            saved: episodeData['saved'] ?? false,
+            queued: episodeData['queued'] ?? true, // Should always be true for queued episodes
+            downloaded: episodeData['downloaded'] ?? false,
+            isYoutube: episodeData['is_youtube'] ?? false,
+          );
+        }).toList();
+      } else {
+        throw Exception('Failed to load queued episodes: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting queued episodes: $e');
+      rethrow;
+    }
+  }
+
+  // Get saved episodes
+  Future<List<PinepodsEpisode>> getSavedEpisodes(int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/saved_episode_list/$userId');
+    print('Making API call to: $url');
+    
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+        },
+      );
+
+      print('Saved episodes response: ${response.statusCode} - ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final episodesList = data['saved_episodes'] as List<dynamic>? ?? [];
+        
+        return episodesList.map((episodeData) {
+          return PinepodsEpisode(
+            podcastName: episodeData['podcastname'] ?? '',
+            episodeTitle: episodeData['episodetitle'] ?? '',
+            episodePubDate: episodeData['episodepubdate'] ?? '',
+            episodeDescription: episodeData['episodedescription'] ?? '',
+            episodeArtwork: episodeData['episodeartwork'] ?? '',
+            episodeUrl: episodeData['episodeurl'] ?? '',
+            episodeDuration: episodeData['episodeduration'] ?? 0,
+            listenDuration: episodeData['listenduration'] ?? 0,
+            episodeId: episodeData['episodeid'] ?? 0,
+            completed: episodeData['completed'] ?? false,
+            saved: episodeData['saved'] ?? true, // Should always be true for saved episodes
+            queued: episodeData['queued'] ?? false,
+            downloaded: episodeData['downloaded'] ?? false,
+            isYoutube: episodeData['is_youtube'] ?? false,
+          );
+        }).toList();
+      } else {
+        throw Exception('Failed to load saved episodes: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting saved episodes: $e');
+      rethrow;
+    }
+  }
+
+  // Get episode metadata
+  Future<PinepodsEpisode?> getEpisodeMetadata(int episodeId, int userId, {bool isYoutube = false, bool personEpisode = false}) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/get_episode_metadata');
+    print('Making API call to: $url');
+    
+    try {
+      final requestBody = jsonEncode({
+        'episode_id': episodeId,
+        'user_id': userId,
+        'person_episode': personEpisode,
+        'is_youtube': isYoutube,
+      });
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: requestBody,
+      );
+
+      print('Episode metadata response: ${response.statusCode} - ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final episodeData = data['episode'];
+        
+        return PinepodsEpisode(
+          podcastName: episodeData['podcastname'] ?? '',
+          episodeTitle: episodeData['episodetitle'] ?? '',
+          episodePubDate: episodeData['episodepubdate'] ?? '',
+          episodeDescription: episodeData['episodedescription'] ?? '',
+          episodeArtwork: episodeData['episodeartwork'] ?? '',
+          episodeUrl: episodeData['episodeurl'] ?? '',
+          episodeDuration: episodeData['episodeduration'] ?? 0,
+          listenDuration: episodeData['listenduration'] ?? 0,
+          episodeId: episodeData['episodeid'] ?? episodeId,
+          completed: episodeData['completed'] ?? false,
+          saved: episodeData['is_saved'] ?? false,
+          queued: episodeData['is_queued'] ?? false,
+          downloaded: episodeData['is_downloaded'] ?? false,
+          isYoutube: episodeData['is_youtube'] ?? isYoutube,
+        );
+      }
+      return null;
+    } catch (e) {
+      print('Error getting episode metadata: $e');
+      return null;
+    }
+  }
+
   // Get stream URL for episode
   String getStreamUrl(int episodeId, int userId, {bool isYoutube = false, bool isLocal = false}) {
     if (_server == null || _apiKey == null) {

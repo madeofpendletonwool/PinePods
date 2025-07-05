@@ -31,78 +31,78 @@ class EpisodeContextMenu extends StatelessWidget {
         child: Center(
           child: GestureDetector(
             onTap: () {}, // Prevent dismissal when tapping the menu itself
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Episode title
-                  Text(
-                    episode.episodeTitle,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+            child: Material(
+              borderRadius: BorderRadius.circular(12),
+              elevation: 10,
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.all(16),
+                constraints: const BoxConstraints(
+                  maxWidth: 300,
+                  maxHeight: 400,
+                ),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).cardColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Episode title
+                    Text(
+                      episode.episodeTitle,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    episode.podcastName,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Theme.of(context).primaryColor,
+                    const SizedBox(height: 8),
+                    Text(
+                      episode.podcastName,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 16),
-                  const Divider(height: 1),
-                  const SizedBox(height: 8),
-                  
-                  // Menu options
-                  _buildMenuOption(
-                    context,
-                    icon: episode.saved ? Icons.bookmark_remove : Icons.bookmark_add,
-                    text: episode.saved ? 'Remove from Saved' : 'Save Episode',
-                    onTap: episode.saved ? onRemoveSaved : onSave,
-                  ),
-                  
-                  _buildMenuOption(
-                    context,
-                    icon: episode.downloaded ? Icons.cloud_download : Icons.cloud_download_outlined,
-                    text: episode.downloaded ? 'Downloaded to Server' : 'Download to Server',
-                    onTap: onDownload,
-                    enabled: !episode.downloaded, // Only enable if not already downloaded
-                  ),
-                  
-                  _buildMenuOption(
-                    context,
-                    icon: episode.queued ? Icons.queue_music : Icons.add_to_queue,
-                    text: episode.queued ? 'Remove from Queue' : 'Add to Queue',
-                    onTap: onQueue,
-                  ),
-                  
-                  _buildMenuOption(
-                    context,
-                    icon: episode.completed ? Icons.check_circle : Icons.check_circle_outline,
-                    text: episode.completed ? 'Mark as Incomplete' : 'Mark as Complete',
-                    onTap: onMarkComplete,
-                  ),
-                ],
+                    const SizedBox(height: 16),
+                    const Divider(height: 1),
+                    const SizedBox(height: 8),
+                    
+                    // Menu options
+                    _buildMenuOption(
+                      context,
+                      icon: episode.saved ? Icons.bookmark_remove : Icons.bookmark_add,
+                      text: episode.saved ? 'Remove from Saved' : 'Save Episode',
+                      onTap: episode.saved ? onRemoveSaved : onSave,
+                    ),
+                    
+                    _buildMenuOption(
+                      context,
+                      icon: episode.downloaded ? Icons.delete_outline : Icons.cloud_download_outlined,
+                      text: episode.downloaded ? 'Delete from Server' : 'Download to Server',
+                      onTap: onDownload,
+                    ),
+                    
+                    _buildMenuOption(
+                      context,
+                      icon: episode.queued ? Icons.queue_music : Icons.add_to_queue,
+                      text: episode.queued ? 'Remove from Queue' : 'Add to Queue',
+                      onTap: onQueue,
+                    ),
+                    
+                    _buildMenuOption(
+                      context,
+                      icon: episode.completed ? Icons.check_circle : Icons.check_circle_outline,
+                      text: episode.completed ? 'Mark as Incomplete' : 'Mark as Complete',
+                      onTap: onMarkComplete,
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

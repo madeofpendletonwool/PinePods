@@ -5,7 +5,7 @@
 import 'dart:io';
 
 import 'package:pinepods_mobile/services/settings/mobile_settings_service.dart';
-import 'package:pinepods_mobile/ui/anytime_podcast_app.dart';
+import 'package:pinepods_mobile/ui/pinepods_podcast_app.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -26,7 +26,7 @@ void main() async {
   var mobileSettingsService = (await MobileSettingsService.instance())!;
   certificateAuthorityBytes = await setupCertificateAuthority();
 
-  runApp(AnytimePodcastApp(
+  runApp(PinepodsPodcastApp(
     mobileSettingsService: mobileSettingsService,
     certificateAuthorityBytes: certificateAuthorityBytes,
   ));
