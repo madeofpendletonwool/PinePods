@@ -668,3 +668,20 @@ Mobile support baked right in!
 
 Arm Images made possible by Runs-On:
 https://runs-on.com
+
+#### 📜 Credits & Licensing
+
+PinePods is an open-source podcast player developed by Gooseberry Development, licensed under the GNU General Public License v3.0 (GPL-3.0).
+
+The Pinepods Mobile app in the mobile directory includes code adapted from the excellent [Anytime Podcast Player](https://github.com/amugofjava/anytime_podcast_player), originally created by Ben Hills.
+🧩 Included Third-Party Code
+
+    Anytime Podcast Player
+    © 2020 Ben Hills and project contributors
+    Licensed under the BSD 3-Clause License
+
+Portions of the mobile app retain the original BSD license and attribution as required. Files with this license are labeled at the top to clearly indicate. See the LICENSE.ben_hills in the mobile directory for details.
+
+#### 💬 Acknowledgment
+
+Huge thanks to Ben Hills for open-sourcing the Anytime Podcast Player. It served as a solid foundation and greatly accelerated development of PinePods.

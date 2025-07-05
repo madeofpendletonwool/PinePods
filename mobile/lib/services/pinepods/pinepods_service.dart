@@ -3,6 +3,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/entities/pinepods_search.dart';
 
 class PinepodsService {
   String? _server;
@@ -949,6 +950,132 @@ class PinepodsService {
     } else {
       // For external episodes, return the original URL
       return '';
+    }
+  }
+
+  // Search for podcasts using PinePods search API
+  Future<PinepodsSearchResult> searchPodcasts(String query, SearchProvider provider) async {
+    const searchApiUrl = 'https://search.pinepods.online';
+    final url = Uri.parse('$searchApiUrl/api/search?query=${Uri.encodeComponent(query)}&index=${provider.value}');
+    
+    try {
+      print('Making search request to: $url');
+      final response = await http.get(url);
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('Search response: ${response.body}');
+        return PinepodsSearchResult.fromJson(data);
+      } else {
+        throw Exception('Failed to search podcasts: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error searching podcasts: $e');
+      rethrow;
+    }
+  }
+
+  // Check if a podcast is already added to the server
+  Future<bool> checkPodcastExists(String podcastTitle, String podcastUrl) async {
+    if (_server == null || _apiKey == null) {
+      return false;
+    }
+
+    final url = Uri.parse('$_server/api/data/check_podcast')
+        .replace(queryParameters: {
+      'podcast_title': podcastTitle,
+      'podcast_url': podcastUrl,
+    });
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Api-Key': _apiKey!},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['exists'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('Error checking podcast exists: $e');
+      return false;
+    }
+  }
+
+  // Add a podcast to the server
+  Future<bool> addPodcast(UnifiedPinepodsPodcast podcast, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/add_podcast');
+    final body = {
+      'pod_title': podcast.title,
+      'pod_artwork': podcast.artwork,
+      'pod_author': podcast.author,
+      'categories': podcast.categories?.values.join(', ') ?? '',
+      'pod_description': podcast.description,
+      'pod_episode_count': podcast.episodeCount,
+      'pod_feed_url': podcast.url,
+      'pod_website': podcast.link,
+      'pod_explicit': podcast.explicit,
+      'user_id': userId,
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('Error adding podcast: $e');
+      rethrow;
+    }
+  }
+
+  // Remove a podcast from the server
+  Future<bool> removePodcast(String podcastTitle, String podcastUrl, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/remove_podcast');
+    final body = {
+      'podcast_name': podcastTitle,
+      'podcast_url': podcastUrl,
+      'user_id': userId,
+    };
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (e) {
+      print('Error removing podcast: $e');
+      rethrow;
     }
   }
 }

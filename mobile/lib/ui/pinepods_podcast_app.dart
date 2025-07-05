@@ -38,6 +38,7 @@ import 'package:pinepods_mobile/ui/library/library.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:pinepods_mobile/ui/podcast/podcast_details.dart';
 import 'package:pinepods_mobile/ui/search/search.dart';
+import 'package:pinepods_mobile/ui/pinepods/search.dart';
 import 'package:pinepods_mobile/ui/settings/settings.dart';
 import 'package:pinepods_mobile/ui/themes.dart';
 import 'package:pinepods_mobile/ui/widgets/action_text.dart';
@@ -396,11 +397,11 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                               defaultTargetPlatform == TargetPlatform.iOS
                                   ? MaterialPageRoute<void>(
                                       fullscreenDialog: false,
-                                      settings: const RouteSettings(name: 'search'),
-                                      builder: (context) => const Search())
+                                      settings: const RouteSettings(name: 'pinepods_search'),
+                                      builder: (context) => const PinepodsSearch())
                                   : SlideRightRoute(
-                                      widget: const Search(),
-                                      settings: const RouteSettings(name: 'search'),
+                                      widget: const PinepodsSearch(),
+                                      settings: const RouteSettings(name: 'pinepods_search'),
                                     ),
                             );
                           },
@@ -581,30 +582,38 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
     switch (choice) {
       case 'about':
         showAboutDialog(
-            context: context,
-            applicationName: 'PinePods Podcast Player',
-            applicationVersion: 'v${Environment.projectVersion}',
-            applicationIcon: Image.asset(
-              'assets/images/pinepods-logo.png',
-              width: 52.0,
-              height: 52.0,
+          context: context,
+          applicationName: 'PinePods Podcast Player',
+          applicationVersion: 'v${Environment.projectVersion}',
+          applicationIcon: Image.asset(
+            'assets/images/pinepods-logo.png',
+            width: 52.0,
+            height: 52.0,
+          ),
+          children: <Widget>[
+            const Text('Copyright © 2025 Gooseberry Development'),
+            const SizedBox(height: 8.0),
+            const Text(
+              'The Pinepods Mobile App is an open-source podcast player adapted from the '
+                  'Anytime Podcast Player (© 2020 Ben Hills). Portions of this application '
+                  'retain the original BSD 3-Clause license.',
             ),
-            children: <Widget>[
-              const Text('\u00a9 2020 Ben Hills'),
-              GestureDetector(
-                onTap: () {
-                  _launchEmail();
-                },
-                child: Text(
-                  'hello@anytimeplayer.app',
-                  style: TextStyle(
-                    decoration: TextDecoration.underline,
-                    color: Theme.of(context).indicatorColor,
-                  ),
+            GestureDetector(
+              onTap: () {
+                launchUrl(Uri.parse('https://github.com/amugofjava/anytime_podcast_player'));
+              },
+              child: Text(
+                'View original project on GitHub',
+                style: TextStyle(
+                  decoration: TextDecoration.underline,
+                  color: Theme.of(context).indicatorColor,
                 ),
               ),
-            ]);
+            ),
+          ],
+        );
         break;
+
       case 'settings':
         await Navigator.push(
           context,
