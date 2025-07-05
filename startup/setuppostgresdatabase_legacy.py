@@ -225,16 +225,54 @@ try:
     """)
     cnx.commit()
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS "RssKeys" (
+            RssKeyID SERIAL PRIMARY KEY,
+            UserID INT,
+            RssKey TEXT,
+            Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
+        )   
+    """)
+    cnx.commit()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS "RssKeyMap" (
+            RssKeyID INT,
+            PodcastID INT,
+            FOREIGN KEY (RssKeyID) REFERENCES "RssKeys"(RssKeyID) ON DELETE CASCADE
+        )
+    """)
+    cnx.commit()
+
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.table_constraints
+        WHERE constraint_name = 'PlaybackSpeed'
+        AND table_name = 'Users';
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("""
+            ALTER TABLE "Users" ADD COLUMN PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0;
+        """)
+        print("Column 'PlaybackSpeed' added to Users table")
+    cnx.commit()
+
+        # Now add foreign key
+    cursor.execute("""
+        SELECT COUNT(*)
+        FROM information_schema.table_constraints
+        WHERE constraint_name = 'PlaybackSpeed'
+        AND table_name = 'Podcasts';
+    """)
+    if cursor.fetchone()[0] == 0:
+        cursor.execute("""
+            ALTER TABLE "Podcasts" ADD COLUMN PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0;
+        """)
+        print("Column 'PlaybackSpeed' added to Podcasts table")
+    cnx.commit()
+
     ensure_usernames_lowercase(cnx)
-
-
-    cursor.execute("""CREATE TABLE IF NOT EXISTS "APIKeys" (
-                        APIKeyID SERIAL PRIMARY KEY,
-                        UserID INT,
-                        APIKey TEXT,
-                        Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
-                    )""")
 
 
     try:
@@ -669,7 +707,7 @@ try:
             # No commit or rollback here, just like in your working example
 
     # Usage - should be called during app startup
-    add_playbackspeed_if_not_exist_users(cursor, cnx)
+    add_playbackspeed_if_not_exist_podcasts(cursor, cnx)
 
     def add_playbackspeed_customized_if_not_exist(cursor, cnx):
         try:

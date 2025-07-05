@@ -68,13 +68,8 @@ setup_database() {
     export DB_NAME=test_db
     export DB_TYPE=$db_type
 
-    if [ "$db_type" == "postgresql" ]; then
-        echo "Setting up PostgreSQL schema..."
-        python3 "${SCRIPT_DIR}/startup/setuppostgresdatabase.py"
-    else
-        echo "Setting up MariaDB schema..."
-        python3 "${SCRIPT_DIR}/startup/setupdatabase.py"
-    fi
+    echo "Setting up $db_type schema using new migration system..."
+    python3 "${SCRIPT_DIR}/startup/setup_database_new.py"
 }
 
 

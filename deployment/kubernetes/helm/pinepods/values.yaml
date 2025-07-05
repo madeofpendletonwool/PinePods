@@ -88,7 +88,20 @@ postgresql:
     password: "supersecretpassword"
     # -- PostgreSQL database name
     database: pinepods_database
-  resources: {}
+  # -- PostgreSQL resource configuration
+  # Default values provide good performance for most deployments
+  # Increase for larger deployments or high concurrent usage
+  resources:
+    requests:
+      # -- Memory request for PostgreSQL container
+      memory: 512Mi
+      # -- CPU request for PostgreSQL container
+      cpu: 250m
+    limits:
+      # -- Memory limit for PostgreSQL container
+      memory: 2Gi
+      # -- CPU limit for PostgreSQL container
+      cpu: 1000m
   # Run on control planes if needed
   # tolerations:
   #   - key: "node-role.kubernetes.io/control-plane"
@@ -112,6 +125,10 @@ externalDatabase:
   user: postgres
   password: ""
   database: pinepods_database
+  existingSecret:
+    enabled: false
+    name: existing-secret
+    key: password
 
 resources: {}
 
@@ -141,24 +158,11 @@ env:
   # -- Default admin username
   USERNAME: "admin"
   # -- Default admin password
-  # Consider using a secret for production environments
   PASSWORD: "password"
   # -- Admin full name
   FULLNAME: "Admin User"
   # -- Admin email address
   EMAIL: "admin@example.com"
-  
-  # Database Configuration
-  # -- Database type (postgresql only for now)
-  DB_TYPE: "postgresql"
-  # -- Database user
-  # This should match postgresql.auth.username if using included PostgreSQL
-  DB_USER: "postgres"
-  # -- Database name
-  # This should match postgresql.auth.database if using included PostgreSQL
-  DB_NAME: "pinepods_database"
-  # -- Database port
-  DB_PORT: "5432"
   
   # Valkey Configuration
   # -- Valkey host

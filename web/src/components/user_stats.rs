@@ -125,7 +125,15 @@ pub fn user_stats() -> Html {
                                             <p class="stats-label">{"Episodes Downloaded"}</p>
                                             <p class="stats-value">{ &stats.EpisodesDownloaded }</p>
                                         </div>
-                                        <div class="stats-card">
+                                        <div class={if let Some(stats) = user_stats { 
+                                            if stats.Pod_Sync_Type.as_str() == "None" { 
+                                                "stats-card col-span-1 md:col-span-3" 
+                                            } else { 
+                                                "stats-card" 
+                                            } 
+                                        } else { 
+                                            "stats-card" 
+                                        }}>
                                             <p class="stats-label">{"Podcast Sync Status"}</p>
                                             {
                                                 if let Some(stats) = user_stats {

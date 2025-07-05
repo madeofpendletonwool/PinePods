@@ -25,25 +25,17 @@ spec:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+          envFrom:
+            - secretRef:
+                name: {{ include "pinepods.fullname" $ }}-env
           env:
-            {{- range $key, $value := .Values.env }}
-            - name: {{ $key }}
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ include "pinepods.fullname" $ }}-config
-                  key: {{ $key }}
-            {{- end }}
-            - name: DB_HOST
-              value: {{ include "pinepods.postgresql.fullname" . }}
+            {{ if (and (not .Values.postgresql.enabled) (.Values.externalDatabase.existingSecret.enabled)) -}}
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "pinepods.fullname" . }}-secret
-                  key: DB_PASSWORD
-            - name: VALKEY_HOST
-              value: {{ include "pinepods.valkey.fullname" . }}
-            - name: VALKEY_PORT
-              value: "{{ .Values.valkey.service.port }}"
+                  name: {{ .Values.externalDatabase.existingSecret.name }}
+                  key: {{ .Values.externalDatabase.existingSecret.key }}
+            {{- end }}
           volumeMounts:
             {{- if .Values.persistence.enabled }}
             - name: downloads
