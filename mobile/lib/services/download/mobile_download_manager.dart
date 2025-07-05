@@ -13,6 +13,7 @@ import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:logging/logging.dart';
 
 /// A [DownloadManager] for handling downloading of podcasts on a mobile device.
+@pragma('vm:entry-point')
 class MobileDownloaderManager implements DownloadManager {
   static const portName = 'downloader_send_port';
   final log = Logger('MobileDownloaderManager');

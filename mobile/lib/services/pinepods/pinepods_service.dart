@@ -886,6 +886,56 @@ class PinepodsService {
     }
   }
 
+  // Get downloaded episodes from server
+  Future<List<PinepodsEpisode>> getServerDownloads(int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/download_episode_list?user_id=$userId');
+    print('Making API call to: $url');
+    
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+        },
+      );
+
+      print('Server downloads response: ${response.statusCode} - ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final episodesList = data['downloaded_episodes'] as List<dynamic>? ?? [];
+        
+        return episodesList.map((episodeData) {
+          return PinepodsEpisode(
+            podcastName: episodeData['podcastname'] ?? '',
+            episodeTitle: episodeData['episodetitle'] ?? '',
+            episodePubDate: episodeData['episodepubdate'] ?? '',
+            episodeDescription: episodeData['episodedescription'] ?? '',
+            episodeArtwork: episodeData['episodeartwork'] ?? '',
+            episodeUrl: episodeData['episodeurl'] ?? '',
+            episodeDuration: episodeData['episodeduration'] ?? 0,
+            listenDuration: episodeData['listenduration'] ?? 0,
+            episodeId: episodeData['episodeid'] ?? 0,
+            completed: episodeData['completed'] ?? false,
+            saved: episodeData['saved'] ?? false,
+            queued: episodeData['queued'] ?? false,
+            downloaded: episodeData['downloaded'] ?? true, // Should always be true for downloaded episodes
+            isYoutube: episodeData['is_youtube'] ?? false,
+          );
+        }).toList();
+      } else {
+        throw Exception('Failed to load server downloads: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting server downloads: $e');
+      rethrow;
+    }
+  }
+
   // Get stream URL for episode
   String getStreamUrl(int episodeId, int userId, {bool isYoutube = false, bool isLocal = false}) {
     if (_server == null || _apiKey == null) {

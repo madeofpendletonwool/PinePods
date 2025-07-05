@@ -1,10 +1,13 @@
 // lib/ui/pinepods/feed.dart
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/services/download/download_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
@@ -441,6 +444,57 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
     _hideContextMenu();
   }
 
+  Future<void> _localDownloadEpisode(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    
+    try {
+      // Convert PinepodsEpisode to Episode for local download
+      final localEpisode = Episode(
+        guid: 'pinepods_${episode.episodeId}_${DateTime.now().millisecondsSinceEpoch}',
+        pguid: 'pinepods_${episode.podcastName.replaceAll(' ', '_').toLowerCase()}',
+        podcast: episode.podcastName,
+        title: episode.episodeTitle,
+        description: episode.episodeDescription,
+        imageUrl: episode.episodeArtwork,
+        contentUrl: episode.episodeUrl,
+        duration: episode.episodeDuration,
+        publicationDate: DateTime.tryParse(episode.episodePubDate),
+        author: episode.podcastName,
+        season: 0,
+        episode: 0,
+        position: episode.listenDuration ?? 0,
+        played: episode.completed,
+        chapters: [],
+        transcriptUrls: [],
+      );
+      
+      print('DEBUG: Created local episode with GUID: ${localEpisode.guid}');
+      print('DEBUG: Episode title: ${localEpisode.title}');
+      print('DEBUG: Episode URL: ${localEpisode.contentUrl}');
+      
+      final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
+      
+      // First save the episode to the repository so it can be tracked
+      await podcastBloc.podcastService.saveEpisode(localEpisode);
+      print('DEBUG: Episode saved to repository');
+      
+      // Use the download service from podcast bloc
+      final success = await podcastBloc.downloadService.downloadEpisode(localEpisode);
+      print('DEBUG: Download service result: $success');
+      
+      if (success) {
+        _showSnackBar('Episode download started', Colors.green);
+      } else {
+        _showSnackBar('Failed to start download', Colors.red);
+      }
+    } catch (e) {
+      print('DEBUG: Error in local download: $e');
+      _showSnackBar('Error starting local download: $e', Colors.red);
+    }
+
+    _hideContextMenu();
+  }
+
   // Helper method to update episode properties efficiently
   PinepodsEpisode _updateEpisodeProperty(
     PinepodsEpisode episode, {
@@ -512,6 +566,10 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
                   Navigator.of(context).pop();
                   _downloadEpisode(episodeIndex);
                 },
+            onLocalDownload: () {
+              Navigator.of(context).pop();
+              _localDownloadEpisode(episodeIndex);
+            },
             onQueue: () {
               Navigator.of(context).pop();
               _toggleQueueEpisode(episodeIndex);

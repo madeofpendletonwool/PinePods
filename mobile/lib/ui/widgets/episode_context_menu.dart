@@ -7,6 +7,7 @@ class EpisodeContextMenu extends StatelessWidget {
   final VoidCallback? onSave;
   final VoidCallback? onRemoveSaved;
   final VoidCallback? onDownload;
+  final VoidCallback? onLocalDownload;
   final VoidCallback? onQueue;
   final VoidCallback? onMarkComplete;
   final VoidCallback? onDismiss;
@@ -17,6 +18,7 @@ class EpisodeContextMenu extends StatelessWidget {
     this.onSave,
     this.onRemoveSaved,
     this.onDownload,
+    this.onLocalDownload,
     this.onQueue,
     this.onMarkComplete,
     this.onDismiss,
@@ -86,6 +88,13 @@ class EpisodeContextMenu extends StatelessWidget {
                       icon: episode.downloaded ? Icons.delete_outline : Icons.cloud_download_outlined,
                       text: episode.downloaded ? 'Delete from Server' : 'Download to Server',
                       onTap: onDownload,
+                    ),
+                    
+                    _buildMenuOption(
+                      context,
+                      icon: Icons.file_download_outlined,
+                      text: 'Download Locally',
+                      onTap: onLocalDownload,
                     ),
                     
                     _buildMenuOption(
