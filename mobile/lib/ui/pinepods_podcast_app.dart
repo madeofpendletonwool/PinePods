@@ -47,6 +47,7 @@ import 'package:pinepods_mobile/ui/pinepods/home.dart';
 import 'package:pinepods_mobile/ui/pinepods/feed.dart';
 import 'package:pinepods_mobile/ui/pinepods/saved.dart';
 import 'package:pinepods_mobile/ui/pinepods/queue.dart';
+import 'package:pinepods_mobile/ui/pinepods/history.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlists.dart';
 import 'package:pinepods_mobile/ui/auth/auth_wrapper.dart';
 import 'package:app_links/app_links.dart';
@@ -364,6 +365,29 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                       snap: false,
                       actions: <Widget>[
                         IconButton(
+                          tooltip: 'Queue',
+                          icon: const Icon(Icons.queue_music),
+                          onPressed: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute<void>(
+                                fullscreenDialog: false,
+                                settings: const RouteSettings(name: 'queue'),
+                                builder: (context) => Scaffold(
+                                  appBar: AppBar(
+                                    title: const Text('Queue'),
+                                  ),
+                                  body: const CustomScrollView(
+                                    slivers: [
+                                      PinepodsQueue(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        IconButton(
                           tooltip: L.of(context)!.search_for_podcasts_hint,
                           icon: const Icon(Icons.search),
                           onPressed: () async {
@@ -502,10 +526,10 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                     icon: index == 1 ? const Icon(Icons.rss_feed) : const Icon(Icons.rss_feed_outlined),
                     label: 'Feed',
                   ),
-                  // 2: Queue
+                  // 2: History
                   BottomNavigationBarItem(
-                    icon: index == 2 ? const Icon(Icons.queue_music) : const Icon(Icons.queue_music_outlined),
-                    label: 'Queue',
+                    icon: index == 2 ? const Icon(Icons.history) : const Icon(Icons.history_outlined),
+                    label: 'History',
                   ),
                   // 3: Saved
                   BottomNavigationBarItem(
@@ -536,7 +560,7 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
       case 1:
         return const PinepodsFeed(); // Feed
       case 2:
-        return const PinepodsQueue(); // Queue
+        return const PinepodsHistory(); // History 
       case 3:
         return const PinepodsSaved(); // Saved
       case 4:

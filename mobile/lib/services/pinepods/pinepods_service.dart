@@ -680,6 +680,56 @@ class PinepodsService {
     }
   }
 
+  // Get user history
+  Future<List<PinepodsEpisode>> getUserHistory(int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/user_history/$userId');
+    print('Making API call to: $url');
+    
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+        },
+      );
+
+      print('User history response: ${response.statusCode} - ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final episodesList = data['data'] as List<dynamic>? ?? [];
+        
+        return episodesList.map((episodeData) {
+          return PinepodsEpisode(
+            podcastName: episodeData['podcastname'] ?? '',
+            episodeTitle: episodeData['episodetitle'] ?? '',
+            episodePubDate: episodeData['episodepubdate'] ?? '',
+            episodeDescription: episodeData['episodedescription'] ?? '',
+            episodeArtwork: episodeData['episodeartwork'] ?? '',
+            episodeUrl: episodeData['episodeurl'] ?? '',
+            episodeDuration: episodeData['episodeduration'] ?? 0,
+            listenDuration: episodeData['listenduration'] ?? 0,
+            episodeId: episodeData['episodeid'] ?? 0,
+            completed: episodeData['completed'] ?? false,
+            saved: false, // History doesn't track saved status directly, would need separate query
+            queued: false, // History doesn't track queued status directly, would need separate query
+            downloaded: false, // History doesn't track downloaded status directly, would need separate query
+            isYoutube: episodeData['is_youtube'] ?? false,
+          );
+        }).toList();
+      } else {
+        throw Exception('Failed to load user history: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting user history: $e');
+      rethrow;
+    }
+  }
+
   // Get queued episodes
   Future<List<PinepodsEpisode>> getQueuedEpisodes(int userId) async {
     if (_server == null || _apiKey == null) {
