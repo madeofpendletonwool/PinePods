@@ -5739,13 +5739,13 @@ def create_rss_key(cnx, database_type: str, user_id: int, podcast_ids: list[int]
             result = cursor.fetchone()
             if not result:
                 raise Exception("Failed to create RSS key - no ID returned")
-            
+
             # Handle both tuple and dict return types
             if isinstance(result, dict):
                 rss_key_id = result.get('rsskeyid') or result.get('RssKeyID')
             else:
                 rss_key_id = result[0]
-                
+
             if not rss_key_id:
                 raise Exception("Failed to create RSS key - invalid ID returned")
         else:
@@ -6394,7 +6394,7 @@ def toggle_rss_feeds(cnx, database_type: str, user_id: int) -> bool:
                     has_existing_key = bool(existing_key.get('rsskeyid') or existing_key.get('RssKeyID'))
                 elif isinstance(existing_key, (tuple, list)):
                     has_existing_key = bool(existing_key[0])
-                    
+
             if not has_existing_key:
                 try:
                     # Create RSS key for all podcasts (-1 means all)
@@ -6603,7 +6603,7 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                 youtube_count = cursor_temp.fetchone()[0]
                 cursor_temp.close()
                 add_youtube_union = youtube_count > 0
-        
+
         if add_youtube_union:
             if base_query:
                 base_query += "\nUNION ALL\n"
@@ -6804,7 +6804,7 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                 episode_image = episode.get('episodeartwork') or episode.get('artworkurl', '')
                 # Ensure URLs don't have double-encoded ampersands
                 episode_url = str(episode.get('episodeurl', '')).replace('&amp;', '&')
-                
+
                 feed.add_item(
                     title=str(episode.get('episodetitle', 'Untitled Episode')),
                     link=episode_url,
@@ -10470,19 +10470,16 @@ def create_playlist(cnx, database_type, playlist_data):
         # Convert podcast_ids list to appropriate format based on database type
         if database_type == "postgresql":
             podcast_ids = playlist_data.podcast_ids  # PostgreSQL can handle list directly
-        else:  # MySQL
+        else:  # MySQL - convert to JSON string
+            import json
             # Always ensure podcast_ids is a list before processing
             if playlist_data.podcast_ids is None:
-                podcast_ids = ""
+                podcast_ids = json.dumps([])
             elif isinstance(playlist_data.podcast_ids, (list, tuple)):
-                if len(playlist_data.podcast_ids) == 0:
-                    podcast_ids = ""
-                else:
-                    # Convert list to comma-separated string
-                    podcast_ids = ','.join(str(id) for id in playlist_data.podcast_ids)
+                podcast_ids = json.dumps(list(playlist_data.podcast_ids))
             else:
                 # Handle single value case
-                podcast_ids = str(playlist_data.podcast_ids)
+                podcast_ids = json.dumps([playlist_data.podcast_ids])
 
         # Create tuple of values for insert and log them
         insert_values = (
@@ -11338,7 +11335,6 @@ def get_playlist_episodes(cnx, database_type, user_id, playlist_id):
             episode_list.append(episode_dict)
 
         # Return directly matching Rust struct - no extra nesting
-        print(f"Debug - final response structure: {dict(playlist_info=normalized_info, episodes=episode_list)}")
         return {
             "playlist_info": normalized_info,
             "episodes": episode_list

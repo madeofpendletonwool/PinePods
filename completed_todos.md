@@ -19,15 +19,17 @@ Major Version:
 - [x] Finish making UI css adjustments
 - [x] Fix error where refreshing on episode layout page causes panic
 - [x] Issue with rss caused by new migration system
-- [] Fix playback speed setting css
+- [x] user stats gpodder sync css fix
+- [x] Fix playback speed setting css
 - [] test ntfy sending on nightly
-- [] Test everything in mysql
-- [] Test everything in postgres
-- [] Test upgrades from previous in postgres
-- [] Test upgrades from previous in mysql
-- [] Test fresh postgres
-- [] Test fresh mysql
+- [x] Test everything in mysql
+- [x] Test everything in postgres
+- [x] Test upgrades from previous in postgres
+- [x] Test upgrades from previous in mysql
+- [x] Test fresh postgres
+- [x] Test fresh mysql
 - [] External Podcast sync
+- [] retest rss in nightly
 - [x] Package upgrades
 - [] Local downloads tauri are broken again
 - [x] Fix downloads Layout

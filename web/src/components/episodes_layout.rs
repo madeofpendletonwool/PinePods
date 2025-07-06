@@ -1576,7 +1576,7 @@ pub fn episode_layout() -> Html {
                                     />
                                     <span class="text-sm">{"x"}</span>
                                     <button
-                                        class="download-button font-bold py-2 px-4 rounded"
+                                        class="save-button font-bold py-2 px-4 rounded"
                                         onclick={save_playback_speed}
                                     >
                                         {"Save"}

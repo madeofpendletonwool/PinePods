@@ -2055,6 +2055,12 @@ input[type="range"]::-moz-range-thumb {
     margin-bottom: 10px;
 }
 
+.save-button {
+    color: var(--button-text-color) !important;
+    background-color: var(--button-color);
+    border-color: var(--border-color);
+}
+
 .filter-button {
     color: var(--button-text-color);
     background-color: var(--button-color);
@@ -3805,6 +3811,12 @@ button.item-container-action-button.item-container-action-button {
     color: var(--text-secondary-color);
 }
 
+.stats-detail {
+    font-size: 1.2rem;
+    font-weight: 400;
+    color: var(--text-secondary-color);
+}
+
 .large-card {
     background-color: var(--secondary-background);
     padding: 2rem;
@@ -4397,6 +4409,35 @@ button.item-container-action-button.item-container-action-button {
 }
 
 .submit-button i {
+    font-size: 1.25rem;
+}
+
+.playback-submit-button {
+    width: 100%;
+    padding: 0.875rem;
+    background-color: var(--accent-color);
+    color: var(--text-color);
+    border: none;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.playback-submit-button:hover {
+    background-color: var(--hover-color);
+    transform: translateY(-1px);
+}
+
+.playback-submit-button:active {
+    transform: translateY(0);
+}
+
+.playback-submit-button i {
     font-size: 1.25rem;
 }
 
