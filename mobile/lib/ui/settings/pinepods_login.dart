@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/services/pinepods/login_service.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -132,57 +134,35 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
     });
 
     try {
-      // Step 1: Verify this is a PinePods server
       final serverUrl = _serverController.text.trim();
-      final isPinepods = await _verifyPinepodsInstance(serverUrl);
+      final username = _usernameController.text.trim();
+      final password = _passwordController.text;
 
-      if (!isPinepods) {
-        setState(() {
-          _errorMessage = 'Not a valid PinePods server';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // Step 2: Get API key
-      final apiKey = await _login(
+      // Use the same login service as the startup login
+      final result = await PinepodsLoginService.login(
         serverUrl,
-        _usernameController.text.trim(),
-        _passwordController.text,
+        username,
+        password,
       );
 
-      if (apiKey == null) {
+      if (result.isSuccess) {
+        // Save the connection details including user ID
+        var settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+        settingsBloc.setPinepodsServer(result.serverUrl!);
+        settingsBloc.setPinepodsApiKey(result.apiKey!);
+        settingsBloc.setPinepodsUserId(result.userId!);
+
         setState(() {
-          _errorMessage = 'Login failed. Check your credentials.';
+          _isLoggedIn = true;
+          _connectedServer = serverUrl;
           _isLoading = false;
         });
-        return;
-      }
-
-      // Step 3: Verify API key
-      final isValidKey = await _verifyApiKey(serverUrl, apiKey);
-
-      if (!isValidKey) {
+      } else {
         setState(() {
-          _errorMessage = 'API key verification failed';
+          _errorMessage = result.errorMessage ?? 'Login failed';
           _isLoading = false;
         });
-        return;
       }
-
-      // Step 4: Save the connection details
-      var settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-
-      // We'll update SettingsBloc in the next step
-      // For now, we'll assume these methods exist
-      settingsBloc.setPinepodsServer(serverUrl);
-      settingsBloc.setPinepodsApiKey(apiKey);
-
-      setState(() {
-        _isLoggedIn = true;
-        _connectedServer = serverUrl;
-        _isLoading = false;
-      });
     } catch (e) {
       setState(() {
         _errorMessage = 'Error: ${e.toString()}';

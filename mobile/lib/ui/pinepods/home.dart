@@ -1,7 +1,16 @@
 // lib/ui/pinepods/home.dart
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/entities/home_data.dart';
+import 'package:pinepods_mobile/ui/pinepods/feed.dart';
+import 'package:pinepods_mobile/ui/pinepods/saved.dart';
+import 'package:pinepods_mobile/ui/pinepods/downloads.dart';
+import 'package:pinepods_mobile/ui/pinepods/queue.dart';
+import 'package:pinepods_mobile/ui/pinepods/history.dart';
+import 'package:pinepods_mobile/ui/pinepods/playlists.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 
 class PinepodsHome extends StatefulWidget {
   const PinepodsHome({Key? key}) : super(key: key);
@@ -11,163 +20,711 @@ class PinepodsHome extends StatefulWidget {
 }
 
 class _PinepodsHomeState extends State<PinepodsHome> {
-  bool _isLoading = false;
+  bool _isLoading = true;
   String _errorMessage = '';
+  HomeOverview? _homeData;
+  PlaylistResponse? _playlistData;
+  final PinepodsService _pinepodsService = PinepodsService();
 
   @override
   void initState() {
     super.initState();
-    _checkConnection();
-  }
-
-  void _checkConnection() {
-    var settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-
-    if (settingsBloc.currentSettings.pinepodsServer == null ||
-        settingsBloc.currentSettings.pinepodsApiKey == null) {
-      setState(() {
-        _errorMessage = 'Not connected to PinePods server. Please connect in Settings.';
-      });
-    } else {
-      _loadHomeContent();
-    }
+    _loadHomeContent();
   }
 
   Future<void> _loadHomeContent() async {
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+
+    if (settings.pinepodsServer == null || 
+        settings.pinepodsApiKey == null || 
+        settings.pinepodsUserId == null) {
+      setState(() {
+        _errorMessage = 'Not connected to PinePods server. Please connect in Settings.';
+        _isLoading = false;
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = '';
     });
 
-    // Here you would fetch content from your PinePods server
-    // For now, we'll just simulate a delay
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      _pinepodsService.setCredentials(
+        settings.pinepodsServer!,
+        settings.pinepodsApiKey!,
+      );
 
-    setState(() {
-      _isLoading = false;
-    });
+      // Load home data and playlists in parallel
+      final futures = await Future.wait([
+        _pinepodsService.getHomeOverview(settings.pinepodsUserId!),
+        _pinepodsService.getPlaylists(settings.pinepodsUserId!),
+      ]);
+
+      setState(() {
+        _homeData = futures[0] as HomeOverview?;
+        _playlistData = futures[1] as PlaylistResponse?;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Error loading home content: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return SliverList(
       delegate: SliverChildListDelegate([
-        Padding(
+        if (_isLoading)
+          const Padding(
+            padding: EdgeInsets.all(32.0),
+            child: Center(
+              child: Column(
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading your podcasts...'),
+                ],
+              ),
+            ),
+          )
+        else if (_errorMessage.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Card(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      color: Theme.of(context).colorScheme.onErrorContainer,
+                      size: 48,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _errorMessage,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onErrorContainer,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _loadHomeContent,
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else if (_homeData != null)
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Quick Links Section
+                _buildQuickLinksSection(),
+                const SizedBox(height: 24),
+
+                // Stats Overview Section
+                _buildStatsSection(),
+                const SizedBox(height: 24),
+
+                // Continue Listening Section
+                if (_homeData!.inProgressEpisodes.isNotEmpty) ...[
+                  _buildContinueListeningSection(),
+                  const SizedBox(height: 24),
+                ],
+
+                // Top Podcasts Section
+                if (_homeData!.topPodcasts.isNotEmpty) ...[
+                  _buildTopPodcastsSection(),
+                  const SizedBox(height: 24),
+                ],
+
+                // Smart Playlists Section
+                if (_playlistData?.playlists.isNotEmpty == true) ...[
+                  _buildPlaylistsSection(),
+                  const SizedBox(height: 24),
+                ],
+
+                // Recent Episodes Section
+                if (_homeData!.recentEpisodes.isNotEmpty) ...[
+                  _buildRecentEpisodesSection(),
+                  const SizedBox(height: 24),
+                ],
+
+                // Empty state if no content
+                if (_homeData!.recentEpisodes.isEmpty && 
+                    _homeData!.inProgressEpisodes.isEmpty &&
+                    _homeData!.topPodcasts.isEmpty)
+                  _buildEmptyState(),
+              ],
+            ),
+          ),
+      ]),
+    );
+  }
+
+  Widget _buildQuickLinksSection() {
+    const quickLinks = [
+      {'title': 'Saved', 'icon': Icons.bookmark_outline, 'color': Colors.orange},
+      {'title': 'Downloads', 'icon': Icons.download_outlined, 'color': Colors.green},
+      {'title': 'Queue', 'icon': Icons.queue_music_outlined, 'color': Colors.blue},
+      {'title': 'History', 'icon': Icons.history_outlined, 'color': Colors.purple},
+      {'title': 'Feed', 'icon': Icons.rss_feed_outlined, 'color': Colors.red},
+      {'title': 'Playlists', 'icon': Icons.playlist_play_outlined, 'color': Colors.teal},
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Quick Links',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            childAspectRatio: 1.2,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
+          itemCount: quickLinks.length,
+          itemBuilder: (context, index) {
+            final link = quickLinks[index];
+            return _QuickLinkCard(
+              title: link['title'] as String,
+              icon: link['icon'] as IconData,
+              color: link['color'] as Color,
+              onTap: () => _navigateToPage(link['title'] as String),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Your Library',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _StatCard(
+                title: 'Saved',
+                count: _homeData!.savedCount,
+                icon: Icons.bookmark,
+                color: Colors.orange,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatCard(
+                title: 'Downloaded',
+                count: _homeData!.downloadedCount,
+                icon: Icons.download,
+                color: Colors.green,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _StatCard(
+                title: 'Queue',
+                count: _homeData!.queueCount,
+                icon: Icons.queue_music,
+                color: Colors.blue,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContinueListeningSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Continue Listening',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        ...(_homeData!.inProgressEpisodes.take(3).map((episode) => 
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _EpisodeCard(episode: episode),
+          ),
+        )),
+      ],
+    );
+  }
+
+  Widget _buildTopPodcastsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Top Podcasts',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 180,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _homeData!.topPodcasts.length,
+            itemBuilder: (context, index) {
+              final podcast = _homeData!.topPodcasts[index];
+              return Padding(
+                padding: EdgeInsets.only(
+                  right: index < _homeData!.topPodcasts.length - 1 ? 16 : 0,
+                ),
+                child: _PodcastCard(podcast: podcast),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPlaylistsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Smart Playlists',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            childAspectRatio: 1.5,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
+          itemCount: _playlistData!.playlists.length,
+          itemBuilder: (context, index) {
+            final playlist = _playlistData!.playlists[index];
+            return _PlaylistCard(playlist: playlist);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRecentEpisodesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Recent Episodes',
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
+        ...(_homeData!.recentEpisodes.take(5).map((episode) => 
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _EpisodeCard(episode: episode),
+          ),
+        )),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          children: [
+            Icon(
+              Icons.podcasts_outlined,
+              size: 64,
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Welcome to PinePods!',
+              style: Theme.of(context).textTheme.headlineSmall,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Start by searching for podcasts to subscribe to.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _navigateToPage(String pageName) {
+    // This would be implemented to navigate to the appropriate page
+    // For now, we'll show a placeholder snackbar
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Navigate to $pageName')),
+    );
+  }
+}
+
+class _QuickLinkCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickLinkCard({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 32),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final String title;
+  final int count;
+  final IconData icon;
+  final Color color;
+
+  const _StatCard({
+    required this.title,
+    required this.count,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 8),
+            Text(
+              count.toString(),
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            Text(
+              title,
+              style: Theme.of(context).textTheme.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EpisodeCard extends StatelessWidget {
+  final HomeEpisode episode;
+
+  const _EpisodeCard({required this.episode});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            // Episode artwork
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                episode.episodeArtwork,
+                width: 60,
+                height: 60,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: 60,
+                    height: 60,
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    child: Icon(
+                      Icons.podcasts,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Episode info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    episode.episodeTitle,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    episode.podcastName,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  // Progress bar for in-progress episodes
+                  if (episode.listenDuration != null && episode.listenDuration! > 0) ...[
+                    LinearProgressIndicator(
+                      value: episode.progressPercentage / 100,
+                      backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          episode.formattedListenDuration ?? '',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        Text(
+                          episode.formattedDuration,
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    Text(
+                      episode.formattedDuration,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // Play button
+            IconButton(
+              onPressed: () {
+                // Implement play functionality
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Playing: ${episode.episodeTitle}')),
+                );
+              },
+              icon: Icon(
+                episode.completed ? Icons.replay : Icons.play_arrow,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PodcastCard extends StatelessWidget {
+  final HomePodcast podcast;
+
+  const _PodcastCard({required this.podcast});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 140,
+      child: Column(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              podcast.artworkUrl ?? '',
+              width: 140,
+              height: 140,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  width: 140,
+                  height: 140,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.podcasts,
+                    size: 48,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            podcast.podcastName,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlaylistCard extends StatelessWidget {
+  final Playlist playlist;
+
+  const _PlaylistCard({required this.playlist});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Opening playlist: ${playlist.name}')),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'PinePods Home',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                children: [
+                  Icon(
+                    _getIconFromName(playlist.iconName),
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      playlist.name,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
-              if (_errorMessage.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 16.0),
-                  child: Text(
-                    _errorMessage,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+              const SizedBox(height: 8),
+              if (playlist.episodeCount != null)
+                Text(
+                  '${playlist.episodeCount} episodes',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                   ),
                 ),
-              if (_isLoading)
-                const Padding(
-                  padding: EdgeInsets.only(top: 16.0),
-                  child: Center(
-                    child: CircularProgressIndicator(),
-                  ),
-                ),
-              if (!_isLoading && _errorMessage.isEmpty) ...[
-                const SizedBox(height: 16),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Recently Played',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        // Placeholder for recently played episodes
-                        Container(
-                          height: 120,
-                          color: Colors.grey.shade200,
-                          child: const Center(
-                            child: Text('Recently played episodes will appear here'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'New Episodes',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        // Placeholder for new episodes
-                        Container(
-                          height: 120,
-                          color: Colors.grey.shade200,
-                          child: const Center(
-                            child: Text('New episodes from your subscriptions will appear here'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Popular on PinePods',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        // Placeholder for popular podcasts
-                        Container(
-                          height: 120,
-                          color: Colors.grey.shade200,
-                          child: const Center(
-                            child: Text('Popular podcasts will appear here'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+              if (playlist.description != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  playlist.description!,
+                  style: Theme.of(context).textTheme.bodySmall,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ],
           ),
         ),
-      ]),
+      ),
     );
+  }
+
+  IconData _getIconFromName(String iconName) {
+    switch (iconName) {
+      case 'ph-music-notes':
+        return Icons.music_note;
+      case 'ph-star':
+        return Icons.star;
+      case 'ph-clock':
+        return Icons.access_time;
+      case 'ph-heart':
+        return Icons.favorite;
+      default:
+        return Icons.playlist_play;
+    }
   }
 }

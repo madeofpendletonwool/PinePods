@@ -7,6 +7,7 @@ import 'package:pinepods_mobile/core/environment.dart';
 import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/entities/search_providers.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
 
@@ -30,10 +31,46 @@ class SettingsBloc extends Bloc {
   final BehaviorSubject<String?> _pinepodsServer = BehaviorSubject<String?>();
   final BehaviorSubject<String?> _pinepodsApiKey = BehaviorSubject<String?>();
   final BehaviorSubject<int?> _pinepodsUserId = BehaviorSubject<int?>();
+  final BehaviorSubject<String?> _pinepodsUsername = BehaviorSubject<String?>();
+  final BehaviorSubject<String?> _pinepodsEmail = BehaviorSubject<String?>();
   var _currentSettings = AppSettings.sensibleDefaults();
 
   SettingsBloc(this._settingsService) {
     _init();
+    // Check if we need to fetch user details for existing login
+    _fetchUserDetailsIfNeeded();
+  }
+
+  Future<void> _fetchUserDetailsIfNeeded() async {
+    // Only fetch if we have server/api key but no username
+    if (_currentSettings.pinepodsServer != null && 
+        _currentSettings.pinepodsApiKey != null &&
+        (_currentSettings.pinepodsUsername == null || _currentSettings.pinepodsUsername!.isEmpty)) {
+      
+      try {
+        final pinepodsService = PinepodsService();
+        pinepodsService.setCredentials(_currentSettings.pinepodsServer!, _currentSettings.pinepodsApiKey!);
+        
+        // Use stored user ID if available, otherwise we need to get it somehow
+        final userId = _currentSettings.pinepodsUserId;
+        print('DEBUG: User ID from settings: $userId');
+        if (userId != null) {
+          final userDetails = await pinepodsService.getUserDetails(userId);
+          print('DEBUG: User details response: $userDetails');
+          if (userDetails != null) {
+            // Update settings with user details
+            final username = userDetails['Username'] ?? userDetails['username'] ?? '';
+            final email = userDetails['Email'] ?? userDetails['email'] ?? '';
+            print('DEBUG: Parsed username: "$username", email: "$email"');
+            setPinepodsUsername(username);
+            setPinepodsEmail(email);
+          }
+        }
+      } catch (e) {
+        // Silently fail - don't break the app if this fails
+        print('Failed to fetch user details on startup: $e');
+      }
+    }
   }
 
   void _init() {
@@ -63,6 +100,8 @@ class SettingsBloc extends Bloc {
       pinepodsServer: _settingsService.pinepodsServer,
       pinepodsApiKey: _settingsService.pinepodsApiKey,
       pinepodsUserId: _settingsService.pinepodsUserId,
+      pinepodsUsername: _settingsService.pinepodsUsername,
+      pinepodsEmail: _settingsService.pinepodsEmail,
     );
 
     _settings.add(_currentSettings);
@@ -165,6 +204,18 @@ class SettingsBloc extends Bloc {
       _settingsService.pinepodsUserId = userId;
     });
 
+    _pinepodsUsername.listen((username) {
+      _currentSettings = _currentSettings.copyWith(pinepodsUsername: username);
+      _settings.add(_currentSettings);
+      _settingsService.pinepodsUsername = username;
+    });
+
+    _pinepodsEmail.listen((email) {
+      _currentSettings = _currentSettings.copyWith(pinepodsEmail: email);
+      _settings.add(_currentSettings);
+      _settingsService.pinepodsEmail = email;
+    });
+
     _layoutMode.listen((mode) {
       _currentSettings = _currentSettings.copyWith(layout: mode);
       _settings.add(_currentSettings);
@@ -206,6 +257,10 @@ class SettingsBloc extends Bloc {
 
   void Function(int?) get setPinepodsUserId => _pinepodsUserId.add;
 
+  void Function(String?) get setPinepodsUsername => _pinepodsUsername.add;
+
+  void Function(String?) get setPinepodsEmail => _pinepodsEmail.add;
+
   AppSettings get currentSettings => _settings.value;
 
   @override
@@ -226,6 +281,8 @@ class SettingsBloc extends Bloc {
     _pinepodsServer.close();
     _pinepodsApiKey.close();
     _pinepodsUserId.close();
+    _pinepodsUsername.close();
+    _pinepodsEmail.close();
     _settings.close();
   }
 }

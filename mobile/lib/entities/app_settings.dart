@@ -53,6 +53,10 @@ class AppSettings {
 
   final int? pinepodsUserId;
 
+  final String? pinepodsUsername;
+
+  final String? pinepodsEmail;
+
   AppSettings({
     required this.theme,
     required this.markDeletedEpisodesAsPlayed,
@@ -71,6 +75,8 @@ class AppSettings {
     this.pinepodsServer,
     this.pinepodsApiKey,
     this.pinepodsUserId,
+    this.pinepodsUsername,
+    this.pinepodsEmail,
   });
 
   AppSettings.sensibleDefaults()
@@ -90,7 +96,9 @@ class AppSettings {
         layout = 0,
         pinepodsServer = null,
         pinepodsApiKey = null,
-        pinepodsUserId = null;
+        pinepodsUserId = null,
+        pinepodsUsername = null,
+        pinepodsEmail = null;
 
   AppSettings copyWith({
     String? theme,
@@ -110,6 +118,8 @@ class AppSettings {
     String? pinepodsServer,
     String? pinepodsApiKey,
     int? pinepodsUserId,
+    String? pinepodsUsername,
+    String? pinepodsEmail,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -129,5 +139,7 @@ class AppSettings {
         pinepodsServer: pinepodsServer ?? this.pinepodsServer,
         pinepodsApiKey: pinepodsApiKey ?? this.pinepodsApiKey,
         pinepodsUserId: pinepodsUserId ?? this.pinepodsUserId,
+        pinepodsUsername: pinepodsUsername ?? this.pinepodsUsername,
+        pinepodsEmail: pinepodsEmail ?? this.pinepodsEmail,
       );
 }

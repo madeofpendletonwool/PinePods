@@ -102,11 +102,18 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
   }
 
   Future<void> _checkAddedPodcasts() async {
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+
+    if (userId == null) return;
+
     for (final podcast in _searchResults) {
       try {
         final exists = await _pinepodsService.checkPodcastExists(
           podcast.title,
           podcast.url,
+          userId,
         );
         if (exists) {
           setState(() {
@@ -115,6 +122,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
         }
       } catch (e) {
         // Ignore individual check failures
+        print('Failed to check podcast ${podcast.title}: $e');
       }
     }
   }

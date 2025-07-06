@@ -33,20 +33,20 @@ class PinepodsEpisode {
 
   factory PinepodsEpisode.fromJson(Map<String, dynamic> json) {
     return PinepodsEpisode(
-      podcastName: json['podcastname'] ?? '',
-      episodeTitle: json['episodetitle'] ?? '',
-      episodePubDate: json['episodepubdate'] ?? '',
-      episodeDescription: json['episodedescription'] ?? '',
-      episodeArtwork: json['episodeartwork'] ?? '',
-      episodeUrl: json['episodeurl'] ?? '',
-      episodeDuration: json['episodeduration'] ?? 0,
-      listenDuration: json['listenduration'],
-      episodeId: json['episodeid'] ?? 0,
-      completed: json['completed'] ?? false,
-      saved: json['saved'] ?? false,
-      queued: json['queued'] ?? false,
-      downloaded: json['downloaded'] ?? false,
-      isYoutube: json['is_youtube'] ?? false,
+      podcastName: json['Podcastname'] ?? json['podcastname'] ?? '',
+      episodeTitle: json['Episodetitle'] ?? json['episodetitle'] ?? '',
+      episodePubDate: json['Episodepubdate'] ?? json['episodepubdate'] ?? '',
+      episodeDescription: json['Episodedescription'] ?? json['episodedescription'] ?? '',
+      episodeArtwork: json['Episodeartwork'] ?? json['episodeartwork'] ?? '',
+      episodeUrl: json['Episodeurl'] ?? json['episodeurl'] ?? '',
+      episodeDuration: json['Episodeduration'] ?? json['episodeduration'] ?? 0,
+      listenDuration: json['Listenduration'] ?? json['listenduration'],
+      episodeId: json['Episodeid'] ?? json['episodeid'] ?? 0,
+      completed: json['Completed'] ?? json['completed'] ?? false,
+      saved: json['Saved'] ?? json['saved'] ?? false,
+      queued: json['Queued'] ?? json['queued'] ?? false,
+      downloaded: json['Downloaded'] ?? json['downloaded'] ?? false,
+      isYoutube: json['Is_youtube'] ?? json['is_youtube'] ?? false,
     );
   }
 

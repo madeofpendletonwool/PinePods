@@ -51,7 +51,10 @@ import 'package:pinepods_mobile/ui/pinepods/queue.dart';
 import 'package:pinepods_mobile/ui/pinepods/history.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlists.dart';
 import 'package:pinepods_mobile/ui/auth/auth_wrapper.dart';
+import 'package:pinepods_mobile/ui/pinepods/user_stats.dart';
 import 'package:app_links/app_links.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -198,6 +201,9 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
         ),
         Provider<AudioPlayerService>(
           create: (_) => widget.audioPlayerService,
+        ),
+        Provider<PodcastService>(
+          create: (_) => widget.podcastService!,
         )
       ],
       child: MaterialApp(
@@ -716,47 +722,121 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
 }
 
 class TitleWidget extends StatelessWidget {
-  final TextStyle _titleTheme1 = theme.textTheme.bodyMedium!.copyWith(
-    color: const Color(0xFF539e8a),
-    fontWeight: FontWeight.bold,
-    fontFamily: 'MontserratRegular',
-    fontSize: 18,
-  );
-
-  final TextStyle _titleTheme2Light = theme.textTheme.bodyMedium!.copyWith(
-    color: Colors.black,
-    fontWeight: FontWeight.bold,
-    fontFamily: 'MontserratRegular',
-    fontSize: 18,
-  );
-
-  final TextStyle _titleTheme2Dark = theme.textTheme.bodyMedium!.copyWith(
-    color: Colors.white,
-    fontWeight: FontWeight.bold,
-    fontFamily: 'MontserratRegular',
-    fontSize: 18,
-  );
-
   TitleWidget({
     super.key,
   });
 
+  String _generateGravatarUrl(String email, {int size = 40}) {
+    final hash = md5.convert(utf8.encode(email.toLowerCase().trim())).toString();
+    return 'https://www.gravatar.com/avatar/$hash?s=$size&d=identicon';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 2.0),
-      child: Row(
-        children: <Widget>[
-          Text(
-            'Pine',
-            style: _titleTheme1,
+    return Consumer<SettingsBloc>(
+      builder: (context, settingsBloc, child) {
+        final settings = settingsBloc.currentSettings;
+        final username = settings.pinepodsUsername;
+        final email = settings.pinepodsEmail;
+
+        if (username == null || username.isEmpty) {
+          // Fallback to PinePods logo if no user is logged in - make it clickable
+          return GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PinepodsUserStats(),
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.only(left: 2.0),
+              child: Row(
+                children: <Widget>[
+                  Text(
+                    'Pine',
+                    style: TextStyle(
+                      color: const Color(0xFF539e8a),
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'MontserratRegular',
+                      fontSize: 18,
+                    ),
+                  ),
+                  Text(
+                    'Pods',
+                    style: TextStyle(
+                      color: Theme.of(context).brightness == Brightness.light ? Colors.black : Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'MontserratRegular',
+                      fontSize: 18,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const PinepodsUserStats(),
+              ),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.only(left: 2.0),
+            child: Row(
+              children: [
+                // User Avatar
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Colors.grey[300],
+                  child: email != null && email.isNotEmpty
+                      ? ClipOval(
+                          child: Image.network(
+                            _generateGravatarUrl(email),
+                            width: 36,
+                            height: 36,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Image.asset(
+                                'assets/images/pinepods-logo.png',
+                                width: 36,
+                                height: 36,
+                                fit: BoxFit.cover,
+                              );
+                            },
+                          ),
+                        )
+                      : Image.asset(
+                          'assets/images/pinepods-logo.png',
+                          width: 36,
+                          height: 36,
+                          fit: BoxFit.cover,
+                        ),
+                ),
+                const SizedBox(width: 12),
+                // Username
+                Flexible(
+                  child: Text(
+                    username,
+                    style: TextStyle(
+                      color: Theme.of(context).brightness == Brightness.light ? Colors.black : Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
-          Text(
-            'Pods',
-            style: Theme.of(context).brightness == Brightness.light ? _titleTheme2Light : _titleTheme2Dark,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
