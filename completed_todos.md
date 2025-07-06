@@ -18,7 +18,7 @@ Major Version:
 - [x] Finish implementing long finger press - fix on iOS (close, it doesn't auto close when clicking away currently)
 - [x] Finish making UI css adjustments
 - [x] Fix error where refreshing on episode layout page causes panic
-- [] Issue with rss caused by new migration system
+- [x] Issue with rss caused by new migration system
 - [] Test everything in mysql
 - [] Test everything in postgres
 - [] Test upgrades from previous in postgres
@@ -26,8 +26,8 @@ Major Version:
 - [] Test fresh postgres
 - [] Test fresh mysql
 - [] External Podcast sync
-- [] Package upgrades
-- [] Test tauri
+- [x] Package upgrades
+- [] Local downloads tauri are broken again
 - [x] Fix downloads Layout
 - [x] Finish super small screen visual Improvements
 - [x] Return Gpodder info as part of get_stats
