@@ -13,6 +13,10 @@ abstract class SettingsService {
 
   set themeDarkMode(bool value);
 
+  String get theme;
+
+  set theme(String value);
+
   bool get markDeletedEpisodesAsPlayed;
 
   set markDeletedEpisodesAsPlayed(bool value);

@@ -131,10 +131,6 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Quick Links Section
-                _buildQuickLinksSection(),
-                const SizedBox(height: 24),
-
                 // Stats Overview Section
                 _buildStatsSection(),
                 const SizedBox(height: 24),
@@ -172,50 +168,6 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             ),
           ),
       ]),
-    );
-  }
-
-  Widget _buildQuickLinksSection() {
-    const quickLinks = [
-      {'title': 'Saved', 'icon': Icons.bookmark_outline, 'color': Colors.orange},
-      {'title': 'Downloads', 'icon': Icons.download_outlined, 'color': Colors.green},
-      {'title': 'Queue', 'icon': Icons.queue_music_outlined, 'color': Colors.blue},
-      {'title': 'History', 'icon': Icons.history_outlined, 'color': Colors.purple},
-      {'title': 'Feed', 'icon': Icons.rss_feed_outlined, 'color': Colors.red},
-      {'title': 'Playlists', 'icon': Icons.playlist_play_outlined, 'color': Colors.teal},
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Quick Links',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 16),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            childAspectRatio: 1.2,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-          ),
-          itemCount: quickLinks.length,
-          itemBuilder: (context, index) {
-            final link = quickLinks[index];
-            return _QuickLinkCard(
-              title: link['title'] as String,
-              icon: link['icon'] as IconData,
-              color: link['color'] as Color,
-              onTap: () => _navigateToPage(link['title'] as String),
-            );
-          },
-        ),
-      ],
     );
   }
 

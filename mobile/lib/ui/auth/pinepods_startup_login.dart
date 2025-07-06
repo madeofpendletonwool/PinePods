@@ -84,6 +84,9 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
         settingsBloc.setPinepodsApiKey(result.apiKey!);
         settingsBloc.setPinepodsUserId(result.userId!);
 
+        // Fetch theme from server after successful login
+        await settingsBloc.fetchThemeFromServer();
+
         setState(() {
           _isLoading = false;
         });

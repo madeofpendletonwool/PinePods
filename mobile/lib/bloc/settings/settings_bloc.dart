@@ -16,6 +16,7 @@ class SettingsBloc extends Bloc {
   final SettingsService _settingsService;
   final BehaviorSubject<AppSettings> _settings = BehaviorSubject<AppSettings>.seeded(AppSettings.sensibleDefaults());
   final BehaviorSubject<bool> _darkMode = BehaviorSubject<bool>();
+  final BehaviorSubject<String> _theme = BehaviorSubject<String>();
   final BehaviorSubject<bool> _markDeletedAsPlayed = BehaviorSubject<bool>();
   final BehaviorSubject<bool> _deleteDownloadedPlayedEpisodes = BehaviorSubject<bool>();
   final BehaviorSubject<bool> _storeDownloadOnSDCard = BehaviorSubject<bool>();
@@ -83,7 +84,7 @@ class SettingsBloc extends Bloc {
     }
 
     _currentSettings = AppSettings(
-      theme: _settingsService.themeDarkMode ? 'dark' : 'light',
+      theme: _settingsService.theme,
       markDeletedEpisodesAsPlayed: _settingsService.markDeletedEpisodesAsPlayed,
       deleteDownloadedPlayedEpisodes: _settingsService.deleteDownloadedPlayedEpisodes,
       storeDownloadsSDCard: _settingsService.storeDownloadsSDCard,
@@ -107,9 +108,18 @@ class SettingsBloc extends Bloc {
     _settings.add(_currentSettings);
 
     _darkMode.listen((bool darkMode) {
-      _currentSettings = _currentSettings.copyWith(theme: darkMode ? 'dark' : 'light');
+      _currentSettings = _currentSettings.copyWith(theme: darkMode ? 'Dark' : 'Light');
       _settings.add(_currentSettings);
       _settingsService.themeDarkMode = darkMode;
+    });
+
+    _theme.listen((String theme) {
+      _currentSettings = _currentSettings.copyWith(theme: theme);
+      _settings.add(_currentSettings);
+      _settingsService.theme = theme;
+      
+      // Sync with server if authenticated
+      _syncThemeToServer(theme);
     });
 
     _markDeletedAsPlayed.listen((bool mark) {
@@ -261,11 +271,64 @@ class SettingsBloc extends Bloc {
 
   void Function(String?) get setPinepodsEmail => _pinepodsEmail.add;
 
+  void Function(String) get setTheme => _theme.add;
+
   AppSettings get currentSettings => _settings.value;
+
+  Future<void> _syncThemeToServer(String theme) async {
+    try {
+      // Only sync if we have PinePods credentials
+      if (_currentSettings.pinepodsServer != null &&
+          _currentSettings.pinepodsApiKey != null &&
+          _currentSettings.pinepodsUserId != null) {
+        
+        final pinepodsService = PinepodsService();
+        pinepodsService.setCredentials(
+          _currentSettings.pinepodsServer!,
+          _currentSettings.pinepodsApiKey!,
+        );
+        
+        await pinepodsService.setUserTheme(_currentSettings.pinepodsUserId!, theme);
+        log.info('Theme synced to server: $theme');
+      }
+    } catch (e) {
+      log.warning('Failed to sync theme to server: $e');
+      // Don't throw - theme should still work locally
+    }
+  }
+
+  Future<void> fetchThemeFromServer() async {
+    try {
+      // Only fetch if we have PinePods credentials
+      if (_currentSettings.pinepodsServer != null &&
+          _currentSettings.pinepodsApiKey != null &&
+          _currentSettings.pinepodsUserId != null) {
+        
+        final pinepodsService = PinepodsService();
+        pinepodsService.setCredentials(
+          _currentSettings.pinepodsServer!,
+          _currentSettings.pinepodsApiKey!,
+        );
+        
+        final serverTheme = await pinepodsService.getUserTheme(_currentSettings.pinepodsUserId!);
+        if (serverTheme != null && serverTheme.isNotEmpty) {
+          // Update local theme without syncing back to server
+          _settingsService.theme = serverTheme;
+          _currentSettings = _currentSettings.copyWith(theme: serverTheme);
+          _settings.add(_currentSettings);
+          log.info('Theme fetched from server: $serverTheme');
+        }
+      }
+    } catch (e) {
+      log.warning('Failed to fetch theme from server: $e');
+      // Don't throw - continue with local theme
+    }
+  }
 
   @override
   void dispose() {
     _darkMode.close();
+    _theme.close();
     _markDeletedAsPlayed.close();
     _deleteDownloadedPlayedEpisodes.close();
     _storeDownloadOnSDCard.close();

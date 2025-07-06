@@ -131,7 +131,7 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
     /// Listen to theme change events from settings.
     widget.settingsBloc!.settings.listen((event) {
       setState(() {
-        var newTheme = event.theme == 'dark' ? Themes.darkTheme().themeData : Themes.lightTheme().themeData;
+        var newTheme = ThemeRegistry.getThemeData(event.theme);
 
         /// Only update the theme if it has changed.
         if (newTheme != theme) {
@@ -140,11 +140,8 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
       });
     });
 
-    if (widget.mobileSettingsService.themeDarkMode) {
-      theme = Themes.darkTheme().themeData;
-    } else {
-      theme = Themes.lightTheme().themeData;
-    }
+    // Initialize theme from current settings
+    theme = ThemeRegistry.getThemeData(widget.mobileSettingsService.theme);
   }
 
   @override

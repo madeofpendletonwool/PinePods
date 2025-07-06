@@ -124,14 +124,23 @@ class MobileSettingsService extends SettingsService {
 
   @override
   bool get themeDarkMode {
-    var theme = _sharedPreferences.getString('theme') ?? 'dark';
+    var theme = _sharedPreferences.getString('theme') ?? 'Dark';
 
-    return theme == 'dark';
+    return theme == 'Dark';
   }
 
   @override
   set themeDarkMode(bool value) {
-    _sharedPreferences.setString('theme', value ? 'dark' : 'light');
+    _sharedPreferences.setString('theme', value ? 'Dark' : 'Light');
+    settingsNotifier.sink.add('theme');
+  }
+
+  String get theme {
+    return _sharedPreferences.getString('theme') ?? 'Dark';
+  }
+
+  set theme(String value) {
+    _sharedPreferences.setString('theme', value);
     settingsNotifier.sink.add('theme');
   }
 

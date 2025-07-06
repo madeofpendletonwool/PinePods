@@ -5,13 +5,20 @@ import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/ui/auth/pinepods_startup_login.dart';
 import 'package:provider/provider.dart';
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   final Widget child;
 
   const AuthWrapper({
     Key? key,
     required this.child,
   }) : super(key: key);
+
+  @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  bool _hasInitializedTheme = false;
 
   @override
   Widget build(BuildContext context) {
@@ -38,10 +45,22 @@ class AuthWrapper extends StatelessWidget {
                 settings.pinepodsApiKey!.isNotEmpty;
 
             if (hasServer && hasApiKey) {
-              // User is logged in, show main app
-              return child;
+              // User is logged in, fetch theme from server if not already done
+              if (!_hasInitializedTheme) {
+                _hasInitializedTheme = true;
+                // Fetch theme from server on next frame to avoid modifying state during build
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  settingsBloc.fetchThemeFromServer();
+                });
+              }
+              
+              // Show main app
+              return widget.child;
             } else {
-              // User needs to login, show startup login
+              // User needs to login, reset theme initialization flag
+              _hasInitializedTheme = false;
+              
+              // Show startup login
               return PinepodsStartupLogin(
                 onLoginSuccess: () {
                   // Force rebuild to check auth state again

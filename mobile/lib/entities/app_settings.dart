@@ -80,7 +80,7 @@ class AppSettings {
   });
 
   AppSettings.sensibleDefaults()
-      : theme = 'dark',
+      : theme = 'Dark',
         markDeletedEpisodesAsPlayed = false,
         deleteDownloadedPlayedEpisodes = false,
         storeDownloadsSDCard = false,

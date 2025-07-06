@@ -1388,6 +1388,76 @@ class PinepodsService {
       return null;
     }
   }
+
+  // Get user theme
+  Future<String?> getUserTheme(int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/get_theme/$userId');
+    print('Making API call to: $url');
+    
+    try {
+      final response = await http.get(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+      );
+
+      print('Get theme response: ${response.statusCode} - ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['theme'] as String?;
+      } else {
+        throw Exception('Failed to get user theme: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting user theme: $e');
+      return null;
+    }
+  }
+
+  // Set user theme
+  Future<bool> setUserTheme(int userId, String theme) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/user/set_theme');
+    print('Making API call to: $url');
+    
+    try {
+      final requestBody = jsonEncode({
+        'user_id': userId,
+        'new_theme': theme,
+      });
+
+      final response = await http.put(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: requestBody,
+      );
+
+      print('Set theme response: ${response.statusCode} - ${response.body}');
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['message'] != null;
+      } else {
+        throw Exception('Failed to set user theme: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error setting user theme: $e');
+      return false;
+    }
+  }
 }
 
 class PodcastDetails {
