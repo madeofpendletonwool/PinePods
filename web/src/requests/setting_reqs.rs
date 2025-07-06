@@ -890,7 +890,10 @@ pub async fn call_create_api_key(
     api_key: &str,
 ) -> Result<CreateAPIKeyResponse, anyhow::Error> {
     let url = format!("{}/api/data/create_api_key", server_name);
-    let request_body = serde_json::json!({ "user_id": user_id });
+    let request_body = serde_json::json!({ 
+        "user_id": user_id,
+        "rssonly": false
+    });
 
     let response = Request::post(&url)
         .header("Content-Type", "application/json")

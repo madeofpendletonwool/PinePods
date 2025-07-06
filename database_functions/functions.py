@@ -5681,7 +5681,7 @@ def get_api_info(database_type, cnx, user_id):
     else:
         query += '''
         UNION ALL
-        SELECT RssKeys.RssKeyID, RssKeys.UserID, Users.Username, RIGHT(RssKeys.RssKey, 4) as LastFourDigits, RssKeys.Created, GROUP_CONCAT(CAST(RssKeyMap.PodcastID AS TEXT)) as PodcastIDs
+        SELECT RssKeys.RssKeyID, RssKeys.UserID, Users.Username, RIGHT(RssKeys.RssKey, 4) as LastFourDigits, RssKeys.Created, GROUP_CONCAT(CAST(RssKeyMap.PodcastID AS CHAR)) as PodcastIDs
         FROM RssKeys
         JOIN Users ON RssKeys.UserID = Users.UserID
         JOIN RssKeyMap ON RssKeys.RssKeyID = RssKeyMap.RssKeyID
@@ -5739,7 +5739,15 @@ def create_rss_key(cnx, database_type: str, user_id: int, podcast_ids: list[int]
             result = cursor.fetchone()
             if not result:
                 raise Exception("Failed to create RSS key - no ID returned")
-            rss_key_id = result[0]
+            
+            # Handle both tuple and dict return types
+            if isinstance(result, dict):
+                rss_key_id = result.get('rsskeyid') or result.get('RssKeyID')
+            else:
+                rss_key_id = result[0]
+                
+            if not rss_key_id:
+                raise Exception("Failed to create RSS key - invalid ID returned")
         else:
             query = "INSERT INTO RssKeys (UserID, RssKey) VALUES (%s, %s)"
             cursor.execute(query, (user_id, api_key))
@@ -6555,19 +6563,19 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                     SELECT
                         e.EpisodeID,
                         e.PodcastID,
-                        e.EpisodeTitle,
-                        e.EpisodeDescription,
+                        e.EpisodeTitle COLLATE utf8mb4_unicode_ci as EpisodeTitle,
+                        e.EpisodeDescription COLLATE utf8mb4_unicode_ci as EpisodeDescription,
                         CASE WHEN de.EpisodeID IS NULL
-                                THEN e.EpisodeURL
-                                ELSE CONCAT(CAST(%s AS TEXT), '/api/data/stream/', CAST(y.EpisodeID AS TEXT), '?api_key=', CAST(%s AS TEXT), '&user_id=', pp.UserID)
-                        END as EpisodeURL,
-                        e.EpisodeArtwork,
+                                THEN e.EpisodeURL COLLATE utf8mb4_unicode_ci
+                                ELSE CONCAT(CAST(%s AS CHAR), '/api/data/stream/', CAST(e.EpisodeID AS CHAR), '?api_key=', CAST(%s AS CHAR), '&user_id=', pp.UserID)
+                        END COLLATE utf8mb4_unicode_ci as EpisodeURL,
+                        e.EpisodeArtwork COLLATE utf8mb4_unicode_ci as EpisodeArtwork,
                         e.EpisodePubDate,
                         e.EpisodeDuration,
-                        pp.PodcastName,
-                        pp.Author,
-                        pp.ArtworkURL,
-                        pp.Description as PodcastDescription
+                        pp.PodcastName COLLATE utf8mb4_unicode_ci as PodcastName,
+                        pp.Author COLLATE utf8mb4_unicode_ci as Author,
+                        pp.ArtworkURL COLLATE utf8mb4_unicode_ci as ArtworkURL,
+                        pp.Description COLLATE utf8mb4_unicode_ci as PodcastDescription
                     FROM Episodes e
                     JOIN Podcasts pp ON e.PodcastID = pp.PodcastID
                     LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID
@@ -6580,10 +6588,23 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                 base_query += ' AND pp.podcastid = ANY(%s)'
                 params.append(podcast_ids)
             else:
-                base_query += ' AND pp.PodcastID IN %s'
-                params.append(tuple(podcast_ids))
+                placeholders = ','.join(['%s'] * len(podcast_ids))
+                base_query += f' AND pp.PodcastID IN ({placeholders})'
+                params.extend(podcast_ids)
 
-        if not source_type or source_type == "youtube":
+        # For MySQL, only add YouTube union if we actually need it to avoid collation issues
+        add_youtube_union = not source_type or source_type == "youtube"
+        if database_type != "postgresql":
+            # For MySQL, check if any of the filtered podcasts are actually YouTube channels
+            if podcast_filter and add_youtube_union:
+                cursor_temp = cnx.cursor()
+                placeholders = ','.join(['%s'] * len(podcast_ids))
+                cursor_temp.execute(f"SELECT COUNT(*) FROM Podcasts WHERE PodcastID IN ({placeholders}) AND IsYouTubeChannel = 1", podcast_ids)
+                youtube_count = cursor_temp.fetchone()[0]
+                cursor_temp.close()
+                add_youtube_union = youtube_count > 0
+        
+        if add_youtube_union:
             if base_query:
                 base_query += "\nUNION ALL\n"
 
@@ -6611,16 +6632,16 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                     SELECT
                         y.VideoID as EpisodeID,
                         y.PodcastID as PodcastID,
-                        y.VideoTitle as EpisodeTitle,
-                        y.VideoDescription as EpisodeDescription,
-                        CONCAT(CAST(%s AS TEXT), '/api/data/stream/', CAST(y.VideoID AS TEXT), '?api_key=', CAST(%s AS TEXT), '&type=youtube&user_id=', pv.UserID) as EpisodeURL,
-                        y.ThumbnailURL as EpisodeArtwork,
+                        y.VideoTitle COLLATE utf8mb4_unicode_ci as EpisodeTitle,
+                        y.VideoDescription COLLATE utf8mb4_unicode_ci as EpisodeDescription,
+                        CONCAT(CAST(%s AS CHAR), '/api/data/stream/', CAST(y.VideoID AS CHAR), '?api_key=', CAST(%s AS CHAR), '&type=youtube&user_id=', pv.UserID) COLLATE utf8mb4_unicode_ci as EpisodeURL,
+                        y.ThumbnailURL COLLATE utf8mb4_unicode_ci as EpisodeArtwork,
                         y.PublishedAt as EpisodePubDate,
                         y.Duration as EpisodeDuration,
-                        pv.PodcastName,
-                        pv.Author,
-                        pv.ArtworkURL,
-                        pv.Description as PodcastDescription
+                        pv.PodcastName COLLATE utf8mb4_unicode_ci as PodcastName,
+                        pv.Author COLLATE utf8mb4_unicode_ci as Author,
+                        pv.ArtworkURL COLLATE utf8mb4_unicode_ci as ArtworkURL,
+                        pv.Description COLLATE utf8mb4_unicode_ci as PodcastDescription
                     FROM YouTubeVideos y
                     JOIN Podcasts pv on y.PodcastID = pv.PodcastID
                     WHERE pv.UserID = %s
@@ -6632,15 +6653,16 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                     base_query += ' AND y.podcastid = ANY(%s)'
                     params.append(podcast_ids)
                 else:
-                    base_query += ' AND y.PodcastID IN %s'
-                    params.append(tuple(podcast_ids))
+                    placeholders = ','.join(['%s'] * len(podcast_ids))
+                    base_query += f' AND y.PodcastID IN ({placeholders})'
+                    params.extend(podcast_ids)
 
         base_query += f' ORDER BY 7 DESC'
         # Only apply limit if no specific podcast is requested
         if not explicit_podcast_filter:
             base_query += ' LIMIT %s'
             params.append(limit)
-        cursor.execute(base_query, tuple(params))
+        cursor.execute(base_query, params)
         print('q1')
         # Get column names and create result mapping
         columns = [desc[0].lower() for desc in cursor.description]
@@ -6717,10 +6739,18 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                         (podcast_ids,)
                     )
                 else:
-                    cursor.execute(
-                        "SELECT PodcastName, ArtworkURL, Description FROM Podcasts WHERE PodcastID IN %s",
-                        (tuple(podcast_ids),)
-                    )
+                    # For single podcast ID, use direct equals instead of IN
+                    if len(podcast_ids) == 1:
+                        cursor.execute(
+                            "SELECT PodcastName, ArtworkURL, Description FROM Podcasts WHERE PodcastID = %s",
+                            (podcast_ids[0],)
+                        )
+                    else:
+                        placeholders = ','.join(['%s'] * len(podcast_ids))
+                        cursor.execute(
+                            f"SELECT PodcastName, ArtworkURL, Description FROM Podcasts WHERE PodcastID IN ({placeholders})",
+                            tuple(podcast_ids)
+                        )
                 result = cursor.fetchone()
                 if result:
                     if isinstance(result, tuple):
@@ -6772,13 +6802,16 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
         for episode in episodes:
             try:
                 episode_image = episode.get('episodeartwork') or episode.get('artworkurl', '')
+                # Ensure URLs don't have double-encoded ampersands
+                episode_url = str(episode.get('episodeurl', '')).replace('&amp;', '&')
+                
                 feed.add_item(
                     title=str(episode.get('episodetitle', 'Untitled Episode')),
-                    link=str(episode.get('episodeurl', '')),
+                    link=episode_url,
                     description=str(episode.get('episodedescription', '')),
                     unique_id=str(episode.get('episodeid', '')),
                     enclosure=feedgenerator.Enclosure(
-                        url=str(episode.get('episodeurl', '')),
+                        url=episode_url,
                         length=str(episode.get('episodeduration', '0')),
                         mime_type='audio/mpeg'
                     ),
@@ -6790,7 +6823,13 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                 logger.error(f"Error adding episode to feed: {str(e)}")
                 continue
 
-        return feed.writeString('utf-8')
+        # Generate RSS and fix URL encoding
+        rss_content = feed.writeString('utf-8')
+        # Fix XML-escaped ampersands in URLs to ensure they work properly
+        rss_content = rss_content.replace('&amp;user_id=', '&user_id=')
+        rss_content = rss_content.replace('&amp;api_key=', '&api_key=')
+        rss_content = rss_content.replace('&amp;type=', '&type=')
+        return rss_content
 
     except Exception as e:
         logger.error(f"Error generating RSS feed: {str(e)}", exc_info=True)
@@ -9022,10 +9061,10 @@ def search_data(database_type, cnx, search_term, user_id):
                 END as downloaded
             FROM "Podcasts" p
             LEFT JOIN (
-                SELECT * FROM "Episodes" WHERE EpisodeTitle ILIKE %s
+                SELECT * FROM "Episodes" WHERE EpisodeTitle ILIKE %s OR EpisodeDescription ILIKE %s
             ) e ON p.PodcastID = e.PodcastID
             LEFT JOIN (
-                SELECT * FROM "YouTubeVideos" WHERE VideoTitle ILIKE %s
+                SELECT * FROM "YouTubeVideos" WHERE VideoTitle ILIKE %s OR VideoDescription ILIKE %s
             ) y ON p.PodcastID = y.PodcastID
             LEFT JOIN "UserEpisodeHistory" h ON
                 (e.EpisodeID = h.EpisodeID AND h.UserID = %s)
@@ -9090,10 +9129,10 @@ def search_data(database_type, cnx, search_term, user_id):
                 END as downloaded
             FROM Podcasts p
             LEFT JOIN (
-                SELECT * FROM Episodes WHERE EpisodeTitle LIKE %s
+                SELECT * FROM Episodes WHERE EpisodeTitle LIKE %s OR EpisodeDescription LIKE %s
             ) e ON p.PodcastID = e.PodcastID
             LEFT JOIN (
-                SELECT * FROM YouTubeVideos WHERE VideoTitle LIKE %s
+                SELECT * FROM YouTubeVideos WHERE VideoTitle LIKE %s OR VideoDescription LIKE %s
             ) y ON p.PodcastID = y.PodcastID
             LEFT JOIN UserEpisodeHistory h ON
                 (e.EpisodeID = h.EpisodeID AND h.UserID = %s)
@@ -9114,8 +9153,8 @@ def search_data(database_type, cnx, search_term, user_id):
     # Add wildcards for the LIKE/ILIKE clause
     search_term = f"%{search_term}%"
 
-    # We now need 9 parameters: search_term (2x), user_id (7x)
-    params = (search_term, search_term, user_id, user_id, user_id, user_id, user_id, user_id, user_id)
+    # We now need 11 parameters: search_term (4x), user_id (7x)
+    params = (search_term, search_term, search_term, search_term, user_id, user_id, user_id, user_id, user_id, user_id, user_id)
 
     try:
         start = time.time()
@@ -15159,9 +15198,10 @@ def get_playback_speed(cnx, database_type: str, user_id: int, is_youtube: bool, 
     cursor.close()
 
     if result:
-        # Handle both tuple and dictionary return types
+        # Handle both tuple and dictionary return types with case variations
         if isinstance(result, dict):
-            return result['PlaybackSpeed']
+            # Try both cases for PostgreSQL vs MySQL/MariaDB
+            return result.get('PlaybackSpeed') or result.get('playbackspeed') or 1.0
         else:
-            return result[0]
+            return result[0] if result[0] is not None else 1.0
     return 1.0

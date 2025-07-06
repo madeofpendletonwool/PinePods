@@ -5792,7 +5792,8 @@ async def stream_episode(
             print(f'file path in if source else {file_path}')
 
         if file_path:
-            return FileResponse(path=file_path, media_type='audio/mpeg', filename=os.path.basename(file_path))
+            # Don't set filename to allow streaming instead of forced download
+            return FileResponse(path=file_path, media_type='audio/mpeg')
         else:
             raise HTTPException(status_code=404, detail="Episode not found or not downloaded")
     else:
@@ -6095,10 +6096,7 @@ async def get_user_feed(
     print(f'podcast_id parameter: {podcast_id}, type: {type(podcast_id)}')
     print(f'podcast_id_list will be: {[podcast_id] if podcast_id is not None else None}')
     try:
-        if reverse_proxy == "True":
-            domain = f'{proxy_protocol}://{proxy_host}'
-        else:
-            domain = f'{request.url.scheme}://{request.url.hostname}'
+        domain = os.getenv('HOSTNAME', f'{request.url.scheme}://{request.url.hostname}:{request.url.port or 80}')
 
 
         # Convert single podcast_id to list format if provided

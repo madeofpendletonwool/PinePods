@@ -1121,7 +1121,7 @@ def migration_009_people_sharing_tables(conn, db_type: str):
                     FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE,
                     FOREIGN KEY (SharedBy) REFERENCES Users(UserID) ON DELETE CASCADE,
                     FOREIGN KEY (SharedWith) REFERENCES Users(UserID) ON DELETE CASCADE,
-                    UNIQUE(ShareCode)
+                    UNIQUE(ShareCode(255))
                 )
             """)
         

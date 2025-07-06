@@ -19,6 +19,8 @@ Major Version:
 - [x] Finish making UI css adjustments
 - [x] Fix error where refreshing on episode layout page causes panic
 - [x] Issue with rss caused by new migration system
+- [] Fix playback speed setting css
+- [] test ntfy sending on nightly
 - [] Test everything in mysql
 - [] Test everything in postgres
 - [] Test upgrades from previous in postgres
