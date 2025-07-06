@@ -151,11 +151,11 @@ pub fn queue() -> Html {
                 } else {
                     {
                         html! {
-                            // Modern mobile-friendly queue page with full box title
+                            // Modern mobile-friendly queue page with tab-style page title
                             <div class="mb-2">
-                                // Full box page indicator
-                                <div class="bg-background-color px-4 py-2 rounded-lg border-2 border-color text-sm font-medium text-text-color-muted flex items-center gap-2 w-fit">
-                                    <i class="ph ph-queue text-accent-color"></i>
+                                // Tab-style page indicator
+                                <div class="page-tab-indicator">
+                                    <i class="ph ph-queue tab-icon"></i>
                                     {"Queue"}
                                 </div>
                             </div>

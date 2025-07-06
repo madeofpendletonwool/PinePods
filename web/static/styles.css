@@ -5454,3 +5454,157 @@ button.item-container-action-button.item-container-action-button {
     background-image: url("./assets/images/low1.png");
     animation-delay: -2s;
 }
+
+/* History Filter Styling */
+.page-tab-indicator {
+    position: absolute;
+    top: -1.5rem;
+    left: 1rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.5rem 0.5rem 0 0;
+    border: 1px solid var(--border-color);
+    border-bottom: 0;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background-color: var(--background-color);
+    color: var(--text-secondary-color);
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.tab-icon {
+    color: var(--accent-color);
+}
+
+.search-input {
+    width: 100%;
+    height: 100%;
+    padding-left: 1rem;
+    padding-right: 3rem;
+    font-size: 1rem;
+    border-radius: 0.75rem 0 0 0.75rem;
+    border: 1px solid var(--border-color);
+    border-right: 1px solid var(--border-color);
+    background-color: var(--background-color);
+    color: var(--text-color);
+    outline: none;
+    position: relative;
+    z-index: 1;
+    transition: border-color 0.2s;
+}
+
+.search-input:focus {
+    border-color: var(--accent-color);
+    z-index: 10;
+}
+
+.search-input::placeholder {
+    color: var(--text-secondary-color);
+}
+
+.search-icon {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.25rem;
+    color: var(--text-secondary-color);
+    pointer-events: none;
+}
+
+.sort-dropdown {
+    appearance: none;
+    width: 100%;
+    height: 100%;
+    padding-left: 1rem;
+    padding-right: 3rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: 0 0.75rem 0.75rem 0;
+    border: 1px solid var(--border-color);
+    border-left: 0;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    outline: none;
+    position: relative;
+    z-index: 1;
+    transition: border-color 0.2s;
+}
+
+.sort-dropdown:focus {
+    border-color: var(--accent-color);
+    z-index: 10;
+}
+
+.dropdown-arrow {
+    position: absolute;
+    right: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.125rem;
+    color: var(--text-secondary-color);
+    pointer-events: none;
+}
+
+.filter-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: 9999px;
+    border: none;
+    background-color: var(--background-color);
+    color: var(--text-color);
+    transition: all 0.2s;
+    white-space: nowrap;
+    min-height: 44px;
+    cursor: pointer;
+}
+
+.filter-chip:hover {
+    background-color: var(--hover-color);
+    color: var(--text-color);
+}
+
+.filter-chip-active {
+    background-color: var(--accent-color);
+    color: var(--text-color);
+}
+
+.filter-chip-active:hover {
+    background-color: var(--accent-color);
+    color: var(--text-color);
+}
+
+.filter-chip-alert {
+    background-color: var(--alert-color);
+    color: var(--text-color);
+}
+
+.filter-chip-alert:hover {
+    background-color: var(--alert-color);
+    color: var(--text-color);
+}
+
+.downloads-search-input {
+    width: 100%;
+    height: 48px;
+    padding-left: 1rem;
+    padding-right: 3rem;
+    font-size: 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--background-color);
+    color: var(--text-color);
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.downloads-search-input:focus {
+    border-color: var(--accent-color);
+}
+
+.downloads-search-input::placeholder {
+    color: var(--text-secondary-color);
+}

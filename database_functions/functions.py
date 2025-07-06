@@ -5732,27 +5732,37 @@ def create_rss_key(cnx, database_type: str, user_id: int, podcast_ids: list[int]
     api_key = ''.join(secrets.choice(alphabet) for _ in range(64))
 
     cursor = cnx.cursor()
-    if database_type == "postgresql":
-        query = 'INSERT INTO "RssKeys" (UserID, RssKey) VALUES (%s, %s) RETURNING RssKeyID'
-        cursor.execute(query, (user_id, api_key))
-        rss_key_id = cursor.fetchone()[0]
-    else:
-        query = "INSERT INTO RssKeys (UserID, RssKey) VALUES (%s, %s)"
-        cursor.execute(query, (user_id, api_key))
-        rss_key_id = cursor.lastrowid
+    try:
+        if database_type == "postgresql":
+            query = 'INSERT INTO "RssKeys" (UserID, RssKey) VALUES (%s, %s) RETURNING RssKeyID'
+            cursor.execute(query, (user_id, api_key))
+            result = cursor.fetchone()
+            if not result:
+                raise Exception("Failed to create RSS key - no ID returned")
+            rss_key_id = result[0]
+        else:
+            query = "INSERT INTO RssKeys (UserID, RssKey) VALUES (%s, %s)"
+            cursor.execute(query, (user_id, api_key))
+            rss_key_id = cursor.lastrowid
+            if not rss_key_id:
+                raise Exception("Failed to create RSS key - no lastrowid")
 
-    if podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids:
-        for podcast_id in podcast_ids:
-            if database_type == "postgresql":
-                query = 'INSERT INTO "RssKeyMap" (RssKeyID, PodcastID) VALUES (%s, %s)'
-            else:
-                query = 'INSERT INTO RssKeyMap (RssKeyID, PodcastID) VALUES (%s, %s)'
-            cursor.execute(query, (rss_key_id, podcast_id))
+        if podcast_ids and len(podcast_ids) > 0 and -1 not in podcast_ids:
+            for podcast_id in podcast_ids:
+                if database_type == "postgresql":
+                    query = 'INSERT INTO "RssKeyMap" (RssKeyID, PodcastID) VALUES (%s, %s)'
+                else:
+                    query = 'INSERT INTO RssKeyMap (RssKeyID, PodcastID) VALUES (%s, %s)'
+                cursor.execute(query, (rss_key_id, podcast_id))
 
-    cnx.commit()
-    cursor.close()
-
-    return api_key
+        cnx.commit()
+        return api_key
+    except Exception as e:
+        logging.error(f"Error creating RSS key for user {user_id}: {e}")
+        cnx.rollback()
+        raise
+    finally:
+        cursor.close()
 
 def set_rss_key_podcasts(cnx, database_type: str, rss_key_id: int, podcast_ids: list[int]):
     cursor = cnx.cursor()
@@ -6331,11 +6341,21 @@ def toggle_rss_feeds(cnx, database_type: str, user_id: int) -> bool:
 
         current_status = cursor.fetchone()
 
-        # Handle different return types
-        if isinstance(current_status, dict):
-            new_status = not current_status.get('EnableRSSFeeds', False)
+        # Handle different return types from psycopg
+        if current_status is None:
+            # User not found, default to enabling RSS feeds
+            new_status = True
+        elif isinstance(current_status, dict):
+            # Dictionary format (with dict_row)
+            current_value = current_status.get('enablerssfeeds') or current_status.get('EnableRSSFeeds')
+            new_status = not bool(current_value) if current_value is not None else True
+        elif isinstance(current_status, (tuple, list)):
+            # Tuple format (default psycopg behavior)
+            current_value = current_status[0] if current_status else None
+            new_status = not bool(current_value) if current_value is not None else True
         else:
-            new_status = not bool(current_status[0]) if current_status and current_status[0] is not None else True
+            # Fallback - assume enabling
+            new_status = True
 
         # Update status
         if database_type == "postgresql":
@@ -6359,12 +6379,27 @@ def toggle_rss_feeds(cnx, database_type: str, user_id: int) -> bool:
                 cursor.execute("SELECT RssKeyID FROM RssKeys WHERE UserID = %s", (user_id,))
 
             existing_key = cursor.fetchone()
-            if not existing_key:
-                # Create RSS key for all podcasts (-1 means all)
-                create_rss_key(cnx, database_type, user_id, [-1])
-                logging.info(f"Created RSS key for user {user_id}")
+            # Check if RSS key exists - handle both tuple and dict returns
+            has_existing_key = False
+            if existing_key:
+                if isinstance(existing_key, dict):
+                    has_existing_key = bool(existing_key.get('rsskeyid') or existing_key.get('RssKeyID'))
+                elif isinstance(existing_key, (tuple, list)):
+                    has_existing_key = bool(existing_key[0])
+                    
+            if not has_existing_key:
+                try:
+                    # Create RSS key for all podcasts (-1 means all)
+                    create_rss_key(cnx, database_type, user_id, [-1])
+                    logging.info(f"Created RSS key for user {user_id}")
+                except Exception as rss_error:
+                    logging.error(f"Failed to create RSS key for user {user_id}: {rss_error}")
+                    raise Exception(f"Failed to create RSS key: {str(rss_error)}")
 
         return new_status
+    except Exception as e:
+        logging.error(f"Error in toggle_rss_feeds for user {user_id}: {e}")
+        raise
     finally:
         cursor.close()
 
@@ -6673,34 +6708,48 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
         podcast_name = "All Podcasts"
         feed_image = "/var/www/html/static/assets/favicon.png"  # Default to Pinepods logo
 
-        # change to if podcast_ids is not None/empty or contains -1
+        # Get podcast details when filtering by specific podcast(s)
         if podcast_filter:
             try:
                 if database_type == "postgresql":
                     cursor.execute(
-                        'SELECT podcastname, artworkurl FROM "Podcasts" WHERE podcastid IN %s',  # Added artworkurl
-                        (tuple(podcast_ids),)
+                        'SELECT podcastname, artworkurl, description FROM "Podcasts" WHERE podcastid = ANY(%s)',
+                        (podcast_ids,)
                     )
                 else:
                     cursor.execute(
-                        "SELECT PodcastName, ArtworkURL FROM Podcasts WHERE PodcastID IN %s",  # Added ArtworkURL
+                        "SELECT PodcastName, ArtworkURL, Description FROM Podcasts WHERE PodcastID IN %s",
                         (tuple(podcast_ids),)
                     )
                 result = cursor.fetchone()
                 if result:
-                    podcast_name = result[0] if isinstance(result, tuple) else result.get('podcastname', 'Unknown Podcast')
-                    feed_image = result[1] if isinstance(result, tuple) else result.get('artworkurl', feed_image)
+                    if isinstance(result, tuple):
+                        podcast_name = result[0] or "Unknown Podcast"
+                        feed_image = result[1] or feed_image
+                        podcast_description = result[2] or "No description available"
+                    else:
+                        podcast_name = result.get('podcastname') or result.get('PodcastName') or "Unknown Podcast"
+                        feed_image = result.get('artworkurl') or result.get('ArtworkURL') or feed_image
+                        podcast_description = result.get('description') or result.get('Description') or "No description available"
                 else:
                     podcast_name = "Unknown Podcast"
+                    podcast_description = "No description available"
             except Exception as e:
-                logger.error(f"Error fetching podcast name: {str(e)}")
+                logger.error(f"Error fetching podcast details: {str(e)}")
                 podcast_name = "Unknown Podcast"
+                podcast_description = "No description available"
+
+        # Set appropriate description based on whether we're filtering by specific podcast
+        if podcast_filter and 'podcast_description' in locals():
+            feed_description = podcast_description
+        else:
+            feed_description = f"RSS feed for {'all' if not podcast_filter else 'selected'} podcasts from Pinepods"
 
         # Initialize feed with custom class
         feed = PodcastFeed(
             title=f"Pinepods - {podcast_name}",
             link="https://github.com/madeofpendletonwool/pinepods",
-            description=f"RSS feed for {'all' if not podcast_filter else 'selected'} podcasts from Pinepods",
+            description=feed_description,
             language="en",
             author_name=username,
             feed_url="",

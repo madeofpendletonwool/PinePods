@@ -204,15 +204,15 @@ pub fn saved() -> Html {
                                 // Combined search and sort bar with tab-style title (seamless design)
                                 <div class="flex gap-0 h-12 relative">
                                     // Tab-style page indicator
-                                    <div class="absolute -top-6 left-4 bg-background-color px-3 py-1 rounded-t-lg border-2 border-b-0 border-color text-xs font-medium text-text-color-muted flex items-center gap-1">
-                                        <i class="ph ph-bookmark text-accent-color"></i>
+                                    <div class="page-tab-indicator">
+                                        <i class="ph ph-bookmark tab-icon"></i>
                                         {"Saved"}
                                     </div>
                                     // Search input (left half)
                                     <div class="flex-1 relative">
                                         <input
                                             type="text"
-                                            class="w-full h-full pl-4 pr-12 text-base rounded-l-xl border-2 border-r border-color bg-background-color text-text-color placeholder-text-color-muted focus:outline-none focus:border-accent-color focus:z-10 relative transition-colors"
+                                            class="search-input"
                                             placeholder="Search saved episodes..."
                                             value={(*episode_search_term).clone()}
                                             oninput={let episode_search_term = episode_search_term.clone();
@@ -223,13 +223,13 @@ pub fn saved() -> Html {
                                                 })
                                             }
                                         />
-                                        <i class="ph ph-magnifying-glass absolute right-4 top-1/2 -translate-y-1/2 text-xl text-text-color-muted pointer-events-none"></i>
+                                        <i class="ph ph-magnifying-glass search-icon"></i>
                                     </div>
 
                                     // Sort dropdown (right half)
                                     <div class="flex-shrink-0 relative min-w-[160px]">
                                         <select
-                                            class="appearance-none w-full h-full pl-4 pr-12 text-sm font-medium rounded-r-xl border-2 border-l-0 border-color bg-background-color text-text-color focus:outline-none focus:border-accent-color focus:z-10 relative transition-colors"
+                                            class="sort-dropdown"
                                             onchange={
                                                 let episode_sort_direction = episode_sort_direction.clone();
                                                 Callback::from(move |e: Event| {
@@ -254,7 +254,7 @@ pub fn saved() -> Html {
                                             <option value="title_az">{"Title A-Z"}</option>
                                             <option value="title_za">{"Title Z-A"}</option>
                                         </select>
-                                        <i class="ph ph-caret-down absolute right-4 top-1/2 -translate-y-1/2 text-lg text-text-color-muted pointer-events-none"></i>
+                                        <i class="ph ph-caret-down dropdown-arrow"></i>
                                     </div>
                                 </div>
 
@@ -272,7 +272,7 @@ pub fn saved() -> Html {
                                                 episode_search_term.set(String::new());
                                             })
                                         }
-                                        class="filter-chip flex items-center gap-2 px-4 py-2 rounded-full border-2 border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white transition-all duration-200 whitespace-nowrap min-h-[44px]"
+                                        class="filter-chip"
                                     >
                                         <i class="ph ph-broom text-lg"></i>
                                         <span class="text-sm font-medium">{"Clear All"}</span>
@@ -290,14 +290,8 @@ pub fn saved() -> Html {
                                             })
                                         }
                                         class={classes!(
-                                            "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2",
-                                            "rounded-full", "border-2", "transition-all", "duration-200",
-                                            "whitespace-nowrap", "min-h-[44px]",
-                                            if *show_completed {
-                                                "bg-accent-color text-white border-accent-color"
-                                            } else {
-                                                "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white"
-                                            }
+                                            "filter-chip",
+                                            if *show_completed { "filter-chip-active" } else { "" }
                                         )}
                                     >
                                         <i class="ph ph-check-circle text-lg"></i>
@@ -316,14 +310,8 @@ pub fn saved() -> Html {
                                             })
                                         }
                                         class={classes!(
-                                            "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2",
-                                            "rounded-full", "border-2", "transition-all", "duration-200",
-                                            "whitespace-nowrap", "min-h-[44px]",
-                                            if *show_in_progress {
-                                                "bg-accent-color text-white border-accent-color"
-                                            } else {
-                                                "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white"
-                                            }
+                                            "filter-chip",
+                                            if *show_in_progress { "filter-chip-active" } else { "" }
                                         )}
                                     >
                                         <i class="ph ph-hourglass-medium text-lg"></i>

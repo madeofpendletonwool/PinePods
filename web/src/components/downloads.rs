@@ -268,43 +268,37 @@ pub fn downloads() -> Html {
                     {
                         html! {
                             <div>
-                                <div class="flex justify-between items-center mb-6">
-                                    <div class="w-1/4">
+                                // Tab-style page indicator with compact action buttons
+                                <div class="relative mb-6">
+                                    // <div class="page-tab-indicator">
+                                    //     <i class="ph ph-download tab-icon"></i>
+                                    //     {"Downloads"}
+                                    // </div>
+                                    <div class="flex gap-2 justify-end">
                                         {
                                             if **page_state.borrow() == PageState::Normal {
                                                 html! {
-                                                    <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
+                                                    <button class="filter-chip"
                                                         onclick={delete_mode_enable.clone()}>
-                                                        <i class="ph ph-lasso text-2xl"></i>
-                                                        <span class="text-lg ml-2 hidden sm:inline">{"Select Multiple"}</span>
+                                                        <i class="ph ph-lasso text-lg"></i>
+                                                        <span class="text-sm font-medium">{"Select"}</span>
                                                     </button>
                                                 }
                                             } else {
                                                 html! {
-                                                    <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
-                                                        onclick={delete_mode_disable.clone()}>
-                                                        <i class="ph ph-prohibit text-2xl"></i>
-                                                        <span class="text-lg ml-2 hidden sm:inline">{"Cancel"}</span>
-                                                    </button>
+                                                    <>
+                                                        <button class="filter-chip"
+                                                            onclick={delete_mode_disable.clone()}>
+                                                            <i class="ph ph-prohibit text-lg"></i>
+                                                            <span class="text-sm font-medium">{"Cancel"}</span>
+                                                        </button>
+                                                        <button class="filter-chip filter-chip-alert"
+                                                            onclick={delete_selected_episodes.clone()}>
+                                                            <i class="ph ph-trash text-lg"></i>
+                                                            <span class="text-sm font-medium">{"Delete"}</span>
+                                                        </button>
+                                                    </>
                                                 }
-                                            }
-                                        }
-                                    </div>
-
-                                    <h1 class="text-2xl item_container-text font-bold text-center w-2/4">{"Downloaded Episodes"}</h1>
-
-                                    <div class="w-1/4 flex justify-end">
-                                        {
-                                            if **page_state.borrow() != PageState::Normal {
-                                                html! {
-                                                    <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
-                                                        onclick={delete_selected_episodes.clone()}>
-                                                        <i class="ph ph-trash text-2xl"></i>
-                                                        <span class="text-lg ml-2 hidden sm:inline">{"Delete"}</span>
-                                                    </button>
-                                                }
-                                            } else {
-                                                html! {}
                                             }
                                         }
                                     </div>
@@ -312,12 +306,12 @@ pub fn downloads() -> Html {
 
                                 // Modern mobile-friendly filter bar
                                 <div class="mb-6 space-y-4">
-                                    // Search bar (full width - no sort dropdown for downloads)
+                                    // Search bar (full width with proper rounded corners)
                                     <div class="w-full">
                                         <div class="relative">
                                             <input
                                                 type="text"
-                                                class="w-full h-12 pl-4 pr-12 text-base rounded-xl border-2 border-color bg-background-color text-text-color placeholder-text-color-muted focus:outline-none focus:border-accent-color transition-colors"
+                                                class="downloads-search-input"
                                                 placeholder="Search downloaded episodes..."
                                                 value={(*episode_search_term).clone()}
                                                 oninput={let episode_search_term = episode_search_term.clone();
@@ -328,7 +322,7 @@ pub fn downloads() -> Html {
                                                     })
                                                 }
                                             />
-                                            <i class="ph ph-magnifying-glass absolute right-4 top-1/2 -translate-y-1/2 text-xl text-text-color-muted pointer-events-none"></i>
+                                            <i class="ph ph-magnifying-glass search-icon"></i>
                                         </div>
                                     </div>
 
@@ -346,7 +340,7 @@ pub fn downloads() -> Html {
                                                     episode_search_term.set(String::new());
                                                 })
                                             }
-                                            class="filter-chip flex items-center gap-2 px-4 py-2 rounded-full border-2 border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white transition-all duration-200 whitespace-nowrap min-h-[44px]"
+                                            class="filter-chip"
                                         >
                                             <i class="ph ph-broom text-lg"></i>
                                             <span class="text-sm font-medium">{"Clear All"}</span>
@@ -364,14 +358,8 @@ pub fn downloads() -> Html {
                                                 })
                                             }
                                             class={classes!(
-                                                "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2",
-                                                "rounded-full", "border-2", "transition-all", "duration-200",
-                                                "whitespace-nowrap", "min-h-[44px]",
-                                                if *show_completed {
-                                                    "bg-accent-color text-white border-accent-color"
-                                                } else {
-                                                    "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white"
-                                                }
+                                                "filter-chip",
+                                                if *show_completed { "filter-chip-active" } else { "" }
                                             )}
                                         >
                                             <i class="ph ph-check-circle text-lg"></i>
@@ -390,14 +378,8 @@ pub fn downloads() -> Html {
                                                 })
                                             }
                                             class={classes!(
-                                                "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2",
-                                                "rounded-full", "border-2", "transition-all", "duration-200",
-                                                "whitespace-nowrap", "min-h-[44px]",
-                                                if *show_in_progress {
-                                                    "bg-accent-color text-white border-accent-color"
-                                                } else {
-                                                    "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white"
-                                                }
+                                                "filter-chip",
+                                                if *show_in_progress { "filter-chip-active" } else { "" }
                                             )}
                                         >
                                             <i class="ph ph-hourglass-medium text-lg"></i>

@@ -797,17 +797,24 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     if *dropdown_open {
                         if let Ok(target) = event.target().unwrap().dyn_into::<HtmlElement>() {
                             if let Some(dropdown_element) = dropdown_ref.cast::<HtmlElement>() {
-                                if let Some(button_element) = button_ref.cast::<HtmlElement>() {
-                                    if !dropdown_element.contains(Some(&target))
-                                        && !button_element.contains(Some(&target))
-                                    {
-                                        dropdown_open.set(false);
-                                        // If this is a long press menu (show_menu_only is true),
-                                        // call the on_close callback when clicked outside
-                                        if show_menu_only {
-                                            if let Some(on_close) = &on_close {
-                                                on_close.emit(());
-                                            }
+                                // Check if click is outside dropdown
+                                let outside_dropdown = !dropdown_element.contains(Some(&target));
+                                
+                                // Check if click is outside button (only if button exists)
+                                let outside_button = if let Some(button_element) = button_ref.cast::<HtmlElement>() {
+                                    !button_element.contains(Some(&target))
+                                } else {
+                                    // If no button exists (show_menu_only case), consider it as outside
+                                    true
+                                };
+                                
+                                if outside_dropdown && outside_button {
+                                    dropdown_open.set(false);
+                                    // If this is a long press menu (show_menu_only is true),
+                                    // call the on_close callback when clicked outside
+                                    if show_menu_only {
+                                        if let Some(on_close) = &on_close {
+                                            on_close.emit(());
                                         }
                                     }
                                 }

@@ -667,7 +667,7 @@ pub fn downloads() -> Html {
                                         <div class="relative">
                                             <input
                                                 type="text"
-                                                class="w-full h-12 pl-4 pr-12 text-base rounded-xl border-2 border-color bg-background-color text-text-color placeholder-text-color-muted focus:outline-none focus:border-accent-color transition-colors"
+                                                class="search-input"
                                                 placeholder="Search downloaded episodes..."
                                                 value={(*episode_search_term).clone()}
                                                 oninput={let episode_search_term = episode_search_term.clone();
@@ -696,7 +696,7 @@ pub fn downloads() -> Html {
                                                     episode_search_term.set(String::new());
                                                 })
                                             }
-                                            class="filter-chip flex items-center gap-2 px-4 py-2 rounded-full border-2 border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white transition-all duration-200 whitespace-nowrap min-h-[44px]"
+                                            class="filter-chip"
                                         >
                                             <i class="ph ph-broom text-lg"></i>
                                             <span class="text-sm font-medium">{"Clear All"}</span>
@@ -714,13 +714,11 @@ pub fn downloads() -> Html {
                                                 })
                                             }
                                             class={classes!(
-                                                "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2",
-                                                "rounded-full", "border-2", "transition-all", "duration-200",
-                                                "whitespace-nowrap", "min-h-[44px]",
+                                                "filter-chip",
                                                 if *show_completed {
-                                                    "bg-accent-color text-white border-accent-color"
+                                                    "filter-chip--active"
                                                 } else {
-                                                    "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white"
+                                                    ""
                                                 }
                                             )}
                                         >
@@ -740,13 +738,11 @@ pub fn downloads() -> Html {
                                                 })
                                             }
                                             class={classes!(
-                                                "filter-chip", "flex", "items-center", "gap-2", "px-4", "py-2",
-                                                "rounded-full", "border-2", "transition-all", "duration-200",
-                                                "whitespace-nowrap", "min-h-[44px]",
+                                                "filter-chip",
                                                 if *show_in_progress {
-                                                    "bg-accent-color text-white border-accent-color"
+                                                    "filter-chip--active"
                                                 } else {
-                                                    "border-color bg-background-color text-text-color hover:bg-accent-color hover:text-white"
+                                                    ""
                                                 }
                                             )}
                                         >
