@@ -448,6 +448,12 @@ pub struct SuccessResponse {
     success: bool,
 }
 
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct RssToggleResponse {
+    pub(crate) success: bool,
+    pub(crate) enabled: bool,
+}
+
 pub async fn call_enable_disable_guest(
     server_name: String,
     api_key: String,
@@ -579,7 +585,7 @@ pub async fn call_rss_feed_status(server_name: String, api_key: String) -> Resul
 pub async fn call_toggle_rss_feeds(
     server_name: String,
     api_key: String,
-) -> Result<SuccessResponse, Error> {
+) -> Result<RssToggleResponse, Error> {
     let url = format!("{}/api/data/toggle_rss_feeds", server_name);
     let response = Request::post(&url)
         .header("Api-Key", &api_key)
@@ -590,7 +596,7 @@ pub async fn call_toggle_rss_feeds(
 
     if response.ok() {
         response
-            .json::<SuccessResponse>()
+            .json::<RssToggleResponse>()
             .await
             .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
     } else {
@@ -884,7 +890,10 @@ pub async fn call_create_api_key(
     api_key: &str,
 ) -> Result<CreateAPIKeyResponse, anyhow::Error> {
     let url = format!("{}/api/data/create_api_key", server_name);
-    let request_body = serde_json::json!({ "user_id": user_id });
+    let request_body = serde_json::json!({ 
+        "user_id": user_id,
+        "rssonly": false
+    });
 
     let response = Request::post(&url)
         .header("Content-Type", "application/json")

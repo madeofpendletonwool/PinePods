@@ -77,9 +77,9 @@ fn render_layout_toggle(
     };
 
     html! {
-        <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" {onclick}>
-            <i class={classes!(icon, "text-2xl")}></i>
-            <span class="text-lg ml-2 hidden sm:inline">{text}</span>
+        <button class="filter-chip" {onclick}>
+            <i class={classes!(icon, "text-lg")}></i>
+            <span class="text-sm font-medium">{text}</span>
         </button>
     }
 }
@@ -689,14 +689,6 @@ pub fn podcasts() -> Html {
         })
     };
 
-    let show_filter_dropdown = use_state(|| false);
-    let toggle_filter_dropdown = {
-        let show_filter_dropdown = show_filter_dropdown.clone();
-        Callback::from(move |_| {
-            show_filter_dropdown.set(!*show_filter_dropdown);
-        })
-    };
-
     // Replace the existing filtered_pods use_memo block with this improved version
     // Modify your filtered_pods use_memo with this version that adds logging
     // and ensures proper image consistency
@@ -847,111 +839,120 @@ pub fn podcasts() -> Html {
             {
                 html! {
                     <div>
-                        <div class="flex justify-between">
-                            <div class="flex gap-4">
-                                <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={toggle_filter_dropdown}>
-                                    <i class="ph ph-funnel text-2xl"></i>
-                                    <span class="text-lg ml-2 hidden sm:inline">{"Filter"}</span>
-                                </button>
-                                <div class="filter-dropdown-pods font-bold rounded">
-                                // In the select element, modify it to match the default sort state:
-                                <select
-                                class="category-select appearance-none pr-8"
-                                    value="alpha_asc"  // Add this line to set default selected option
-                                    onchange={
-                                        let sort_direction = sort_direction.clone();
-                                        Callback::from(move |e: Event| {
-                                            let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
-                                            let value = target.value();
-                                            match value.as_str() {
-                                                "alpha_asc" => sort_direction.set(Some(SortDirection::AlphaAsc)),
-                                                "alpha_desc" => sort_direction.set(Some(SortDirection::AlphaDesc)),
-                                                "episodes_high" => sort_direction.set(Some(SortDirection::EpisodeCountHigh)),
-                                                "episodes_low" => sort_direction.set(Some(SortDirection::EpisodeCountLow)),
-                                                "oldest" => sort_direction.set(Some(SortDirection::OldestFirst)),
-                                                "newest" => sort_direction.set(Some(SortDirection::NewestFirst)),
-                                                "most_played" => sort_direction.set(Some(SortDirection::MostPlayed)),
-                                                "least_played" => sort_direction.set(Some(SortDirection::LeastPlayed)),
-                                                _ => sort_direction.set(None),
-                                            }
-                                        })
-                                    }
-                                >
-                                    <option value="alpha_asc" selected=true>{"A to Z ↑"}</option>
-                                    <option value="alpha_desc">{"Z to A ↓"}</option>
-                                    <option value="episodes_high">{"Most Episodes"}</option>
-                                    <option value="episodes_low">{"Least Episodes"}</option>
-                                    <option value="oldest">{"Oldest First"}</option>
-                                    <option value="newest">{"Newest First"}</option>
-                                    <option value="most_played">{"Most Played"}</option>
-                                    <option value="least_played">{"Least Played"}</option>
-                                </select>
-                                <i class="ph ph-caret-down absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                        // Modern mobile-friendly filter bar with tab-style page title
+                        <div class="mb-6 space-y-4">
+                            // Tab-style page indicator
+                            <div class="flex gap-0 h-12 relative">
+                                // <div class="page-tab-indicator">
+                                //     <i class="ph ph-microphone tab-icon"></i>
+                                //     {"Podcasts"}
+                                // </div>
+                                <div class="flex gap-2 ml-auto items-center">
+                                    <button class="filter-chip" onclick={toggle_custom_modal}>
+                                        <i class="ph ph-plus-circle text-lg"></i>
+                                        <span class="text-sm font-medium">{"Custom Feed"}</span>
+                                    </button>
+                                    {render_layout_toggle(dispatch.clone(), state.podcast_layout.clone())}
                                 </div>
-                                {render_layout_toggle(dispatch.clone(), state.podcast_layout.clone())}
                             </div>
-                            <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={toggle_custom_modal}>
-                                <i class="ph ph-plus-circle text-2xl"></i>
-                                <span class="text-lg ml-2 hidden sm:inline">{"Custom Feed"}</span>
-                            </button>
-                        </div>
-                    </div>
-                }
-            }
-            {
-                if *show_filter_dropdown {
-                    html! {
-                        <div class="filter-container flex items-center space-x-4">
-                            // Clear Filter button
-                            <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center" onclick={reset_filter}>
-                                <i class="ph ph-broom text-2xl"></i>
-                                <span class="text-lg ml-2 hidden sm:inline">{"Clear Filter"}</span>
-                            </button>
-                            // Category dropdown
-                            <div class="filter-dropdown-pods font-bold rounded">
+
+                            // Combined search and sort bar
+                            <div class="flex gap-0 h-12 relative">
+                                // Search input (left half)
+                                <div class="flex-1 relative">
+                                    <input
+                                        type="text"
+                                        class="search-input"
+                                        placeholder="Search podcasts..."
+                                        value={(*search_term).clone()}
+                                        oninput={let search_term = search_term.clone();
+                                            Callback::from(move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                                                    search_term.set(input.value());
+                                                }
+                                            })
+                                        }
+                                    />
+                                    <i class="ph ph-magnifying-glass search-icon"></i>
+                                </div>
+
+                                // Sort dropdown (right half)
+                                <div class="flex-shrink-0 relative min-w-[160px]">
+                                    <select
+                                        class="sort-dropdown"
+                                        value="alpha_asc"
+                                        onchange={
+                                            let sort_direction = sort_direction.clone();
+                                            Callback::from(move |e: Event| {
+                                                let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
+                                                let value = target.value();
+                                                match value.as_str() {
+                                                    "alpha_asc" => sort_direction.set(Some(SortDirection::AlphaAsc)),
+                                                    "alpha_desc" => sort_direction.set(Some(SortDirection::AlphaDesc)),
+                                                    "episodes_high" => sort_direction.set(Some(SortDirection::EpisodeCountHigh)),
+                                                    "episodes_low" => sort_direction.set(Some(SortDirection::EpisodeCountLow)),
+                                                    "oldest" => sort_direction.set(Some(SortDirection::OldestFirst)),
+                                                    "newest" => sort_direction.set(Some(SortDirection::NewestFirst)),
+                                                    "most_played" => sort_direction.set(Some(SortDirection::MostPlayed)),
+                                                    "least_played" => sort_direction.set(Some(SortDirection::LeastPlayed)),
+                                                    _ => sort_direction.set(None),
+                                                }
+                                            })
+                                        }
+                                    >
+                                        <option value="alpha_asc" selected=true>{"A to Z ↑"}</option>
+                                        <option value="alpha_desc">{"Z to A ↓"}</option>
+                                        <option value="episodes_high">{"Most Episodes"}</option>
+                                        <option value="episodes_low">{"Least Episodes"}</option>
+                                        <option value="oldest">{"Oldest First"}</option>
+                                        <option value="newest">{"Newest First"}</option>
+                                        <option value="most_played">{"Most Played"}</option>
+                                        <option value="least_played">{"Least Played"}</option>
+                                    </select>
+                                    <i class="ph ph-caret-down dropdown-arrow"></i>
+                                </div>
+                            </div>
+
+                            // Filter chips (horizontal scroll on mobile)
+                            <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+                                // Clear all filters
+                                <button
+                                    onclick={reset_filter}
+                                    class="filter-chip"
+                                >
+                                    <i class="ph ph-broom text-lg"></i>
+                                    <span class="text-sm font-medium">{"Clear All"}</span>
+                                </button>
+
+                                // Category filter chips (limited to prevent multiple lines)
                                 {
                                     if let Some(categories) = &filter_state.category_filter_list {
-                                        let categories_clone = categories.clone();
-                                        html! {
-                                            <>
-                                                <select class="category-select" onchange={Callback::from(move |e: web_sys::Event| {
-                                                    let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
-                                                    let selected_value = target.value();
-                                                    on_filter_click.emit(selected_value);
-                                                })}>
-                                                    <option value="" disabled=true selected=true>{ "Select Category" }</option>
-                                                    { for categories_clone.iter().map(|category| html! {
-                                                        <option value={category.clone()}>{ category }</option>
-                                                    }) }
-                                                </select>
-                                            </>
-                                        }
+                                        categories.iter().map(|category| {
+                                            let category_clone = category.clone();
+                                            let is_selected = selected_category.as_ref().map_or(false, |selected| selected == category);
+                                            let on_filter_click_clone = on_filter_click.clone();
+
+                                            html! {
+                                                <button
+                                                    onclick={Callback::from(move |_| {
+                                                        on_filter_click_clone.emit(category_clone.clone());
+                                                    })}
+                                                    class={classes!(
+                                                        "filter-chip",
+                                                        if is_selected { "filter-chip-active" } else { "" }
+                                                    )}
+                                                >
+                                                    <span class="text-sm font-medium">{category}</span>
+                                                </button>
+                                            }
+                                        }).collect::<Html>()
                                     } else {
-                                        html! { <p>{ "No categories available" }</p> }
+                                        html! {}
                                     }
                                 }
                             </div>
-                            // Search input
-                            <div class="filter-dropdown download-button font-bold rounded relative">
-                                <input
-                                    type="text"
-                                    class="filter-input-pods appearance-none pr-8"
-                                    placeholder="Search"
-                                    value={(*search_term).clone()}
-                                    oninput={let search_term = search_term.clone();
-                                        Callback::from(move |e: InputEvent| {
-                                            if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
-                                                search_term.set(input.value());
-                                            }
-                                        })
-                                    }
-                                />
-                                <i class="ph ph-magnifying-glass absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
-                            </div>
                         </div>
-                    }
-                } else {
-                    html! {}
+                    </div>
                 }
             }
 

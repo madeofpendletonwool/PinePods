@@ -261,7 +261,7 @@ class DatabaseMigrationManager:
         try:
             # Check for tables that indicate migrations have been applied
             checks = {
-                "001": ['"Users"', '"OIDCProviders"', '"APIKeys"'],
+                "001": ['"Users"', '"OIDCProviders"', '"APIKeys"', '"RssKeys"'],
                 "002": ['"AppSettings"', '"EmailSettings"'],
                 "003": ['"UserStats"', '"UserSettings"'],
                 "005": ['"Podcasts"', '"Episodes"', '"YouTubeVideos"'],

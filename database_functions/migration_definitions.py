@@ -1025,10 +1025,18 @@ def migration_008_gpodder_tables(conn, db_type: str):
                 )
             """)
             
-            cursor.execute("""
-                CREATE INDEX idx_gpodder_devices_userid
-                ON GpodderDevices(UserID)
-            """)
+            # Check if index exists before creating it
+            try:
+                cursor.execute("""
+                    CREATE INDEX idx_gpodder_devices_userid
+                    ON GpodderDevices(UserID)
+                """)
+                logger.info("Created index idx_gpodder_devices_userid")
+            except Exception as e:
+                if "Duplicate key name" in str(e) or "1061" in str(e):
+                    logger.info("Index idx_gpodder_devices_userid already exists, skipping")
+                else:
+                    raise
             
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS GpodderSyncState (
@@ -1121,7 +1129,7 @@ def migration_009_people_sharing_tables(conn, db_type: str):
                     FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE,
                     FOREIGN KEY (SharedBy) REFERENCES Users(UserID) ON DELETE CASCADE,
                     FOREIGN KEY (SharedWith) REFERENCES Users(UserID) ON DELETE CASCADE,
-                    UNIQUE(ShareCode)
+                    UNIQUE(ShareCode(255))
                 )
             """)
         
@@ -1519,6 +1527,192 @@ def migration_012_create_system_playlists(conn, db_type: str):
 
         logger.info("System playlists creation completed")
         
+    finally:
+        cursor.close()
+
+
+@register_migration("013", "add_playback_speed_columns", "Add PlaybackSpeed columns to Users and Podcasts tables for existing installations")
+def add_playback_speed_columns(conn, db_type: str) -> None:
+    """Add PlaybackSpeed columns to Users and Podcasts tables for existing installations"""
+    
+    cursor = conn.cursor()
+    
+    try:
+        # Add PlaybackSpeed to Users table if it doesn't exist
+        try:
+            if db_type == "postgresql":
+                cursor.execute("""
+                    ALTER TABLE "Users" 
+                    ADD COLUMN IF NOT EXISTS PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0
+                """)
+            else:  # MySQL/MariaDB
+                # Check if column exists first
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'Users' 
+                    AND COLUMN_NAME = 'PlaybackSpeed'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        ALTER TABLE Users 
+                        ADD COLUMN PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0
+                    """)
+                    logger.info("Added PlaybackSpeed column to Users table")
+                else:
+                    logger.info("PlaybackSpeed column already exists in Users table")
+                    
+        except Exception as e:
+            logger.error(f"Error adding PlaybackSpeed to Users table: {e}")
+            # Don't fail the migration for this
+    
+        # Add PlaybackSpeed columns to Podcasts table if they don't exist
+        try:
+            if db_type == "postgresql":
+                cursor.execute("""
+                    ALTER TABLE "Podcasts" 
+                    ADD COLUMN IF NOT EXISTS PlaybackSpeed NUMERIC(2,1) DEFAULT 1.0,
+                    ADD COLUMN IF NOT EXISTS PlaybackSpeedCustomized BOOLEAN DEFAULT FALSE
+                """)
+            else:  # MySQL/MariaDB
+                # Check if PlaybackSpeed column exists
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'Podcasts' 
+                    AND COLUMN_NAME = 'PlaybackSpeed'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        ALTER TABLE Podcasts 
+                        ADD COLUMN PlaybackSpeed DECIMAL(2,1) UNSIGNED DEFAULT 1.0
+                    """)
+                    logger.info("Added PlaybackSpeed column to Podcasts table")
+                else:
+                    logger.info("PlaybackSpeed column already exists in Podcasts table")
+                    
+                # Check if PlaybackSpeedCustomized column exists
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'Podcasts' 
+                    AND COLUMN_NAME = 'PlaybackSpeedCustomized'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        ALTER TABLE Podcasts 
+                        ADD COLUMN PlaybackSpeedCustomized TINYINT(1) DEFAULT 0
+                    """)
+                    logger.info("Added PlaybackSpeedCustomized column to Podcasts table")
+                else:
+                    logger.info("PlaybackSpeedCustomized column already exists in Podcasts table")
+                    
+        except Exception as e:
+            logger.error(f"Error adding PlaybackSpeed columns to Podcasts table: {e}")
+            # Don't fail the migration for this
+        
+        logger.info("Playback speed columns migration completed")
+    
+    finally:
+        cursor.close()
+
+
+@register_migration("014", "fix_missing_rss_tables", "Create missing RSS tables from migration 001 for 0.7.8 upgrades")
+def fix_missing_rss_tables(conn, db_type: str) -> None:
+    """Create missing RSS tables for users upgrading from 0.7.8"""
+    
+    cursor = conn.cursor()
+    
+    try:
+        # Check and create RssKeys table if it doesn't exist
+        if db_type == 'postgresql':
+            table_name = '"RssKeys"'
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = %s
+                )
+            """, ('RssKeys',))
+        else:  # mysql
+            table_name = 'RssKeys'
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM information_schema.tables 
+                WHERE table_schema = DATABASE() AND table_name = %s
+            """, ('RssKeys',))
+        
+        table_exists = cursor.fetchone()[0]
+        
+        if not table_exists:
+            logger.info("Creating missing RssKeys table")
+            if db_type == 'postgresql':
+                cursor.execute("""
+                    CREATE TABLE "RssKeys" (
+                        RssKeyID SERIAL PRIMARY KEY,
+                        UserID INT,
+                        RssKey TEXT,
+                        Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
+                    )
+                """)
+            else:  # mysql
+                cursor.execute("""
+                    CREATE TABLE RssKeys (
+                        RssKeyID INT AUTO_INCREMENT PRIMARY KEY,
+                        UserID INT,
+                        RssKey TEXT,
+                        Created TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                    )
+                """)
+            logger.info("Created RssKeys table")
+        else:
+            logger.info("RssKeys table already exists")
+        
+        # Check and create RssKeyMap table if it doesn't exist
+        if db_type == 'postgresql':
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_name = %s
+                )
+            """, ('RssKeyMap',))
+        else:  # mysql
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM information_schema.tables 
+                WHERE table_schema = DATABASE() AND table_name = %s
+            """, ('RssKeyMap',))
+        
+        table_exists = cursor.fetchone()[0]
+        
+        if not table_exists:
+            logger.info("Creating missing RssKeyMap table")
+            if db_type == 'postgresql':
+                cursor.execute("""
+                    CREATE TABLE "RssKeyMap" (
+                        RssKeyID INT,
+                        PodcastID INT,
+                        FOREIGN KEY (RssKeyID) REFERENCES "RssKeys"(RssKeyID) ON DELETE CASCADE
+                    )
+                """)
+            else:  # mysql
+                cursor.execute("""
+                    CREATE TABLE RssKeyMap (
+                        RssKeyID INT,
+                        PodcastID INT,
+                        FOREIGN KEY (RssKeyID) REFERENCES RssKeys(RssKeyID) ON DELETE CASCADE
+                    )
+                """)
+            logger.info("Created RssKeyMap table")
+        else:
+            logger.info("RssKeyMap table already exists")
+        
+        logger.info("Missing RSS tables migration completed")
+    
     finally:
         cursor.close()
 

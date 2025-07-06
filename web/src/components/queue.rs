@@ -151,8 +151,13 @@ pub fn queue() -> Html {
                 } else {
                     {
                         html! {
-                            <div>
-                            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Queue"}</h1>
+                            // Modern mobile-friendly queue page with tab-style page title
+                            <div class="mb-2">
+                                // Tab-style page indicator
+                                <div class="page-tab-indicator">
+                                    <i class="ph ph-queue tab-icon"></i>
+                                    {"Queue"}
+                                </div>
                             </div>
                         }
                     }

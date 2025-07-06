@@ -40,6 +40,11 @@ pub fn downloads() -> Html {
 
     let expanded_state = use_state(HashMap::new);
     let show_modal = use_state(|| false);
+
+    // Filter state for episodes
+    let episode_search_term = use_state(|| String::new());
+    let show_completed = use_state(|| false);
+    let show_in_progress = use_state(|| false);
     let show_clonedal = show_modal.clone();
     let show_clonedal2 = show_modal.clone();
     let on_modal_open = Callback::from(move |_: MouseEvent| show_clonedal.set(true));
@@ -263,45 +268,123 @@ pub fn downloads() -> Html {
                     {
                         html! {
                             <div>
-                                <div class="flex justify-between items-center mb-6">
-                                    <div class="w-1/4">
+                                // Tab-style page indicator with compact action buttons
+                                <div class="relative mb-6">
+                                    // <div class="page-tab-indicator">
+                                    //     <i class="ph ph-download tab-icon"></i>
+                                    //     {"Downloads"}
+                                    // </div>
+                                    <div class="flex gap-2 justify-end">
                                         {
                                             if **page_state.borrow() == PageState::Normal {
                                                 html! {
-                                                    <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
+                                                    <button class="filter-chip"
                                                         onclick={delete_mode_enable.clone()}>
-                                                        <i class="ph ph-lasso text-2xl"></i>
-                                                        <span class="text-lg ml-2 hidden sm:inline">{"Select Multiple"}</span>
+                                                        <i class="ph ph-lasso text-lg"></i>
+                                                        <span class="text-sm font-medium">{"Select"}</span>
                                                     </button>
                                                 }
                                             } else {
                                                 html! {
-                                                    <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
-                                                        onclick={delete_mode_disable.clone()}>
-                                                        <i class="ph ph-prohibit text-2xl"></i>
-                                                        <span class="text-lg ml-2 hidden sm:inline">{"Cancel"}</span>
-                                                    </button>
+                                                    <>
+                                                        <button class="filter-chip"
+                                                            onclick={delete_mode_disable.clone()}>
+                                                            <i class="ph ph-prohibit text-lg"></i>
+                                                            <span class="text-sm font-medium">{"Cancel"}</span>
+                                                        </button>
+                                                        <button class="filter-chip filter-chip-alert"
+                                                            onclick={delete_selected_episodes.clone()}>
+                                                            <i class="ph ph-trash text-lg"></i>
+                                                            <span class="text-sm font-medium">{"Delete"}</span>
+                                                        </button>
+                                                    </>
                                                 }
                                             }
                                         }
                                     </div>
+                                </div>
 
-                                    <h1 class="text-2xl item_container-text font-bold text-center w-2/4">{"Downloaded Episodes"}</h1>
-
-                                    <div class="w-1/4 flex justify-end">
-                                        {
-                                            if **page_state.borrow() != PageState::Normal {
-                                                html! {
-                                                    <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
-                                                        onclick={delete_selected_episodes.clone()}>
-                                                        <i class="ph ph-trash text-2xl"></i>
-                                                        <span class="text-lg ml-2 hidden sm:inline">{"Delete"}</span>
-                                                    </button>
+                                // Modern mobile-friendly filter bar
+                                <div class="mb-6 space-y-4">
+                                    // Search bar (full width with proper rounded corners)
+                                    <div class="w-full">
+                                        <div class="relative">
+                                            <input
+                                                type="text"
+                                                class="downloads-search-input"
+                                                placeholder="Search downloaded episodes..."
+                                                value={(*episode_search_term).clone()}
+                                                oninput={let episode_search_term = episode_search_term.clone();
+                                                    Callback::from(move |e: InputEvent| {
+                                                        if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                                                            episode_search_term.set(input.value());
+                                                        }
+                                                    })
                                                 }
-                                            } else {
-                                                html! {}
+                                            />
+                                            <i class="ph ph-magnifying-glass search-icon"></i>
+                                        </div>
+                                    </div>
+
+                                    // Filter chips (horizontal scroll on mobile)
+                                    <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+                                        // Clear all filters
+                                        <button
+                                            onclick={
+                                                let show_completed = show_completed.clone();
+                                                let show_in_progress = show_in_progress.clone();
+                                                let episode_search_term = episode_search_term.clone();
+                                                Callback::from(move |_| {
+                                                    show_completed.set(false);
+                                                    show_in_progress.set(false);
+                                                    episode_search_term.set(String::new());
+                                                })
                                             }
-                                        }
+                                            class="filter-chip"
+                                        >
+                                            <i class="ph ph-broom text-lg"></i>
+                                            <span class="text-sm font-medium">{"Clear All"}</span>
+                                        </button>
+
+                                        // Completed filter chip
+                                        <button
+                                            onclick={let show_completed = show_completed.clone();
+                                                let show_in_progress = show_in_progress.clone();
+                                                Callback::from(move |_| {
+                                                    show_completed.set(!*show_completed);
+                                                    if *show_in_progress {
+                                                        show_in_progress.set(false);
+                                                    }
+                                                })
+                                            }
+                                            class={classes!(
+                                                "filter-chip",
+                                                if *show_completed { "filter-chip-active" } else { "" }
+                                            )}
+                                        >
+                                            <i class="ph ph-check-circle text-lg"></i>
+                                            <span class="text-sm font-medium">{"Completed"}</span>
+                                        </button>
+
+                                        // In progress filter chip
+                                        <button
+                                            onclick={let show_in_progress = show_in_progress.clone();
+                                                let show_completed = show_completed.clone();
+                                                Callback::from(move |_| {
+                                                    show_in_progress.set(!*show_in_progress);
+                                                    if *show_completed {
+                                                        show_completed.set(false);
+                                                    }
+                                                })
+                                            }
+                                            class={classes!(
+                                                "filter-chip",
+                                                if *show_in_progress { "filter-chip-active" } else { "" }
+                                            )}
+                                        >
+                                            <i class="ph ph-hourglass-medium text-lg"></i>
+                                            <span class="text-sm font-medium">{"In Progress"}</span>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -323,10 +406,48 @@ pub fn downloads() -> Html {
                             } else {
                                 let grouped_episodes = group_episodes_by_podcast(int_download_eps.episodes);
 
+                                // Create filtered episodes
+                                let filtered_grouped_episodes = {
+                                    let mut filtered_map: HashMap<i32, Vec<EpisodeDownload>> = HashMap::new();
+
+                                    for (podcast_id, episodes) in grouped_episodes.iter() {
+                                        let filtered_episodes: Vec<EpisodeDownload> = episodes.iter()
+                                            .filter(|episode| {
+                                                // Search filter
+                                                let matches_search = if !episode_search_term.is_empty() {
+                                                    episode.episodetitle.to_lowercase().contains(&episode_search_term.to_lowercase())
+                                                } else {
+                                                    true
+                                                };
+
+                                                // Completion filter
+                                                let matches_completion = if *show_completed && *show_in_progress {
+                                                    true // Both filters active = show all
+                                                } else if *show_completed {
+                                                    episode.completed
+                                                } else if *show_in_progress {
+                                                    !episode.completed && episode.listenduration.is_some() && episode.listenduration.unwrap() > 0
+                                                } else {
+                                                    true // No filters = show all
+                                                };
+
+                                                matches_search && matches_completion
+                                            })
+                                            .cloned()
+                                            .collect();
+
+                                        if !filtered_episodes.is_empty() {
+                                            filtered_map.insert(*podcast_id, filtered_episodes);
+                                        }
+                                    }
+
+                                    filtered_map
+                                };
+
                                 html! {
                                     <>
                                         { for state.podcast_feed_return.as_ref().unwrap().pods.as_ref().unwrap().iter().filter_map(|podcast| {
-                                            let episodes = grouped_episodes.get(&podcast.podcastid).unwrap_or(&Vec::new()).clone();
+                                            let episodes = filtered_grouped_episodes.get(&podcast.podcastid).unwrap_or(&Vec::new()).clone();
                                             if episodes.is_empty() {
                                                 None
                                             } else {

@@ -82,9 +82,8 @@ pub fn rss_feed_settings() -> Html {
                             if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
                                 let response = call_toggle_rss_feeds(server_name, api_key.unwrap()).await;
                                 match response {
-                                    Ok(_) => {
-                                        let current_status = **rss_feed_status.borrow();
-                                        rss_feed_status.set(!current_status);
+                                    Ok(toggle_response) => {
+                                        rss_feed_status.set(toggle_response.enabled);
                                     },
                                     Err(e) => {
                                         let formatted_error = format_error_message(&e.to_string());

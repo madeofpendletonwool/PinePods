@@ -784,86 +784,65 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             let dropdown_ref = dropdown_ref.clone();
             let button_ref = button_ref.clone();
             let on_close = on_close.clone();
+            let show_menu_only = show_menu_only;
 
-            let listener = EventListener::new(&document, "click", move |event| {
-                if *dropdown_open {
-                    let target = event.target().unwrap().dyn_into::<HtmlElement>().unwrap();
-                    if let Some(dropdown_element) = dropdown_ref.cast::<HtmlElement>() {
-                        if let Some(button_element) = button_ref.cast::<HtmlElement>() {
-                            if !dropdown_element.contains(Some(&target))
-                                && !button_element.contains(Some(&target))
-                            {
-                                dropdown_open.set(false);
-                                // If this is a long press menu (show_menu_only is true),
-                                // call the on_close callback when clicked outside
-                                if show_menu_only {
-                                    if let Some(on_close) = &on_close {
-                                        on_close.emit(());
+            // Handle outside clicks/touches to dismiss menu
+            let handle_outside_interaction = {
+                let dropdown_open = dropdown_open.clone();
+                let dropdown_ref = dropdown_ref.clone();
+                let button_ref = button_ref.clone();
+                let on_close = on_close.clone();
+                
+                move |event: &web_sys::Event| {
+                    if *dropdown_open {
+                        if let Ok(target) = event.target().unwrap().dyn_into::<HtmlElement>() {
+                            if let Some(dropdown_element) = dropdown_ref.cast::<HtmlElement>() {
+                                // Check if click is outside dropdown
+                                let outside_dropdown = !dropdown_element.contains(Some(&target));
+                                
+                                // Check if click is outside button (only if button exists)
+                                let outside_button = if let Some(button_element) = button_ref.cast::<HtmlElement>() {
+                                    !button_element.contains(Some(&target))
+                                } else {
+                                    // If no button exists (show_menu_only case), consider it as outside
+                                    true
+                                };
+                                
+                                if outside_dropdown && outside_button {
+                                    dropdown_open.set(false);
+                                    // If this is a long press menu (show_menu_only is true),
+                                    // call the on_close callback when clicked outside
+                                    if show_menu_only {
+                                        if let Some(on_close) = &on_close {
+                                            on_close.emit(());
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
+            };
+
+            // Add click listener for desktop
+            let click_handler = handle_outside_interaction.clone();
+            let click_listener = EventListener::new(&document, "click", move |event| {
+                click_handler(event);
+            });
+
+            // Add touchend listener for mobile (more reliable than touchstart for outside clicks)
+            let touch_handler = handle_outside_interaction.clone();
+            let touch_listener = EventListener::new(&document, "touchend", move |event| {
+                touch_handler(event);
             });
 
             move || {
-                drop(listener);
+                drop(click_listener);
+                drop(touch_listener);
             }
         });
     }
 
-    {
-        let dropdown_open = dropdown_open.clone();
-        let dropdown_ref = dropdown_ref.clone();
-        let dropdown_state_for_closure = dropdown_open.clone();
-        let on_close = props.on_close.clone();
-        let show_menu_only = props.show_menu_only;
-
-        use_effect_with(dropdown_open.clone(), move |_| {
-            let document = web_sys::window().unwrap().document().unwrap();
-            let dropdown_ref_clone = dropdown_ref.clone();
-
-            let click_handler_closure = Closure::wrap(Box::new(move |event: web_sys::MouseEvent| {
-                if let Some(target) = event.target() {
-                    if let Some(dropdown_element) =
-                        dropdown_ref_clone.cast::<web_sys::HtmlElement>()
-                    {
-                        if let Ok(node) = target.dyn_into::<web_sys::Node>() {
-                            if !dropdown_element.contains(Some(&node)) {
-                                dropdown_state_for_closure.set(false);
-
-                                // If this is a long press menu, call the on_close callback
-                                if show_menu_only {
-                                    if let Some(on_close) = &on_close {
-                                        on_close.emit(());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }) as Box<dyn FnMut(_)>);
-
-            if *dropdown_open {
-                document
-                    .add_event_listener_with_callback(
-                        "click",
-                        click_handler_closure.as_ref().unchecked_ref(),
-                    )
-                    .unwrap();
-            }
-
-            move || {
-                document
-                    .remove_event_listener_with_callback(
-                        "click",
-                        click_handler_closure.as_ref().unchecked_ref(),
-                    )
-                    .unwrap();
-            }
-        });
-    }
 
     let check_episode_id = props.episode.get_episode_id(Some(0));
 
@@ -1685,6 +1664,17 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <div
                     ref={dropdown_ref.clone()}
                     class="dropdown-content-class border border-solid absolute z-50 divide-y rounded-lg shadow w-48"
+                    style={
+                        if props.show_menu_only {
+                            if let Some((x, y)) = props.position {
+                                format!("position: fixed; top: {}px; left: {}px; z-index: 1000;", y, x)
+                            } else {
+                                String::new()
+                            }
+                        } else {
+                            String::new()
+                        }
+                    }
                 >
                     <ul class="dropdown-container py-2 text-sm text-gray-700">
                         { action_buttons }
@@ -2152,29 +2142,44 @@ pub fn use_long_press(
     Callback<TouchEvent>,
     Callback<TouchEvent>,
     bool,
+    bool,
 ) {
     let timeout_handle = use_state(|| None::<Timeout>);
     let is_long_press = use_state(|| false);
     let start_position = use_state(|| None::<(i32, i32)>);
+    let is_pressing = use_state(|| false);
 
     // Configure the threshold for movement that cancels a long press
     let movement_threshold = 10; // pixels
-    let delay = delay_ms.unwrap_or(500); // Default to 500ms
+    let delay = delay_ms.unwrap_or(600); // Increased to 600ms for better iOS compatibility
 
     let on_touch_start = {
         let timeout_handle = timeout_handle.clone();
         let is_long_press = is_long_press.clone();
         let start_position = start_position.clone();
+        let is_pressing = is_pressing.clone();
         let on_long_press = on_long_press.clone();
 
         Callback::from(move |event: TouchEvent| {
-            event.prevent_default();
+            // Don't prevent default on touch start - let iOS handle it naturally
+            
+            // Disable text selection for iOS
+            if let Some(target) = event.target() {
+                if let Ok(element) = target.dyn_into::<web_sys::HtmlElement>() {
+                    let _ = element.style().set_property("user-select", "none");
+                    let _ = element.style().set_property("-webkit-user-select", "none");
+                    let _ = element.style().set_property("-webkit-touch-callout", "none");
+                }
+            }
 
             // Store the initial touch position
             if let Some(touch) = event.touches().get(0) {
                 start_position.set(Some((touch.client_x(), touch.client_y())));
             }
 
+            // Set pressing state for visual feedback
+            is_pressing.set(true);
+            
             // Reset long press state
             is_long_press.set(false);
 
@@ -2194,16 +2199,30 @@ pub fn use_long_press(
 
     let on_touch_end = {
         let timeout_handle = timeout_handle.clone();
+        let is_pressing = is_pressing.clone();
 
-        Callback::from(move |_event: TouchEvent| {
+        Callback::from(move |event: TouchEvent| {
             // Clear the timeout if the touch ends before the long press is triggered
             timeout_handle.set(None);
+            
+            // Clear pressing state
+            is_pressing.set(false);
+            
+            // Re-enable text selection
+            if let Some(target) = event.target() {
+                if let Ok(element) = target.dyn_into::<web_sys::HtmlElement>() {
+                    let _ = element.style().remove_property("user-select");
+                    let _ = element.style().remove_property("-webkit-user-select");
+                    let _ = element.style().remove_property("-webkit-touch-callout");
+                }
+            }
         })
     };
 
     let on_touch_move = {
         let timeout_handle = timeout_handle.clone();
         let start_position = start_position.clone();
+        let is_pressing = is_pressing.clone();
 
         Callback::from(move |event: TouchEvent| {
             // If the touch moves too much, cancel the long press
@@ -2218,13 +2237,23 @@ pub fn use_long_press(
                     if distance_x > movement_threshold || distance_y > movement_threshold {
                         // Movement exceeded threshold, cancel the long press
                         timeout_handle.set(None);
+                        is_pressing.set(false);
+                        
+                        // Re-enable text selection
+                        if let Some(target) = event.target() {
+                            if let Ok(element) = target.dyn_into::<web_sys::HtmlElement>() {
+                                let _ = element.style().remove_property("user-select");
+                                let _ = element.style().remove_property("-webkit-user-select");
+                                let _ = element.style().remove_property("-webkit-touch-callout");
+                            }
+                        }
                     }
                 }
             }
         })
     };
 
-    (on_touch_start, on_touch_end, on_touch_move, *is_long_press)
+    (on_touch_start, on_touch_end, on_touch_move, *is_long_press, *is_pressing)
 }
 
 pub fn episode_item(
@@ -2460,6 +2489,7 @@ pub fn virtual_episode_item(
     context_menu_position: (i32, i32),
     close_context_menu: Callback<()>,
     context_button_ref: NodeRef,
+    is_pressing: bool,
 ) -> Html {
     let span_duration = listen_duration.clone();
     let span_episode = episode_duration.clone();
@@ -2506,8 +2536,19 @@ pub fn virtual_episode_item(
     html! {
         <div>
             <div
-                class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg touch-manipulation"
-                style={format!("height: {}; overflow: hidden;", container_height)}
+                class={classes!(
+                    "item-container", "border-solid", "border", "flex", "items-start", "mb-4", 
+                    "shadow-md", "rounded-lg", "touch-manipulation", "transition-all", "duration-150",
+                    if is_pressing {
+                        "bg-accent-color bg-opacity-20 transform scale-[0.98]"
+                    } else {
+                        ""
+                    }
+                )}
+                style={format!("height: {}; overflow: hidden; user-select: {};", 
+                    container_height,
+                    if is_pressing { "none" } else { "auto" }
+                )}
                 ontouchstart={on_touch_start}
                 ontouchend={on_touch_end}
                 ontouchmove={on_touch_move}
@@ -2645,18 +2686,13 @@ pub fn virtual_episode_item(
             {
                 if show_context_menu {
                     html! {
-                        <div
-                            class="dropdown-content-class border border-solid absolute z-50 divide-y rounded-lg shadow w-48"
-                            style={context_menu_style}
-                        >
-                            <ContextButton
-                                episode={episode.clone()}
-                                page_type={page_type.to_string()}
-                                show_menu_only={true}
-                                position={Some(context_menu_position)}
-                                on_close={close_context_menu}
-                            />
-                        </div>
+                        <ContextButton
+                            episode={episode.clone()}
+                            page_type={page_type.to_string()}
+                            show_menu_only={true}
+                            position={Some(context_menu_position)}
+                            on_close={close_context_menu}
+                        />
                     }
                 } else {
                     html! {}
