@@ -171,18 +171,23 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
     }
   }
 
-  void _disconnect() {
+  void _logOut() {
     var settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
 
-    // We'll update SettingsBloc in the next step
-    // For now, we'll assume these methods exist
+    // Clear all PinePods user data
     settingsBloc.setPinepodsServer(null);
     settingsBloc.setPinepodsApiKey(null);
+    settingsBloc.setPinepodsUserId(null);
+    settingsBloc.setPinepodsUsername(null);
+    settingsBloc.setPinepodsEmail(null);
 
     setState(() {
       _isLoggedIn = false;
       _connectedServer = null;
     });
+
+    // Navigate back to the login screen by popping all routes
+    Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   @override
@@ -208,8 +213,8 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
             title: const Text('PinePods Connection'),
             subtitle: Text(_connectedServer ?? ''),
             trailing: TextButton(
-              onPressed: _disconnect,
-              child: const Text('Disconnect'),
+              onPressed: _logOut,
+              child: const Text('Log Out'),
             ),
           ),
         ] else ...[

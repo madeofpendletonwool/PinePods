@@ -279,20 +279,21 @@ class _PinepodsHomeState extends State<PinepodsHome> {
           ),
         ),
         const SizedBox(height: 16),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 1.5,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
+        SizedBox(
+          height: 120,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _playlistData!.playlists.length,
+            itemBuilder: (context, index) {
+              final playlist = _playlistData!.playlists[index];
+              return Padding(
+                padding: EdgeInsets.only(
+                  right: index < _playlistData!.playlists.length - 1 ? 16 : 0,
+                ),
+                child: _PlaylistCard(playlist: playlist),
+              );
+            },
           ),
-          itemCount: _playlistData!.playlists.length,
-          itemBuilder: (context, index) {
-            final playlist = _playlistData!.playlists[index];
-            return _PlaylistCard(playlist: playlist);
-          },
         ),
       ],
     );
@@ -608,57 +609,53 @@ class _PlaylistCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: InkWell(
-        onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Opening playlist: ${playlist.name}')),
-          );
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    _getIconFromName(playlist.iconName),
-                    color: Theme.of(context).colorScheme.primary,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      playlist.name,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
+    return SizedBox(
+      width: 200,
+      child: Card(
+        child: InkWell(
+          onTap: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Opening playlist: ${playlist.name}')),
+            );
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      _getIconFromName(playlist.iconName),
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        playlist.name,
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+                if (playlist.episodeCount != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '${playlist.episodeCount} episodes',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 8),
-              if (playlist.episodeCount != null)
-                Text(
-                  '${playlist.episodeCount} episodes',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                ),
-              if (playlist.description != null) ...[
-                const SizedBox(height: 4),
-                Text(
-                  playlist.description!,
-                  style: Theme.of(context).textTheme.bodySmall,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
               ],
-            ],
+            ),
           ),
         ),
       ),
