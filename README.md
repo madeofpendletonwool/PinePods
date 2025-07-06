@@ -107,6 +107,7 @@ services:
       # Basic Server Info
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       PEOPLE_API_URL: 'https://people.pinepods.online'
+      HOSTNAME: 'http://localhost:8040'
       # Database Vars
       DB_TYPE: postgresql
       DB_HOST: db
@@ -168,6 +169,7 @@ services:
       # Basic Server Info
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       PEOPLE_API_URL: 'https://people.pinepods.online'
+      HOSTNAME: 'http://localhost:8040'
       # Database Vars
       DB_TYPE: mariadb
       DB_HOST: db
@@ -200,6 +202,8 @@ services:
 Make sure you change these variables to variables specific to yourself at a minimum.
 
 ```
+      # The url you hit the site at. Only used for sharing rss feeds
+      HOSTNAME: 'http://localhost:8040'
       # These next 4 are optional. They allow you to set an admin without setting on the first boot
       USERNAME: pinepods
       PASSWORD: password
@@ -426,6 +430,7 @@ env:
   FULLNAME: "Admin User"
   EMAIL: "admin@example.com"
   DEBUG_MODE: "false"
+  HOSTNAME: 'http://localhost:8040'
 ```
 
 #### External Database Configuration
@@ -465,6 +470,7 @@ env:
   PASSWORD: "password"
   FULLNAME: "Admin User"
   EMAIL: "admin@example.com"
+  HOSTNAME: 'http://localhost:8040'
   DB_TYPE: "postgresql"
   DB_USER: "postgres"
   DB_NAME: "pinepods_database"

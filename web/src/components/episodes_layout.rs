@@ -1576,7 +1576,7 @@ pub fn episode_layout() -> Html {
                                     />
                                     <span class="text-sm">{"x"}</span>
                                     <button
-                                        class="download-button font-bold py-2 px-4 rounded"
+                                        class="save-button font-bold py-2 px-4 rounded"
                                         onclick={save_playback_speed}
                                     >
                                         {"Save"}
@@ -1634,32 +1634,36 @@ pub fn episode_layout() -> Html {
                             </div>
 
                             {
-                                if podcast_info.unwrap().is_youtube.unwrap() {
-                                    html! {
-                                        <div class="mt-4">
-                                            <label for="feed-cutoff" class="block mb-2 text-sm font-medium">{"Youtube Download Episode Limit (days):"}</label>
-                                            <div class="flex items-center space-x-2">
-                                                <input
-                                                    type="number"
-                                                    id="feed-cutoff"
-                                                    value={(*feed_cutoff_days_input).clone()}
-                                                    class="email-input border text-sm rounded-lg p-2.5 w-24"
-                                                    oninput={feed_cutoff_days_input_handler}
-                                                    min="0"
-                                                />
-                                                <span class="text-sm text-gray-500">{"0 = No limit"}</span>
-                                                <button
-                                                    class="download-button font-bold py-2 px-4 rounded"
-                                                    onclick={save_feed_cutoff_days}
-                                                >
-                                                    {"Save"}
-                                                </button>
+                                if let Some(info) = &podcast_info {
+                                    if info.is_youtube.unwrap_or(false) {
+                                        html! {
+                                            <div class="mt-4">
+                                                <label for="feed-cutoff" class="block mb-2 text-sm font-medium">{"Youtube Download Episode Limit (days):"}</label>
+                                                <div class="flex items-center space-x-2">
+                                                    <input
+                                                        type="number"
+                                                        id="feed-cutoff"
+                                                        value={(*feed_cutoff_days_input).clone()}
+                                                        class="email-input border text-sm rounded-lg p-2.5 w-24"
+                                                        oninput={feed_cutoff_days_input_handler}
+                                                        min="0"
+                                                    />
+                                                    <span class="text-sm text-gray-500">{"0 = No limit"}</span>
+                                                    <button
+                                                        class="download-button font-bold py-2 px-4 rounded"
+                                                        onclick={save_feed_cutoff_days}
+                                                    >
+                                                        {"Save"}
+                                                    </button>
+                                                </div>
+                                                <p class="text-xs text-gray-500 mt-1">{"Adjusts how long Youtube Feed audio is retained when downloaded to be streamed via the server. Youtube episodes will be removed after to free up space."}</p>
                                             </div>
-                                            <p class="text-xs text-gray-500 mt-1">{"Adjusts how long Youtube Feed audio is retained when downloaded to be streamed via the server. Youtube episodes will be removed after to free up space."}</p>
-                                        </div>
+                                        }
+                                    } else {
+                                        html! {}  // Render nothing if it's not a YouTube podcast
                                     }
                                 } else {
-                                    html! {}  // Render nothing if it's not a YouTube podcast
+                                    html! {}  // Render nothing if podcast_info is None
                                 }
                             }
                             // Categories section of the modal
@@ -2430,16 +2434,17 @@ pub fn episode_layout() -> Html {
                                 }
                             }
                             {
-                                // Add this right after the podcast info section but before the episode list
+                                // Modern mobile-friendly filter bar
                                 html! {
-                                    <div class="flex justify-between items-center mb-4">
-                                        <div class="flex gap-4">
-                                            // Search input (existing)
-                                            <div class="filter-dropdown download-button relative">
+                                    <div class="mb-6 space-y-4">
+                                        // Combined search and sort bar (seamless design)
+                                        <div class="flex gap-0 h-12">
+                                            // Search input (left half)
+                                            <div class="flex-1 relative">
                                                 <input
                                                     type="text"
-                                                    class="filter-input appearance-none pr-8"
-                                                    placeholder="Search"
+                                                    class="search-input"
+                                                    placeholder="Search podcast episodes..."
                                                     value={(*episode_search_term).clone()}
                                                     oninput={
                                                         let episode_search_term = episode_search_term.clone();
@@ -2450,90 +2455,13 @@ pub fn episode_layout() -> Html {
                                                         })
                                                     }
                                                 />
-                                                <i class="ph ph-magnifying-glass absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                                                <i class="ph ph-magnifying-glass search-icon"></i>
                                             </div>
 
-                                            // Clear filter button
-                                            <button
-                                                onclick={
-                                                    let show_in_progress = show_in_progress.clone();
-                                                    let episode_search_term = episode_search_term.clone();
-                                                    let completed_filter_state = completed_filter_state.clone();
-                                                    Callback::from(move |_| {
-                                                        completed_filter_state.set(CompletedFilter::ShowAll);
-                                                        show_in_progress.set(false);
-                                                        episode_search_term.set(String::new());
-                                                    })
-                                                }
-                                                class="filter-button h-14 font-medium px-2 rounded inline-flex items-center"
-                                            >
-                                                <i class="ph ph-broom text-2xl"></i>
-                                                <span class="text-lg ml-2 hidden md:inline">{"Clear"}</span>
-                                            </button>
-
-                                            // Completed filter button
-                                            <button
-                                                onclick={
-                                                    let completed_filter_state = completed_filter_state.clone();
-                                                    Callback::from(move |_| {
-                                                        completed_filter_state.set(match *completed_filter_state {
-                                                            CompletedFilter::ShowAll => CompletedFilter::ShowOnly,
-                                                            CompletedFilter::ShowOnly => CompletedFilter::Hide,
-                                                            CompletedFilter::Hide => CompletedFilter::ShowAll,
-                                                        });
-                                                    })
-                                                }
-                                                title={completed_title}
-                                                class={classes!(
-                                                    "filter-button",
-                                                    "h-14",
-                                                    "font-medium",
-                                                    "px-2",
-                                                    "rounded",
-                                                    "inline-flex",
-                                                    "items-center",
-                                                    match *completed_filter_state {
-                                                        CompletedFilter::ShowOnly => "bg-accent-color",
-                                                        CompletedFilter::Hide => "bg-alert-color",
-                                                        CompletedFilter::ShowAll => ""
-                                                    }
-                                                )}
-                                            >
-                                                <i class={classes!("ph", completed_icon, "text-2xl")}></i>
-                                                <span class="text-lg ml-2 hidden md:inline">{completed_text}</span>
-                                            </button>
-
-                                            // In Progress filter button
-                                            <button
-                                                onclick={
-                                                    let show_in_progress = show_in_progress.clone();
-                                                    Callback::from(move |_| {
-                                                        show_in_progress.set(!*show_in_progress);
-                                                        // Ensure only one filter is active at a time
-                                                        // if !*show_in_progress {
-                                                        //     completed_filter_state.set(CompletedFilter::ShowAll);
-                                                        // }
-                                                    })
-                                                }
-                                                class={classes!(
-                                                    "filter-button",
-                                                    "h-14",
-                                                    "font-medium",
-                                                    "px-2",
-                                                    "rounded",
-                                                    "inline-flex",
-                                                    "items-center",
-                                                    if *show_in_progress { "bg-accent-color" } else { "" }
-                                                )}
-                                            >
-                                                <i class="ph ph-hourglass-medium text-2xl"></i>
-                                                <span class="text-lg ml-2 hidden md:inline">{"In Progress"}</span>
-                                            </button>
-
-                                            // Sort dropdown (existing)
-                                            <div class="filter-dropdown font-bold rounded relative">
+                                            // Sort dropdown (right half)
+                                            <div class="flex-shrink-0 relative min-w-[160px]">
                                                 <select
-                                                    class="category-select appearance-none pr-8"
+                                                    class="sort-dropdown"
                                                     onchange={
                                                         let episode_sort_direction = episode_sort_direction.clone();
                                                         Callback::from(move |e: Event| {
@@ -2555,18 +2483,83 @@ pub fn episode_layout() -> Html {
                                                     <option value="oldest">{"Oldest First"}</option>
                                                     <option value="shortest">{"Shortest First"}</option>
                                                     <option value="longest">{"Longest First"}</option>
-                                                    <option value="title_az">{"Title A to Z"}</option>
-                                                    <option value="title_za">{"Title Z to A"}</option>
+                                                    <option value="title_az">{"Title A-Z"}</option>
+                                                    <option value="title_za">{"Title Z-A"}</option>
                                                 </select>
+                                                <i class="ph ph-caret-down dropdown-arrow"></i>
                                             </div>
+                                        </div>
+
+                                        // Filter chips (horizontal scroll on mobile)
+                                        <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+                                            // Clear all filters
+                                            <button
+                                                onclick={
+                                                    let show_in_progress = show_in_progress.clone();
+                                                    let episode_search_term = episode_search_term.clone();
+                                                    let completed_filter_state = completed_filter_state.clone();
+                                                    Callback::from(move |_| {
+                                                        completed_filter_state.set(CompletedFilter::ShowAll);
+                                                        show_in_progress.set(false);
+                                                        episode_search_term.set(String::new());
+                                                    })
+                                                }
+                                                class="filter-chip"
+                                            >
+                                                <i class="ph ph-broom text-lg"></i>
+                                                <span class="text-sm font-medium">{"Clear All"}</span>
+                                            </button>
+
+                                            // Completed filter chip (3-state)
+                                            <button
+                                                onclick={
+                                                    let completed_filter_state = completed_filter_state.clone();
+                                                    Callback::from(move |_| {
+                                                        completed_filter_state.set(match *completed_filter_state {
+                                                            CompletedFilter::ShowAll => CompletedFilter::ShowOnly,
+                                                            CompletedFilter::ShowOnly => CompletedFilter::Hide,
+                                                            CompletedFilter::Hide => CompletedFilter::ShowAll,
+                                                        });
+                                                    })
+                                                }
+                                                title={completed_title}
+                                                class={classes!(
+                                                    "filter-chip",
+                                                    match *completed_filter_state {
+                                                        CompletedFilter::ShowOnly => "filter-chip-active",
+                                                        CompletedFilter::Hide => "filter-chip-alert",
+                                                        CompletedFilter::ShowAll => ""
+                                                    }
+                                                )}
+                                            >
+                                                <i class={classes!("ph", completed_icon, "text-lg")}></i>
+                                                <span class="text-sm font-medium">{completed_text}</span>
+                                            </button>
+
+                                            // In progress filter chip
+                                            <button
+                                                onclick={
+                                                    let show_in_progress = show_in_progress.clone();
+                                                    Callback::from(move |_| {
+                                                        show_in_progress.set(!*show_in_progress);
+                                                    })
+                                                }
+                                                class={classes!(
+                                                    "filter-chip",
+                                                    if *show_in_progress { "filter-chip-active" } else { "" }
+                                                )}
+                                            >
+                                                <i class="ph ph-hourglass-medium text-lg"></i>
+                                                <span class="text-sm font-medium">{"In Progress"}</span>
+                                            </button>
                                         </div>
                                     </div>
                                 }
                             }
                             {
-                                if let Some(_) = podcast_feed_results {
-                                    let podcast_link_clone = clicked_podcast_info.clone().unwrap().feedurl.clone();
-                                    let podcast_title = clicked_podcast_info.clone().unwrap().podcastname.clone();
+                                if let (Some(_), Some(podcast_info)) = (podcast_feed_results, &clicked_podcast_info) {
+                                    let podcast_link_clone = podcast_info.feedurl.clone();
+                                    let podcast_title = podcast_info.podcastname.clone();
 
                                     html! {
                                         <PodcastEpisodeVirtualList

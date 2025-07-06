@@ -28,7 +28,7 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{
     window, HtmlAudioElement, HtmlElement, HtmlInputElement, MediaPositionState,
-    MediaSessionPlaybackState, Navigator,
+    MediaSessionPlaybackState, Navigator, TouchEvent,
 };
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
@@ -273,6 +273,88 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
             }
         })
     };
+
+    // Touch drag functionality for mobile
+    let touch_start_y = use_state(|| None::<i32>);
+    let is_dragging = use_state(|| false);
+    let drag_offset = use_state(|| 0i32);
+
+    let on_touch_start = {
+        let touch_start_y = touch_start_y.clone();
+        let is_dragging = is_dragging.clone();
+        let drag_offset = drag_offset.clone();
+
+        Callback::from(move |event: TouchEvent| {
+            if let Some(touch) = event.touches().get(0) {
+                touch_start_y.set(Some(touch.client_y()));
+                is_dragging.set(true);
+                drag_offset.set(0);
+                event.prevent_default(); // Prevent scrolling from the start
+            }
+        })
+    };
+
+    let on_touch_move = {
+        let touch_start_y = touch_start_y.clone();
+        let is_dragging = is_dragging.clone();
+        let drag_offset = drag_offset.clone();
+
+        Callback::from(move |event: TouchEvent| {
+            if let (Some(start_y), true) = (*touch_start_y, *is_dragging) {
+                if let Some(touch) = event.touches().get(0) {
+                    let current_y = touch.client_y();
+                    let delta_y = start_y - current_y; // Positive = drag up, Negative = drag down
+
+                    // Responsive drag - follow finger movement with no limits for better feel
+                    // Visual feedback follows finger direction (up drag = negative translateY)
+                    let visual_offset = delta_y / 2; // No min/max limits for smoother experience
+                    drag_offset.set(visual_offset);
+
+                    event.prevent_default(); // Prevent scrolling while dragging
+                }
+            }
+        })
+    };
+
+    let on_touch_end = {
+        let touch_start_y = touch_start_y.clone();
+        let is_dragging = is_dragging.clone();
+        let drag_offset = drag_offset.clone();
+        let audio_dispatch = _audio_dispatch.clone();
+        let container_ref = container_ref.clone();
+        let audio_state = audio_state.clone();
+
+        Callback::from(move |event: TouchEvent| {
+            if let (Some(start_y), true) = (*touch_start_y, *is_dragging) {
+                if let Some(touch) = event.changed_touches().get(0) {
+                    let end_y = touch.client_y();
+                    let delta_y = start_y - end_y; // Positive = swipe up, Negative = swipe down
+                    let threshold = 20; // Minimum pixels to trigger action
+
+                    let is_expanded = audio_state.is_expanded;
+
+                    if delta_y.abs() > threshold {
+                        if delta_y > 0 && !is_expanded {
+                            // Swipe up and player is collapsed -> expand
+                            audio_dispatch.reduce_mut(UIState::toggle_expanded);
+                            if let Some(container) = container_ref.cast::<HtmlElement>() {
+                                container.scroll_into_view();
+                            }
+                        } else if delta_y < 0 && is_expanded {
+                            // Swipe down and player is expanded -> collapse
+                            audio_dispatch.reduce_mut(UIState::toggle_expanded);
+                        }
+                    }
+                }
+            }
+
+            // Reset touch state
+            touch_start_y.set(None);
+            is_dragging.set(false);
+            drag_offset.set(0);
+        })
+    };
+
     let src_clone = props.src.clone();
 
     // Update the audio source when `src` changes
@@ -1323,7 +1405,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 _ => html! {},
                 }
             }
-            <div class={audio_bar_class} ref={container_ref.clone()}>
+            <div class={audio_bar_class} ref={container_ref.clone()}
+                 style={if *is_dragging { 
+                     format!("transform: translateY({}px); transition: none;", -*drag_offset) 
+                 } else { 
+                     String::new() 
+                 }}>
                 <div class="top-section">
                     <div>
                     <button onclick={title_click.clone()} class="retract-button">
@@ -1447,15 +1534,20 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         )}
                     />
                 </div>
-                <div class="left-group">
-                    <div onclick={title_click.clone()} class="artwork-container">
+                <div class="left-group"
+                     onclick={title_click.clone()}
+                     ontouchstart={on_touch_start.clone()}
+                     ontouchmove={on_touch_move.clone()}
+                     ontouchend={on_touch_end.clone()}
+                     style="cursor: pointer; touch-action: none;">
+                    <div class="artwork-container">
                         <FallbackImage
                             src={audio_props.artwork_url.clone()}
                             alt={format!("Cover for audio")}
                             class={Some(artwork_class.to_string())}
                         />
                     </div>
-                    <div class="title" onclick={title_click.clone()}>
+                    <div class="title">
                         <span>{ &audio_props.title }</span>
                     </div>
                 </div>
