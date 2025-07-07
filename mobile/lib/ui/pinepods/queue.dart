@@ -7,6 +7,7 @@ import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
+import 'package:pinepods_mobile/ui/widgets/draggable_queue_episode_card.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
 
@@ -87,6 +88,49 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
 
   Future<void> _refresh() async {
     await _loadQueuedEpisodes();
+  }
+
+  Future<void> _reorderEpisodes(int oldIndex, int newIndex) async {
+    // Adjust indices if moving down the list
+    if (newIndex > oldIndex) {
+      newIndex -= 1;
+    }
+
+    // Update local state immediately for smooth UI
+    setState(() {
+      final episode = _episodes.removeAt(oldIndex);
+      _episodes.insert(newIndex, episode);
+    });
+
+    // Get episode IDs in new order
+    final episodeIds = _episodes.map((e) => e.episodeId).toList();
+
+    // Call API to update order on server
+    try {
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      final settings = settingsBloc.currentSettings;
+      final userId = settings.pinepodsUserId;
+
+      if (userId == null) {
+        _showSnackBar('Not logged in', Colors.red);
+        // Reload to restore original order if API call fails
+        await _loadQueuedEpisodes();
+        return;
+      }
+
+      _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+      final success = await _pinepodsService.reorderQueue(userId, episodeIds);
+
+      if (!success) {
+        _showSnackBar('Failed to update queue order', Colors.red);
+        // Reload to restore original order if API call fails
+        await _loadQueuedEpisodes();
+      }
+    } catch (e) {
+      _showSnackBar('Error updating queue order: $e', Colors.red);
+      // Reload to restore original order if API call fails
+      await _loadQueuedEpisodes();
+    }
   }
 
   Future<void> _playEpisode(PinepodsEpisode episode) async {
@@ -572,50 +616,73 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
   }
 
   Widget _buildEpisodesList() {
-    return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, index) {
-          if (index == 0) {
-            // Header
-            return Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Queue',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+    return SliverToBoxAdapter(
+      child: Column(
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Queue',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Row(
+                  children: [
+                    Text(
+                      'Drag to reorder',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
                     ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh),
-                    onPressed: _refresh,
-                  ),
-                ],
-              ),
-            );
-          }
-          // Episodes (index - 1 because of header)
-          final episodeIndex = index - 1;
-          return PinepodsEpisodeCard(
-            episode: _episodes[episodeIndex],
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PinepodsEpisodeDetails(
-                    initialEpisode: _episodes[episodeIndex],
-                  ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: _refresh,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Reorderable episodes list
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false, // Disable automatic drag handles
+            onReorder: _reorderEpisodes,
+            itemCount: _episodes.length,
+            itemBuilder: (context, index) {
+              final episode = _episodes[index];
+              return Container(
+                key: ValueKey(episode.episodeId),
+                margin: const EdgeInsets.only(bottom: 4),
+                child: DraggableQueueEpisodeCard(
+                  episode: episode,
+                  index: index,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PinepodsEpisodeDetails(
+                          initialEpisode: episode,
+                        ),
+                      ),
+                    );
+                  },
+                  onLongPress: () => _showContextMenu(index),
+                  onPlayPressed: () => _playEpisode(episode),
                 ),
               );
             },
-            onLongPress: () => _showContextMenu(episodeIndex),
-            onPlayPressed: () => _playEpisode(_episodes[episodeIndex]),
-          );
-        },
-        childCount: _episodes.length + 1, // +1 for header
+          ),
+        ],
       ),
     );
   }

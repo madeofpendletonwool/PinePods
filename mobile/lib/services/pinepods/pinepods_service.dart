@@ -1634,6 +1634,35 @@ class PinepodsService {
       rethrow;
     }
   }
+
+  // Reorder queue episodes
+  Future<bool> reorderQueue(int userId, List<int> episodeIds) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/reorder_queue?user_id=$userId');
+    print('Making API call to: $url');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'episode_ids': episodeIds,
+        }),
+      );
+
+      print('Reorder queue response: ${response.statusCode} - ${response.body}');
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error reordering queue: $e');
+      return false;
+    }
+  }
 }
 
 class PodcastDetailsData {
