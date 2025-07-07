@@ -1,6 +1,5 @@
 Searching functionality
 	- Allow playing even if pod isn't added
-playlists
 chapter support
 db search
 Add pod via url
@@ -14,5 +13,9 @@ fix episodes on home
 fix episodes in playlist
 handle huge amounts of episodes better - downloads
 setting to reorganize bottom bar
+Remove import export opml, auto update episode setting, delete download and mark delete eps settings
+Make full screen player mode on ep start setting work
+Fix ios homescreen icon
+Center bottom bar so that it looks good in horizontal
 
 android auto
