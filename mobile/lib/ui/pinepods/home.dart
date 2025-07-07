@@ -30,7 +30,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
   HomeOverview? _homeData;
   PlaylistResponse? _playlistData;
   final PinepodsService _pinepodsService = PinepodsService();
-  
+
   // Audio service and context menu state
   PinepodsAudioService? _audioService;
   int? _contextMenuEpisodeIndex;
@@ -46,8 +46,8 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
 
-    if (settings.pinepodsServer == null || 
-        settings.pinepodsApiKey == null || 
+    if (settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null ||
         settings.pinepodsUserId == null) {
       setState(() {
         _errorMessage = 'Not connected to PinePods server. Please connect in Settings.';
@@ -88,11 +88,11 @@ class _PinepodsHomeState extends State<PinepodsHome> {
 
   void _initializeAudioService() {
     if (_audioService != null) return; // Already initialized
-    
+
     try {
       final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
       final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-      
+
       _audioService = PinepodsAudioService(
         audioPlayerService,
         _pinepodsService,
@@ -106,7 +106,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
   Future<void> _playEpisode(HomeEpisode homeEpisode) async {
     // Try to initialize audio service if not already done
     _initializeAudioService();
-    
+
     if (_audioService == null) {
       _showSnackBar('Audio service not available', Colors.red);
       return;
@@ -132,7 +132,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
 
     try {
       await _audioService!.playPinepodsEpisode(pinepodsEpisode: episode);
-      
+
       if (mounted) {
         _showSnackBar('Playing ${episode.episodeTitle}', Colors.green);
       }
@@ -174,10 +174,10 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     // Show context menu as a modal overlay if needed
     if (_contextMenuEpisodeIndex != null) {
       final episodeIndex = _contextMenuEpisodeIndex!;
-      final episodes = _isContextMenuForContinueListening 
+      final episodes = _isContextMenuForContinueListening
         ? (_homeData?.inProgressEpisodes ?? [])
         : (_homeData?.recentEpisodes ?? []);
-      
+
       if (episodeIndex < episodes.length) {
         final homeEpisode = episodes[episodeIndex];
         final episode = PinepodsEpisode(
@@ -196,7 +196,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
           downloaded: false,
           isYoutube: false,
         );
-        
+
         WidgetsBinding.instance.addPostFrameCallback((_) {
           showDialog(
             context: context,
@@ -321,7 +321,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                 ],
 
                 // Empty state if no content
-                if (_homeData!.recentEpisodes.isEmpty && 
+                if (_homeData!.recentEpisodes.isEmpty &&
                     _homeData!.inProgressEpisodes.isEmpty &&
                     _homeData!.topPodcasts.isEmpty)
                   _buildEmptyState(),
@@ -388,7 +388,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
           ),
         ),
         const SizedBox(height: 16),
-        ...(_homeData!.inProgressEpisodes.take(3).map((episode) => 
+        ...(_homeData!.inProgressEpisodes.take(3).map((episode) =>
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: _EpisodeCard(
@@ -502,7 +502,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
           ),
         ),
         const SizedBox(height: 16),
-        ...(_homeData!.recentEpisodes.take(5).map((episode) => 
+        ...(_homeData!.recentEpisodes.take(5).map((episode) =>
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: _EpisodeCard(
@@ -777,7 +777,8 @@ class _EpisodeCard extends StatelessWidget {
           ],
         ),
       ),
-    );
+    ),
+      );
   }
 }
 

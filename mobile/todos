@@ -1,7 +1,6 @@
 Searching functionality
 	- Allow playing even if pod isn't added
 chapter support
-db search
 Add pod via url
 oidc login
 allow http logins
@@ -9,13 +8,13 @@ player on every page
 dynamic play everyehere play, to highlight play to check
 clean out old code/db stuff
 Remove weird notications on play
-fix episodes on home
-fix episodes in playlist
 handle huge amounts of episodes better - downloads
 setting to reorganize bottom bar
+Reorganize bottom bar defaults: Home, Feed, Saved, Podcasts, Downloads, History, Playlists, Search
 Remove import export opml, auto update episode setting, delete download and mark delete eps settings
 Make full screen player mode on ep start setting work
 Fix ios homescreen icon
 Center bottom bar so that it looks good in horizontal
+Center buttons and stretch them across the page on the episode page
 
 android auto
