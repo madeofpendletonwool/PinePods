@@ -3,10 +3,12 @@
 // found in the LICENSE file.
 
 import 'package:pinepods_mobile/bloc/podcast/queue_bloc.dart';
+import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/state/queue_event_state.dart';
 import 'package:pinepods_mobile/ui/podcast/transcript_view.dart';
 import 'package:pinepods_mobile/ui/podcast/up_next_view.dart';
+import 'package:pinepods_mobile/ui/podcast/pinepods_up_next_view.dart';
 import 'package:pinepods_mobile/ui/widgets/slider_handle.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -173,12 +175,23 @@ class _NowPlayingOptionsSelectorState extends State<NowPlayingOptionsSelector> {
                             }),
                       ),
                       const Padding(padding: EdgeInsets.only(bottom: 12.0)),
-                      const Expanded(
-                        child: TabBarView(
-                          children: [
-                            UpNextView(),
-                            TranscriptView(),
-                          ],
+                      Expanded(
+                        child: Consumer<SettingsBloc>(
+                          builder: (context, settingsBloc, child) {
+                            final settings = settingsBloc.currentSettings;
+                            final isPinepodsConnected = settings.pinepodsServer != null &&
+                                settings.pinepodsApiKey != null &&
+                                settings.pinepodsUserId != null;
+
+                            return TabBarView(
+                              children: [
+                                isPinepodsConnected 
+                                  ? const PinepodsUpNextView()
+                                  : const UpNextView(),
+                                const TranscriptView(),
+                              ],
+                            );
+                          },
                         ),
                       ),
                     ],

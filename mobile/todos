@@ -1,0 +1,18 @@
+Searching functionality
+	- Allow playing even if pod isn't added
+playlists
+chapter support
+db search
+Add pod via url
+oidc login
+allow http logins
+player on every page
+dynamic play everyehere play, to highlight play to check
+clean out old code/db stuff
+Remove weird notications on play
+fix episodes on home
+fix episodes in playlist
+handle huge amounts of episodes better - downloads
+setting to reorganize bottom bar
+
+android auto
