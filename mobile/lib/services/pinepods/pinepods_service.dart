@@ -6,10 +6,17 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/user_stats.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
+import 'package:pinepods_mobile/entities/podcast.dart';
 
 class PinepodsService {
   String? _server;
   String? _apiKey;
+
+  // Method to initialize with existing credentials
+  void initializeWithCredentials(String server, String apiKey) {
+    _server = server;
+    _apiKey = apiKey;
+  }
 
   String get apiKey => _apiKey ?? '';
 
@@ -110,6 +117,53 @@ class PinepodsService {
     } catch (e) {
       print('Error fetching podcasts: $e');
       return [];
+    }
+  }
+
+  // Get user's subscribed podcasts using return_pods endpoint
+  Future<List<Podcast>> getUserPodcasts(int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/return_pods/$userId');
+    print('Making API call to: $url');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Api-Key': _apiKey!},
+      );
+
+      print('Get user podcasts response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List<dynamic> podsData = data['pods'] ?? [];
+        
+        List<Podcast> podcasts = [];
+        for (var podData in podsData) {
+          podcasts.add(Podcast(
+            id: podData['podcastid'],
+            title: podData['podcastname'] ?? '',
+            description: podData['description'] ?? '',
+            imageUrl: podData['artworkurl'] ?? '',
+            thumbImageUrl: podData['artworkurl'] ?? '',
+            url: podData['feedurl'] ?? '',
+            link: podData['websiteurl'] ?? '',
+            copyright: podData['author'] ?? '',
+            guid: podData['feedurl'] ?? '',
+            episodes: [],
+          ));
+        }
+        
+        return podcasts;
+      } else {
+        throw Exception('Failed to get user podcasts: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting user podcasts: $e');
+      rethrow;
     }
   }
 
@@ -1086,7 +1140,7 @@ class PinepodsService {
   }
 
   // Get podcast details dynamically (whether added or not)
-  Future<PodcastDetails> getPodcastDetailsDynamic({
+  Future<PodcastDetailsData> getPodcastDetailsDynamic({
     required int userId,
     required String podcastTitle,
     required String podcastUrl,
@@ -1117,7 +1171,7 @@ class PinepodsService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         print('Podcast details response: ${response.body}');
-        return PodcastDetails.fromJson(data);
+        return PodcastDetailsData.fromJson(data);
       } else {
         throw Exception('Failed to get podcast details: ${response.statusCode}');
       }
@@ -1458,9 +1512,131 @@ class PinepodsService {
       return false;
     }
   }
+
+  // Get user playlists
+  Future<List<PlaylistData>> getUserPlaylists(int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/get_playlists?user_id=$userId');
+    print('Making API call to: $url');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Api-Key': _apiKey!},
+      );
+
+      print('Get playlists response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List<dynamic> playlistsData = data['playlists'] ?? [];
+        
+        List<PlaylistData> playlists = [];
+        for (var playlistData in playlistsData) {
+          playlists.add(PlaylistData.fromJson(playlistData));
+        }
+        
+        return playlists;
+      } else {
+        throw Exception('Failed to get playlists: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting playlists: $e');
+      rethrow;
+    }
+  }
+
+  // Create playlist
+  Future<bool> createPlaylist(CreatePlaylistRequest request) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/create_playlist');
+    print('Making API call to: $url');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(request.toJson()),
+      );
+
+      print('Create playlist response: ${response.statusCode} - ${response.body}');
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error creating playlist: $e');
+      return false;
+    }
+  }
+
+  // Delete playlist
+  Future<bool> deletePlaylist(int userId, int playlistId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/delete_playlist');
+    print('Making API call to: $url');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'user_id': userId,
+          'playlist_id': playlistId,
+        }),
+      );
+
+      print('Delete playlist response: ${response.statusCode} - ${response.body}');
+      return response.statusCode == 200;
+    } catch (e) {
+      print('Error deleting playlist: $e');
+      return false;
+    }
+  }
+
+  // Get playlist episodes
+  Future<PlaylistEpisodesResponse> getPlaylistEpisodes(int userId, int playlistId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/get_playlist_episodes?user_id=$userId&playlist_id=$playlistId');
+    print('Making API call to: $url');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Api-Key': _apiKey!},
+      );
+
+      print('Get playlist episodes response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return PlaylistEpisodesResponse.fromJson(data);
+      } else {
+        throw Exception('Failed to get playlist episodes: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting playlist episodes: $e');
+      rethrow;
+    }
+  }
 }
 
-class PodcastDetails {
+class PodcastDetailsData {
   final int podcastId;
   final String podcastName;
   final String feedUrl;
@@ -1474,7 +1650,7 @@ class PodcastDetails {
   final int podcastIndexId;
   final bool isYoutube;
 
-  PodcastDetails({
+  PodcastDetailsData({
     required this.podcastId,
     required this.podcastName,
     required this.feedUrl,
@@ -1489,8 +1665,8 @@ class PodcastDetails {
     required this.isYoutube,
   });
 
-  factory PodcastDetails.fromJson(Map<String, dynamic> json) {
-    return PodcastDetails(
+  factory PodcastDetailsData.fromJson(Map<String, dynamic> json) {
+    return PodcastDetailsData(
       podcastId: json['podcastid'] ?? 0,
       podcastName: json['podcastname'] ?? '',
       feedUrl: json['feedurl'] ?? '',
@@ -1519,4 +1695,173 @@ class PlayEpisodeDetails {
     required this.startSkip,
     required this.endSkip,
   });
+}
+
+// Playlist Data Classes
+class PlaylistData {
+  final int playlistId;
+  final int userId;
+  final String name;
+  final String? description;
+  final bool isSystemPlaylist;
+  final List<int>? podcastIds;
+  final bool includeUnplayed;
+  final bool includePartiallyPlayed;
+  final bool includePlayed;
+  final int? minDuration;
+  final int? maxDuration;
+  final String sortOrder;
+  final bool groupByPodcast;
+  final int? maxEpisodes;
+  final String lastUpdated;
+  final String created;
+  final int? episodeCount;
+  final String? iconName;
+
+  PlaylistData({
+    required this.playlistId,
+    required this.userId,
+    required this.name,
+    this.description,
+    required this.isSystemPlaylist,
+    this.podcastIds,
+    required this.includeUnplayed,
+    required this.includePartiallyPlayed,
+    required this.includePlayed,
+    this.minDuration,
+    this.maxDuration,
+    required this.sortOrder,
+    required this.groupByPodcast,
+    this.maxEpisodes,
+    required this.lastUpdated,
+    required this.created,
+    this.episodeCount,
+    this.iconName,
+  });
+
+  factory PlaylistData.fromJson(Map<String, dynamic> json) {
+    return PlaylistData(
+      playlistId: json['playlist_id'] ?? 0,
+      userId: json['user_id'] ?? 0,
+      name: json['name'] ?? '',
+      description: json['description'],
+      isSystemPlaylist: json['is_system_playlist'] ?? false,
+      podcastIds: json['podcast_ids'] != null 
+          ? List<int>.from(json['podcast_ids']) 
+          : null,
+      includeUnplayed: json['include_unplayed'] ?? true,
+      includePartiallyPlayed: json['include_partially_played'] ?? true,
+      includePlayed: json['include_played'] ?? false,
+      minDuration: json['min_duration'],
+      maxDuration: json['max_duration'],
+      sortOrder: json['sort_order'] ?? 'date_desc',
+      groupByPodcast: json['group_by_podcast'] ?? false,
+      maxEpisodes: json['max_episodes'],
+      lastUpdated: json['last_updated'] ?? '',
+      created: json['created'] ?? '',
+      episodeCount: json['episode_count'],
+      iconName: json['icon_name'],
+    );
+  }
+}
+
+class CreatePlaylistRequest {
+  final int userId;
+  final String name;
+  final String? description;
+  final List<int>? podcastIds;
+  final bool includeUnplayed;
+  final bool includePartiallyPlayed;
+  final bool includePlayed;
+  final int? minDuration;
+  final int? maxDuration;
+  final String sortOrder;
+  final bool groupByPodcast;
+  final int? maxEpisodes;
+  final String iconName;
+  final double? playProgressMin;
+  final double? playProgressMax;
+  final int? timeFilterHours;
+
+  CreatePlaylistRequest({
+    required this.userId,
+    required this.name,
+    this.description,
+    this.podcastIds,
+    required this.includeUnplayed,
+    required this.includePartiallyPlayed,
+    required this.includePlayed,
+    this.minDuration,
+    this.maxDuration,
+    required this.sortOrder,
+    required this.groupByPodcast,
+    this.maxEpisodes,
+    required this.iconName,
+    this.playProgressMin,
+    this.playProgressMax,
+    this.timeFilterHours,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'user_id': userId,
+      'name': name,
+      'description': description,
+      'podcast_ids': podcastIds,
+      'include_unplayed': includeUnplayed,
+      'include_partially_played': includePartiallyPlayed,
+      'include_played': includePlayed,
+      'min_duration': minDuration,
+      'max_duration': maxDuration,
+      'sort_order': sortOrder,
+      'group_by_podcast': groupByPodcast,
+      'max_episodes': maxEpisodes,
+      'icon_name': iconName,
+      'play_progress_min': playProgressMin,
+      'play_progress_max': playProgressMax,
+      'time_filter_hours': timeFilterHours,
+    };
+  }
+}
+
+class PlaylistEpisodesResponse {
+  final List<PinepodsEpisode> episodes;
+  final PlaylistInfo playlistInfo;
+
+  PlaylistEpisodesResponse({
+    required this.episodes,
+    required this.playlistInfo,
+  });
+
+  factory PlaylistEpisodesResponse.fromJson(Map<String, dynamic> json) {
+    return PlaylistEpisodesResponse(
+      episodes: (json['episodes'] as List<dynamic>? ?? [])
+          .map((e) => PinepodsEpisode.fromJson(e))
+          .toList(),
+      playlistInfo: PlaylistInfo.fromJson(json['playlist_info'] ?? {}),
+    );
+  }
+}
+
+class PlaylistInfo {
+  final String name;
+  final String? description;
+  final int? episodeCount;
+  final String? iconName;
+
+  PlaylistInfo({
+    required this.name,
+    this.description,
+    this.episodeCount,
+    this.iconName,
+  });
+
+  factory PlaylistInfo.fromJson(Map<String, dynamic> json) {
+    return PlaylistInfo(
+      name: json['name'] ?? '',
+      description: json['description'],
+      episodeCount: json['episode_count'],
+      iconName: json['icon_name'],
+    );
+  }
 }
