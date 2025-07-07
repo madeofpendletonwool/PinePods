@@ -2,13 +2,18 @@
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
+import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
+import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/pinepods/feed.dart';
 import 'package:pinepods_mobile/ui/pinepods/saved.dart';
 import 'package:pinepods_mobile/ui/pinepods/downloads.dart';
 import 'package:pinepods_mobile/ui/pinepods/queue.dart';
 import 'package:pinepods_mobile/ui/pinepods/history.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlists.dart';
+import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
+import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
@@ -25,6 +30,11 @@ class _PinepodsHomeState extends State<PinepodsHome> {
   HomeOverview? _homeData;
   PlaylistResponse? _playlistData;
   final PinepodsService _pinepodsService = PinepodsService();
+  
+  // Audio service and context menu state
+  PinepodsAudioService? _audioService;
+  int? _contextMenuEpisodeIndex;
+  bool _isContextMenuForContinueListening = false;
 
   @override
   void initState() {
@@ -76,8 +86,159 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     }
   }
 
+  void _initializeAudioService() {
+    if (_audioService != null) return; // Already initialized
+    
+    try {
+      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      
+      _audioService = PinepodsAudioService(
+        audioPlayerService,
+        _pinepodsService,
+        settingsBloc,
+      );
+    } catch (e) {
+      // Provider not available - audio service will remain null
+    }
+  }
+
+  Future<void> _playEpisode(HomeEpisode homeEpisode) async {
+    // Try to initialize audio service if not already done
+    _initializeAudioService();
+    
+    if (_audioService == null) {
+      _showSnackBar('Audio service not available', Colors.red);
+      return;
+    }
+
+    // Convert HomeEpisode to PinepodsEpisode
+    final episode = PinepodsEpisode(
+      podcastName: homeEpisode.podcastName,
+      episodeTitle: homeEpisode.episodeTitle,
+      episodePubDate: homeEpisode.episodePubDate,
+      episodeDescription: homeEpisode.episodeDescription ?? '',
+      episodeArtwork: homeEpisode.episodeArtwork,
+      episodeUrl: homeEpisode.episodeUrl,
+      episodeDuration: homeEpisode.episodeDuration,
+      listenDuration: homeEpisode.listenDuration,
+      episodeId: homeEpisode.episodeId,
+      completed: homeEpisode.completed,
+      saved: false, // Assume not saved for home episodes
+      queued: false, // Assume not queued for home episodes
+      downloaded: false, // Assume not downloaded for home episodes
+      isYoutube: false, // Assume not YouTube for home episodes
+    );
+
+    try {
+      await _audioService!.playPinepodsEpisode(pinepodsEpisode: episode);
+      
+      if (mounted) {
+        _showSnackBar('Playing ${episode.episodeTitle}', Colors.green);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Failed to play episode: $e', Colors.red);
+      }
+    }
+  }
+
+  void _showContextMenu(int episodeIndex, bool isContinueListening) {
+    setState(() {
+      _contextMenuEpisodeIndex = episodeIndex;
+      _isContextMenuForContinueListening = isContinueListening;
+    });
+  }
+
+  void _hideContextMenu() {
+    setState(() {
+      _contextMenuEpisodeIndex = null;
+      _isContextMenuForContinueListening = false;
+    });
+  }
+
+  void _showSnackBar(String message, Color backgroundColor) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: backgroundColor,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Show context menu as a modal overlay if needed
+    if (_contextMenuEpisodeIndex != null) {
+      final episodeIndex = _contextMenuEpisodeIndex!;
+      final episodes = _isContextMenuForContinueListening 
+        ? (_homeData?.inProgressEpisodes ?? [])
+        : (_homeData?.recentEpisodes ?? []);
+      
+      if (episodeIndex < episodes.length) {
+        final homeEpisode = episodes[episodeIndex];
+        final episode = PinepodsEpisode(
+          podcastName: homeEpisode.podcastName,
+          episodeTitle: homeEpisode.episodeTitle,
+          episodePubDate: homeEpisode.episodePubDate,
+          episodeDescription: homeEpisode.episodeDescription ?? '',
+          episodeArtwork: homeEpisode.episodeArtwork,
+          episodeUrl: homeEpisode.episodeUrl,
+          episodeDuration: homeEpisode.episodeDuration,
+          listenDuration: homeEpisode.listenDuration,
+          episodeId: homeEpisode.episodeId,
+          completed: homeEpisode.completed,
+          saved: false,
+          queued: false,
+          downloaded: false,
+          isYoutube: false,
+        );
+        
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          showDialog(
+            context: context,
+            barrierColor: Colors.black.withOpacity(0.3),
+            builder: (context) => EpisodeContextMenu(
+              episode: episode,
+              onSave: () {
+                Navigator.of(context).pop();
+                _showSnackBar('Save functionality not implemented for home episodes', Colors.orange);
+              },
+              onRemoveSaved: () {
+                Navigator.of(context).pop();
+                _showSnackBar('Remove saved functionality not implemented for home episodes', Colors.orange);
+              },
+              onDownload: () {
+                Navigator.of(context).pop();
+                _showSnackBar('Download functionality not implemented for home episodes', Colors.orange);
+              },
+              onLocalDownload: () {
+                Navigator.of(context).pop();
+                _showSnackBar('Local download functionality not implemented for home episodes', Colors.orange);
+              },
+              onQueue: () {
+                Navigator.of(context).pop();
+                _showSnackBar('Queue functionality not implemented for home episodes', Colors.orange);
+              },
+              onMarkComplete: () {
+                Navigator.of(context).pop();
+                _showSnackBar('Mark complete functionality not implemented for home episodes', Colors.orange);
+              },
+              onDismiss: () {
+                Navigator.of(context).pop();
+                _hideContextMenu();
+              },
+            ),
+          );
+        });
+      }
+      // Reset the context menu index after storing it locally
+      _contextMenuEpisodeIndex = null;
+    }
+
     return SliverList(
       delegate: SliverChildListDelegate([
         if (_isLoading)
@@ -230,7 +391,38 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         ...(_homeData!.inProgressEpisodes.take(3).map((episode) => 
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _EpisodeCard(episode: episode),
+            child: _EpisodeCard(
+              episode: episode,
+              onTap: () {
+                // Convert HomeEpisode to PinepodsEpisode for navigation
+                final pinepodsEpisode = PinepodsEpisode(
+                  podcastName: episode.podcastName,
+                  episodeTitle: episode.episodeTitle,
+                  episodePubDate: episode.episodePubDate,
+                  episodeDescription: episode.episodeDescription ?? '',
+                  episodeArtwork: episode.episodeArtwork,
+                  episodeUrl: episode.episodeUrl,
+                  episodeDuration: episode.episodeDuration,
+                  listenDuration: episode.listenDuration,
+                  episodeId: episode.episodeId,
+                  completed: episode.completed,
+                  saved: false,
+                  queued: false,
+                  downloaded: false,
+                  isYoutube: false,
+                );
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PinepodsEpisodeDetails(
+                      initialEpisode: pinepodsEpisode,
+                    ),
+                  ),
+                );
+              },
+              onLongPress: () => _showContextMenu(_homeData!.inProgressEpisodes.indexOf(episode), true),
+              onPlayPressed: () => _playEpisode(episode),
+            ),
           ),
         )),
       ],
@@ -313,7 +505,38 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         ...(_homeData!.recentEpisodes.take(5).map((episode) => 
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _EpisodeCard(episode: episode),
+            child: _EpisodeCard(
+              episode: episode,
+              onTap: () {
+                // Convert HomeEpisode to PinepodsEpisode for navigation
+                final pinepodsEpisode = PinepodsEpisode(
+                  podcastName: episode.podcastName,
+                  episodeTitle: episode.episodeTitle,
+                  episodePubDate: episode.episodePubDate,
+                  episodeDescription: episode.episodeDescription ?? '',
+                  episodeArtwork: episode.episodeArtwork,
+                  episodeUrl: episode.episodeUrl,
+                  episodeDuration: episode.episodeDuration,
+                  listenDuration: episode.listenDuration,
+                  episodeId: episode.episodeId,
+                  completed: episode.completed,
+                  saved: false,
+                  queued: false,
+                  downloaded: false,
+                  isYoutube: false,
+                );
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PinepodsEpisodeDetails(
+                      initialEpisode: pinepodsEpisode,
+                    ),
+                  ),
+                );
+              },
+              onLongPress: () => _showContextMenu(_homeData!.recentEpisodes.indexOf(episode), false),
+              onPlayPressed: () => _playEpisode(episode),
+            ),
           ),
         )),
       ],
@@ -444,16 +667,28 @@ class _StatCard extends StatelessWidget {
 
 class _EpisodeCard extends StatelessWidget {
   final HomeEpisode episode;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onPlayPressed;
 
-  const _EpisodeCard({required this.episode});
+  const _EpisodeCard({
+    required this.episode,
+    this.onTap,
+    this.onLongPress,
+    this.onPlayPressed,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Row(
-          children: [
+      child: InkWell(
+        onTap: onTap,
+        onLongPress: onLongPress,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Row(
+            children: [
             // Episode artwork
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -533,12 +768,7 @@ class _EpisodeCard extends StatelessWidget {
             ),
             // Play button
             IconButton(
-              onPressed: () {
-                // Implement play functionality
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Playing: ${episode.episodeTitle}')),
-                );
-              },
+              onPressed: onPlayPressed,
               icon: Icon(
                 episode.completed ? Icons.replay : Icons.play_arrow,
                 color: Theme.of(context).colorScheme.primary,

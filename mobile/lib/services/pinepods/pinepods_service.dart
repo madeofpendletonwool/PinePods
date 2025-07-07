@@ -1663,6 +1663,49 @@ class PinepodsService {
       return false;
     }
   }
+
+  // Search episodes in user's subscriptions
+  Future<List<SearchEpisodeResult>> searchEpisodes(int userId, String searchTerm) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/search_data');
+    print('Making API call to: $url');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {
+          'Api-Key': _apiKey!,
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'search_term': searchTerm,
+          'user_id': userId,
+        }),
+      );
+
+      print('Search episodes response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List<dynamic> episodesData = data['data'] ?? [];
+        
+        List<SearchEpisodeResult> episodes = [];
+        for (var episodeData in episodesData) {
+          episodes.add(SearchEpisodeResult.fromJson(episodeData));
+        }
+        
+        return episodes;
+      } else {
+        throw Exception('Failed to search episodes: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error searching episodes: $e');
+      rethrow;
+    }
+  }
 }
 
 class PodcastDetailsData {
@@ -1891,6 +1934,91 @@ class PlaylistInfo {
       description: json['description'],
       episodeCount: json['episode_count'],
       iconName: json['icon_name'],
+    );
+  }
+}
+
+class SearchEpisodeResult {
+  final int podcastId;
+  final String podcastName;
+  final String artworkUrl;
+  final String author;
+  final String categories;
+  final String description;
+  final int? episodeCount;
+  final String feedUrl;
+  final String websiteUrl;
+  final bool explicit;
+  final int userId;
+  final int episodeId;
+  final String episodeTitle;
+  final String episodeDescription;
+  final String episodePubDate;
+  final String episodeArtwork;
+  final String episodeUrl;
+  final int episodeDuration;
+
+  SearchEpisodeResult({
+    required this.podcastId,
+    required this.podcastName,
+    required this.artworkUrl,
+    required this.author,
+    required this.categories,
+    required this.description,
+    this.episodeCount,
+    required this.feedUrl,
+    required this.websiteUrl,
+    required this.explicit,
+    required this.userId,
+    required this.episodeId,
+    required this.episodeTitle,
+    required this.episodeDescription,
+    required this.episodePubDate,
+    required this.episodeArtwork,
+    required this.episodeUrl,
+    required this.episodeDuration,
+  });
+
+  factory SearchEpisodeResult.fromJson(Map<String, dynamic> json) {
+    return SearchEpisodeResult(
+      podcastId: json['podcastid'] ?? 0,
+      podcastName: json['podcastname'] ?? '',
+      artworkUrl: json['artworkurl'] ?? '',
+      author: json['author'] ?? '',
+      categories: json['categories'] ?? '',
+      description: json['description'] ?? '',
+      episodeCount: json['episodecount'],
+      feedUrl: json['feedurl'] ?? '',
+      websiteUrl: json['websiteurl'] ?? '',
+      explicit: (json['explicit'] ?? 0) == 1,
+      userId: json['userid'] ?? 0,
+      episodeId: json['episodeid'] ?? 0,
+      episodeTitle: json['episodetitle'] ?? '',
+      episodeDescription: json['episodedescription'] ?? '',
+      episodePubDate: json['episodepubdate'] ?? '',
+      episodeArtwork: json['episodeartwork'] ?? '',
+      episodeUrl: json['episodeurl'] ?? '',
+      episodeDuration: json['episodeduration'] ?? 0,
+    );
+  }
+
+  // Convert to PinepodsEpisode for compatibility with existing widgets
+  PinepodsEpisode toPinepodsEpisode() {
+    return PinepodsEpisode(
+      podcastName: podcastName,
+      episodeTitle: episodeTitle,
+      episodePubDate: episodePubDate,
+      episodeDescription: episodeDescription,
+      episodeArtwork: episodeArtwork.isNotEmpty ? episodeArtwork : artworkUrl,
+      episodeUrl: episodeUrl,
+      episodeDuration: episodeDuration,
+      listenDuration: null,
+      episodeId: episodeId,
+      completed: false,
+      saved: false,
+      queued: false,
+      downloaded: false,
+      isYoutube: false,
     );
   }
 }

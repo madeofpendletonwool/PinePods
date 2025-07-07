@@ -72,7 +72,7 @@
     "type": "text",
     "placeholders": {}
   },
-  "search_for_podcasts_hint": "Search for podcasts",
+  "search_for_podcasts_hint": "Search for new podcasts",
   "@search_for_podcasts_hint": {
     "description": "Hint displayed on search bar when the user clicks the search icon.",
     "type": "text",

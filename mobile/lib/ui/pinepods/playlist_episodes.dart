@@ -2,8 +2,13 @@
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
+import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
+import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
+import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
 
 class PlaylistEpisodesPage extends StatefulWidget {
@@ -23,6 +28,10 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
   PlaylistEpisodesResponse? _playlistResponse;
   bool _isLoading = true;
   String? _errorMessage;
+  
+  // Audio service and context menu state
+  PinepodsAudioService? _audioService;
+  int? _contextMenuEpisodeIndex;
 
   @override
   void initState() {
@@ -123,8 +132,279 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     }
   }
 
+  void _initializeAudioService() {
+    if (_audioService != null) return; // Already initialized
+    
+    try {
+      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      
+      _audioService = PinepodsAudioService(
+        audioPlayerService,
+        _pinepodsService,
+        settingsBloc,
+      );
+    } catch (e) {
+      // Provider not available - audio service will remain null
+    }
+  }
+
+  Future<void> _playEpisode(PinepodsEpisode episode) async {
+    // Try to initialize audio service if not already done
+    _initializeAudioService();
+    
+    if (_audioService == null) {
+      _showSnackBar('Audio service not available', Colors.red);
+      return;
+    }
+
+    try {
+      await _audioService!.playPinepodsEpisode(pinepodsEpisode: episode);
+      
+      if (mounted) {
+        _showSnackBar('Playing ${episode.episodeTitle}', Colors.green);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Failed to play episode: $e', Colors.red);
+      }
+    }
+  }
+
+  void _showContextMenu(int episodeIndex) {
+    setState(() {
+      _contextMenuEpisodeIndex = episodeIndex;
+    });
+  }
+
+  void _hideContextMenu() {
+    setState(() {
+      _contextMenuEpisodeIndex = null;
+    });
+  }
+
+  Future<void> _saveEpisode(int episodeIndex) async {
+    final episode = _playlistResponse!.episodes[episodeIndex];
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+
+    if (userId == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return;
+    }
+
+    try {
+      final success = await _pinepodsService.saveEpisode(
+        episode.episodeId,
+        userId,
+        episode.isYoutube,
+      );
+
+      if (success && mounted) {
+        _showSnackBar('Episode saved', Colors.green);
+      } else if (mounted) {
+        _showSnackBar('Failed to save episode', Colors.red);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Error saving episode: $e', Colors.red);
+      }
+    }
+  }
+
+  Future<void> _removeSavedEpisode(int episodeIndex) async {
+    final episode = _playlistResponse!.episodes[episodeIndex];
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+
+    if (userId == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return;
+    }
+
+    try {
+      final success = await _pinepodsService.removeSavedEpisode(
+        episode.episodeId,
+        userId,
+        episode.isYoutube,
+      );
+
+      if (success && mounted) {
+        _showSnackBar('Episode removed from saved', Colors.orange);
+      } else if (mounted) {
+        _showSnackBar('Failed to remove saved episode', Colors.red);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Error removing saved episode: $e', Colors.red);
+      }
+    }
+  }
+
+  Future<void> _downloadEpisode(int episodeIndex) async {
+    final episode = _playlistResponse!.episodes[episodeIndex];
+    _showSnackBar('Download started for ${episode.episodeTitle}', Colors.blue);
+    // Note: Actual download implementation would depend on download service integration
+  }
+
+  Future<void> _deleteEpisode(int episodeIndex) async {
+    final episode = _playlistResponse!.episodes[episodeIndex];
+    _showSnackBar('Delete requested for ${episode.episodeTitle}', Colors.orange);
+    // Note: Actual delete implementation would depend on download service integration
+  }
+
+  Future<void> _localDownloadEpisode(int episodeIndex) async {
+    final episode = _playlistResponse!.episodes[episodeIndex];
+    _showSnackBar('Local download started for ${episode.episodeTitle}', Colors.blue);
+    // Note: Actual local download implementation would depend on download service integration
+  }
+
+  Future<void> _toggleQueueEpisode(int episodeIndex) async {
+    final episode = _playlistResponse!.episodes[episodeIndex];
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+
+    if (userId == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return;
+    }
+
+    try {
+      if (episode.queued) {
+        final success = await _pinepodsService.removeQueuedEpisode(
+          episode.episodeId,
+          userId,
+          episode.isYoutube,
+        );
+        
+        if (success && mounted) {
+          _showSnackBar('Episode removed from queue', Colors.orange);
+        }
+      } else {
+        final success = await _pinepodsService.queueEpisode(
+          episode.episodeId,
+          userId,
+          episode.isYoutube,
+        );
+        
+        if (success && mounted) {
+          _showSnackBar('Episode added to queue', Colors.green);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Error updating queue: $e', Colors.red);
+      }
+    }
+  }
+
+  Future<void> _toggleMarkComplete(int episodeIndex) async {
+    final episode = _playlistResponse!.episodes[episodeIndex];
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+
+    if (userId == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return;
+    }
+
+    try {
+      if (episode.completed) {
+        final success = await _pinepodsService.markEpisodeUncompleted(
+          episode.episodeId,
+          userId,
+          episode.isYoutube,
+        );
+        
+        if (success && mounted) {
+          _showSnackBar('Episode marked as incomplete', Colors.orange);
+        }
+      } else {
+        final success = await _pinepodsService.markEpisodeCompleted(
+          episode.episodeId,
+          userId,
+          episode.isYoutube,
+        );
+        
+        if (success && mounted) {
+          _showSnackBar('Episode marked as complete', Colors.green);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Error updating completion status: $e', Colors.red);
+      }
+    }
+  }
+
+  void _showSnackBar(String message, Color backgroundColor) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: backgroundColor,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Show context menu as a modal overlay if needed
+    if (_contextMenuEpisodeIndex != null) {
+      final episodeIndex = _contextMenuEpisodeIndex!;
+      final episode = _playlistResponse!.episodes[episodeIndex];
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        showDialog(
+          context: context,
+          barrierColor: Colors.black.withOpacity(0.3),
+          builder: (context) => EpisodeContextMenu(
+            episode: episode,
+            onSave: () {
+              Navigator.of(context).pop();
+              _saveEpisode(episodeIndex);
+            },
+            onRemoveSaved: () {
+              Navigator.of(context).pop();
+              _removeSavedEpisode(episodeIndex);
+            },
+            onDownload: episode.downloaded 
+              ? () {
+                  Navigator.of(context).pop();
+                  _deleteEpisode(episodeIndex);
+                }
+              : () {
+                  Navigator.of(context).pop();
+                  _downloadEpisode(episodeIndex);
+                },
+            onLocalDownload: () {
+              Navigator.of(context).pop();
+              _localDownloadEpisode(episodeIndex);
+            },
+            onQueue: () {
+              Navigator.of(context).pop();
+              _toggleQueueEpisode(episodeIndex);
+            },
+            onMarkComplete: () {
+              Navigator.of(context).pop();
+              _toggleMarkComplete(episodeIndex);
+            },
+            onDismiss: () {
+              Navigator.of(context).pop();
+              _hideContextMenu();
+            },
+          ),
+        );
+      });
+      // Reset the context menu index after storing it locally
+      _contextMenuEpisodeIndex = null;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.playlist.name),
@@ -287,7 +567,21 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
                 final episode = _playlistResponse!.episodes[index];
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
-                  child: PinepodsEpisodeCard(episode: episode),
+                  child: PinepodsEpisodeCard(
+                    episode: episode,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PinepodsEpisodeDetails(
+                            initialEpisode: episode,
+                          ),
+                        ),
+                      );
+                    },
+                    onLongPress: () => _showContextMenu(index),
+                    onPlayPressed: () => _playEpisode(episode),
+                  ),
                 );
               },
               childCount: _playlistResponse!.episodes.length,

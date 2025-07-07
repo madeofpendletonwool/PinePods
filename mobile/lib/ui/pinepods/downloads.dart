@@ -12,6 +12,7 @@ import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
+import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
 import 'package:logging/logging.dart';
 
@@ -509,6 +510,16 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                     final globalIndex = _serverDownloads.indexWhere((e) => e.episodeId == episode.episodeId);
                     return PinepodsEpisodeCard(
                       episode: episode,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PinepodsEpisodeDetails(
+                              initialEpisode: episode,
+                            ),
+                          ),
+                        );
+                      },
                       onLongPress: () => _showContextMenu(globalIndex, true),
                       onPlayPressed: () => _playServerEpisode(episode),
                     );

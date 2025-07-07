@@ -53,6 +53,7 @@ import 'package:pinepods_mobile/ui/pinepods/playlists.dart';
 import 'package:pinepods_mobile/ui/auth/auth_wrapper.dart';
 import 'package:pinepods_mobile/ui/pinepods/user_stats.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcasts.dart';
+import 'package:pinepods_mobile/ui/pinepods/episode_search.dart';
 import 'package:app_links/app_links.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
@@ -545,6 +546,11 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                   label: 'Podcasts',
                   isSelected: index == 6,
                 ),
+                BottomNavItem(
+                  icon: index == 7 ? Icons.search : Icons.search_outlined,
+                  label: 'Search',
+                  isSelected: index == 7,
+                ),
               ];
 
               return Container(
@@ -625,6 +631,8 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
         return const PinepodsPlaylists(); // Playlists
       case 6:
         return const PinepodsPodcasts(); // Podcasts
+      case 7:
+        return const EpisodeSearchPage(); // Episode Search
       default:
         return const PinepodsHome(); // Default to Home
     }
