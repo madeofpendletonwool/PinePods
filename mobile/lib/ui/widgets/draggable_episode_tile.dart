@@ -3,9 +3,11 @@
 // found in the LICENSE file.
 
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
+import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/tile_image.dart';
+import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -56,7 +58,9 @@ class DraggableEpisodeTile extends StatelessWidget {
             ),
       onTap: () {
         if (playable) {
+          final settings = Provider.of<SettingsBloc>(context, listen: false).currentSettings;
           audioBloc.play(episode);
+          optionalShowNowPlaying(context, settings);
         }
       },
     );

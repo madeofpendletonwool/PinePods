@@ -8,22 +8,19 @@ player on every page
 dynamic play everyehere play, to highlight play to check
 clean out old code/db stuff
 Remove weird notications on play
-handle huge amounts of episodes better - downloads. in general huge amounts of loading images causes massive slowdown on everypage
-setting to reorganize bottom bar
-Reorganize bottom bar defaults: Home, Feed, Saved, Podcasts, Downloads, History, Playlists, Search
-Remove import export opml, auto update episode setting, delete download and mark delete eps settings
-Make full screen player mode on ep start setting work
 Fix android homescreen icon
 Center bottom bar so that it looks good in horizontal
 Center buttons and stretch them across the page on the episode page
 android meta player logo
-fix bottom overflow error
 full screen player via scroll up, not just tap
-link to podcast page from episode 
+link to podcast page from episode
 improve look of long press menu
 Timecode skips in descriptions
 people in pods and descriptions
-links don't work - stats page 
-filtering options on the podcasts page for quick search. also on history, saved, downloads. 
+links don't work - stats page
+filtering options on the podcasts page for quick search. also on history, saved, downloads.
+setting to go full screen default still doesn't work
+Searching for a podcast and opening one you are already subbed to does not bring up episodes
+play button doesn't update to pause on single episode screen
 
 android auto

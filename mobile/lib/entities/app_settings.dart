@@ -57,6 +57,9 @@ class AppSettings {
 
   final String? pinepodsEmail;
 
+  /// Custom order for bottom navigation bar items
+  final List<String> bottomBarOrder;
+
   AppSettings({
     required this.theme,
     required this.markDeletedEpisodesAsPlayed,
@@ -77,6 +80,7 @@ class AppSettings {
     this.pinepodsUserId,
     this.pinepodsUsername,
     this.pinepodsEmail,
+    required this.bottomBarOrder,
   });
 
   AppSettings.sensibleDefaults()
@@ -98,7 +102,8 @@ class AppSettings {
         pinepodsApiKey = null,
         pinepodsUserId = null,
         pinepodsUsername = null,
-        pinepodsEmail = null;
+        pinepodsEmail = null,
+        bottomBarOrder = const ['Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists', 'Search'];
 
   AppSettings copyWith({
     String? theme,
@@ -120,6 +125,7 @@ class AppSettings {
     int? pinepodsUserId,
     String? pinepodsUsername,
     String? pinepodsEmail,
+    List<String>? bottomBarOrder,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -141,5 +147,6 @@ class AppSettings {
         pinepodsUserId: pinepodsUserId ?? this.pinepodsUserId,
         pinepodsUsername: pinepodsUsername ?? this.pinepodsUsername,
         pinepodsEmail: pinepodsEmail ?? this.pinepodsEmail,
+        bottomBarOrder: bottomBarOrder ?? this.bottomBarOrder,
       );
 }

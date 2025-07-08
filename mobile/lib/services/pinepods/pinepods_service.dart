@@ -934,6 +934,7 @@ class PinepodsService {
           queued: episodeData['is_queued'] ?? false,
           downloaded: episodeData['is_downloaded'] ?? false,
           isYoutube: episodeData['is_youtube'] ?? isYoutube,
+          podcastId: episodeData['podcastid'],
         );
       }
       return null;
@@ -1177,6 +1178,38 @@ class PinepodsService {
       }
     } catch (e) {
       print('Error getting podcast details: $e');
+      rethrow;
+    }
+  }
+
+  // Get podcast details by podcast ID (for subscribed podcasts)
+  Future<Map<String, dynamic>?> getPodcastDetailsById(int podcastId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/get_podcast_details')
+        .replace(queryParameters: {
+      'podcast_id': podcastId.toString(),
+      'user_id': userId.toString(),
+    });
+
+    try {
+      print('Getting podcast details by ID from: $url');
+      final response = await http.get(
+        url,
+        headers: {'Api-Key': _apiKey!},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        print('Podcast details by ID response: ${response.body}');
+        return data['details'];
+      } else {
+        throw Exception('Failed to get podcast details: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting podcast details by ID: $e');
       rethrow;
     }
   }

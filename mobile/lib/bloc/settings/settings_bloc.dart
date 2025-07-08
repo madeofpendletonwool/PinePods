@@ -34,6 +34,7 @@ class SettingsBloc extends Bloc {
   final BehaviorSubject<int?> _pinepodsUserId = BehaviorSubject<int?>();
   final BehaviorSubject<String?> _pinepodsUsername = BehaviorSubject<String?>();
   final BehaviorSubject<String?> _pinepodsEmail = BehaviorSubject<String?>();
+  final BehaviorSubject<List<String>> _bottomBarOrder = BehaviorSubject<List<String>>();
   var _currentSettings = AppSettings.sensibleDefaults();
 
   SettingsBloc(this._settingsService) {
@@ -103,6 +104,7 @@ class SettingsBloc extends Bloc {
       pinepodsUserId: _settingsService.pinepodsUserId,
       pinepodsUsername: _settingsService.pinepodsUsername,
       pinepodsEmail: _settingsService.pinepodsEmail,
+      bottomBarOrder: _settingsService.bottomBarOrder,
     );
 
     _settings.add(_currentSettings);
@@ -231,6 +233,12 @@ class SettingsBloc extends Bloc {
       _settings.add(_currentSettings);
       _settingsService.layoutMode = mode;
     });
+
+    _bottomBarOrder.listen((order) {
+      _currentSettings = _currentSettings.copyWith(bottomBarOrder: order);
+      _settings.add(_currentSettings);
+      _settingsService.bottomBarOrder = order;
+    });
   }
 
   Stream<AppSettings> get settings => _settings.stream;
@@ -270,6 +278,8 @@ class SettingsBloc extends Bloc {
   void Function(String?) get setPinepodsUsername => _pinepodsUsername.add;
 
   void Function(String?) get setPinepodsEmail => _pinepodsEmail.add;
+
+  void Function(List<String>) get setBottomBarOrder => _bottomBarOrder.add;
 
   void Function(String) get setTheme => _theme.add;
 
@@ -346,6 +356,7 @@ class SettingsBloc extends Bloc {
     _pinepodsUserId.close();
     _pinepodsUsername.close();
     _pinepodsEmail.close();
+    _bottomBarOrder.close();
     _settings.close();
   }
 }

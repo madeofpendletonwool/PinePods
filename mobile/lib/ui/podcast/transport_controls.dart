@@ -15,6 +15,7 @@ import 'package:pinepods_mobile/ui/podcast/now_playing.dart';
 import 'package:pinepods_mobile/ui/widgets/action_text.dart';
 import 'package:pinepods_mobile/ui/widgets/download_button.dart';
 import 'package:pinepods_mobile/ui/widgets/play_pause_button.dart';
+import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dialogs/flutter_dialogs.dart';
 import 'package:provider/provider.dart';
@@ -139,20 +140,6 @@ class PlayControl extends StatelessWidget {
     );
   }
 
-  /// If we have the 'show now playing upon play' option set to true, launch
-  /// the [NowPlaying] widget automatically.
-  void optionalShowNowPlaying(BuildContext context, AppSettings settings) {
-    if (settings.autoOpenNowPlaying) {
-      Navigator.push(
-        context,
-        MaterialPageRoute<void>(
-          builder: (context) => const NowPlaying(),
-          settings: const RouteSettings(name: 'nowplaying'),
-          fullscreenDialog: false,
-        ),
-      );
-    }
-  }
 }
 
 class DownloadControl extends StatelessWidget {

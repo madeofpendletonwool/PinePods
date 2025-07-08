@@ -5,7 +5,9 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_html.dart';
+import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:provider/provider.dart';
 
 class PinepodsEpisodeDetails extends StatefulWidget {
@@ -342,6 +344,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
       queued: queued ?? episode.queued,
       downloaded: downloaded ?? episode.downloaded,
       isYoutube: episode.isYoutube,
+      podcastId: episode.podcastId,
     );
   }
 
@@ -353,6 +356,47 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  Future<void> _navigateToPodcast() async {
+    if (_episode!.podcastId == null) {
+      _showSnackBar('Podcast ID not available', Colors.orange);
+      return;
+    }
+
+    try {
+      // Create a minimal podcast object using data from episode - same pattern as podcast tile
+      final podcast = UnifiedPinepodsPodcast(
+        id: _episode!.podcastId!,
+        indexId: 0,
+        title: _episode!.podcastName,
+        url: '', // Will be loaded by the details page
+        originalUrl: '',
+        link: '',
+        description: '',
+        author: '',
+        ownerName: '',
+        image: _episode!.episodeArtwork,
+        artwork: _episode!.episodeArtwork,
+        lastUpdateTime: 0,
+        explicit: false,
+        episodeCount: 0,
+      );
+      
+      // Navigate to podcast details - same as podcast tile does  
+      Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: 'pinepods_podcast_details'),
+          builder: (context) => PinepodsPodcastDetails(
+            podcast: podcast,
+            isFollowing: true, // Assume following since we have a podcast ID
+          ),
+        ),
+      );
+    } catch (e) {
+      _showSnackBar('Error navigating to podcast: $e', Colors.red);
+    }
   }
 
   @override
@@ -470,6 +514,22 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Clickable podcast name
+                      GestureDetector(
+                        onTap: () => _navigateToPodcast(),
+                        child: Text(
+                          _episode!.podcastName,
+                          style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                            color: Theme.of(context).primaryColor,
+                            fontWeight: FontWeight.w500,
+                            decoration: TextDecoration.underline,
+                            decorationColor: Theme.of(context).primaryColor,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
                       Text(
                         _episode!.episodeTitle,
                         style: Theme.of(context).textTheme.titleLarge!.copyWith(
@@ -518,61 +578,80 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
             const SizedBox(height: 24),
             
             // Action buttons
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            Column(
               children: [
-                // Play button
-                ElevatedButton.icon(
-                  onPressed: _playEpisode,
-                  icon: Icon(
-                    _episode!.completed ? Icons.replay : Icons.play_arrow,
-                  ),
-                  label: Text(_episode!.completed ? 'Replay' : 'Play'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).primaryColor,
-                    foregroundColor: Colors.white,
-                  ),
+                // First row: Play, Save, Queue (3 buttons, each 1/3 width)
+                Row(
+                  children: [
+                    // Play button
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _playEpisode,
+                        icon: Icon(
+                          _episode!.completed ? Icons.replay : Icons.play_arrow,
+                        ),
+                        label: Text(_episode!.completed ? 'Replay' : 'Play'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    
+                    // Save/Unsave button
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _episode!.saved ? _removeSavedEpisode : _saveEpisode,
+                        icon: Icon(
+                          _episode!.saved ? Icons.bookmark : Icons.bookmark_outline,
+                          color: _episode!.saved ? Colors.orange : null,
+                        ),
+                        label: Text(_episode!.saved ? 'Saved' : 'Save'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    
+                    // Queue button
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _toggleQueue,
+                        icon: Icon(
+                          _episode!.queued ? Icons.queue_music : Icons.queue_music_outlined,
+                          color: _episode!.queued ? Colors.purple : null,
+                        ),
+                        label: Text(_episode!.queued ? 'Queued' : 'Queue'),
+                      ),
+                    ),
+                  ],
                 ),
                 
-                // Save/Unsave button
-                OutlinedButton.icon(
-                  onPressed: _episode!.saved ? _removeSavedEpisode : _saveEpisode,
-                  icon: Icon(
-                    _episode!.saved ? Icons.bookmark : Icons.bookmark_outline,
-                    color: _episode!.saved ? Colors.orange : null,
-                  ),
-                  label: Text(_episode!.saved ? 'Saved' : 'Save'),
-                ),
+                const SizedBox(height: 8),
                 
-                // Queue button
-                OutlinedButton.icon(
-                  onPressed: _toggleQueue,
-                  icon: Icon(
-                    _episode!.queued ? Icons.queue_music : Icons.queue_music_outlined,
-                    color: _episode!.queued ? Colors.purple : null,
-                  ),
-                  label: Text(_episode!.queued ? 'Queued' : 'Queue'),
-                ),
-                
-                // Download button
-                OutlinedButton.icon(
-                  onPressed: _toggleDownload,
-                  icon: Icon(
-                    _episode!.downloaded ? Icons.download_done : Icons.download_outlined,
-                    color: _episode!.downloaded ? Colors.blue : null,
-                  ),
-                  label: Text(_episode!.downloaded ? 'Downloaded' : 'Download'),
-                ),
-                
-                // Complete button
-                OutlinedButton.icon(
-                  onPressed: _toggleComplete,
-                  icon: Icon(
-                    _episode!.completed ? Icons.check_circle : Icons.check_circle_outline,
-                    color: _episode!.completed ? Colors.green : null,
-                  ),
-                  label: Text(_episode!.completed ? 'Complete' : 'Mark Complete'),
+                // Second row: Download, Complete (2 buttons, each 1/2 width)
+                Row(
+                  children: [
+                    // Download button
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _toggleDownload,
+                        icon: Icon(
+                          _episode!.downloaded ? Icons.download_done : Icons.download_outlined,
+                          color: _episode!.downloaded ? Colors.blue : null,
+                        ),
+                        label: Text(_episode!.downloaded ? 'Downloaded' : 'Download'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    
+                    // Complete button
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _toggleComplete,
+                        icon: Icon(
+                          _episode!.completed ? Icons.check_circle : Icons.check_circle_outline,
+                          color: _episode!.completed ? Colors.green : null,
+                        ),
+                        label: Text(_episode!.completed ? 'Complete' : 'Mark Complete'),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

@@ -16,6 +16,7 @@ import 'package:pinepods_mobile/bloc/search/search_bloc.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/bloc/ui/pager_bloc.dart';
 import 'package:pinepods_mobile/core/environment.dart';
+import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/entities/feed.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
@@ -509,106 +510,126 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
             initialData: 0,
             builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
               int index = snapshot.data ?? 0;
+              
+              return StreamBuilder<AppSettings>(
+                stream: Provider.of<SettingsBloc>(context).settings,
+                builder: (BuildContext context, AsyncSnapshot<AppSettings> settingsSnapshot) {
+                  final bottomBarOrder = settingsSnapshot.data?.bottomBarOrder ?? 
+                    ['Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists', 'Search'];
 
-              final List<BottomNavItem> navItems = [
-                BottomNavItem(
-                  icon: index == 0 ? Icons.home : Icons.home_outlined,
+              // Create a map of all available nav items
+              final Map<String, BottomNavItem> allNavItems = {
+                'Home': BottomNavItem(
+                  icon: Icons.home,
                   label: 'Home',
-                  isSelected: index == 0,
+                  isSelected: false,
                 ),
-                BottomNavItem(
-                  icon: index == 1 ? Icons.rss_feed : Icons.rss_feed_outlined,
+                'Feed': BottomNavItem(
+                  icon: Icons.rss_feed,
                   label: 'Feed',
-                  isSelected: index == 1,
+                  isSelected: false,
                 ),
-                BottomNavItem(
-                  icon: index == 2 ? Icons.history : Icons.history_outlined,
-                  label: 'History',
-                  isSelected: index == 2,
-                ),
-                BottomNavItem(
-                  icon: index == 3 ? Icons.bookmark : Icons.bookmark_outline,
+                'Saved': BottomNavItem(
+                  icon: Icons.bookmark,
                   label: 'Saved',
-                  isSelected: index == 3,
+                  isSelected: false,
                 ),
-                BottomNavItem(
-                  icon: index == 4 ? Icons.download : Icons.download_outlined,
-                  label: 'Downloads',
-                  isSelected: index == 4,
-                ),
-                BottomNavItem(
-                  icon: index == 5 ? Icons.playlist_play : Icons.playlist_play_outlined,
-                  label: 'Playlists',
-                  isSelected: index == 5,
-                ),
-                BottomNavItem(
-                  icon: index == 6 ? Icons.podcasts : Icons.podcasts_outlined,
+                'Podcasts': BottomNavItem(
+                  icon: Icons.podcasts,
                   label: 'Podcasts',
-                  isSelected: index == 6,
+                  isSelected: false,
                 ),
-                BottomNavItem(
-                  icon: index == 7 ? Icons.search : Icons.search_outlined,
+                'Downloads': BottomNavItem(
+                  icon: Icons.download,
+                  label: 'Downloads',
+                  isSelected: false,
+                ),
+                'History': BottomNavItem(
+                  icon: Icons.history,
+                  label: 'History',
+                  isSelected: false,
+                ),
+                'Playlists': BottomNavItem(
+                  icon: Icons.playlist_play,
+                  label: 'Playlists',
+                  isSelected: false,
+                ),
+                'Search': BottomNavItem(
+                  icon: Icons.search,
                   label: 'Search',
-                  isSelected: index == 7,
+                  isSelected: false,
                 ),
-              ];
+              };
 
-              return Container(
-                height: 70,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).bottomAppBarTheme.color,
-                  border: Border(
-                    top: BorderSide(
-                      color: Theme.of(context).dividerColor,
-                      width: 0.5,
-                    ),
-                  ),
-                ),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: navItems.asMap().entries.map((entry) {
-                      int itemIndex = entry.key;
-                      BottomNavItem item = entry.value;
-                      
-                      return GestureDetector(
-                        onTap: () => pager.changePage(itemIndex),
-                        child: Container(
-                          width: 80,
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                item.icon,
-                                color: item.isSelected
-                                    ? Theme.of(context).iconTheme.color
-                                    : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
-                                        .withLightness(0.8)
-                                        .toColor(),
-                                size: 24,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                item.label,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: item.isSelected
-                                      ? Theme.of(context).iconTheme.color
-                                      : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
-                                          .withLightness(0.8)
-                                          .toColor(),
-                                  fontWeight: item.isSelected ? FontWeight.w600 : FontWeight.normal,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
+              // Create the ordered nav items based on settings
+              final List<BottomNavItem> navItems = bottomBarOrder.map((label) {
+                final baseItem = allNavItems[label]!;
+                final itemIndex = bottomBarOrder.indexOf(label);
+                return BottomNavItem(
+                  icon: index == itemIndex ? _getSelectedIcon(label) : _getUnselectedIcon(label),
+                  label: label,
+                  isSelected: index == itemIndex,
+                );
+              }).toList();
+
+                  return Container(
+                    height: 70,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).bottomAppBarTheme.color,
+                      border: Border(
+                        top: BorderSide(
+                          color: Theme.of(context).dividerColor,
+                          width: 0.5,
                         ),
-                      );
-                    }).toList(),
-                  ),
-                ),
+                      ),
+                    ),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: navItems.asMap().entries.map((entry) {
+                          int itemIndex = entry.key;
+                          BottomNavItem item = entry.value;
+                          
+                          return GestureDetector(
+                            onTap: () => pager.changePage(itemIndex),
+                            child: Container(
+                              width: 80,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    item.icon,
+                                    color: item.isSelected
+                                        ? Theme.of(context).iconTheme.color
+                                        : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
+                                            .withLightness(0.8)
+                                            .toColor(),
+                                    size: 24,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    item.label,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: item.isSelected
+                                          ? Theme.of(context).iconTheme.color
+                                          : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
+                                              .withLightness(0.8)
+                                              .toColor(),
+                                      fontWeight: item.isSelected ? FontWeight.w600 : FontWeight.normal,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  );
+                }
               );
             }),
       ),
@@ -616,25 +637,62 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
   }
 
   Widget _fragment(int? index, EpisodeBloc searchBloc) {
-    switch (index) {
-      case 0:
-        return const PinepodsHome(); // Home
-      case 1:
-        return const PinepodsFeed(); // Feed
-      case 2:
-        return const PinepodsHistory(); // History 
-      case 3:
-        return const PinepodsSaved(); // Saved
-      case 4:
-        return const Downloads(); // Downloads
-      case 5:
-        return const PinepodsPlaylists(); // Playlists
-      case 6:
-        return const PinepodsPodcasts(); // Podcasts
-      case 7:
-        return const EpisodeSearchPage(); // Episode Search
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final bottomBarOrder = settingsBloc.currentSettings.bottomBarOrder;
+    
+    if (index == null || index < 0 || index >= bottomBarOrder.length) {
+      return const PinepodsHome(); // Default to Home
+    }
+    
+    final pageLabel = bottomBarOrder[index];
+    
+    switch (pageLabel) {
+      case 'Home':
+        return const PinepodsHome();
+      case 'Feed':
+        return const PinepodsFeed();
+      case 'Saved':
+        return const PinepodsSaved();
+      case 'Podcasts':
+        return const PinepodsPodcasts();
+      case 'Downloads':
+        return const Downloads();
+      case 'History':
+        return const PinepodsHistory();
+      case 'Playlists':
+        return const PinepodsPlaylists();
+      case 'Search':
+        return const EpisodeSearchPage();
       default:
         return const PinepodsHome(); // Default to Home
+    }
+  }
+
+  IconData _getSelectedIcon(String label) {
+    switch (label) {
+      case 'Home': return Icons.home;
+      case 'Feed': return Icons.rss_feed;
+      case 'Saved': return Icons.bookmark;
+      case 'Podcasts': return Icons.podcasts;
+      case 'Downloads': return Icons.download;
+      case 'History': return Icons.history;
+      case 'Playlists': return Icons.playlist_play;
+      case 'Search': return Icons.search;
+      default: return Icons.home;
+    }
+  }
+
+  IconData _getUnselectedIcon(String label) {
+    switch (label) {
+      case 'Home': return Icons.home_outlined;
+      case 'Feed': return Icons.rss_feed_outlined;
+      case 'Saved': return Icons.bookmark_outline;
+      case 'Podcasts': return Icons.podcasts_outlined;
+      case 'Downloads': return Icons.download_outlined;
+      case 'History': return Icons.history_outlined;
+      case 'Playlists': return Icons.playlist_play_outlined;
+      case 'Search': return Icons.search_outlined;
+      default: return Icons.home_outlined;
     }
   }
 

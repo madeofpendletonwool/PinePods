@@ -255,6 +255,21 @@ class MobileSettingsService extends SettingsService {
   }
 
   @override
+  List<String> get bottomBarOrder {
+    final orderString = _sharedPreferences.getString('bottom_bar_order');
+    if (orderString != null) {
+      return orderString.split(',');
+    }
+    return ['Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists', 'Search'];
+  }
+
+  @override
+  set bottomBarOrder(List<String> value) {
+    _sharedPreferences.setString('bottom_bar_order', value.join(','));
+    settingsNotifier.sink.add('bottom_bar_order');
+  }
+
+  @override
   AppSettings? settings;
 
   @override

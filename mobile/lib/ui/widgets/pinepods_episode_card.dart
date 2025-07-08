@@ -1,6 +1,7 @@
 // lib/ui/widgets/pinepods_episode_card.dart
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/ui/widgets/lazy_network_image.dart';
 
 class PinepodsEpisodeCard extends StatelessWidget {
   final PinepodsEpisode episode;
@@ -30,64 +31,13 @@ class PinepodsEpisodeCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Episode artwork (smaller)
-              ClipRRect(
+              // Episode artwork with lazy loading
+              LazyNetworkImage(
+                imageUrl: episode.episodeArtwork,
+                width: 50,
+                height: 50,
+                fit: BoxFit.cover,
                 borderRadius: BorderRadius.circular(6),
-                child: episode.episodeArtwork.isNotEmpty
-                    ? Image.network(
-                        episode.episodeArtwork,
-                        width: 50,
-                        height: 50,
-                        fit: BoxFit.cover,
-                        cacheWidth: 100, // Optimize memory usage
-                        cacheHeight: 100,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[300],
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Icon(
-                              Icons.music_note,
-                              color: Colors.grey,
-                              size: 24,
-                            ),
-                          );
-                        },
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[200],
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Center(
-                              child: SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              ),
-                            ),
-                          );
-                        },
-                      )
-                    : Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[300],
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(
-                          Icons.music_note,
-                          color: Colors.grey,
-                          size: 24,
-                        ),
-                      ),
               ),
               const SizedBox(width: 12),
               

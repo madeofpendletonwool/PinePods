@@ -81,4 +81,7 @@ abstract class SettingsService {
 
   String? get pinepodsEmail;
   set pinepodsEmail(String? value);
+
+  List<String> get bottomBarOrder;
+  set bottomBarOrder(List<String> value);
 }

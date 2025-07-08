@@ -11,6 +11,7 @@ import 'package:pinepods_mobile/state/bloc_state.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
+import 'package:pinepods_mobile/ui/widgets/paginated_episode_list.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
@@ -295,7 +296,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
     );
   }
 
-  Widget _buildPodcastDropdown(String podcastKey, List<Widget> episodes, {bool isServerDownload = false, String? displayName}) {
+  Widget _buildPodcastDropdown(String podcastKey, List<dynamic> episodes, {bool isServerDownload = false, String? displayName}) {
     final isExpanded = _expandedPodcasts.contains(podcastKey);
     final title = displayName ?? podcastKey;
     
@@ -312,13 +313,64 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
               title,
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            subtitle: Text('${episodes.length} episode${episodes.length != 1 ? 's' : ''}'),
-            trailing: Icon(
-              isExpanded ? Icons.expand_less : Icons.expand_more,
+            subtitle: Text(
+              '${episodes.length} episode${episodes.length != 1 ? 's' : ''}'  +
+              (episodes.length > 20 ? ' (showing 20 at a time)' : '')
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (episodes.length > 20)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange[100],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Large',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.orange[800],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                Icon(
+                  isExpanded ? Icons.expand_less : Icons.expand_more,
+                ),
+              ],
             ),
             onTap: () => _togglePodcastExpansion(podcastKey),
           ),
-          if (isExpanded) ...episodes,
+          if (isExpanded)
+            PaginatedEpisodeList(
+              episodes: episodes,
+              isServerEpisodes: isServerDownload,
+              onEpisodeTap: isServerDownload 
+                ? (episode) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => PinepodsEpisodeDetails(
+                          initialEpisode: episode,
+                        ),
+                      ),
+                    );
+                  }
+                : null,
+              onEpisodeLongPress: isServerDownload
+                ? (episode, globalIndex) {
+                    // Find the index in the full _serverDownloads list
+                    final serverIndex = _serverDownloads.indexWhere((e) => e.episodeId == episode.episodeId);
+                    _showContextMenu(serverIndex >= 0 ? serverIndex : globalIndex, true);
+                  }
+                : null,
+              onPlayPressed: isServerDownload
+                ? (episode) => _playServerEpisode(episode)
+                : null,
+            ),
         ],
       ),
     );
@@ -468,11 +520,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                 
                 return _buildPodcastDropdown(
                   podcastKey,
-                  episodes.map((episode) => EpisodeTile(
-                    episode: episode,
-                    download: false,
-                    play: true,
-                  )).toList(),
+                  episodes, // Pass episodes directly
                   isServerDownload: false,
                   displayName: podcastName,
                 );
@@ -505,25 +553,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                 
                 return _buildPodcastDropdown(
                   podcastKey,
-                  episodes.map((episode) {
-                    // Find the global index of this episode in _serverDownloads
-                    final globalIndex = _serverDownloads.indexWhere((e) => e.episodeId == episode.episodeId);
-                    return PinepodsEpisodeCard(
-                      episode: episode,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => PinepodsEpisodeDetails(
-                              initialEpisode: episode,
-                            ),
-                          ),
-                        );
-                      },
-                      onLongPress: () => _showContextMenu(globalIndex, true),
-                      onPlayPressed: () => _playServerEpisode(episode),
-                    );
-                  }).toList(),
+                  episodes, // Pass episodes directly
                   isServerDownload: true,
                   displayName: podcastName,
                 );

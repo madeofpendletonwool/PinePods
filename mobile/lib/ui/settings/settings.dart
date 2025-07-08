@@ -14,6 +14,7 @@ import 'package:pinepods_mobile/ui/library/opml_import.dart';
 import 'package:pinepods_mobile/ui/settings/episode_refresh.dart';
 import 'package:pinepods_mobile/ui/settings/search_provider.dart';
 import 'package:pinepods_mobile/ui/settings/settings_section_label.dart';
+import 'package:pinepods_mobile/ui/settings/bottom_bar_order.dart';
 import 'package:pinepods_mobile/ui/widgets/action_text.dart';
 import 'package:pinepods_mobile/ui/settings/pinepods_login.dart';
 import 'package:pinepods_mobile/ui/themes.dart';
@@ -107,24 +108,6 @@ class _SettingsState extends State<Settings> {
                 ),
               ),
               SettingsDividerLabel(label: L.of(context)!.settings_episodes_divider_label),
-              MergeSemantics(
-                child: ListTile(
-                  title: Text(L.of(context)!.settings_mark_deleted_played_label),
-                  trailing: Switch.adaptive(
-                    value: snapshot.data!.markDeletedEpisodesAsPlayed,
-                    onChanged: (value) => setState(() => settingsBloc.markDeletedAsPlayed(value)),
-                  ),
-                ),
-              ),
-              MergeSemantics(
-                child: ListTile(
-                    shape: const RoundedRectangleBorder(side: BorderSide.none),
-                    title: Text(L.of(context)!.settings_delete_played_label),
-                    trailing: Switch.adaptive(
-                      value: snapshot.data!.deleteDownloadedPlayedEpisodes,
-                      onChanged: (value) => setState(() => settingsBloc.deleteDownloadedPlayedEpisodes(value)),
-                    )),
-              ),
               sdcard
                   ? MergeSemantics(
                       child: ListTile(
@@ -149,6 +132,20 @@ class _SettingsState extends State<Settings> {
                       height: 0,
                       width: 0,
                     ),
+              SettingsDividerLabel(label: 'Navigation'),
+              ListTile(
+                title: const Text('Reorganize Bottom Bar'),
+                subtitle: const Text('Customize the order of bottom navigation items'),
+                leading: const Icon(Icons.reorder),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const BottomBarOrderWidget(),
+                    ),
+                  );
+                },
+              ),
               SettingsDividerLabel(label: L.of(context)!.settings_playback_divider_label),
               MergeSemantics(
                 child: ListTile(
@@ -158,61 +155,6 @@ class _SettingsState extends State<Settings> {
                     onChanged: (value) => setState(() => settingsBloc.setAutoOpenNowPlaying(value)),
                   ),
                 ),
-              ),
-              const EpisodeRefreshWidget(),
-              SettingsDividerLabel(label: L.of(context)!.settings_data_divider_label),
-              ListTile(
-                title: Text(L.of(context)!.settings_import_opml),
-                onTap: () async {
-                  var result = (await FilePicker.platform.pickFiles(
-                    type: FileType.any,
-                  ));
-
-                  if (result != null && result.count > 0) {
-                    var file = result.files.first;
-
-                    if (context.mounted) {
-                      var e = await showPlatformDialog<bool>(
-                        androidBarrierDismissible: false,
-                        useRootNavigator: false,
-                        context: context,
-                        builder: (_) => PopScope(
-                          canPop: true,
-                          onPopInvokedWithResult: (didPop, result) async => false,
-                          child: BasicDialogAlert(
-                            title: Text(L.of(context)!.settings_import_opml),
-                            content: OPMLImport(file: file.path!),
-                            actions: <Widget>[
-                              BasicDialogAction(
-                                title: ActionText(L.of(context)!.cancel_button_label),
-                                onPressed: () {
-                                  return Navigator.pop(context, true);
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-
-                      if (e != null && e) {
-                        opmlBloc.opmlEvent(OPMLCancelEvent());
-                      }
-                    }
-                    podcastBloc.podcastEvent(PodcastEvent.reloadSubscriptions);
-                  }
-                },
-              ),
-              ListTile(
-                title: Text(L.of(context)!.settings_export_opml),
-                onTap: () async {
-                  await showPlatformDialog<void>(
-                    context: context,
-                    useRootNavigator: false,
-                    builder: (_) => BasicDialogAlert(
-                      content: const OPMLExport(),
-                    ),
-                  );
-                },
               ),
               const SearchProviderWidget(),
               const PinepodsLoginWidget(),

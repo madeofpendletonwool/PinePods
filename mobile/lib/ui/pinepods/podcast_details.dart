@@ -75,6 +75,16 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     }
 
     try {
+      // If we have a valid podcast ID (> 0), assume it's followed since we got it from episode metadata
+      if (widget.podcast.id > 0 && widget.isFollowing) {
+        print('Using podcast ID ${widget.podcast.id} - assuming followed');
+        setState(() {
+          _isFollowing = true;
+        });
+        _loadPodcastFeed();
+        return;
+      }
+
       print('Checking follow status for: ${widget.podcast.title}');
       final isFollowing = await _pinepodsService.checkPodcastExists(
         widget.podcast.title,
@@ -132,14 +142,22 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         try {
           print('Loading episodes for followed podcast: ${widget.podcast.title}');
           
-          // Get the actual podcast ID using the dedicated endpoint
-          final podcastId = await _pinepodsService.getPodcastId(
-            userId,
-            widget.podcast.url,
-            widget.podcast.title,
-          );
+          int? podcastId;
+          
+          // If we already have a podcast ID (from episode metadata), use it directly
+          if (widget.podcast.id > 0) {
+            podcastId = widget.podcast.id;
+            print('Using existing podcast ID: $podcastId');
+          } else {
+            // Get the actual podcast ID using the dedicated endpoint
+            podcastId = await _pinepodsService.getPodcastId(
+              userId,
+              widget.podcast.url,
+              widget.podcast.title,
+            );
+            print('Got podcast ID from lookup: $podcastId');
+          }
 
-          print('Got podcast ID: $podcastId');
           if (podcastId != null && podcastId > 0) {
             // Get episodes from server
             episodes = await _pinepodsService.getPodcastEpisodes(userId, podcastId);

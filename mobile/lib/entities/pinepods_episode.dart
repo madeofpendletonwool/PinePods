@@ -13,6 +13,7 @@ class PinepodsEpisode {
   final bool queued;
   final bool downloaded;
   final bool isYoutube;
+  final int? podcastId;
 
   PinepodsEpisode({
     required this.podcastName,
@@ -29,6 +30,7 @@ class PinepodsEpisode {
     required this.queued,
     required this.downloaded,
     required this.isYoutube,
+    this.podcastId,
   });
 
   factory PinepodsEpisode.fromJson(Map<String, dynamic> json) {
@@ -47,6 +49,7 @@ class PinepodsEpisode {
       queued: json['Queued'] ?? json['queued'] ?? false,
       downloaded: json['Downloaded'] ?? json['downloaded'] ?? false,
       isYoutube: json['Is_youtube'] ?? json['is_youtube'] ?? false,
+      podcastId: json['Podcastid'] ?? json['podcastid'],
     );
   }
 
@@ -66,6 +69,7 @@ class PinepodsEpisode {
       'queued': queued,
       'downloaded': downloaded,
       'is_youtube': isYoutube,
+      'podcastid': podcastId,
     };
   }
 
