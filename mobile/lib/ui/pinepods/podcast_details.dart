@@ -6,11 +6,13 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/podcast.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
+import 'package:pinepods_mobile/entities/person.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
+import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
@@ -44,6 +46,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   PinepodsAudioService? _audioService;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  List<Person> _hosts = [];
 
   @override
   void initState() {
@@ -191,6 +194,32 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             // Get episodes from server
             episodes = await _pinepodsService.getPodcastEpisodes(userId, podcastId);
             print('Loaded ${episodes.length} episodes');
+            
+            // Fetch podcast 2.0 data for hosts information
+            try {
+              final podcastData = await _pinepodsService.fetchPodcasting2PodData(podcastId, userId);
+              if (podcastData != null) {
+                final personsData = podcastData['people'] as List<dynamic>?;
+                if (personsData != null) {
+                  final hosts = personsData.map((personData) {
+                    return Person(
+                      name: personData['name'] ?? '',
+                      role: personData['role'] ?? '',
+                      group: personData['group'] ?? '',
+                      image: personData['img'],
+                      link: personData['href'],
+                    );
+                  }).toList();
+                  
+                  setState(() {
+                    _hosts = hosts;
+                  });
+                  print('Loaded ${hosts.length} hosts from podcast 2.0 data');
+                }
+              }
+            } catch (e) {
+              print('Error loading podcast 2.0 data: $e');
+            }
           } else {
             print('No podcast ID found - podcast may not be properly added');
           }
@@ -537,6 +566,69 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                         ),
                     ],
                   ),
+                  
+                  // Hosts section
+                  if (_hosts.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Hosts',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 80,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _hosts.length,
+                        itemBuilder: (context, index) {
+                          final host = _hosts[index];
+                          return Container(
+                            width: 70,
+                            margin: const EdgeInsets.only(right: 12),
+                            child: Column(
+                              children: [
+                                Container(
+                                  width: 50,
+                                  height: 50,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.grey[300],
+                                  ),
+                                  child: host.image != null && host.image!.isNotEmpty
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(25),
+                                          child: PodcastImage(
+                                            url: host.image!,
+                                            width: 50,
+                                            height: 50,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.person,
+                                          size: 30,
+                                          color: Colors.grey,
+                                        ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  host.name,
+                                  style: const TextStyle(fontSize: 12),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                   
                   const SizedBox(height: 24),
                   

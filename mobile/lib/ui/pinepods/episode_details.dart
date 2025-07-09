@@ -6,7 +6,9 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
+import 'package:pinepods_mobile/entities/person.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_html.dart';
+import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:provider/provider.dart';
 
@@ -28,6 +30,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
   PinepodsEpisode? _episode;
   bool _isLoading = true;
   String _errorMessage = '';
+  List<Person> _persons = [];
 
   @override
   void initState() {
@@ -84,8 +87,36 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
       );
 
       if (episodeDetails != null) {
+        // Fetch podcast 2.0 data for persons information
+        final podcast2Data = await _pinepodsService.fetchPodcasting2Data(
+          episodeDetails.episodeId,
+          userId,
+        );
+        
+        List<Person> persons = [];
+        if (podcast2Data != null) {
+          final personsData = podcast2Data['people'] as List<dynamic>?;
+          if (personsData != null) {
+            try {
+              persons = personsData.map((personData) {
+                return Person(
+                  name: personData['name'] ?? '',
+                  role: personData['role'] ?? '',
+                  group: personData['group'] ?? '',
+                  image: personData['img'],
+                  link: personData['href'],
+                );
+              }).toList();
+              print('Loaded ${persons.length} persons from episode 2.0 data');
+            } catch (e) {
+              print('Error parsing persons data: $e');
+            }
+          }
+        }
+        
         setState(() {
           _episode = episodeDetails;
+          _persons = persons;
           _isLoading = false;
         });
       } else {
@@ -655,6 +686,70 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                 ),
               ],
             ),
+            
+            // Hosts/Guests section
+            if (_persons.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Hosts & Guests',
+                  style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 80,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _persons.length,
+                  itemBuilder: (context, index) {
+                    final person = _persons[index];
+                    return Container(
+                      width: 70,
+                      margin: const EdgeInsets.only(right: 12),
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.grey[300],
+                            ),
+                            child: person.image != null && person.image!.isNotEmpty
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(25),
+                                    child: PodcastImage(
+                                      url: person.image!,
+                                      width: 50,
+                                      height: 50,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  )
+                                : const Icon(
+                                    Icons.person,
+                                    size: 30,
+                                    color: Colors.grey,
+                                  ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            person.name,
+                            style: Theme.of(context).textTheme.bodySmall,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
             
             const SizedBox(height: 32),
             

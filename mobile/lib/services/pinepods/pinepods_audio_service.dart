@@ -258,7 +258,7 @@ class PinepodsAudioService {
       chaptersUrl = podcast2Data['chapters_url'];
       
       // Extract persons data
-      final personsData = podcast2Data['persons'] as List<dynamic>?;
+      final personsData = podcast2Data['people'] as List<dynamic>?;
       if (personsData != null) {
         try {
           persons = personsData.map((personData) {
@@ -266,8 +266,8 @@ class PinepodsAudioService {
               name: personData['name'] ?? '',
               role: personData['role'] ?? '',
               group: personData['group'] ?? '',
-              image: personData['image'],
-              link: personData['link'],
+              image: personData['img'],
+              link: personData['href'],
             );
           }).toList();
           
