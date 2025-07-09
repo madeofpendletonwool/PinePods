@@ -31,23 +31,21 @@ class EpisodeContextMenu extends StatelessWidget {
       child: Container(
         color: Colors.black.withOpacity(0.3), // Semi-transparent overlay
         child: Center(
-          child: GestureDetector(
-            onTap: () {}, // Prevent dismissal when tapping the menu itself
-            child: Material(
-              borderRadius: BorderRadius.circular(12),
-              elevation: 10,
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 20),
-                padding: const EdgeInsets.all(16),
-                constraints: const BoxConstraints(
-                  maxWidth: 300,
-                  maxHeight: 400,
-                ),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: GestureDetector(
+              onTap: () {}, // Prevent dismissal when tapping the menu itself
+              child: Material(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(12),
+                elevation: 10,
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  constraints: const BoxConstraints(
+                    maxWidth: 300,
+                    maxHeight: 400,
+                  ),
+                  child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -111,6 +109,7 @@ class EpisodeContextMenu extends StatelessWidget {
                       onTap: onMarkComplete,
                     ),
                   ],
+                  ),
                 ),
               ),
             ),

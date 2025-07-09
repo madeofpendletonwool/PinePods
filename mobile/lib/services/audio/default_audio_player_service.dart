@@ -575,23 +575,29 @@ class DefaultAudioPlayerService extends AudioPlayerService {
 
     // Chapters
     if (_currentEpisode!.hasChapters && _currentEpisode!.streaming) {
-      _currentEpisode!.chaptersLoading = true;
-      _currentEpisode!.chapters = <Chapter>[];
+      // Only load chapters if they don't already exist (e.g., from PinePods podcast 2.0 data)
+      if (_currentEpisode!.chapters.isEmpty) {
+        _currentEpisode!.chaptersLoading = true;
+        _currentEpisode!.chapters = <Chapter>[];
 
-      _updateEpisodeState();
+        _updateEpisodeState();
 
-      await _onUpdatePosition();
+        await _onUpdatePosition();
 
-      log.fine('Loading chapters from ${_currentEpisode!.chaptersUrl}');
+        log.fine('Loading chapters from ${_currentEpisode!.chaptersUrl}');
 
-      if (_currentEpisode!.chaptersUrl != null) {
-        _currentEpisode!.chapters = await podcastService.loadChaptersByUrl(url: _currentEpisode!.chaptersUrl!);
-        _currentEpisode!.chaptersLoading = false;
+        if (_currentEpisode!.chaptersUrl != null) {
+          _currentEpisode!.chapters = await podcastService.loadChaptersByUrl(url: _currentEpisode!.chaptersUrl!);
+          _currentEpisode!.chaptersLoading = false;
+        }
+
+        _updateEpisodeState();
+
+        log.fine('We have ${_currentEpisode!.chapters.length} chapters');
+      } else {
+        log.fine('Episode already has ${_currentEpisode!.chapters.length} chapters, skipping load');
       }
-
-      _updateEpisodeState();
-
-      log.fine('We have ${_currentEpisode!.chapters.length} chapters');
+      
       _currentEpisode = await repository.saveEpisode(_currentEpisode!);
     }
 

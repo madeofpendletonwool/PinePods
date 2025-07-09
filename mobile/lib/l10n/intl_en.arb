@@ -1,5 +1,6 @@
 {
   "@@last_modified": "2020-02-20T12:15:52.645497",
+  "@@locale": "en",
   "app_title": "Anytime Podcast Player",
   "@app_title": {
     "description": "Full title for the application",
@@ -78,7 +79,7 @@
     "type": "text",
     "placeholders": {}
   },
-  "no_subscriptions_message": "Head to Settings to Connect a Pinepods Server if you haven\'t yet!",
+  "no_subscriptions_message": "Head to Settings to Connect a Pinepods Server if you haven't yet!",
   "@no_subscriptions_message": {
     "description": "Displayed on the library tab when the user has no subscriptions",
     "type": "text",
@@ -342,7 +343,7 @@
     "type": "text",
     "placeholders": {}
   },
-  "notes_label": "Notes",
+  "notes_label": "Description",
   "@notes_label": {
     "description": "Tab label on now playing screen.",
     "type": "text",

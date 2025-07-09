@@ -1739,6 +1739,76 @@ class PinepodsService {
       rethrow;
     }
   }
+
+  // Fetch podcast 2.0 data for a specific episode
+  Future<Map<String, dynamic>?> fetchPodcasting2Data(int episodeId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/fetch_podcasting_2_data')
+        .replace(queryParameters: {
+      'episode_id': episodeId.toString(),
+      'user_id': userId.toString(),
+    });
+
+    print('Making API call to: $url');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Api-Key': _apiKey!},
+      );
+
+      print('Podcast 2.0 data response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data;
+      } else {
+        print('Failed to fetch podcast 2.0 data: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Error fetching podcast 2.0 data: $e');
+      return null;
+    }
+  }
+
+  // Fetch podcast 2.0 data for a specific podcast
+  Future<Map<String, dynamic>?> fetchPodcasting2PodData(int podcastId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/fetch_podcasting_2_pod_data')
+        .replace(queryParameters: {
+      'podcast_id': podcastId.toString(),
+      'user_id': userId.toString(),
+    });
+
+    print('Making API call to: $url');
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Api-Key': _apiKey!},
+      );
+
+      print('Podcast 2.0 pod data response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data;
+      } else {
+        print('Failed to fetch podcast 2.0 pod data: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      print('Error fetching podcast 2.0 pod data: $e');
+      return null;
+    }
+  }
 }
 
 class PodcastDetailsData {

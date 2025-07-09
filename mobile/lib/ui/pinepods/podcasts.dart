@@ -13,6 +13,7 @@ import 'package:pinepods_mobile/ui/widgets/pinepods_podcast_tile.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:sliver_tools/sliver_tools.dart';
 
 /// This class displays the list of podcasts the user is subscribed to on the PinePods server.
 class PinepodsPodcasts extends StatefulWidget {
@@ -26,14 +27,46 @@ class PinepodsPodcasts extends StatefulWidget {
 
 class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
   List<Podcast>? _podcasts;
+  List<Podcast>? _filteredPodcasts;
   bool _isLoading = true;
   String? _errorMessage;
   final PinepodsService _pinepodsService = PinepodsService();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _loadPodcasts();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text;
+      _filterPodcasts();
+    });
+  }
+
+  void _filterPodcasts() {
+    if (_podcasts == null) {
+      _filteredPodcasts = null;
+      return;
+    }
+
+    if (_searchQuery.isEmpty) {
+      _filteredPodcasts = List.from(_podcasts!);
+    } else {
+      _filteredPodcasts = _podcasts!.where((podcast) {
+        return podcast.title.toLowerCase().contains(_searchQuery.toLowerCase());
+      }).toList();
+    }
   }
 
   Future<void> _loadPodcasts() async {
@@ -66,6 +99,7 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
       
       setState(() {
         _podcasts = podcasts;
+        _filterPodcasts(); // Initialize filtered list
         _isLoading = false;
       });
     } catch (e) {
@@ -74,6 +108,101 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
         _isLoading = false;
       });
     }
+  }
+
+  Widget _buildSearchBar() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: 'Filter podcasts...',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchController.clear();
+                    },
+                  )
+                : null,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            filled: true,
+            fillColor: Theme.of(context).cardColor,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPodcastList(AppSettings settings) {
+    final podcasts = _filteredPodcasts ?? [];
+    
+    if (podcasts.isEmpty && _searchQuery.isNotEmpty) {
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: <Widget>[
+              Icon(
+                Icons.search_off,
+                size: 75,
+                color: Theme.of(context).primaryColor,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No podcasts found',
+                style: Theme.of(context).textTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No podcasts match "$_searchQuery"',
+                style: Theme.of(context).textTheme.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    var mode = settings.layout;
+    var size = mode == 1 ? 100.0 : 160.0;
+
+    if (mode == 0) {
+      // List view
+      return SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (BuildContext context, int index) {
+            return PinepodsPodcastTile(podcast: podcasts[index]);
+          },
+          childCount: podcasts.length,
+          addAutomaticKeepAlives: false,
+        ),
+      );
+    }
+
+    // Grid view
+    return SliverGrid(
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: size,
+        mainAxisSpacing: 10.0,
+        crossAxisSpacing: 10.0,
+      ),
+      delegate: SliverChildBuilderDelegate(
+        (BuildContext context, int index) {
+          return PinepodsPodcastGridTile(podcast: podcasts[index]);
+        },
+        childCount: podcasts.length,
+      ),
+    );
   }
 
   @override
@@ -166,35 +295,11 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
       stream: settingsBloc.settings,
       builder: (context, settingsSnapshot) {
         if (settingsSnapshot.hasData) {
-          var mode = settingsSnapshot.data!.layout;
-          var size = mode == 1 ? 100.0 : 160.0;
-
-          if (mode == 0) {
-            // List view
-            return SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (BuildContext context, int index) {
-                  return PinepodsPodcastTile(podcast: _podcasts![index]);
-                },
-                childCount: _podcasts!.length,
-                addAutomaticKeepAlives: false,
-              ),
-            );
-          }
-
-          // Grid view
-          return SliverGrid(
-            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: size,
-              mainAxisSpacing: 10.0,
-              crossAxisSpacing: 10.0,
-            ),
-            delegate: SliverChildBuilderDelegate(
-              (BuildContext context, int index) {
-                return PinepodsPodcastGridTile(podcast: _podcasts![index]);
-              },
-              childCount: _podcasts!.length,
-            ),
+          return MultiSliver(
+            children: [
+              _buildSearchBar(),
+              _buildPodcastList(settingsSnapshot.data!),
+            ],
           );
         } else {
           return const SliverFillRemaining(

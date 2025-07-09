@@ -62,12 +62,9 @@ class _ChapterSelectorState extends State<ChapterSelector> {
               if (first) {
                 widget.itemScrollController.jumpTo(index: index);
                 first = false;
-              } else {
-                widget.itemScrollController.scrollTo(
-                  index: index,
-                  duration: const Duration(milliseconds: 100),
-                );
               }
+              // Removed auto-scroll to current chapter during playback
+              // to prevent annoying bouncing behavior
             }
           }
         }

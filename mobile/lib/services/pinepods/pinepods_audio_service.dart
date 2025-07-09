@@ -2,9 +2,10 @@
 
 import 'dart:async';
 import 'package:pinepods_mobile/entities/episode.dart';
-import 'package:pinepods_mobile/entities/podcast.dart';
-import 'package:pinepods_mobile/entities/funding.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/entities/chapter.dart';
+import 'package:pinepods_mobile/entities/person.dart';
+import 'package:pinepods_mobile/entities/transcript.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
@@ -70,8 +71,11 @@ class PinepodsAudioService {
         pinepodsEpisode.isYoutube,
       );
 
+      // Fetch podcast 2.0 data including chapters
+      final podcast2Data = await _pinepodsService.fetchPodcasting2Data(episodeId, userId);
+      
       // Convert PinepodsEpisode to Episode for the audio player
-      final episode = _convertToEpisode(pinepodsEpisode, playDetails);
+      final episode = _convertToEpisode(pinepodsEpisode, playDetails, podcast2Data);
 
       // Set playback speed
       await _audioPlayerService.setPlaybackSpeed(playDetails.playbackSpeed);
@@ -198,7 +202,7 @@ class PinepodsAudioService {
   }
 
   /// Convert PinepodsEpisode to Episode for the audio player
-  Episode _convertToEpisode(PinepodsEpisode pinepodsEpisode, PlayEpisodeDetails playDetails) {
+  Episode _convertToEpisode(PinepodsEpisode pinepodsEpisode, PlayEpisodeDetails playDetails, Map<String, dynamic>? podcast2Data) {
     // Determine the content URL
     String contentUrl;
     if (pinepodsEpisode.downloaded && _currentEpisodeId != null && _currentUserId != null) {
@@ -222,6 +226,102 @@ class PinepodsAudioService {
       contentUrl = pinepodsEpisode.episodeUrl;
     }
 
+    // Process podcast 2.0 data
+    List<Chapter> chapters = [];
+    List<Person> persons = [];
+    List<TranscriptUrl> transcriptUrls = [];
+    String? chaptersUrl;
+    
+    if (podcast2Data != null) {
+      // Extract chapters data
+      final chaptersData = podcast2Data['chapters'] as List<dynamic>?;
+      if (chaptersData != null) {
+        try {
+          chapters = chaptersData.map((chapterData) {
+            return Chapter(
+              title: chapterData['title'] ?? '',
+              startTime: _parseDouble(chapterData['startTime'] ?? chapterData['start_time'] ?? 0) ?? 0.0,
+              endTime: _parseDouble(chapterData['endTime'] ?? chapterData['end_time']),
+              imageUrl: chapterData['img'] ?? chapterData['image'],
+              url: chapterData['url'],
+              toc: chapterData['toc'] ?? true,
+            );
+          }).toList();
+          
+          log.info('Loaded ${chapters.length} chapters from podcast 2.0 data');
+        } catch (e) {
+          log.warning('Error parsing chapters from podcast 2.0 data: $e');
+        }
+      }
+      
+      // Extract chapters URL if available
+      chaptersUrl = podcast2Data['chapters_url'];
+      
+      // Extract persons data
+      final personsData = podcast2Data['persons'] as List<dynamic>?;
+      if (personsData != null) {
+        try {
+          persons = personsData.map((personData) {
+            return Person(
+              name: personData['name'] ?? '',
+              role: personData['role'] ?? '',
+              group: personData['group'] ?? '',
+              image: personData['image'],
+              link: personData['link'],
+            );
+          }).toList();
+          
+          log.info('Loaded ${persons.length} persons from podcast 2.0 data');
+        } catch (e) {
+          log.warning('Error parsing persons from podcast 2.0 data: $e');
+        }
+      }
+      
+      // Extract transcript data
+      final transcriptsData = podcast2Data['transcripts'] as List<dynamic>?;
+      if (transcriptsData != null) {
+        try {
+          transcriptUrls = transcriptsData.map((transcriptData) {
+            TranscriptFormat format = TranscriptFormat.unsupported;
+            
+            // Determine format from URL, mime_type, or type field
+            final url = transcriptData['url'] ?? '';
+            final mimeType = transcriptData['mime_type'] ?? '';
+            final type = transcriptData['type'] ?? '';
+            
+            log.info('Processing transcript: url=$url, mimeType=$mimeType, type=$type');
+            
+            if (url.toLowerCase().contains('.json') || 
+                mimeType.toLowerCase().contains('json') || 
+                type.toLowerCase().contains('json')) {
+              format = TranscriptFormat.json;
+              log.info('Detected JSON transcript format');
+            } else if (url.toLowerCase().contains('.srt') || 
+                       mimeType.toLowerCase().contains('srt') || 
+                       type.toLowerCase().contains('srt') || 
+                       type.toLowerCase().contains('subrip') ||
+                       url.toLowerCase().contains('subrip')) {
+              format = TranscriptFormat.subrip;
+              log.info('Detected SubRip transcript format');
+            } else {
+              log.warning('Transcript format not recognized: mimeType=$mimeType, type=$type');
+            }
+            
+            return TranscriptUrl(
+              url: url,
+              type: format,
+              language: transcriptData['language'] ?? transcriptData['lang'] ?? 'en',
+              rel: transcriptData['rel'],
+            );
+          }).toList();
+          
+          log.info('Loaded ${transcriptUrls.length} transcript URLs from podcast 2.0 data');
+        } catch (e) {
+          log.warning('Error parsing transcripts from podcast 2.0 data: $e');
+        }
+      }
+    }
+
     return Episode(
       guid: pinepodsEpisode.episodeUrl,
       podcast: pinepodsEpisode.podcastName,
@@ -235,7 +335,27 @@ class PinepodsAudioService {
       position: ((pinepodsEpisode.listenDuration ?? 0) * 1000).round(), // Convert to milliseconds
       imageUrl: pinepodsEpisode.episodeArtwork,
       played: pinepodsEpisode.completed,
+      chapters: chapters,
+      chaptersUrl: chaptersUrl,
+      persons: persons,
+      transcriptUrls: transcriptUrls,
     );
+  }
+
+  /// Helper method to safely parse double values
+  double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) {
+      try {
+        return double.parse(value);
+      } catch (e) {
+        log.warning('Failed to parse double from string: $value');
+        return null;
+      }
+    }
+    return null;
   }
 
   /// Clean up resources

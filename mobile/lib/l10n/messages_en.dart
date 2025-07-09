@@ -92,7 +92,7 @@ class MessageLookup extends MessageLookupByLibrary {
     'no_search_results_message': MessageLookupByLibrary.simpleMessage('No podcasts found'),
     'no_subscriptions_message': MessageLookupByLibrary.simpleMessage('Head to Settings to Connect a Pinepods Server if you haven\'t yet!'),
     'no_transcript_available_label': MessageLookupByLibrary.simpleMessage('A transcript is not available for this podcast'),
-    'notes_label': MessageLookupByLibrary.simpleMessage('Notes'),
+    'notes_label': MessageLookupByLibrary.simpleMessage('Description'),
     'now_playing_episode_position': MessageLookupByLibrary.simpleMessage('Episode position'),
     'now_playing_episode_time_remaining': MessageLookupByLibrary.simpleMessage('Time remaining'),
     'now_playing_queue_label': MessageLookupByLibrary.simpleMessage('Now Playing'),

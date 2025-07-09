@@ -1,26 +1,28 @@
 Searching functionality
 	- Allow playing even if pod isn't added
-chapter support
+Searching for a podcast and opening one you are already subbed to does not bring up episodes
 Add pod via url
 oidc login
 allow http logins
-player on every page
 dynamic play everyehere play, to highlight play to check
 clean out old code/db stuff
 Remove weird notications on play
 Fix android homescreen icon
 Center bottom bar so that it looks good in horizontal
-Center buttons and stretch them across the page on the episode page
 android meta player logo
-full screen player via scroll up, not just tap
-link to podcast page from episode
-improve look of long press menu
-Timecode skips in descriptions
+listen time is crazy inconsistent. Most of the time not even working
+restart button on an episode just flatout doesn't work. It plays one second from the end and explodes
+Podcasts in home page doesn't work
+Move layout button to only podcasts page next to filter, remove from 3 dots menu
 people in pods and descriptions
 links don't work - stats page
 filtering options on the podcasts page for quick search. also on history, saved, downloads.
 setting to go full screen default still doesn't work
-Searching for a podcast and opening one you are already subbed to does not bring up episodes
+Organization of pages - Display history newest first, saved newest first
+
+Timecode skips in descriptions
+full screen player via scroll up, not just tap
+player on every page
 play button doesn't update to pause on single episode screen
 
 android auto

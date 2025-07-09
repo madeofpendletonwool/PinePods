@@ -16,6 +16,7 @@ import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
 import 'package:logging/logging.dart';
+import 'package:sliver_tools/sliver_tools.dart';
 
 class PinepodsDownloads extends StatefulWidget {
   const PinepodsDownloads({super.key});
@@ -40,11 +41,77 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
   Set<String> _expandedPodcasts = {};
   int? _contextMenuEpisodeIndex;
   bool _isServerEpisode = false;
+  
+  // Search functionality
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  Map<String, List<PinepodsEpisode>> _filteredServerDownloadsByPodcast = {};
+  Map<String, List<Episode>> _filteredLocalDownloadsByPodcast = {};
 
   @override
   void initState() {
     super.initState();
     _loadDownloads();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text;
+      _filterDownloads();
+    });
+  }
+
+  void _filterDownloads() {
+    // Filter server downloads
+    _filteredServerDownloadsByPodcast = {};
+    for (final entry in _serverDownloadsByPodcast.entries) {
+      final podcastName = entry.key;
+      final episodes = entry.value;
+      
+      if (_searchQuery.isEmpty) {
+        _filteredServerDownloadsByPodcast[podcastName] = List.from(episodes);
+      } else {
+        final filteredEpisodes = episodes.where((episode) {
+          return episode.episodeTitle.toLowerCase().contains(_searchQuery.toLowerCase());
+        }).toList();
+        
+        if (filteredEpisodes.isNotEmpty) {
+          _filteredServerDownloadsByPodcast[podcastName] = filteredEpisodes;
+        }
+      }
+    }
+
+    // Filter local downloads (will be called when local downloads are loaded)
+    _filterLocalDownloads();
+  }
+
+  void _filterLocalDownloads([Map<String, List<Episode>>? localDownloadsByPodcast]) {
+    final downloadsToFilter = localDownloadsByPodcast ?? _localDownloadsByPodcast;
+    _filteredLocalDownloadsByPodcast = {};
+    
+    for (final entry in downloadsToFilter.entries) {
+      final podcastName = entry.key;
+      final episodes = entry.value;
+      
+      if (_searchQuery.isEmpty) {
+        _filteredLocalDownloadsByPodcast[podcastName] = List.from(episodes);
+      } else {
+        final filteredEpisodes = episodes.where((episode) {
+          return (episode.title ?? '').toLowerCase().contains(_searchQuery.toLowerCase());
+        }).toList();
+        
+        if (filteredEpisodes.isNotEmpty) {
+          _filteredLocalDownloadsByPodcast[podcastName] = filteredEpisodes;
+        }
+      }
+    }
   }
 
   Future<void> _loadDownloads() async {
@@ -78,6 +145,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
         setState(() {
           _serverDownloads = downloads;
           _serverDownloadsByPodcast = _groupEpisodesByPodcast(downloads);
+          _filterDownloads(); // Initialize filtered data
           _isLoadingServerDownloads = false;
         });
       } else {
@@ -464,108 +532,191 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
           );
         }
         
-        if (currentLocalDownloadsByPodcast.isEmpty && _serverDownloadsByPodcast.isEmpty) {
-          return SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.download_outlined,
-                    size: 64,
-                    color: Colors.grey[400],
+        // Update filtered local downloads when local downloads change
+        _filterLocalDownloads(currentLocalDownloadsByPodcast);
+        
+        if (_filteredLocalDownloadsByPodcast.isEmpty && _filteredServerDownloadsByPodcast.isEmpty) {
+          if (_searchQuery.isNotEmpty) {
+            // Show no search results message
+            return MultiSliver(
+              children: [
+                _buildSearchBar(),
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 64,
+                          color: Theme.of(context).primaryColor,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No downloads found',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'No downloads match "$_searchQuery"',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No downloads found',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Downloaded episodes will appear here',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
+                ),
+              ],
+            );
+          } else {
+            // Show empty downloads message
+            return SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.download_outlined,
+                      size: 64,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No downloads found',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Downloaded episodes will appear here',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
+            );
+          }
         }
         
-        return SliverList(
-          delegate: SliverChildListDelegate([
-            // Local Downloads Section
-            if (currentLocalDownloadsByPodcast.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  children: [
-                    Icon(Icons.smartphone, color: Colors.green[600]),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Local Downloads',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
-              ...currentLocalDownloadsByPodcast.entries.map((entry) {
-                final podcastName = entry.key;
-                final episodes = entry.value;
-                final podcastKey = 'local_$podcastName';
-                
-                return _buildPodcastDropdown(
-                  podcastKey,
-                  episodes, // Pass episodes directly
-                  isServerDownload: false,
-                  displayName: podcastName,
-                );
-              }).toList(),
-            ],
-            
-            // Server Downloads Section
-            if (_serverDownloadsByPodcast.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-                child: Row(
-                  children: [
-                    Icon(Icons.cloud_download, color: Colors.blue[600]),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Server Downloads',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue[600],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              
-              ..._serverDownloadsByPodcast.entries.map((entry) {
-                final podcastName = entry.key;
-                final episodes = entry.value;
-                final podcastKey = 'server_$podcastName';
-                
-                return _buildPodcastDropdown(
-                  podcastKey,
-                  episodes, // Pass episodes directly
-                  isServerDownload: true,
-                  displayName: podcastName,
-                );
-              }).toList(),
-            ],
-            
-            // Bottom padding
-            const SizedBox(height: 100),
-          ]),
+        return MultiSliver(
+          children: [
+            _buildSearchBar(),
+            _buildDownloadsList(),
+          ],
         );
       },
     );
+  }
+
+  Widget _buildSearchBar() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: 'Filter episodes...',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchController.clear();
+                    },
+                  )
+                : null,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            filled: true,
+            fillColor: Theme.of(context).cardColor,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDownloadsList() {
+    return SliverList(
+      delegate: SliverChildListDelegate([
+        // Local Downloads Section
+        if (_filteredLocalDownloadsByPodcast.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.smartphone, color: Colors.green[600]),
+                const SizedBox(width: 8),
+                Text(
+                  _searchQuery.isEmpty 
+                      ? 'Local Downloads' 
+                      : 'Local Downloads (${_countFilteredEpisodes(_filteredLocalDownloadsByPodcast)})',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          ..._filteredLocalDownloadsByPodcast.entries.map((entry) {
+            final podcastName = entry.key;
+            final episodes = entry.value;
+            final podcastKey = 'local_$podcastName';
+            
+            return _buildPodcastDropdown(
+              podcastKey,
+              episodes,
+              isServerDownload: false,
+              displayName: podcastName,
+            );
+          }).toList(),
+        ],
+        
+        // Server Downloads Section
+        if (_filteredServerDownloadsByPodcast.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.cloud_download, color: Colors.blue[600]),
+                const SizedBox(width: 8),
+                Text(
+                  _searchQuery.isEmpty 
+                      ? 'Server Downloads' 
+                      : 'Server Downloads (${_countFilteredEpisodes(_filteredServerDownloadsByPodcast)})',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          ..._filteredServerDownloadsByPodcast.entries.map((entry) {
+            final podcastName = entry.key;
+            final episodes = entry.value;
+            final podcastKey = 'server_$podcastName';
+            
+            return _buildPodcastDropdown(
+              podcastKey,
+              episodes,
+              isServerDownload: true,
+              displayName: podcastName,
+            );
+          }).toList(),
+        ],
+        
+        // Bottom padding
+        const SizedBox(height: 100),
+      ]),
+    );
+  }
+
+  int _countFilteredEpisodes(Map<String, List<dynamic>> downloadsByPodcast) {
+    return downloadsByPodcast.values.fold(0, (sum, episodes) => sum + episodes.length);
   }
 
   void _playServerEpisode(PinepodsEpisode episode) {

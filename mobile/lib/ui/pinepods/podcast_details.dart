@@ -15,6 +15,7 @@ import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:provider/provider.dart';
+import 'package:sliver_tools/sliver_tools.dart';
 
 class PinepodsPodcastDetails extends StatefulWidget {
   final UnifiedPinepodsPodcast podcast;
@@ -38,8 +39,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   bool _isFollowing = false;
   String? _errorMessage;
   List<PinepodsEpisode> _episodes = [];
+  List<PinepodsEpisode> _filteredEpisodes = [];
   int? _contextMenuEpisodeIndex;
   PinepodsAudioService? _audioService;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -47,6 +51,31 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _isFollowing = widget.isFollowing;
     _initializeCredentials();
     _checkFollowStatus();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _audioService?.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text;
+      _filterEpisodes();
+    });
+  }
+
+  void _filterEpisodes() {
+    if (_searchQuery.isEmpty) {
+      _filteredEpisodes = List.from(_episodes);
+    } else {
+      _filteredEpisodes = _episodes.where((episode) {
+        return episode.episodeTitle.toLowerCase().contains(_searchQuery.toLowerCase());
+      }).toList();
+    }
   }
 
   void _initializeCredentials() {
@@ -199,6 +228,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
 
       setState(() {
         _episodes = episodes;
+        _filterEpisodes(); // Initialize filtered list
         _isLoading = false;
       });
     } catch (e) {
@@ -611,35 +641,104 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
               ),
             )
           else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final episode = _episodes[index];
-                  return PinepodsEpisodeCard(
-                    episode: episode,
-                    onTap: _isFollowing ? () {
-                      // Navigate to episode details only if following
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => PinepodsEpisodeDetails(
-                            initialEpisode: episode,
-                          ),
-                        ),
-                      );
-                    } : null, // Disable tap if not following
-                    onLongPress: _isFollowing ? () {
-                      _showEpisodeContextMenu(index);
-                    } : null, // Disable long press if not following
-                    onPlayPressed: _isFollowing ? () {
-                      _playEpisode(episode);
-                    } : null, // Disable play if not following
-                  );
-                },
-                childCount: _episodes.length,
-              ),
+            MultiSliver(
+              children: [
+                _buildSearchBar(),
+                _buildEpisodesList(),
+              ],
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            hintText: 'Filter episodes...',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      _searchController.clear();
+                    },
+                  )
+                : null,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            filled: true,
+            fillColor: Theme.of(context).cardColor,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEpisodesList() {
+    // Check if search returned no results
+    if (_filteredEpisodes.isEmpty && _searchQuery.isNotEmpty) {
+      return SliverFillRemaining(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.search_off,
+                size: 64,
+                color: Theme.of(context).primaryColor,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'No episodes found',
+                style: Theme.of(context).textTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No episodes match "$_searchQuery"',
+                style: Theme.of(context).textTheme.bodyMedium,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate(
+        (context, index) {
+          final episode = _filteredEpisodes[index];
+          // Find the original index for context menu operations
+          final originalIndex = _episodes.indexOf(episode);
+          return PinepodsEpisodeCard(
+            episode: episode,
+            onTap: _isFollowing ? () {
+              // Navigate to episode details only if following
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PinepodsEpisodeDetails(
+                    initialEpisode: episode,
+                  ),
+                ),
+              );
+            } : null, // Disable tap if not following
+            onLongPress: _isFollowing ? () {
+              _showEpisodeContextMenu(originalIndex);
+            } : null, // Disable long press if not following
+            onPlayPressed: _isFollowing ? () {
+              _playEpisode(episode);
+            } : null, // Disable play if not following
+          );
+        },
+        childCount: _filteredEpisodes.length,
       ),
     );
   }
