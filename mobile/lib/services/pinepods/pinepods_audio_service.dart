@@ -332,7 +332,7 @@ class PinepodsAudioService {
       author: '',
       duration: (pinepodsEpisode.episodeDuration * 1000).round(), // Convert to milliseconds
       contentUrl: contentUrl,
-      position: ((pinepodsEpisode.listenDuration ?? 0) * 1000).round(), // Convert to milliseconds
+      position: pinepodsEpisode.completed ? 0 : ((pinepodsEpisode.listenDuration ?? 0) * 1000).round(), // Convert to milliseconds, reset to 0 for completed episodes
       imageUrl: pinepodsEpisode.episodeArtwork,
       played: pinepodsEpisode.completed,
       chapters: chapters,

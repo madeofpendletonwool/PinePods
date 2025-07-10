@@ -3,7 +3,6 @@ Searching functionality
 Searching for a podcast and opening one you are already subbed to does not bring up episodes
 Add pod via url
 oidc login
-allow http logins
 dynamic play everyehere play, to highlight play to check
 clean out old code/db stuff
 Remove weird notications on play
@@ -23,5 +22,6 @@ player on every page
 play button doesn't update to pause on single episode screen
 unknown hosts issue on pods without host data
 episode count doesn't work when pod clicked from podcasts page
+Queuing doesn't work
 
 android auto

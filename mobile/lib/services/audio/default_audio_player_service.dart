@@ -17,6 +17,10 @@ import 'package:pinepods_mobile/repository/repository.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
+import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/state/episode_state.dart';
 import 'package:pinepods_mobile/state/persistent_state.dart';
 import 'package:pinepods_mobile/state/queue_event_state.dart';
@@ -311,7 +315,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
   void updateCurrentPosition(Episode? e) {
     if (e != null) {
       var duration = Duration(seconds: e.duration);
-      var complete = e.position > 0 ? (duration.inSeconds / e.position) * 100 : 0;
+      var complete = duration.inSeconds > 0 ? (e.position / duration.inSeconds) * 100 : 0;
 
       _playPosition.add(PositionState(
         position: Duration(milliseconds: e.position),
@@ -485,7 +489,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     _audioHandler.playbackState.distinct((previousState, currentState) {
       return previousState.playing == currentState.playing &&
           previousState.processingState == currentState.processingState;
-    }).listen((PlaybackState state) {
+    }).listen((PlaybackState state) async {
       switch (state.processingState) {
         case AudioProcessingState.idle:
           _playingState.add(AudioState.none);
@@ -507,7 +511,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
           }
           break;
         case AudioProcessingState.completed:
-          _completed();
+          await _completed();
           break;
         case AudioProcessingState.error:
           _playingState.add(AudioState.error);
@@ -540,28 +544,136 @@ class DefaultAudioPlayerService extends AudioPlayerService {
 
     _stopPositionTicker();
 
-    if (_queue.isEmpty) {
-      log.fine('Queue is empty so we will stop');
-      _queue = <Episode>[];
-      _currentEpisode = null;
-      _playingState.add(AudioState.stopped);
-
-      await _audioHandler.customAction('queueend');
-    } else if (_sleep.type == SleepType.episode) {
+    // Check if sleep at end of episode is enabled first
+    if (_sleep.type == SleepType.episode) {
       log.fine('Sleeping at end of episode');
-
       await _audioHandler.customAction('sleep');
       _playingState.add(AudioState.pausing);
       _stopSleepTicker();
+      return;
+    }
+
+    // Try to get next episode from PinePods server queue
+    try {
+      final nextEpisode = await _getNextQueuedEpisode();
+      if (nextEpisode != null) {
+        log.fine('Playing next episode from server queue: ${nextEpisode.title}');
+        _currentEpisode = null;
+        await playEpisode(episode: nextEpisode);
+        _updateQueueState();
+        return;
+      }
+    } catch (e) {
+      log.warning('Failed to get next episode from server queue: $e');
+    }
+
+    // Fallback to local queue if server queue fails or is empty
+    if (_queue.isEmpty) {
+      log.fine('No episodes in local or server queue, stopping playback');
+      _queue = <Episode>[];
+      _currentEpisode = null;
+      _playingState.add(AudioState.stopped);
+      await _audioHandler.customAction('queueend');
     } else {
-      log.fine('Queue has ${_queue.length} episodes left');
+      log.fine('Playing next episode from local queue');
       _currentEpisode = null;
       var ep = _queue.removeAt(0);
-
       await playEpisode(episode: ep);
-
       _updateQueueState();
     }
+  }
+
+  /// Get the next episode from PinePods server queue and remove it from the queue
+  Future<Episode?> _getNextQueuedEpisode() async {
+    // Check if we have PinePods credentials
+    final server = settingsService.pinepodsServer;
+    final apiKey = settingsService.pinepodsApiKey;
+    final userId = settingsService.pinepodsUserId;
+
+    if (server == null || apiKey == null || userId == null) {
+      log.fine('No PinePods credentials available, skipping server queue');
+      return null;
+    }
+
+    try {
+      // Initialize PinePods service
+      final pinepodsService = PinepodsService();
+      pinepodsService.setCredentials(server, apiKey);
+      
+      // Get current queue from server
+      final queuedEpisodes = await pinepodsService.getQueuedEpisodes(userId);
+      
+      if (queuedEpisodes.isEmpty) {
+        log.fine('Server queue is empty');
+        return null;
+      }
+
+      // Get the first episode from the queue
+      final nextPinepodsEpisode = queuedEpisodes.first;
+      
+      // Remove this episode from the server queue
+      await pinepodsService.removeQueuedEpisode(
+        nextPinepodsEpisode.episodeId,
+        userId,
+        nextPinepodsEpisode.isYoutube,
+      );
+      
+      // Convert PinepodsEpisode to Episode for playback
+      final episode = _convertPinepodsEpisodeToEpisode(nextPinepodsEpisode, pinepodsService, userId);
+      
+      log.fine('Retrieved next episode from server queue: ${episode.title}');
+      return episode;
+      
+    } catch (e) {
+      log.warning('Error getting next episode from server queue: $e');
+      rethrow;
+    }
+  }
+
+  /// Convert PinepodsEpisode to Episode for audio playback
+  Episode _convertPinepodsEpisodeToEpisode(PinepodsEpisode pinepodsEpisode, PinepodsService pinepodsService, int userId) {
+    // Determine the content URL
+    String contentUrl;
+    if (pinepodsEpisode.downloaded) {
+      // Use stream URL for downloaded episodes
+      contentUrl = pinepodsService.getStreamUrl(
+        pinepodsEpisode.episodeId,
+        userId,
+        isYoutube: pinepodsEpisode.isYoutube,
+        isLocal: true,
+      );
+    } else if (pinepodsEpisode.isYoutube) {
+      // Use stream URL for YouTube episodes
+      contentUrl = pinepodsService.getStreamUrl(
+        pinepodsEpisode.episodeId,
+        userId,
+        isYoutube: true,
+        isLocal: false,
+      );
+    } else {
+      // Use original URL for external episodes
+      contentUrl = pinepodsEpisode.episodeUrl;
+    }
+
+    return Episode(
+      guid: 'pinepods_${pinepodsEpisode.episodeId}',
+      pguid: 'pinepods_${pinepodsEpisode.podcastId}',
+      podcast: pinepodsEpisode.podcastName,
+      title: pinepodsEpisode.episodeTitle,
+      description: pinepodsEpisode.episodeDescription,
+      link: pinepodsEpisode.episodeUrl,
+      publicationDate: DateTime.tryParse(pinepodsEpisode.episodePubDate) ?? DateTime.now(),
+      author: '',
+      duration: (pinepodsEpisode.episodeDuration * 1000).round(), // Convert to milliseconds
+      contentUrl: contentUrl,
+      position: pinepodsEpisode.completed ? 0 : ((pinepodsEpisode.listenDuration ?? 0) * 1000).round(), // Convert to milliseconds, reset to 0 for completed episodes
+      imageUrl: pinepodsEpisode.episodeArtwork,
+      played: pinepodsEpisode.completed,
+      chapters: [], // Basic conversion without chapters
+      chaptersUrl: null,
+      persons: [], // Basic conversion without persons
+      transcriptUrls: [], // Basic conversion without transcripts
+    );
   }
 
   /// This method is called when audio_service sends a [AudioProcessingState.loading] event.
@@ -640,7 +752,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
   void _broadcastEpisodePosition(Episode? e) {
     if (e != null) {
       var duration = Duration(seconds: e.duration);
-      var complete = e.position > 0 ? (duration.inSeconds / e.position) * 100 : 0;
+      var complete = duration.inSeconds > 0 ? (e.position / duration.inSeconds) * 100 : 0;
 
       _playPosition.add(PositionState(
         position: Duration(milliseconds: e.position),
@@ -729,7 +841,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     var currentMediaItem = _audioHandler.mediaItem.value;
     var duration = currentMediaItem?.duration ?? const Duration(seconds: 1);
     var position = playbackState.position;
-    var complete = position.inSeconds > 0 ? (duration.inSeconds / position.inSeconds) * 100 : 0;
+    var complete = duration.inSeconds > 0 ? (position.inSeconds / duration.inSeconds) * 100 : 0;
     var buffering = playbackState.processingState == AudioProcessingState.buffering;
 
     _updateChapter(position.inSeconds, duration.inSeconds);

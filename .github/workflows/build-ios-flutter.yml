@@ -1,0 +1,136 @@
+name: Build iOS Flutter App
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Manual override version tag (optional)"
+        required: false
+
+jobs:
+  build:
+    name: Build iOS Release
+    runs-on: macOS-latest
+
+    steps:
+      - name: Set Image Tag
+        run: echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.0'
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: |
+          cd mobile
+          flutter pub get
+          cd ios
+          pod install
+
+      - name: Setup iOS signing
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          # Create keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -l build.keychain
+          
+          # Import certificate
+          echo "$IOS_CERTIFICATE_BASE64" | base64 -d > certificate.p12
+          security import certificate.p12 -P "$IOS_CERTIFICATE_PASSWORD" -A
+          
+          # Install provisioning profile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/build.mobileprovision
+
+      - name: Update app version
+        run: |
+          cd mobile
+          # Update pubspec.yaml version
+          if [[ "$IMAGE_TAG" != "latest" ]]; then
+            sed -i '' "s/^version: .*/version: ${IMAGE_TAG#v}/" pubspec.yaml
+          fi
+
+      - name: Build iOS app
+        run: |
+          cd mobile
+          flutter build ios --release --no-codesign
+          
+      - name: Archive and sign iOS app
+        run: |
+          cd mobile/ios
+          xcodebuild -workspace Runner.xcworkspace \
+                     -scheme Runner \
+                     -configuration Release \
+                     -destination generic/platform=iOS \
+                     -archivePath build/Runner.xcarchive \
+                     archive
+          
+          xcodebuild -exportArchive \
+                     -archivePath build/Runner.xcarchive \
+                     -exportPath build \
+                     -exportOptionsPlist exportOptions.plist
+
+      - name: Create export options plist
+        run: |
+          cd mobile/ios
+          cat > exportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>${{ secrets.IOS_TEAM_ID }}</string>
+              <key>uploadBitcode</key>
+              <false/>
+              <key>uploadSymbols</key>
+              <true/>
+              <key>compileBitcode</key>
+              <false/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa-build
+          path: mobile/ios/build/*.ipa
+
+      - name: Upload to App Store Connect
+        if: github.event_name == 'release'
+        env:
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        run: |
+          echo "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 -d > AuthKey.p8
+          xcrun altool --upload-app \
+                       --type ios \
+                       --file mobile/ios/build/*.ipa \
+                       --apiKey "$APP_STORE_CONNECT_API_KEY_ID" \
+                       --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+
+      - name: Cleanup keychain and provisioning profile
+        if: always()
+        run: |
+          if security list-keychains | grep -q "build.keychain"; then
+            security delete-keychain build.keychain
+          fi
+          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/build.mobileprovision
+          rm -f certificate.p12
+          rm -f AuthKey.p8

@@ -55,6 +55,11 @@ import 'package:pinepods_mobile/ui/auth/auth_wrapper.dart';
 import 'package:pinepods_mobile/ui/pinepods/user_stats.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcasts.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_search.dart';
+import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
+import 'package:pinepods_mobile/entities/pinepods_search.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/services/podcast/mobile_podcast_service.dart';
+import 'package:pinepods_mobile/api/podcast/mobile_podcast_api.dart';
 import 'package:app_links/app_links.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
@@ -436,20 +441,6 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                                 ),
                               PopupMenuItem<String>(
                                 textStyle: Theme.of(context).textTheme.titleMedium,
-                                value: 'layout',
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    const Padding(
-                                      padding: EdgeInsets.only(right: 8.0),
-                                      child: Icon(Icons.dashboard, size: 18.0),
-                                    ),
-                                    Text(L.of(context)!.layout_label),
-                                  ],
-                                ),
-                              ),
-                              PopupMenuItem<String>(
-                                textStyle: Theme.of(context).textTheme.titleMedium,
                                 value: 'rss',
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -704,20 +695,6 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
       case 'feedback':
         _launchFeedback();
         break;
-      case 'layout':
-        await showModalBottomSheet<void>(
-          context: context,
-          backgroundColor: theme.secondaryHeaderColor,
-          barrierLabel: L.of(context)!.scrim_layout_selector,
-          shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(16.0),
-              topRight: Radius.circular(16.0),
-            ),
-          ),
-          builder: (context) => const LayoutSelectorWidget(),
-        );
-        break;
       case 'rss':
         await showPlatformDialog<void>(
           context: context,
@@ -750,23 +727,106 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                   L.of(context)!.ok_button_label,
                 ),
                 iosIsDefaultAction: true,
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                        settings: const RouteSettings(name: 'podcastdetails'),
-                        builder: (context) => PodcastDetails(Podcast.fromUrl(url: url), podcastBloc)),
-                  ).then((value) {
+                onPressed: () async {
+                  Navigator.of(context).pop(); // Close the dialog first
+                  
+                  // Show loading indicator
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (context) => const Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                  
+                  try {
+                    await _handleRssUrl(url);
+                  } catch (e) {
                     if (mounted) {
-                      Navigator.of(context).pop();
+                      Navigator.of(context).pop(); // Close loading dialog
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to load podcast: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
                     }
-                  });
+                  }
                 },
               ),
             ],
           ),
         );
         break;
+    }
+  }
+
+  Future<void> _handleRssUrl(String url) async {
+    try {
+      // Get services
+      final podcastApi = MobilePodcastApi();
+      final pinepodsService = PinepodsService();
+      
+      // Load podcast feed from RSS
+      final podcast = await podcastApi.loadFeed(url);
+      
+      // Create UnifiedPinepodsPodcast from the loaded feed
+      final unifiedPodcast = UnifiedPinepodsPodcast(
+        id: 0,
+        indexId: 0,
+        title: podcast.title ?? 'Unknown Podcast',
+        url: url,
+        originalUrl: url,
+        link: podcast.link ?? url,
+        description: podcast.description ?? '',
+        author: podcast.copyright ?? '',
+        ownerName: podcast.copyright ?? '',
+        image: podcast.image ?? '',
+        artwork: podcast.image ?? '',
+        lastUpdateTime: 0,
+        categories: null,
+        explicit: false,
+        episodeCount: podcast.episodes?.length ?? 0,
+      );
+      
+      // Check if podcast is already followed
+      bool isFollowing = false;
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      final settings = settingsBloc.currentSettings;
+      final userId = settings.pinepodsUserId;
+      
+      if (userId != null) {
+        try {
+          isFollowing = await pinepodsService.checkPodcastExists(
+            podcast.title ?? 'Unknown Podcast',
+            url,
+            userId,
+          );
+        } catch (e) {
+          print('Failed to check if podcast exists: $e');
+        }
+      }
+      
+      if (mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
+        
+        // Navigate to podcast details page
+        Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            settings: const RouteSettings(name: 'pinepodspodcastdetails'),
+            builder: (context) => PinepodsPodcastDetails(
+              podcast: unifiedPodcast,
+              isFollowing: isFollowing,
+              onFollowChanged: (following) {
+                // Handle follow state change if needed
+              },
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      rethrow;
     }
   }
 

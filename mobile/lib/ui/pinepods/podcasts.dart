@@ -10,6 +10,7 @@ import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_podcast_grid_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_podcast_tile.dart';
+import 'package:pinepods_mobile/ui/widgets/layout_selector.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -114,25 +115,67 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'Filter podcasts...',
-            prefixIcon: const Icon(Icons.search),
-            suffixIcon: _searchQuery.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                    },
-                  )
-                : null,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Filter podcasts...',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                          },
+                        )
+                      : null,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Theme.of(context).cardColor,
+                ),
+              ),
             ),
-            filled: true,
-            fillColor: Theme.of(context).cardColor,
-          ),
+            const SizedBox(width: 12),
+            Material(
+              color: Theme.of(context).cardColor,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () async {
+                  await showModalBottomSheet<void>(
+                    context: context,
+                    backgroundColor: Theme.of(context).secondaryHeaderColor,
+                    barrierLabel: L.of(context)!.scrim_layout_selector,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(16.0),
+                        topRight: Radius.circular(16.0),
+                      ),
+                    ),
+                    builder: (context) => const LayoutSelectorWidget(),
+                  );
+                },
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).dividerColor,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.dashboard,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
