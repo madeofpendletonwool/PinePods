@@ -110,6 +110,28 @@ pub struct EpisodeInfo {
     pub is_youtube: bool,
 }
 
+#[derive(Debug, Deserialize, Default, Clone, PartialEq, Serialize)]
+#[serde(default)] 
+pub struct EpisodeDownload {
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
+    pub downloadedlocation: Option<String>,
+    pub podcastid: i32,
+    pub podcastindexid: Option<i64>,
+    pub completed: bool,
+    pub queued: bool,
+    pub saved: bool,
+    pub downloaded: bool,
+    pub is_youtube: bool,
+}
+
 #[command]
 async fn update_local_db(mut episode_info: EpisodeInfo) -> Result<(), String> {
     let proj_dirs = get_project_dirs().map_err(|e| e.to_string())?;
@@ -183,7 +205,7 @@ async fn remove_from_local_db(episodeid: i32) -> Result<(), String> {
 }
 
 #[command]
-async fn get_local_episodes() -> Result<Vec<EpisodeInfo>, String> {
+async fn get_local_episodes() -> Result<Vec<EpisodeDownload>, String> {
     let proj_dirs = get_project_dirs().map_err(|e| e.to_string())?;
     let db_path = proj_dirs.data_dir().join("local_episodes.json");
 
@@ -192,9 +214,44 @@ async fn get_local_episodes() -> Result<Vec<EpisodeInfo>, String> {
     }
 
     let data = std::fs::read_to_string(&db_path).map_err(|e| e.to_string())?;
-    let episodes = serde_json::from_str::<Vec<EpisodeInfo>>(&data).map_err(|e| e.to_string())?;
+    println!("Raw JSON data: {}", data);
+    
+    // If JSON is corrupted, reset it and return empty
+    let episodes = match serde_json::from_str::<Vec<EpisodeInfo>>(&data) {
+        Ok(eps) => eps,
+        Err(e) => {
+            println!("JSON parsing error: {}, resetting file", e);
+            // Reset the file to empty array
+            std::fs::write(&db_path, "[]").map_err(|e| e.to_string())?;
+            return Ok(Vec::new());
+        }
+    };
 
-    Ok(episodes)
+    // Convert EpisodeInfo to EpisodeDownload
+    let converted_episodes: Vec<EpisodeDownload> = episodes
+        .into_iter()
+        .map(|ep| EpisodeDownload {
+            episodetitle: ep.episodetitle,
+            podcastname: ep.podcastname,
+            episodepubdate: ep.episodepubdate,
+            episodedescription: ep.episodedescription,
+            episodeartwork: ep.episodeartwork,
+            episodeurl: ep.episodeurl,
+            episodeduration: ep.episodeduration,
+            listenduration: ep.listenduration,
+            episodeid: ep.episodeid,
+            downloadedlocation: ep.downloadedlocation,
+            podcastid: ep.podcastid,
+            podcastindexid: ep.podcastindexid,
+            completed: ep.completed,
+            queued: ep.is_queued,
+            saved: ep.is_saved,
+            downloaded: ep.is_downloaded,
+            is_youtube: ep.is_youtube,
+        })
+        .collect();
+
+    Ok(converted_episodes)
 }
 
 #[command]
