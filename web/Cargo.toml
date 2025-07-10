@@ -99,4 +99,4 @@ server_build = []
 lto = true
 
 [target.wasm32-unknown-unknown]
-rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
+rustflags = ['--cfg', 'web_sys_unstable_apis', '--cfg', 'getrandom_backend="wasm_js"']

@@ -30,6 +30,7 @@ jobs:
 
     env:
       DEPENDS_SETUP: ${{ startsWith(matrix.os, 'ubuntu-') && 'true' || 'false' }}
+      RUSTFLAGS: ${{ matrix.os == 'windows-latest' && '--cfg=web_sys_unstable_apis --cfg getrandom_backend="wasm_js"' || '--cfg=web_sys_unstable_apis --cfg getrandom_backend="wasm_js"' }}
 
     steps:
       - name: Set Image Tag (Unix)
@@ -103,14 +104,17 @@ jobs:
 
       - name: wasm-addition
         run: |
+          export RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\""
           rustup target add wasm32-unknown-unknown
 
       - name: Install Trunk
         run: |
+          export RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\""
           cargo binstall trunk -y
 
       - name: Install Tauri
         run: |
+          export RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\""
           cargo install tauri-cli@2.0.0-rc.15 --locked
 
       - name: Update Tauri version (UNIX)
@@ -145,7 +149,8 @@ jobs:
         run: |
           cd web/src-tauri
           cat tauri.conf.json
-          export RUSTFLAGS="--cfg=web_sys_unstable_apis"
+          export RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\""
+          echo "RUSTFLAGS set to: $RUSTFLAGS"
           cargo tauri build
           pwd
           ls
@@ -157,7 +162,8 @@ jobs:
         run: |
           cd web/src-tauri
           Get-Content tauri.conf.json
-          $env:RUSTFLAGS="--cfg=web_sys_unstable_apis"
+          $env:RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=""wasm_js"""
+          echo "RUSTFLAGS set to: $env:RUSTFLAGS"
           cargo tauri build
           ls target/release/bundle
         shell: pwsh
