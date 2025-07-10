@@ -19,7 +19,7 @@ jobs:
           - ubuntu-arm64
           - macOS-latest
           - macOS-13
-          # - windows-latest
+          - windows-latest
         include:
           - os: ubuntu-arm64
             runs-on:
