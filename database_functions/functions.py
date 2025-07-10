@@ -35,6 +35,7 @@ from requests.exceptions import RequestException
 import shutil
 import tempfile
 import secrets
+import html
 
 # # Get the application root directory from the environment variable
 # app_root = os.environ.get('APP_ROOT')
@@ -6808,7 +6809,7 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                 feed.add_item(
                     title=str(episode.get('episodetitle', 'Untitled Episode')),
                     link=episode_url,
-                    description=str(episode.get('episodedescription', '')),
+                    description=html.unescape(str(episode.get('episodedescription', ''))),
                     unique_id=str(episode.get('episodeid', '')),
                     enclosure=feedgenerator.Enclosure(
                         url=episode_url,
