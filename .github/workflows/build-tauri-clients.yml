@@ -102,20 +102,47 @@ jobs:
           sudo apt install -qy libgtk-3-dev
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - name: wasm-addition
+      - name: wasm-addition (UNIX)
         run: |
           export RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\""
           rustup target add wasm32-unknown-unknown
+        shell: bash
+        if: ${{ matrix.os != 'windows-latest' }}
 
-      - name: Install Trunk
+      - name: wasm-addition (Windows)
+        run: |
+          $env:RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=""wasm_js"""
+          rustup target add wasm32-unknown-unknown
+        shell: pwsh
+        if: ${{ matrix.os == 'windows-latest' }}
+
+      - name: Install Trunk (UNIX)
         run: |
           export RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\""
           cargo binstall trunk -y
+        shell: bash
+        if: ${{ matrix.os != 'windows-latest' }}
 
-      - name: Install Tauri
+      - name: Install Trunk (Windows)
+        run: |
+          $env:RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=""wasm_js"""
+          cargo binstall trunk -y
+        shell: pwsh
+        if: ${{ matrix.os == 'windows-latest' }}
+
+      - name: Install Tauri (UNIX)
         run: |
           export RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\""
           cargo install tauri-cli@2.0.0-rc.15 --locked
+        shell: bash
+        if: ${{ matrix.os != 'windows-latest' }}
+
+      - name: Install Tauri (Windows)
+        run: |
+          $env:RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=""wasm_js"""
+          cargo install tauri-cli@2.0.0-rc.15 --locked
+        shell: pwsh
+        if: ${{ matrix.os == 'windows-latest' }}
 
       - name: Update Tauri version (UNIX)
         run: |
