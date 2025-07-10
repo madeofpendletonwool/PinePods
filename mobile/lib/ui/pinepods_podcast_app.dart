@@ -475,19 +475,6 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                                   ],
                                 ),
                               ),
-                              PopupMenuItem<String>(
-                                textStyle: Theme.of(context).textTheme.titleMedium,
-                                value: 'about',
-                                child: Row(
-                                  children: [
-                                    const Padding(
-                                      padding: EdgeInsets.only(right: 8.0),
-                                      child: Icon(Icons.info_outline, size: 18.0),
-                                    ),
-                                    Text(L.of(context)!.about_label),
-                                  ],
-                                ),
-                              ),
                             ];
                           },
                         ),
@@ -703,39 +690,6 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
     var url = '';
 
     switch (choice) {
-      case 'about':
-        showAboutDialog(
-          context: context,
-          applicationName: 'PinePods Podcast Player',
-          applicationVersion: 'v${Environment.projectVersion}',
-          applicationIcon: Image.asset(
-            'assets/images/pinepods-logo.png',
-            width: 52.0,
-            height: 52.0,
-          ),
-          children: <Widget>[
-            const Text('Copyright © 2025 Gooseberry Development'),
-            const SizedBox(height: 8.0),
-            const Text(
-              'The Pinepods Mobile App is an open-source podcast player adapted from the '
-                  'Anytime Podcast Player (© 2020 Ben Hills). Portions of this application '
-                  'retain the original BSD 3-Clause license.',
-            ),
-            GestureDetector(
-              onTap: () {
-                launchUrl(Uri.parse('https://github.com/amugofjava/anytime_podcast_player'));
-              },
-              child: Text(
-                'View original project on GitHub',
-                style: TextStyle(
-                  decoration: TextDecoration.underline,
-                  color: Theme.of(context).indicatorColor,
-                ),
-              ),
-            ),
-          ],
-        );
-        break;
 
       case 'settings':
         await Navigator.push(

@@ -5,6 +5,7 @@ import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/user_stats.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
+import 'package:pinepods_mobile/core/environment.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -32,7 +33,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
   void _initializeCredentials() {
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
-    
+
     if (settings.pinepodsServer != null && settings.pinepodsApiKey != null) {
       _pinepodsService.setCredentials(
         settings.pinepodsServer!,
@@ -196,9 +197,18 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
               ),
             ),
             const SizedBox(height: 16),
-            
+
             Text(
-              'Current Version: ${_pinepodsVersion ?? "Unknown"}',
+              'App Version: v${Environment.projectVersion}',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Server Version: ${_pinepodsVersion ?? "Unknown"}',
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
@@ -206,7 +216,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
-            
+
             Text(
               'Thanks for using PinePods! This app was born from a love for podcasts, of homelabs, and a desire to have a secure and central location to manage personal data.',
               style: TextStyle(
@@ -216,8 +226,44 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             
+            Text(
+              'Copyright © 2025 Gooseberry Development',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            
+            Text(
+              'The PinePods Mobile App is an open-source podcast player adapted from the Anytime Podcast Player (© 2020 Ben Hills). Portions of this application retain the original BSD 3-Clause license.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                height: 1.3,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            
+            GestureDetector(
+              onTap: () => _launchUrl('https://github.com/amugofjava/anytime_podcast_player'),
+              child: Text(
+                'View original project on GitHub',
+                style: TextStyle(
+                  fontSize: 12,
+                  decoration: TextDecoration.underline,
+                  color: Theme.of(context).primaryColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 20),
+
             // Buttons
             Column(
               children: [
@@ -257,6 +303,23 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
                     onPressed: () => _launchUrl('https://www.buymeacoffee.com/collinscoffee'),
                     icon: const Icon(Icons.coffee),
                     label: const Text('Buy me a Coffee'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      showLicensePage(context: context);
+                    },
+                    icon: const Icon(Icons.article_outlined),
+                    label: const Text('Open Source Licenses'),
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
@@ -360,14 +423,14 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
                           ),
                         ],
                       ),
-                      
+
                       const SizedBox(height: 16),
-                      
+
                       // Sync Status Card
                       _buildSyncStatusCard(),
-                      
+
                       const SizedBox(height: 16),
-                      
+
                       // Info Card
                       _buildInfoCard(),
                     ],

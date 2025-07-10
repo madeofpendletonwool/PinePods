@@ -12,16 +12,16 @@ Center bottom bar so that it looks good in horizontal
 android meta player logo
 listen time is crazy inconsistent. Most of the time not even working
 restart button on an episode just flatout doesn't work. It plays one second from the end and explodes
-Podcasts in home page doesn't work
 Move layout button to only podcasts page next to filter, remove from 3 dots menu
 links don't work - stats page
-filtering options on the podcasts page for quick search. also on history, saved, downloads.
 setting to go full screen default still doesn't work
-Organization of pages - Display history newest first, saved newest first
-
+logout page not always working after logout. Just navigates back to home screen
+inconsistent hits for username image and api
 Timecode skips in descriptions
 full screen player via scroll up, not just tap
 player on every page
 play button doesn't update to pause on single episode screen
+unknown hosts issue on pods without host data
+episode count doesn't work when pod clicked from podcasts page
 
 android auto

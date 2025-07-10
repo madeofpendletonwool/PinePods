@@ -4,6 +4,7 @@ import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/login_service.dart';
+import 'package:pinepods_mobile/ui/widgets/restart_widget.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -171,7 +172,7 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
     }
   }
 
-  void _logOut() {
+  void _logOut() async {
     var settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
 
     // Clear all PinePods user data
@@ -186,8 +187,14 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
       _connectedServer = null;
     });
 
-    // Navigate back to the login screen by popping all routes
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    // Wait for the settings to be processed and then restart the app
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (mounted) {
+        // Restart the entire app to reset all state
+        RestartWidget.restartApp(context);
+      }
+    });
   }
 
   @override

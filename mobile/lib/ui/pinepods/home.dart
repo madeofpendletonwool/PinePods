@@ -13,6 +13,8 @@ import 'package:pinepods_mobile/ui/pinepods/queue.dart';
 import 'package:pinepods_mobile/ui/pinepods/history.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlists.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
+import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
+import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -787,47 +789,80 @@ class _PodcastCard extends StatelessWidget {
 
   const _PodcastCard({required this.podcast});
 
+  UnifiedPinepodsPodcast _convertToUnifiedPodcast() {
+    return UnifiedPinepodsPodcast(
+      id: podcast.podcastId,
+      indexId: podcast.podcastIndexId ?? 0,
+      title: podcast.podcastName,
+      url: podcast.feedUrl ?? '',
+      originalUrl: podcast.feedUrl ?? '',
+      link: podcast.websiteUrl ?? '',
+      description: podcast.description ?? '',
+      author: podcast.author ?? '',
+      ownerName: podcast.author ?? '',
+      image: podcast.artworkUrl ?? '',
+      artwork: podcast.artworkUrl ?? '',
+      lastUpdateTime: 0,
+      categories: podcast.categories != null ? {'0': podcast.categories!} : null,
+      explicit: podcast.explicit ?? false,
+      episodeCount: podcast.episodeCount ?? 0,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 140,
-      child: Column(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              podcast.artworkUrl ?? '',
-              width: 140,
-              height: 140,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: 140,
-                  height: 140,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceVariant,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.podcasts,
-                    size: 48,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                );
-              },
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PinepodsPodcastDetails(
+              podcast: _convertToUnifiedPodcast(),
+              isFollowing: true,
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            podcast.podcastName,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w600,
+        );
+      },
+      child: SizedBox(
+        width: 140,
+        child: Column(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                podcast.artworkUrl ?? '',
+                width: 140,
+                height: 140,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: 140,
+                    height: 140,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.podcasts,
+                      size: 48,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  );
+                },
+              ),
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              podcast.podcastName,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -105,6 +105,16 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       
       setState(() {
         _episodes = episodes;
+        // Sort episodes by publication date (newest first)
+        _episodes.sort((a, b) {
+          try {
+            final dateA = DateTime.parse(a.episodePubDate);
+            final dateB = DateTime.parse(b.episodePubDate);
+            return dateB.compareTo(dateA); // Newest first
+          } catch (e) {
+            return 0; // Keep original order if parsing fails
+          }
+        });
         _filterEpisodes(); // Initialize filtered list
         _isLoading = false;
       });
