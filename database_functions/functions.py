@@ -6809,7 +6809,7 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
                 feed.add_item(
                     title=str(episode.get('episodetitle', 'Untitled Episode')),
                     link=episode_url,
-                    description=html.unescape(str(episode.get('episodedescription', ''))),
+                    description=str(episode.get('episodedescription', '')),
                     unique_id=str(episode.get('episodeid', '')),
                     enclosure=feedgenerator.Enclosure(
                         url=episode_url,
@@ -6830,6 +6830,12 @@ def generate_podcast_rss(database_type: str, cnx, rss_key: dict, limit: int, sou
         rss_content = rss_content.replace('&amp;user_id=', '&user_id=')
         rss_content = rss_content.replace('&amp;api_key=', '&api_key=')
         rss_content = rss_content.replace('&amp;type=', '&type=')
+        # Fix HTML entities that should be actual HTML tags in descriptions
+        rss_content = rss_content.replace('&lt;', '<')
+        rss_content = rss_content.replace('&gt;', '>')
+        rss_content = rss_content.replace('&quot;', '"')
+        rss_content = rss_content.replace('&apos;', "'")
+        # Note: Keep &amp; as-is since it's a valid XML entity
         return rss_content
 
     except Exception as e:
