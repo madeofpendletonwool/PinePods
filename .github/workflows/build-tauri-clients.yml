@@ -19,7 +19,7 @@ jobs:
           - ubuntu-arm64
           - macOS-latest
           - macOS-13
-          # - windows-latest
+          - windows-latest
         include:
           - os: ubuntu-arm64
             runs-on:
@@ -157,7 +157,7 @@ jobs:
         run: |
           cd web/src-tauri
           Get-Content tauri.conf.json
-          $env:RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=`"wasm_js`""
+          $env:RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\`"wasm_js\`""
           cargo tauri build
           ls target/release/bundle
         shell: pwsh
