@@ -32,11 +32,9 @@
   <url type="donation">https://github.com/sponsors/madeofpendletonwool</url>
 
   <releases>
-    <release version="0.7.6" date="2025-03-23">
+    <release version="0.7.9" date="2025-07-10">
       <description>
-        <p>I'm excited to announce PinePods 0.7.6, fully showing the power of the new notification system, things like episode downloads will now display percentages as they download in a brand new alert component that's been added. A worker system for background tasks that can be easily monitored on a per user basis so we can now get status of tasks as they execute was added back in version 0.7.4. Now we're starting to see what can be done with it. At this point I am confident Pinepods is the ultimate podcast archival tool. In the near future I will continue to migrate tasks over to this new system which will allow for even greater visibility into exactly what the server is doing. Think monitoring status of Nextcloud sync tasks etc.
-
-In addition this update further improves some findings after the previous 0.7.4 update as it was a big one!</p>
+        <p>Introducing PinePods 0.7.9 – a release focused on cleaning up loose ends, improving UI across devices, and delivering key backend improvements. From polished playback speed settings to major reliability boosts in how we handle migrations and feed generation.</p>
       </description>
     </release>
   </releases>
