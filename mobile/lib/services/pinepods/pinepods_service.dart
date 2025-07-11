@@ -2,6 +2,7 @@
 
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/user_stats.dart';
@@ -143,6 +144,18 @@ class PinepodsService {
         
         List<Podcast> podcasts = [];
         for (var podData in podsData) {
+          // Use episode count from server response
+          final episodeCount = podData['episodecount'] ?? 0;
+          
+          // Create placeholder episodes to represent the count
+          final placeholderEpisodes = List.generate(episodeCount, (index) => 
+            Episode(
+              guid: 'placeholder_$index',
+              podcast: podData['podcastname'] ?? '',
+              title: 'Episode ${index + 1}',
+            )
+          );
+          
           podcasts.add(Podcast(
             id: podData['podcastid'],
             title: podData['podcastname'] ?? '',
@@ -153,7 +166,7 @@ class PinepodsService {
             link: podData['websiteurl'] ?? '',
             copyright: podData['author'] ?? '',
             guid: podData['feedurl'] ?? '',
-            episodes: [],
+            episodes: placeholderEpisodes,
           ));
         }
         
