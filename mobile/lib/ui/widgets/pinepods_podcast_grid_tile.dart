@@ -32,7 +32,7 @@ class PinepodsPodcastGridTile extends StatelessWidget {
       lastUpdateTime: 0, // Default value
       categories: null,
       explicit: false, // Default value
-      episodeCount: 0, // Will be loaded from server
+      episodeCount: podcast.episodes.length, // Use actual episode count
     );
   }
 
@@ -93,7 +93,7 @@ class PinepodsPodcastTitledGridTile extends StatelessWidget {
       lastUpdateTime: 0, // Default value
       categories: null,
       explicit: false, // Default value
-      episodeCount: 0, // Will be loaded from server
+      episodeCount: podcast.episodes.length, // Use actual episode count
     );
   }
 

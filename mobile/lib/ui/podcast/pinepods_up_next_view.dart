@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/ui/widgets/draggable_queue_episode_card.dart';
 import 'package:provider/provider.dart';
+import 'dart:async';
 
 /// PinePods version of the Up Next queue that shows the server queue.
 ///
@@ -23,11 +25,52 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
   List<PinepodsEpisode> _queuedEpisodes = [];
   bool _isLoading = true;
   String? _errorMessage;
+  StreamSubscription? _episodeSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadQueue();
+    _listenToEpisodeChanges();
+  }
+
+  @override
+  void dispose() {
+    _episodeSubscription?.cancel();
+    super.dispose();
+  }
+
+  /// Listen to episode changes to refresh queue when episodes advance
+  void _listenToEpisodeChanges() {
+    try {
+      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
+      final episodeStream = audioPlayerService.episodeEvent;
+      
+      // Check if episodeEvent stream is available
+      if (episodeStream == null) {
+        print('Episode event stream not available');
+        return;
+      }
+      
+      String? lastEpisodeGuid;
+      
+      _episodeSubscription = episodeStream.listen((episode) {
+        // Only refresh if the episode actually changed (avoid unnecessary refreshes)
+        if (episode != null && episode.guid != lastEpisodeGuid && mounted) {
+          lastEpisodeGuid = episode.guid;
+          
+          // Add a small delay to ensure server queue has been updated
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              _loadQueue();
+            }
+          });
+        }
+      });
+    } catch (e) {
+      // Provider not available, continue without episode listening
+      print('Could not set up episode change listener: $e');
+    }
   }
 
   Future<void> _loadQueue() async {

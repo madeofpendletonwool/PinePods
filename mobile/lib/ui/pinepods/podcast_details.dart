@@ -567,8 +567,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     ],
                   ),
                   
-                  // Hosts section
-                  if (_hosts.isNotEmpty) ...[
+                  // Hosts section (filter out "Unknown Host" entries)
+                  if (_hosts.where((host) => host.name != "Unknown Host").isNotEmpty) ...[
                     const SizedBox(height: 16),
                     Text(
                       'Hosts',
@@ -581,11 +581,13 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     const SizedBox(height: 8),
                     SizedBox(
                       height: 80,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _hosts.length,
-                        itemBuilder: (context, index) {
-                          final host = _hosts[index];
+                      child: Builder(builder: (context) {
+                        final actualHosts = _hosts.where((host) => host.name != "Unknown Host").toList();
+                        return ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: actualHosts.length,
+                          itemBuilder: (context, index) {
+                            final host = actualHosts[index];
                           return Container(
                             width: 70,
                             margin: const EdgeInsets.only(right: 12),
@@ -626,7 +628,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                             ),
                           );
                         },
-                      ),
+                        );
+                      }),
                     ),
                   ],
                   
