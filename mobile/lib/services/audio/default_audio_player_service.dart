@@ -42,12 +42,20 @@ class DefaultAudioPlayerService extends AudioPlayerService {
   final Repository repository;
   final SettingsService settingsService;
   final PodcastService podcastService;
+  PinepodsAudioService? _pinepodsAudioService;
 
   late AudioHandler _audioHandler;
   var _initialised = false;
   var _cold = false;
   var _playbackSpeed = 1.0;
   var _trimSilence = false;
+  
+  /// Track episode start time for calculating listen duration
+  DateTime? _episodeStartTime;
+  
+  
+  /// Timer for local position saves (every 5 seconds)
+  Timer? _localPositionTimer;
   var _volumeBoost = false;
   var _queue = <Episode>[];
   var _sleep = Sleep(type: SleepType.none);
@@ -123,8 +131,95 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     });
   }
 
+  /// Set the PinepodsAudioService reference for listen duration tracking
+  void setPinepodsAudioService(PinepodsAudioService? service) {
+    _pinepodsAudioService = service;
+  }
+
+  /// Save episode position locally (every 5 seconds)
+  void _startLocalPositionSaver() {
+    _localPositionTimer?.cancel();
+    _localPositionTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _saveLocalPosition();
+    });
+  }
+
+  /// Stop local position saver
+  void _stopLocalPositionSaver() {
+    _localPositionTimer?.cancel();
+    _localPositionTimer = null;
+  }
+
+  /// Save position locally with higher frequency
+  Future<void> _saveLocalPosition() async {
+    if (_currentEpisode != null) {
+      final position = _audioHandler.playbackState.value.position.inMilliseconds;
+      _currentEpisode = Episode(
+        guid: _currentEpisode!.guid,
+        podcast: _currentEpisode!.podcast,
+        id: _currentEpisode!.id,
+        title: _currentEpisode!.title,
+        description: _currentEpisode!.description,
+        imageUrl: _currentEpisode!.imageUrl,
+        contentUrl: _currentEpisode!.contentUrl,
+        duration: _currentEpisode!.duration,
+        position: position,
+        played: _currentEpisode!.played,
+      );
+      await repository.saveEpisode(_currentEpisode!);
+      log.fine('Saved local position: ${position}ms for episode ${_currentEpisode!.title}');
+    }
+  }
+
+  /// Get the best position (furthest of local vs server)
+  Future<int> _getBestEpisodePosition(Episode episode) async {
+    // Get local position
+    final localPosition = episode.position;
+    
+    // Get server position if we have PinePods service
+    int serverPosition = 0;
+    if (_pinepodsAudioService != null) {
+      try {
+        // This would need to be implemented in PinepodsService
+        // For now, we'll use local position
+        serverPosition = localPosition;
+      } catch (e) {
+        log.warning('Failed to get server position: $e');
+      }
+    }
+    
+    // Return the furthest position
+    final bestPosition = localPosition > serverPosition ? localPosition : serverPosition;
+    log.info('Best position for ${episode.title}: ${bestPosition}ms (local: ${localPosition}ms, server: ${serverPosition}ms)');
+    return bestPosition;
+  }
+
+  /// Calculate and record listen duration
+  Future<void> _recordListenDuration() async {
+    if (_episodeStartTime == null || _pinepodsAudioService == null) return;
+    
+    final now = DateTime.now();
+    final sessionDuration = now.difference(_episodeStartTime!);
+    
+    // Only record meaningful listen time (at least 5 seconds)
+    if (sessionDuration.inSeconds >= 5) {
+      await _pinepodsAudioService!.recordListenDuration(sessionDuration.inSeconds.toDouble());
+      log.info('Recorded listen duration: ${sessionDuration.inSeconds}s');
+    }
+  }
+
   @override
-  Future<void> pause() async => _audioHandler.pause();
+  Future<void> pause() async {
+    // Record listen duration before pausing
+    await _recordListenDuration();
+    
+    // Stop local position saver while paused
+    _stopLocalPositionSaver();
+    
+    await _audioHandler.pause();
+    
+    log.info('Episode paused - listen duration recorded');
+  }
 
   @override
   Future<void> play() {
@@ -132,6 +227,11 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       _cold = false;
       return playEpisode(episode: _currentEpisode!, resume: true);
     } else {
+      // Restart tracking when resuming
+      _episodeStartTime = DateTime.now();
+      _startLocalPositionSaver();
+      log.info('Resumed episode tracking at ${_episodeStartTime}');
+      
       return _audioHandler.play();
     }
   }
@@ -179,6 +279,24 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       _currentEpisode = episode;
       _currentEpisode!.played = false;
 
+      // Get the best position (furthest of local vs server)
+      final bestPosition = await _getBestEpisodePosition(_currentEpisode!);
+      if (bestPosition > _currentEpisode!.position) {
+        _currentEpisode = Episode(
+          guid: _currentEpisode!.guid,
+          podcast: _currentEpisode!.podcast,
+          id: _currentEpisode!.id,
+          title: _currentEpisode!.title,
+          description: _currentEpisode!.description,
+          imageUrl: _currentEpisode!.imageUrl,
+          contentUrl: _currentEpisode!.contentUrl,
+          duration: _currentEpisode!.duration,
+          position: bestPosition,
+          played: _currentEpisode!.played,
+        );
+        log.info('Updated episode position to best available: ${bestPosition}ms');
+      }
+
       await repository.saveEpisode(_currentEpisode!);
 
       /// Update the state of the queue.
@@ -193,6 +311,14 @@ class DefaultAudioPlayerService extends AudioPlayerService {
         _loadEpisodeAncillaryItems();
 
         await _audioHandler.playMediaItem(_episodeToMediaItem(_currentEpisode!, uri));
+
+        // Track episode start time for listen duration calculation
+        _episodeStartTime = DateTime.now();
+        
+        // Start local position saving (every 5 seconds)
+        _startLocalPositionSaver();
+        
+        log.info('Started episode tracking at ${_episodeStartTime}');
 
         _currentEpisode!.duration = _audioHandler.mediaItem.value?.duration?.inSeconds ?? 0;
 
@@ -292,8 +418,16 @@ class DefaultAudioPlayerService extends AudioPlayerService {
 
   @override
   Future<void> stop() async {
+    // Record listen duration before stopping
+    await _recordListenDuration();
+    
+    // Stop local position saver
+    _stopLocalPositionSaver();
+    
     _currentEpisode = null;
     await _audioHandler.stop();
+    
+    log.info('Episode stopped - listen duration recorded');
   }
 
   @override
@@ -526,6 +660,12 @@ class DefaultAudioPlayerService extends AudioPlayerService {
 
   Future<void> _completed() async {
     await _saveCurrentEpisodePosition(complete: true);
+
+    // Record listen duration for completed episode
+    await _recordListenDuration();
+    
+    // Stop local position saver
+    _stopLocalPositionSaver();
 
     log.fine('We have completed episode ${_currentEpisode?.title}');
 

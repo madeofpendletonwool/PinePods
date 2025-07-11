@@ -32,6 +32,8 @@ import 'package:pinepods_mobile/services/podcast/mobile_opml_service.dart';
 import 'package:pinepods_mobile/services/podcast/mobile_podcast_service.dart';
 import 'package:pinepods_mobile/services/podcast/opml_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/settings/mobile_settings_service.dart';
 import 'package:pinepods_mobile/ui/library/discovery.dart';
 import 'package:pinepods_mobile/ui/library/downloads.dart';
@@ -116,6 +118,17 @@ class PinepodsPodcastApp extends StatefulWidget {
     );
 
     settingsBloc = SettingsBloc(mobileSettingsService);
+
+    // Create and connect PinepodsAudioService for listen duration tracking
+    final pinepodsService = PinepodsService();
+    final pinepodsAudioService = PinepodsAudioService(
+      audioPlayerService!,
+      pinepodsService,
+      settingsBloc!,
+    );
+
+    // Connect the services for listen duration recording
+    (audioPlayerService as DefaultAudioPlayerService).setPinepodsAudioService(pinepodsAudioService);
 
     opmlService = MobileOPMLService(
       podcastService: podcastService!,

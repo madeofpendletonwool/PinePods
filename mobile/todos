@@ -7,7 +7,6 @@ Remove weird notications on play
 Fix android homescreen icon
 Center bottom bar so that it looks good in horizontal
 android meta player logo
-listen time is crazy inconsistent. Most of the time not even working
 setting to go full screen default still doesn't work
 logout page not always working after logout. Just navigates back to home screen
 inconsistent hits for username image and api
@@ -15,5 +14,14 @@ Timecode skips in descriptions
 full screen player via scroll up, not just tap
 player on every page
 play button doesn't update to pause on single episode screen
+Update depends
+Fix gradle warnings
+print statements
+pay apples developer tax
+
+app stores
+    fdroid
+    apple
+    google
 
 android auto
