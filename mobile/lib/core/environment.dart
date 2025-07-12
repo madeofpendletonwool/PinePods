@@ -8,10 +8,16 @@ import 'dart:io';
 const podcastIndexKey = String.fromEnvironment('PINDEX_KEY', defaultValue: '');
 
 /// The secret required when searching via PodcastIndex.org.
-const podcastIndexSecret = String.fromEnvironment('PINDEX_SECRET', defaultValue: '');
+const podcastIndexSecret = String.fromEnvironment(
+  'PINDEX_SECRET',
+  defaultValue: '',
+);
 
 /// Allows a user to override the default user agent string.
-const userAgentAppString = String.fromEnvironment('USER_AGENT', defaultValue: '');
+const userAgentAppString = String.fromEnvironment(
+  'USER_AGENT',
+  defaultValue: '',
+);
 
 /// Link to a feedback form. This will be shown in the main overflow menu if set
 const feedbackUrl = String.fromEnvironment('FEEDBACK_URL', defaultValue: '');
@@ -24,17 +30,21 @@ const feedbackUrl = String.fromEnvironment('FEEDBACK_URL', defaultValue: '');
 /// using dart-define.
 class Environment {
   static const _applicationName = 'Pinepods';
-  static const _applicationUrl = 'https://github.com/madeofpendletonwool/pinepods';
-  static const _projectVersion = '0.7.8';
+  static const _applicationUrl =
+      'https://github.com/madeofpendletonwool/pinepods';
+  static const _projectVersion = '0.7.9';
   static const _build = '166';
 
   static var _agentString = userAgentAppString;
 
   static String userAgent() {
     if (_agentString.isEmpty) {
-      var platform = '${Platform.operatingSystem} ${Platform.operatingSystemVersion}'.trim();
+      var platform =
+          '${Platform.operatingSystem} ${Platform.operatingSystemVersion}'
+              .trim();
 
-      _agentString = '$_applicationName/$_projectVersion b$_build (phone;$platform) $_applicationUrl';
+      _agentString =
+          '$_applicationName/$_projectVersion b$_build (phone;$platform) $_applicationUrl';
     }
 
     return _agentString;

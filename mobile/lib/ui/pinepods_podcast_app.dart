@@ -6,10 +6,8 @@ import 'dart:async';
 
 import 'package:pinepods_mobile/api/podcast/mobile_podcast_api.dart';
 import 'package:pinepods_mobile/api/podcast/podcast_api.dart';
-import 'package:pinepods_mobile/bloc/discovery/discovery_bloc.dart';
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
 import 'package:pinepods_mobile/bloc/podcast/episode_bloc.dart';
-import 'package:pinepods_mobile/bloc/podcast/opml_bloc.dart';
 import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/bloc/podcast/queue_bloc.dart';
 import 'package:pinepods_mobile/bloc/search/search_bloc.dart';
@@ -28,14 +26,11 @@ import 'package:pinepods_mobile/services/audio/default_audio_player_service.dart
 import 'package:pinepods_mobile/services/download/download_service.dart';
 import 'package:pinepods_mobile/services/download/mobile_download_manager.dart';
 import 'package:pinepods_mobile/services/download/mobile_download_service.dart';
-import 'package:pinepods_mobile/services/podcast/mobile_opml_service.dart';
 import 'package:pinepods_mobile/services/podcast/mobile_podcast_service.dart';
-import 'package:pinepods_mobile/services/podcast/opml_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/settings/mobile_settings_service.dart';
-import 'package:pinepods_mobile/ui/library/discovery.dart';
 import 'package:pinepods_mobile/ui/library/downloads.dart';
 import 'package:pinepods_mobile/ui/library/library.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
@@ -84,7 +79,6 @@ class PinepodsPodcastApp extends StatefulWidget {
   late PodcastApi podcastApi;
   late DownloadService downloadService;
   late AudioPlayerService audioPlayerService;
-  late OPMLService opmlService;
   PodcastService? podcastService;
   SettingsBloc? settingsBloc;
   MobileSettingsService mobileSettingsService;
@@ -130,10 +124,6 @@ class PinepodsPodcastApp extends StatefulWidget {
     // Connect the services for listen duration recording
     (audioPlayerService as DefaultAudioPlayerService).setPinepodsAudioService(pinepodsAudioService);
 
-    opmlService = MobileOPMLService(
-      podcastService: podcastService!,
-      repository: repository,
-    );
 
     podcastApi.addClientAuthorityBytes(certificateAuthorityBytes);
   }
@@ -175,12 +165,6 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
           ),
           dispose: (_, value) => value.dispose(),
         ),
-        Provider<DiscoveryBloc>(
-          create: (_) => DiscoveryBloc(
-            podcastService: widget.podcastService!,
-          ),
-          dispose: (_, value) => value.dispose(),
-        ),
         Provider<EpisodeBloc>(
           create: (_) =>
               EpisodeBloc(podcastService: widget.podcastService!, audioPlayerService: widget.audioPlayerService),
@@ -205,10 +189,6 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
         Provider<SettingsBloc?>(
           create: (_) => widget.settingsBloc,
           dispose: (_, value) => value!.dispose(),
-        ),
-        Provider<OPMLBloc>(
-          create: (_) => OPMLBloc(opmlService: widget.opmlService),
-          dispose: (_, value) => value.dispose(),
         ),
         Provider<QueueBloc>(
           create: (_) => QueueBloc(

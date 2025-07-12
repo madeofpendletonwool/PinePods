@@ -2,15 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:pinepods_mobile/bloc/podcast/opml_bloc.dart';
 import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/core/utils.dart';
 import 'package:pinepods_mobile/entities/app_settings.dart';
 import 'package:pinepods_mobile/l10n/L.dart';
-import 'package:pinepods_mobile/state/opml_state.dart';
-import 'package:pinepods_mobile/ui/library/opml_export.dart';
-import 'package:pinepods_mobile/ui/library/opml_import.dart';
 import 'package:pinepods_mobile/ui/settings/episode_refresh.dart';
 import 'package:pinepods_mobile/ui/settings/search_provider.dart';
 import 'package:pinepods_mobile/ui/settings/settings_section_label.dart';
@@ -52,7 +48,6 @@ class _SettingsState extends State<Settings> {
   Widget _buildList(BuildContext context) {
     var settingsBloc = Provider.of<SettingsBloc>(context);
     var podcastBloc = Provider.of<PodcastBloc>(context);
-    var opmlBloc = Provider.of<OPMLBloc>(context);
 
     return StreamBuilder<AppSettings>(
         stream: settingsBloc.settings,

@@ -1,11 +1,11 @@
 name: pinepods_mobile
 description: Pinepods Podcast Server
 
-version: 0.7.8
+version: 0.7.9001
 
 environment:
-  sdk: '>=3.8.0 <4.0.0'
-  flutter: '>=3.32.0'
+  sdk: ">=3.8.0 <4.0.0"
+  flutter: ">=3.32.0"
 
 dependencies:
   accessibility_tools: ^2.3.0
@@ -125,4 +125,3 @@ flutter:
     - family: MontserratBold
       fonts:
         - asset: assets/fonts/Montserrat-Bold.otf
-

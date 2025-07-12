@@ -1,9 +1,10 @@
 Searching functionality
 	- Allow playing even if pod isn't added
-clean out old code/db stuff
 setting to go full screen default still doesn't work
-Update depends
-Fix gradle warnings
+
+Clicking to a podcast from episode details page results in 0 episode count
+Host links don't work in podcast detail page or episode detail page, currenlty they only work on full player description page
+
 print statements
 pay apples developer tax
 
