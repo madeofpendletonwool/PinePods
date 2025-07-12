@@ -199,6 +199,12 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
             episodeArtwork: _searchResults[episodeIndex].episodeArtwork,
             episodeUrl: _searchResults[episodeIndex].episodeUrl,
             episodeDuration: _searchResults[episodeIndex].episodeDuration,
+            completed: _searchResults[episodeIndex].completed,
+            saved: true, // We just saved it
+            queued: _searchResults[episodeIndex].queued,
+            downloaded: _searchResults[episodeIndex].downloaded,
+            isYoutube: _searchResults[episodeIndex].isYoutube,
+            listenDuration: _searchResults[episodeIndex].listenDuration,
           );
         });
       } else if (mounted) {

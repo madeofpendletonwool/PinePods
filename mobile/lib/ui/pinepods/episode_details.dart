@@ -8,6 +8,7 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/person.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_html.dart';
+import 'package:pinepods_mobile/ui/widgets/episode_description.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
@@ -149,6 +150,53 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
       );
     } catch (e) {
       _showSnackBar('Failed to play episode: ${e.toString()}', Colors.red);
+    }
+  }
+
+  Future<void> _handleTimestampTap(Duration timestamp) async {
+    _initializeAudioService();
+    
+    if (_audioService == null) {
+      _showSnackBar('Audio service not available', Colors.red);
+      return;
+    }
+
+    try {
+      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
+      
+      // Check if this episode is currently playing
+      final currentEpisode = audioPlayerService.nowPlaying;
+      final isCurrentEpisode = currentEpisode != null && 
+          currentEpisode.guid == _episode!.episodeUrl;
+      
+      if (!isCurrentEpisode) {
+        // Start playing the episode first
+        await _audioService!.playPinepodsEpisode(
+          pinepodsEpisode: _episode!,
+          resume: false, // Start from beginning initially
+        );
+        
+        // Wait a moment for the episode to start loading
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      
+      // Seek to the timestamp (convert Duration to seconds as int)
+      await audioPlayerService.seek(position: timestamp.inSeconds);
+      
+    } catch (e) {
+      _showSnackBar('Failed to jump to timestamp: ${e.toString()}', Colors.red);
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+    
+    if (hours > 0) {
+      return '${hours.toString().padLeft(1, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    } else {
+      return '${minutes.toString().padLeft(1, '0')}:${seconds.toString().padLeft(2, '0')}';
     }
   }
 
@@ -761,14 +809,17 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
               ),
             ),
             const SizedBox(height: 12),
-            PodcastHtml(content: _episode!.episodeDescription),
-                ],
+            EpisodeDescription(
+              content: _episode!.episodeDescription,
+              onTimestampTap: _handleTimestampTap,
+            ),
+                  ],
+                ),
               ),
             ),
-          ),
-          const MiniPlayer(),
-        ],
-      ),
+            const MiniPlayer(),
+          ],
+        ),
     );
   }
 

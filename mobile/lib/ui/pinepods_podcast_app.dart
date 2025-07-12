@@ -402,9 +402,16 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                                   appBar: AppBar(
                                     title: const Text('Queue'),
                                   ),
-                                  body: const CustomScrollView(
-                                    slivers: [
-                                      PinepodsQueue(),
+                                  body: const Column(
+                                    children: [
+                                      Expanded(
+                                        child: CustomScrollView(
+                                          slivers: [
+                                            PinepodsQueue(),
+                                          ],
+                                        ),
+                                      ),
+                                      MiniPlayer(),
                                     ],
                                   ),
                                 ),
@@ -574,51 +581,97 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                         ),
                       ),
                     ),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: navItems.asMap().entries.map((entry) {
-                          int itemIndex = entry.key;
-                          BottomNavItem item = entry.value;
-                          
-                          return GestureDetector(
-                            onTap: () => pager.changePage(itemIndex),
-                            child: Container(
-                              width: 80,
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    item.icon,
-                                    color: item.isSelected
-                                        ? Theme.of(context).iconTheme.color
-                                        : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
-                                            .withLightness(0.8)
-                                            .toColor(),
-                                    size: 24,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    item.label,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: item.isSelected
-                                          ? Theme.of(context).iconTheme.color
-                                          : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
-                                              .withLightness(0.8)
-                                              .toColor(),
-                                      fontWeight: item.isSelected ? FontWeight.w600 : FontWeight.normal,
+                    child: MediaQuery.of(context).orientation == Orientation.landscape
+                        ? Center(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: navItems.asMap().entries.map((entry) {
+                                int itemIndex = entry.key;
+                                BottomNavItem item = entry.value;
+                                
+                                return GestureDetector(
+                                  onTap: () => pager.changePage(itemIndex),
+                                  child: Container(
+                                    width: 80,
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          item.icon,
+                                          color: item.isSelected
+                                              ? Theme.of(context).iconTheme.color
+                                              : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
+                                                  .withLightness(0.8)
+                                                  .toColor(),
+                                          size: 24,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          item.label,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: item.isSelected
+                                                ? Theme.of(context).iconTheme.color
+                                                : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
+                                                    .withLightness(0.8)
+                                                    .toColor(),
+                                            fontWeight: item.isSelected ? FontWeight.w600 : FontWeight.normal,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
                                     ),
-                                    textAlign: TextAlign.center,
                                   ),
-                                ],
-                              ),
+                                );
+                              }).toList(),
                             ),
-                          );
-                        }).toList(),
-                      ),
-                    ),
+                          )
+                        : SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: navItems.asMap().entries.map((entry) {
+                                int itemIndex = entry.key;
+                                BottomNavItem item = entry.value;
+                                
+                                return GestureDetector(
+                                  onTap: () => pager.changePage(itemIndex),
+                                  child: Container(
+                                    width: 80,
+                                    padding: const EdgeInsets.symmetric(vertical: 8),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          item.icon,
+                                          color: item.isSelected
+                                              ? Theme.of(context).iconTheme.color
+                                              : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
+                                                  .withLightness(0.8)
+                                                  .toColor(),
+                                          size: 24,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          item.label,
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: item.isSelected
+                                                ? Theme.of(context).iconTheme.color
+                                                : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
+                                                    .withLightness(0.8)
+                                                    .toColor(),
+                                            fontWeight: item.isSelected ? FontWeight.w600 : FontWeight.normal,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
                   );
                 }
               );

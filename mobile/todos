@@ -1,22 +1,27 @@
 Searching functionality
 	- Allow playing even if pod isn't added
-oidc login
-dynamic play everyehere play, to highlight play to check
+home episodes missing saved etc.
 clean out old code/db stuff
-Remove weird notications on play
-Fix android homescreen icon
-Center bottom bar so that it looks good in horizontal
 setting to go full screen default still doesn't work
-logout page not always working after logout. Just navigates back to home screen
 inconsistent hits for username image and api
-Timecode skips in descriptions
 full screen player via scroll up, not just tap
-on episode page player goes too high. Needs padding
 play button doesn't update to pause on single episode screen
 Update depends
 Fix gradle warnings
 print statements
 pay apples developer tax
+
+pre-release
+fix search on web
+return saved, downloaded, queued status on user_history call - double check app hsitory page
+
+post beta
+---
+oidc login
+logout page not always working after logout. Just navigates back to home screen
+on episode page player goes too high. Needs padding
+Fix android homescreen icon
+
 
 app stores
     fdroid

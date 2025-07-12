@@ -103,50 +103,61 @@ class PinepodsEpisodeCard extends StatelessWidget {
                 ),
               ),
               
-              // Action button (just play) - only show if callback provided
-              if (onPlayPressed != null)
-                IconButton(
-                  icon: Icon(
-                    episode.completed ? Icons.replay : Icons.play_arrow,
-                    color: Theme.of(context).primaryColor,
-                  ),
-                  onPressed: onPlayPressed,
-                  iconSize: 24,
-                  padding: const EdgeInsets.all(8),
-                  constraints: const BoxConstraints(
-                    minWidth: 40,
-                    minHeight: 40,
-                  ),
-                ),
-              
-              // Status indicators (compact)
-              if (episode.saved || episode.downloaded || episode.queued)
-                SizedBox(
-                  width: 20,
-                  child: Column(
+              // Status indicators and play button
+              Column(
+                children: [
+                  if (onPlayPressed != null)
+                    IconButton(
+                      onPressed: onPlayPressed,
+                      icon: Icon(
+                        episode.completed 
+                          ? Icons.check_circle 
+                          : ((episode.listenDuration != null && episode.listenDuration! > 0) 
+                              ? Icons.play_circle_filled 
+                              : Icons.play_circle_outline),
+                        color: episode.completed 
+                          ? Colors.green 
+                          : Theme.of(context).primaryColor,
+                        size: 28,
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
+                    ),
+                  const SizedBox(height: 4),
+                  Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (episode.saved)
                         Icon(
                           Icons.bookmark,
+                          size: 16,
                           color: Colors.orange[600],
-                          size: 14,
                         ),
                       if (episode.downloaded)
-                        Icon(
-                          Icons.download_done,
-                          color: Colors.blue[600],
-                          size: 14,
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Icon(
+                            Icons.download_done,
+                            size: 16,
+                            color: Colors.green[600],
+                          ),
                         ),
                       if (episode.queued)
-                        Icon(
-                          Icons.queue_music,
-                          color: Colors.purple[600],
-                          size: 14,
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Icon(
+                            Icons.queue_music,
+                            size: 16,
+                            color: Colors.blue[600],
+                          ),
                         ),
                     ],
                   ),
-                ),
+                ],
+              ),
             ],
           ),
         ),

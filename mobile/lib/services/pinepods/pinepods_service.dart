@@ -785,9 +785,9 @@ class PinepodsService {
             listenDuration: episodeData['listenduration'] ?? 0,
             episodeId: episodeData['episodeid'] ?? 0,
             completed: episodeData['completed'] ?? false,
-            saved: false, // History doesn't track saved status directly, would need separate query
-            queued: false, // History doesn't track queued status directly, would need separate query
-            downloaded: false, // History doesn't track downloaded status directly, would need separate query
+            saved: episodeData['saved'] ?? false,
+            queued: episodeData['queued'] ?? false,
+            downloaded: episodeData['downloaded'] ?? false,
             isYoutube: episodeData['is_youtube'] ?? false,
           );
         }).toList();
@@ -2073,6 +2073,12 @@ class SearchEpisodeResult {
   final String episodeArtwork;
   final String episodeUrl;
   final int episodeDuration;
+  final bool completed;
+  final bool saved;
+  final bool queued;
+  final bool downloaded;
+  final bool isYoutube;
+  final int? listenDuration;
 
   SearchEpisodeResult({
     required this.podcastId,
@@ -2093,6 +2099,12 @@ class SearchEpisodeResult {
     required this.episodeArtwork,
     required this.episodeUrl,
     required this.episodeDuration,
+    required this.completed,
+    required this.saved,
+    required this.queued,
+    required this.downloaded,
+    required this.isYoutube,
+    this.listenDuration,
   });
 
   factory SearchEpisodeResult.fromJson(Map<String, dynamic> json) {
@@ -2115,6 +2127,12 @@ class SearchEpisodeResult {
       episodeArtwork: json['episodeartwork'] ?? '',
       episodeUrl: json['episodeurl'] ?? '',
       episodeDuration: json['episodeduration'] ?? 0,
+      completed: json['completed'] ?? false,
+      saved: json['saved'] ?? false,
+      queued: json['queued'] ?? false,
+      downloaded: json['downloaded'] ?? false,
+      isYoutube: json['is_youtube'] ?? false,
+      listenDuration: json['listenduration'],
     );
   }
 
@@ -2128,13 +2146,13 @@ class SearchEpisodeResult {
       episodeArtwork: episodeArtwork.isNotEmpty ? episodeArtwork : artworkUrl,
       episodeUrl: episodeUrl,
       episodeDuration: episodeDuration,
-      listenDuration: null,
+      listenDuration: listenDuration,
       episodeId: episodeId,
-      completed: false,
-      saved: false,
-      queued: false,
-      downloaded: false,
-      isYoutube: false,
+      completed: completed,
+      saved: saved,
+      queued: queued,
+      downloaded: downloaded,
+      isYoutube: isYoutube,
     );
   }
 }
