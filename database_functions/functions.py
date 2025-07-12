@@ -10300,23 +10300,37 @@ def update_playlist_contents(cnx, database_type, playlist):
                 ep_details = cursor.fetchone()
                 print(f"First episode details: {ep_details}")
 
-        # Insert episodes into playlist
-        for position, episode in enumerate(episodes):
-            if isinstance(episode, dict):
-                episode_id = episode.get('episodeid')
-            else:
-                episode_id = episode[0]
+        # Insert episodes into playlist using batch insert for better performance
+        if episode_count > 0:
+            # Prepare batch data
+            batch_data = []
+            for position, episode in enumerate(episodes):
+                if isinstance(episode, dict):
+                    episode_id = episode.get('episodeid')
+                else:
+                    episode_id = episode[0]
+                batch_data.append((playlist['playlistid'], episode_id, position))
 
-            if database_type == "postgresql":
-                cursor.execute("""
-                    INSERT INTO "PlaylistContents" (playlistid, episodeid, position)
-                    VALUES (%s, %s, %s)
-                """, (playlist['playlistid'], episode_id, position))
-            else:  # MySQL
-                cursor.execute("""
-                    INSERT INTO PlaylistContents (playlistid, episodeid, position)
-                    VALUES (%s, %s, %s)
-                """, (playlist['playlistid'], episode_id, position))
+            # Use batch insert with appropriate chunk size to prevent memory issues
+            chunk_size = 1000  # Process in chunks of 1000 episodes
+            
+            for i in range(0, len(batch_data), chunk_size):
+                chunk = batch_data[i:i + chunk_size]
+                
+                if database_type == "postgresql":
+                    # PostgreSQL supports executemany efficiently
+                    cursor.executemany("""
+                        INSERT INTO "PlaylistContents" (playlistid, episodeid, position)
+                        VALUES (%s, %s, %s)
+                    """, chunk)
+                else:  # MySQL
+                    # MySQL batch insert with VALUES clause
+                    placeholders = ','.join(['(%s, %s, %s)'] * len(chunk))
+                    flat_data = [item for row in chunk for item in row]
+                    cursor.execute(f"""
+                        INSERT INTO PlaylistContents (playlistid, episodeid, position)
+                        VALUES {placeholders}
+                    """, flat_data)
 
         # Update LastUpdated timestamp
         if database_type == "postgresql":
