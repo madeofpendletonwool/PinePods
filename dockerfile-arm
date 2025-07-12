@@ -26,6 +26,25 @@ RUN cargo install --locked wasm-bindgen-cli
 # Build the Yew application in release mode
 RUN RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"" trunk build --features server_build --release
 
+# Go builder stage for the gpodder API
+FROM golang:alpine AS go-builder
+WORKDIR /gpodder-api
+
+# Install build dependencies
+RUN apk add --no-cache git
+
+# Copy go module files first for better layer caching
+COPY ./gpodder-api/go.mod ./gpodder-api/go.sum ./
+RUN go mod download
+
+# Copy the rest of the source code
+COPY ./gpodder-api/cmd ./cmd
+COPY ./gpodder-api/config ./config
+COPY ./gpodder-api/internal ./internal
+
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -o gpodder-api ./cmd/server/
+
 # Final stage for setting up runtime environment
 FROM alpine
 # Metadata
@@ -55,6 +74,9 @@ RUN chmod +x /wait-for-it.sh
 
 # Copy built files from the builder stage
 COPY --from=builder /app/dist /var/www/html/
+
+# Copy Go API binary from the go-builder stage
+COPY --from=go-builder /gpodder-api/gpodder-api /usr/local/bin/
 
 # Set up application directories and files
 WORKDIR /
