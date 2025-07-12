@@ -81,7 +81,13 @@ class MobilePodcastApi extends PodcastApi {
 
   @override
   Future<podcast_search.Chapters> loadChapters(String url) async {
-    return podcast_search.Podcast.loadChaptersByUrl(url: url);
+    // In podcast_search 0.7.11, load chapters using Feed.loadChaptersByUrl
+    try {
+      return await podcast_search.Feed.loadChaptersByUrl(url: url);
+    } catch (e) {
+      // Fallback: create empty chapters if loading fails
+      return podcast_search.Chapters(url: url);
+    }
   }
 
   @override
@@ -100,8 +106,23 @@ class MobilePodcastApi extends PodcastApi {
         break;
     }
 
-    return podcast_search.Podcast.loadTranscriptByUrl(
-        transcriptUrl: podcast_search.TranscriptUrl(url: transcriptUrl.url, type: format));
+    // In podcast_search 0.7.11, load transcript using Feed.loadTranscriptByUrl
+    try {
+      // Create a podcast_search.TranscriptUrl from our local TranscriptUrl
+      final searchTranscriptUrl = podcast_search.TranscriptUrl(
+        url: transcriptUrl.url,
+        type: format,
+        language: transcriptUrl.language ?? '',
+        rel: transcriptUrl.rel ?? '',
+      );
+      
+      return await podcast_search.Feed.loadTranscriptByUrl(
+        transcriptUrl: searchTranscriptUrl
+      );
+    } catch (e) {
+      // Fallback: create empty transcript if loading fails
+      return podcast_search.Transcript();
+    }
   }
 
   static Future<podcast_search.SearchResult> _search(Map<String, String?> searchParams) {
@@ -142,7 +163,8 @@ class MobilePodcastApi extends PodcastApi {
 
   Future<podcast_search.Podcast> _loadFeed(String url) {
     _setupSecurityContext();
-    return podcast_search.Podcast.loadFeed(url: url, userAgent: Environment.userAgent());
+    // In podcast_search 0.7.11, use Feed.loadFeed or create a Feed instance
+    return podcast_search.Feed.loadFeed(url: url, userAgent: Environment.userAgent());
   }
 
   void _setupSecurityContext() {

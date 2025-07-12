@@ -172,7 +172,7 @@ class DownloadControl extends StatelessWidget {
                   return Opacity(
                     opacity: 0.2,
                     child: DownloadButton(
-                      onPressed: () {},
+                      onPressed: () => podcastBloc.downloadEpisode(episode),
                       title: episode.title!,
                       icon: Icons.save_alt,
                       percent: 0,
@@ -183,7 +183,7 @@ class DownloadControl extends StatelessWidget {
                   return Opacity(
                     opacity: 0.2,
                     child: DownloadButton(
-                      onPressed: () {},
+                      onPressed: () => podcastBloc.downloadEpisode(episode),
                       title: episode.title!,
                       icon: Icons.check,
                       percent: 0,
@@ -196,7 +196,7 @@ class DownloadControl extends StatelessWidget {
 
             if (episode.downloadState == DownloadState.downloaded) {
               return DownloadButton(
-                onPressed: () {},
+                onPressed: () => podcastBloc.downloadEpisode(episode),
                 title: episode.title!,
                 icon: Icons.check,
                 percent: 0,

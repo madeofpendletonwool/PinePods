@@ -2,7 +2,6 @@ Searching functionality
 	- Allow playing even if pod isn't added
 clean out old code/db stuff
 setting to go full screen default still doesn't work
-full screen player via scroll up, not just tap
 Update depends
 Fix gradle warnings
 print statements
@@ -18,6 +17,7 @@ oidc login
 logout page not always working after logout. Just navigates back to home screen
 on episode page player goes too high. Needs padding
 Fix android homescreen icon
+full screen player via scroll up, not just tap
 
 
 app stores

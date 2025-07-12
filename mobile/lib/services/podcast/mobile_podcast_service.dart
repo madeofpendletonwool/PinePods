@@ -278,6 +278,9 @@ class MobilePodcastService extends PodcastService {
             case podcast_search.TranscriptFormat.json:
               type = TranscriptFormat.json;
               break;
+            case podcast_search.TranscriptFormat.vtt:
+              type = TranscriptFormat.subrip; // Map VTT to subrip for now
+              break;
             case podcast_search.TranscriptFormat.unsupported:
               type = TranscriptFormat.unsupported;
               break;

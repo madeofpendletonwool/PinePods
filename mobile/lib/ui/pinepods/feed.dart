@@ -715,6 +715,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
             },
             onLongPress: () => _showContextMenu(episodeIndex),
             onPlayPressed: () => _playEpisode(_episodes[episodeIndex]),
+            onDownloadPressed: () => _downloadEpisode(episodeIndex),
           );
         },
         childCount: _episodes.length + 1, // +1 for header

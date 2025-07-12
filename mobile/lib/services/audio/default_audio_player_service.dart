@@ -154,18 +154,10 @@ class DefaultAudioPlayerService extends AudioPlayerService {
   Future<void> _saveLocalPosition() async {
     if (_currentEpisode != null) {
       final position = _audioHandler.playbackState.value.position.inMilliseconds;
-      _currentEpisode = Episode(
-        guid: _currentEpisode!.guid,
-        podcast: _currentEpisode!.podcast,
-        id: _currentEpisode!.id,
-        title: _currentEpisode!.title,
-        description: _currentEpisode!.description,
-        imageUrl: _currentEpisode!.imageUrl,
-        contentUrl: _currentEpisode!.contentUrl,
-        duration: _currentEpisode!.duration,
-        position: position,
-        played: _currentEpisode!.played,
-      );
+      
+      // Update position directly instead of creating new instance to preserve chapter data
+      _currentEpisode!.position = position;
+      
       await repository.saveEpisode(_currentEpisode!);
       log.fine('Saved local position: ${position}ms for episode ${_currentEpisode!.title}');
     }
@@ -282,18 +274,8 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       // Get the best position (furthest of local vs server)
       final bestPosition = await _getBestEpisodePosition(_currentEpisode!);
       if (bestPosition > _currentEpisode!.position) {
-        _currentEpisode = Episode(
-          guid: _currentEpisode!.guid,
-          podcast: _currentEpisode!.podcast,
-          id: _currentEpisode!.id,
-          title: _currentEpisode!.title,
-          description: _currentEpisode!.description,
-          imageUrl: _currentEpisode!.imageUrl,
-          contentUrl: _currentEpisode!.contentUrl,
-          duration: _currentEpisode!.duration,
-          position: bestPosition,
-          played: _currentEpisode!.played,
-        );
+        // Update position directly instead of creating new instance to preserve chapter data
+        _currentEpisode!.position = bestPosition;
         log.info('Updated episode position to best available: ${bestPosition}ms');
       }
 
@@ -912,7 +894,17 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       // The episode may have been updated elsewhere - re-fetch it.
       var currentPosition = _audioHandler.playbackState.value.position.inMilliseconds;
 
+      // Preserve chapter data and current chapter before re-fetching
+      final originalChapters = _currentEpisode!.chapters;
+      final originalCurrentChapter = _currentEpisode!.currentChapter;
+      final originalChaptersLoading = _currentEpisode!.chaptersLoading;
+
       _currentEpisode = await repository.findEpisodeByGuid(_currentEpisode!.guid);
+
+      // Restore chapter data after re-fetching
+      _currentEpisode!.chapters = originalChapters;
+      _currentEpisode!.currentChapter = originalCurrentChapter;
+      _currentEpisode!.chaptersLoading = originalChaptersLoading;
 
       log.fine(
           '_saveCurrentEpisodePosition(): Current position is $currentPosition - stored position is ${_currentEpisode!.position} complete is $complete');
@@ -922,6 +914,11 @@ class DefaultAudioPlayerService extends AudioPlayerService {
         _currentEpisode!.played = complete;
 
         _currentEpisode = await repository.saveEpisode(_currentEpisode!);
+        
+        // Restore chapter data again after saving
+        _currentEpisode!.chapters = originalChapters;
+        _currentEpisode!.currentChapter = originalCurrentChapter;
+        _currentEpisode!.chaptersLoading = originalChaptersLoading;
       }
     } else {
       log.fine(' - Cannot save position as episode is null');
@@ -1010,7 +1007,10 @@ class DefaultAudioPlayerService extends AudioPlayerService {
         if (seconds >= startTime && seconds < endTime) {
           if (chapters[chapterPtr] != _currentEpisode!.currentChapter) {
             _currentEpisode!.currentChapter = chapters[chapterPtr];
-            _episodeEvent.sink.add(_currentEpisode);
+            // Force a new episode state by creating a copy to ensure UI updates
+            _episodeEvent.sink.add(_currentEpisode!);
+            // Also update the now playing stream to force UI refresh
+            _updateEpisodeState();
             break;
           }
         }

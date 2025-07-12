@@ -47,7 +47,8 @@ class _MiniPlayerBuilder extends StatefulWidget {
   _MiniPlayerBuilderState createState() => _MiniPlayerBuilderState();
 }
 
-class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder> with SingleTickerProviderStateMixin {
+class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder>
+    with SingleTickerProviderStateMixin {
   late AnimationController _playPauseController;
   late StreamSubscription<AudioState> _audioStateSubscription;
 
@@ -55,7 +56,8 @@ class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder> with SingleTicke
   void initState() {
     super.initState();
 
-    _playPauseController = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+    _playPauseController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300));
     _playPauseController.value = 1;
 
     _audioStateListener();
@@ -100,7 +102,8 @@ class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder> with SingleTicke
               isScrollControlled: true,
               builder: (BuildContext modalContext) {
                 return Padding(
-                  padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+                  padding:
+                      EdgeInsets.only(top: MediaQuery.of(context).padding.top),
                   child: const NowPlaying(),
                 );
               },
@@ -117,8 +120,10 @@ class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder> with SingleTicke
             decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
                 border: Border(
-                  top: Divider.createBorderSide(context, width: 1.0, color: Theme.of(context).dividerColor),
-                  bottom: Divider.createBorderSide(context, width: 0.0, color: Theme.of(context).dividerColor),
+                  top: Divider.createBorderSide(context,
+                      width: 1.0, color: Theme.of(context).dividerColor),
+                  bottom: Divider.createBorderSide(context,
+                      width: 0.0, color: Theme.of(context).dividerColor),
                 )),
             child: Padding(
               padding: const EdgeInsets.only(left: 4.0, right: 4.0),
@@ -133,7 +138,8 @@ class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder> with SingleTicke
                         return StreamBuilder<AudioState>(
                             stream: audioBloc.playingState,
                             builder: (context, stateSnapshot) {
-                              var playing = stateSnapshot.data == AudioState.playing;
+                              var playing =
+                                  stateSnapshot.data == AudioState.playing;
 
                               return Row(
                                 mainAxisAlignment: MainAxisAlignment.start,
@@ -146,21 +152,27 @@ class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder> with SingleTicke
                                         padding: const EdgeInsets.all(8.0),
                                         child: snapshot.hasData
                                             ? PodcastImage(
-                                                key: Key('mini${snapshot.data!.imageUrl}'),
+                                                key: Key(
+                                                    'mini${snapshot.data!.imageUrl}'),
                                                 url: snapshot.data!.imageUrl!,
                                                 width: 58.0,
                                                 height: 58.0,
                                                 borderRadius: 4.0,
-                                                placeholder: placeholderBuilder != null
-                                                    ? placeholderBuilder.builder()(context)
+                                                placeholder: placeholderBuilder !=
+                                                        null
+                                                    ? placeholderBuilder
+                                                        .builder()(context)
                                                     : const Image(
-                                                        image:
-                                                            AssetImage('assets/images/favicon.png')),
-                                                errorPlaceholder: placeholderBuilder != null
-                                                    ? placeholderBuilder.errorBuilder()(context)
-                                                    : const Image(
-                                                        image:
-                                                            AssetImage('assets/images/favicon.png')),
+                                                        image: AssetImage(
+                                                            'assets/images/favicon.png')),
+                                                errorPlaceholder:
+                                                    placeholderBuilder != null
+                                                        ? placeholderBuilder
+                                                                .errorBuilder()(
+                                                            context)
+                                                        : const Image(
+                                                            image: AssetImage(
+                                                                'assets/images/favicon.png')),
                                               )
                                             : Container(),
                                       ),
@@ -169,8 +181,10 @@ class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder> with SingleTicke
                                   Expanded(
                                       flex: 1,
                                       child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: <Widget>[
                                           Text(
                                             snapshot.data?.title ?? '',
@@ -178,7 +192,8 @@ class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder> with SingleTicke
                                             style: textTheme.bodyMedium,
                                           ),
                                           Padding(
-                                            padding: const EdgeInsets.only(top: 4.0),
+                                            padding:
+                                                const EdgeInsets.only(top: 4.0),
                                             child: Text(
                                               snapshot.data?.author ?? '',
                                               overflow: TextOverflow.ellipsis,
@@ -192,18 +207,26 @@ class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder> with SingleTicke
                                     width: 52.0,
                                     child: TextButton(
                                       style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(horizontal: 0.0),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 0.0),
                                         shape: CircleBorder(
-                                            side: BorderSide(color: Theme.of(context).colorScheme.surface, width: 0.0)),
+                                            side: BorderSide(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .surface,
+                                                width: 0.0)),
                                       ),
                                       onPressed: () {
                                         if (playing) {
-                                          audioBloc.transitionState(TransitionState.fastforward);
+                                          audioBloc.transitionState(
+                                              TransitionState.fastforward);
                                         }
                                       },
                                       child: Icon(
                                         Icons.forward_30,
-                                        semanticLabel: L.of(context)!.fast_forward_button_label,
+                                        semanticLabel: L
+                                            .of(context)!
+                                            .fast_forward_button_label,
                                         size: 36.0,
                                       ),
                                     ),
@@ -213,9 +236,14 @@ class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder> with SingleTicke
                                     width: 52.0,
                                     child: TextButton(
                                       style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(horizontal: 0.0),
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 0.0),
                                         shape: CircleBorder(
-                                            side: BorderSide(color: Theme.of(context).colorScheme.surface, width: 0.0)),
+                                            side: BorderSide(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .surface,
+                                                width: 0.0)),
                                       ),
                                       onPressed: () {
                                         if (playing) {
@@ -230,7 +258,8 @@ class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder> with SingleTicke
                                             : L.of(context)!.play_button_label,
                                         size: 48.0,
                                         icon: AnimatedIcons.play_pause,
-                                        color: Theme.of(context).iconTheme.color,
+                                        color:
+                                            Theme.of(context).iconTheme.color,
                                         progress: _playPauseController,
                                       ),
                                     ),
@@ -244,8 +273,12 @@ class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder> with SingleTicke
                       initialData: audioBloc.playPosition?.valueOrNull,
                       builder: (context, snapshot) {
                         var cw = 0.0;
-                        var position = snapshot.hasData ? snapshot.data!.position : const Duration(seconds: 0);
-                        var length = snapshot.hasData ? snapshot.data!.length : const Duration(seconds: 0);
+                        var position = snapshot.hasData
+                            ? snapshot.data!.position
+                            : const Duration(seconds: 0);
+                        var length = snapshot.hasData
+                            ? snapshot.data!.length
+                            : const Duration(seconds: 0);
 
                         if (length.inSeconds > 0) {
                           final pc = length.inSeconds / position.inSeconds;

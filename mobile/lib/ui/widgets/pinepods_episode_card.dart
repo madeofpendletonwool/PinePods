@@ -8,6 +8,7 @@ class PinepodsEpisodeCard extends StatelessWidget {
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final VoidCallback? onPlayPressed;
+  final VoidCallback? onDownloadPressed;
 
   const PinepodsEpisodeCard({
     Key? key,
@@ -15,6 +16,7 @@ class PinepodsEpisodeCard extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     this.onPlayPressed,
+    this.onDownloadPressed,
   }) : super(key: key);
 
   @override
@@ -124,6 +126,26 @@ class PinepodsEpisodeCard extends StatelessWidget {
                       constraints: const BoxConstraints(
                         minWidth: 32,
                         minHeight: 32,
+                      ),
+                    ),
+                  
+                  // Download button
+                  if (onDownloadPressed != null)
+                    IconButton(
+                      onPressed: onDownloadPressed,
+                      icon: Icon(
+                        episode.downloaded 
+                          ? Icons.download_done 
+                          : Icons.download_outlined,
+                        color: episode.downloaded 
+                          ? Colors.green 
+                          : Colors.grey[600],
+                        size: 20,
+                      ),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 24,
+                        minHeight: 24,
                       ),
                     ),
                   const SizedBox(height: 4),

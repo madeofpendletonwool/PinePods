@@ -714,6 +714,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
             },
             onLongPress: () => _showContextMenu(originalIndex),
             onPlayPressed: () => _playEpisode(episode),
+            onDownloadPressed: () => _downloadEpisode(originalIndex),
           );
         },
         childCount: _filteredEpisodes.length + 1, // +1 for header
