@@ -1,11 +1,8 @@
 Searching functionality
 	- Allow playing even if pod isn't added
-home episodes missing saved etc.
 clean out old code/db stuff
 setting to go full screen default still doesn't work
-inconsistent hits for username image and api
 full screen player via scroll up, not just tap
-play button doesn't update to pause on single episode screen
 Update depends
 Fix gradle warnings
 print statements

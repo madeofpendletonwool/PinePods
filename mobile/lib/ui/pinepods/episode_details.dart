@@ -13,6 +13,7 @@ import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:provider/provider.dart';
+import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 
 class PinepodsEpisodeDetails extends StatefulWidget {
   final PinepodsEpisode initialEpisode;
@@ -135,7 +136,27 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
     }
   }
 
-  Future<void> _playEpisode() async {
+  bool _isCurrentEpisodePlaying() {
+    try {
+      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
+      final currentEpisode = audioPlayerService.nowPlaying;
+      return currentEpisode != null && currentEpisode.guid == _episode!.episodeUrl;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  bool _isAudioPlaying() {
+    try {
+      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
+      // This method is no longer needed since we're using StreamBuilder
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<void> _togglePlayPause() async {
     _initializeAudioService();
     
     if (_audioService == null) {
@@ -144,12 +165,32 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
     }
 
     try {
-      await _audioService!.playPinepodsEpisode(
-        pinepodsEpisode: _episode!,
-        resume: _episode!.isStarted,
-      );
+      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
+      
+      // Check if this episode is currently playing
+      if (_isCurrentEpisodePlaying()) {
+        // This episode is loaded, check current state and toggle
+        final currentState = audioPlayerService.playingState;
+        if (currentState != null) {
+          // Listen to the current state
+          final state = await currentState.first;
+          if (state == AudioState.playing) {
+            await audioPlayerService.pause();
+          } else {
+            await audioPlayerService.play();
+          }
+        } else {
+          await audioPlayerService.play();
+        }
+      } else {
+        // Start playing this episode
+        await _audioService!.playPinepodsEpisode(
+          pinepodsEpisode: _episode!,
+          resume: _episode!.isStarted,
+        );
+      }
     } catch (e) {
-      _showSnackBar('Failed to play episode: ${e.toString()}', Colors.red);
+      _showSnackBar('Failed to control playback: ${e.toString()}', Colors.red);
     }
   }
 
@@ -662,14 +703,35 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                 // First row: Play, Save, Queue (3 buttons, each 1/3 width)
                 Row(
                   children: [
-                    // Play button
+                    // Play/Pause button
                     Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _playEpisode,
-                        icon: Icon(
-                          _episode!.completed ? Icons.replay : Icons.play_arrow,
-                        ),
-                        label: Text(_episode!.completed ? 'Replay' : 'Play'),
+                      child: StreamBuilder<AudioState>(
+                        stream: Provider.of<AudioPlayerService>(context, listen: false).playingState,
+                        builder: (context, snapshot) {
+                          final isCurrentEpisode = _isCurrentEpisodePlaying();
+                          final isPlaying = snapshot.data == AudioState.playing;
+                          final isCurrentlyPlaying = isCurrentEpisode && isPlaying;
+                          
+                          IconData icon;
+                          String label;
+                          
+                          if (_episode!.completed) {
+                            icon = Icons.replay;
+                            label = 'Replay';
+                          } else if (isCurrentlyPlaying) {
+                            icon = Icons.pause;
+                            label = 'Pause';
+                          } else {
+                            icon = Icons.play_arrow;
+                            label = 'Play';
+                          }
+                          
+                          return OutlinedButton.icon(
+                            onPressed: _togglePlayPause,
+                            icon: Icon(icon),
+                            label: Text(label),
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(width: 8),
