@@ -25,6 +25,7 @@ import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_html.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/widgets/sync_spinner.dart';
+import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dialogs/flutter_dialogs.dart';
@@ -177,10 +178,13 @@ class _PodcastDetailsState extends State<PodcastDetails> {
           key: scaffoldMessengerKey,
           child: Scaffold(
             backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            body: RefreshIndicator(
-              displacement: 60.0,
-              onRefresh: _handleRefresh,
-              child: CustomScrollView(
+            body: Column(
+              children: [
+                Expanded(
+                  child: RefreshIndicator(
+                    displacement: 60.0,
+                    onRefresh: _handleRefresh,
+                    child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 controller: _sliverScrollController,
                 slivers: <Widget>[
@@ -330,7 +334,11 @@ class _PodcastDetailsState extends State<PodcastDetails> {
                         }
                       }),
                 ],
-              ),
+                    ),
+                  ),
+                ),
+                const MiniPlayer(),
+              ],
             ),
           ),
         ),

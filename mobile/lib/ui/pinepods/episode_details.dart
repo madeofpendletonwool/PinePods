@@ -10,6 +10,7 @@ import 'package:pinepods_mobile/entities/person.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_html.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
+import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:provider/provider.dart';
 
 class PinepodsEpisodeDetails extends StatefulWidget {
@@ -142,14 +143,10 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
     }
 
     try {
-      _showSnackBar('Starting ${_episode!.episodeTitle}...', Colors.blue);
-
       await _audioService!.playPinepodsEpisode(
         pinepodsEpisode: _episode!,
         resume: _episode!.isStarted,
       );
-
-      _showSnackBar('Now playing: ${_episode!.episodeTitle}', Colors.green);
     } catch (e) {
       _showSnackBar('Failed to play episode: ${e.toString()}', Colors.red);
     }
@@ -491,11 +488,14 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
         title: Text(_episode!.podcastName),
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
             // Episode artwork and basic info
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -762,8 +762,12 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
             ),
             const SizedBox(height: 12),
             PodcastHtml(content: _episode!.episodeDescription),
-          ],
-        ),
+                ],
+              ),
+            ),
+          ),
+          const MiniPlayer(),
+        ],
       ),
     );
   }

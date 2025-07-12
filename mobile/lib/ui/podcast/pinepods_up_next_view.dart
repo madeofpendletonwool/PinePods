@@ -376,9 +376,6 @@ class _PinepodsUpNextViewState extends State<PinepodsUpNextView> {
                       },
                       onPlayPressed: () {
                         // Could implement play functionality if needed
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Playing ${episode.episodeTitle}')),
-                        );
                       },
                     ),
                   ),

@@ -16,6 +16,7 @@ import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:provider/provider.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 
@@ -373,14 +374,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     }
 
     try {
-      _showSnackBar('Starting ${episode.episodeTitle}...', Colors.blue);
-
       await _audioService!.playPinepodsEpisode(
         pinepodsEpisode: episode,
         resume: episode.isStarted,
       );
-
-      _showSnackBar('Now playing: ${episode.episodeTitle}', Colors.green);
     } catch (e) {
       _showSnackBar('Failed to play episode: $e', Colors.red);
     }
@@ -408,8 +405,11 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     }
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
+      body: Column(
+        children: [
+          Expanded(
+            child: CustomScrollView(
+              slivers: [
           SliverAppBar(
             expandedHeight: 300,
             pinned: true,
@@ -742,6 +742,10 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                 _buildEpisodesList(),
               ],
             ),
+              ],
+            ),
+          ),
+          const MiniPlayer(),
         ],
       ),
     );

@@ -6,13 +6,12 @@ clean out old code/db stuff
 Remove weird notications on play
 Fix android homescreen icon
 Center bottom bar so that it looks good in horizontal
-android meta player logo
 setting to go full screen default still doesn't work
 logout page not always working after logout. Just navigates back to home screen
 inconsistent hits for username image and api
 Timecode skips in descriptions
 full screen player via scroll up, not just tap
-player on every page
+on episode page player goes too high. Needs padding
 play button doesn't update to pause on single episode screen
 Update depends
 Fix gradle warnings

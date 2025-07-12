@@ -134,10 +134,6 @@ class _PinepodsHomeState extends State<PinepodsHome> {
 
     try {
       await _audioService!.playPinepodsEpisode(pinepodsEpisode: episode);
-
-      if (mounted) {
-        _showSnackBar('Playing ${episode.episodeTitle}', Colors.green);
-      }
     } catch (e) {
       if (mounted) {
         _showSnackBar('Failed to play episode: $e', Colors.red);
