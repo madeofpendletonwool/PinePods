@@ -1128,8 +1128,11 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
     episode_dump = feedparser.parse(content)
 
     cursor = cnx.cursor()
-
     new_episodes = []
+    
+    # First, collect all episode data for batch processing
+    episodes_to_process = []
+    episode_titles = []
 
     for entry in episode_dump.entries:
         # Check necessary fields are present
@@ -1141,6 +1144,7 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
             continue
 
         parsed_title = entry.title
+        episode_titles.append(parsed_title)
 
         # Description - use placeholder if missing
         parsed_description = entry.get('content', [{}])[0].get('value') or entry.get('summary') or "No description available"
@@ -1160,132 +1164,140 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
                             artwork_url or  # This is the podcast's default artwork
                             '/static/assets/default-episode.png')  # Final fallback artwork
 
-        # Duration parsing
-        def estimate_duration_from_file_size(file_size_bytes, bitrate_kbps=128):
-            """
-            Estimate duration in seconds based on file size and bitrate.
+        # Optimized duration parsing - simplified logic
+        parsed_duration = parse_duration_optimized(entry)
 
-            Args:
-                file_size_bytes (int): Size of the media file in bytes
-                bitrate_kbps (int): Bitrate in kilobits per second (default: 128)
+        episodes_to_process.append({
+            'title': parsed_title,
+            'description': parsed_description,
+            'audio_url': parsed_audio_url,
+            'artwork_url': parsed_artwork_url,
+            'release_datetime': parsed_release_datetime,
+            'duration': parsed_duration
+        })
 
-            Returns:
-                int: Estimated duration in seconds
-            """
-            bytes_per_second = (bitrate_kbps * 1000) / 8  # Convert kbps to bytes per second
-            return int(file_size_bytes / bytes_per_second)
-
-        # Duration parsing section for the add_episodes function
-        parsed_duration = 0
-        duration_str = getattr(entry, 'itunes_duration', '')
-        if ':' in duration_str:
-            # If duration contains ":", then process as HH:MM:SS or MM:SS
-            time_parts = list(map(int, duration_str.split(':')))
-            while len(time_parts) < 3:
-                time_parts.insert(0, 0)  # Pad missing values with zeros
-
-            # Fix for handling more than 3 time parts
-            if len(time_parts) > 3:
-                print(f"Warning: Duration string '{duration_str}' has more than 3 parts, using first 3")
-                h, m, s = time_parts[0], time_parts[1], time_parts[2]
+    # Batch check for existing episodes
+    existing_episodes = set()
+    if episode_titles:
+        # Build batch query to check existing episodes
+        if database_type == "postgresql":
+            placeholders = ','.join(['%s'] * len(episode_titles))
+            episode_check_query = f'SELECT EpisodeTitle FROM "Episodes" WHERE PodcastID = %s AND EpisodeTitle IN ({placeholders})'
+        else:  # MySQL or MariaDB
+            placeholders = ','.join(['%s'] * len(episode_titles))
+            episode_check_query = f"SELECT EpisodeTitle FROM Episodes WHERE PodcastID = %s AND EpisodeTitle IN ({placeholders})"
+        
+        cursor.execute(episode_check_query, [podcast_id] + episode_titles)
+        existing_results = cursor.fetchall()
+        
+        for result in existing_results:
+            if isinstance(result, dict):
+                existing_episodes.add(result.get('episodetitle') or result.get('EpisodeTitle'))
             else:
-                h, m, s = time_parts
+                existing_episodes.add(result[0])
 
-            parsed_duration = h * 3600 + m * 60 + s
-        elif duration_str.isdigit():
-            # If duration is all digits (no ":"), treat as seconds directly
-            parsed_duration = int(duration_str)
-        elif hasattr(entry, 'itunes_duration_seconds'):
-            # Additional format as fallback, if explicitly provided as seconds
-            parsed_duration = int(entry.itunes_duration_seconds)
-        elif hasattr(entry, 'duration'):
-            # Other specified duration formats (assume they are in correct format or seconds)
-            parsed_duration = parse_duration(entry.duration)
-        elif hasattr(entry, 'length'):
-            # If duration not specified but length is, use length (assuming it's in seconds)
-            parsed_duration = int(entry.length)
-        # Check for enclosure length attribute as a last resort
-        elif entry.enclosures and len(entry.enclosures) > 0:
-            enclosure = entry.enclosures[0]
-            if hasattr(enclosure, 'length') and enclosure.length:
-                try:
-                    file_size = int(enclosure.length)
-                    # Only estimate if the size seems reasonable (to avoid errors)
-                    if file_size > 1000000:  # Only consider files larger than 1MB
-                        parsed_duration = estimate_duration_from_file_size(file_size)
-                        # print(f"Estimated duration from file size {file_size} bytes: {parsed_duration} seconds")
-                except (ValueError, TypeError) as e:
-                    print(f"Error parsing enclosure length: {e}")
+    # Filter out existing episodes and prepare batch insert
+    new_episode_data = []
+    episodes_for_notifications = []
+    
+    for episode in episodes_to_process:
+        if episode['title'] not in existing_episodes:
+            new_episode_data.append((
+                podcast_id, 
+                episode['title'], 
+                episode['description'], 
+                episode['audio_url'], 
+                episode['artwork_url'], 
+                episode['release_datetime'], 
+                episode['duration']
+            ))
+            episodes_for_notifications.append(episode)
 
+    # Batch insert new episodes
+    if new_episode_data:
+        # Process in chunks to avoid memory issues
+        chunk_size = 500
+        inserted_episodes = []
+        
+        for i in range(0, len(new_episode_data), chunk_size):
+            chunk = new_episode_data[i:i + chunk_size]
+            
+            if database_type == "postgresql":
+                # PostgreSQL batch insert with RETURNING
+                placeholders = ','.join(['(%s, %s, %s, %s, %s, %s, %s)'] * len(chunk))
+                flat_data = [item for row in chunk for item in row]
+                cursor.execute(f"""
+                    INSERT INTO "Episodes" 
+                    (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration)
+                    VALUES {placeholders}
+                    RETURNING EpisodeID, EpisodeTitle
+                """, flat_data)
+                inserted_episodes.extend(cursor.fetchall())
+            else:  # MySQL batch insert
+                cursor.executemany("""
+                    INSERT INTO Episodes 
+                    (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, chunk)
+                
+                # For MySQL, get inserted IDs separately if needed
+                if websocket or auto_download:
+                    titles_in_chunk = [row[1] for row in chunk]
+                    placeholders = ','.join(['%s'] * len(titles_in_chunk))
+                    cursor.execute(f"""
+                        SELECT EpisodeID, EpisodeTitle FROM Episodes 
+                        WHERE PodcastID = %s AND EpisodeTitle IN ({placeholders})
+                    """, [podcast_id] + titles_in_chunk)
+                    inserted_episodes.extend(cursor.fetchall())
 
-        # Check for existing episode
-        if database_type == "postgresql":
-            episode_check_query = 'SELECT * FROM "Episodes" WHERE PodcastID = %s AND EpisodeTitle = %s'
-        else:  # MySQL or MariaDB
-            episode_check_query = "SELECT * FROM Episodes WHERE PodcastID = %s AND EpisodeTitle = %s"
-
-        cursor.execute(episode_check_query, (podcast_id, parsed_title))
-        if cursor.fetchone():
-            continue  # Episode already exists
-        print("inserting now")
-        # Insert the new episode
-        if database_type == "postgresql":
-            episode_insert_query = """
-                INSERT INTO "Episodes"
-                (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
-        else:  # MySQL or MariaDB
-            episode_insert_query = """
-                INSERT INTO Episodes
-                (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
-
-        cursor.execute(episode_insert_query, (podcast_id, parsed_title, parsed_description, parsed_audio_url, parsed_artwork_url, parsed_release_datetime, parsed_duration))
-        print('episodes inserted')
+        print(f"Batch inserted {len(new_episode_data)} new episodes")
+        
+        # Update episode count once for the podcast
         update_episode_count(cnx, database_type, podcast_id)
-        # Get the EpisodeID for the newly added episode
-        if cursor.rowcount > 0:
-            print(f"Added episode '{parsed_title}'")
-            check_and_send_notification(cnx, database_type, podcast_id, parsed_title)
-            if websocket:
-                # Get the episode ID using a SELECT query right after insert
-                if database_type == "postgresql":
-                    cursor.execute("""
-                        SELECT EpisodeID FROM "Episodes"
-                        WHERE PodcastID = %s AND EpisodeTitle = %s AND EpisodeURL = %s
-                    """, (podcast_id, parsed_title, parsed_audio_url))
+        
+        # Handle notifications and websocket responses
+        for episode in episodes_for_notifications:
+            print(f"Added episode '{episode['title']}'")
+            check_and_send_notification(cnx, database_type, podcast_id, episode['title'])
+            
+        if websocket and inserted_episodes:
+            # Build websocket response data
+            episode_lookup = {title: episode for episode in episodes_for_notifications for title in [episode['title']]}
+            
+            for result in inserted_episodes:
+                if isinstance(result, dict):
+                    episode_id = result.get('episodeid') or result.get('EpisodeID')
+                    title = result.get('episodetitle') or result.get('EpisodeTitle')
                 else:
-                    cursor.execute("""
-                        SELECT EpisodeID FROM Episodes
-                        WHERE PodcastID = %s AND EpisodeTitle = %s AND EpisodeURL = %s
-                    """, (podcast_id, parsed_title, parsed_audio_url))
-
-                episode_id = cursor.fetchone()
-                if isinstance(episode_id, dict):
-                    episode_id = episode_id.get('episodeid')
-                elif isinstance(episode_id, tuple):
-                    episode_id = episode_id[0]
-
-                episode_data = {
-                    "episode_id": episode_id,
-                    "podcast_id": podcast_id,
-                    "title": parsed_title,
-                    "description": parsed_description,
-                    "audio_url": parsed_audio_url,
-                    "artwork_url": parsed_artwork_url,
-                    "release_datetime": parsed_release_datetime,
-                    "duration": parsed_duration,
-                    "completed": False  # Assuming this is the default for new episodes
-                }
-                new_episodes.append(episode_data)
-            if auto_download:  # Check if auto-download is enabled
-                episode_id = get_episode_id(cnx, database_type, podcast_id, parsed_title, parsed_audio_url)
-
-                user_id = get_user_id_from_pod_id(cnx, database_type, podcast_id)
-                # Call your download function here
-                download_podcast(cnx, database_type, episode_id, user_id)
+                    episode_id, title = result
+                
+                if title in episode_lookup:
+                    episode = episode_lookup[title]
+                    episode_data = {
+                        "episode_id": episode_id,
+                        "podcast_id": podcast_id,
+                        "title": title,
+                        "description": episode['description'],
+                        "audio_url": episode['audio_url'],
+                        "artwork_url": episode['artwork_url'],
+                        "release_datetime": episode['release_datetime'],
+                        "duration": episode['duration'],
+                        "completed": False
+                    }
+                    new_episodes.append(episode_data)
+        
+        # Handle auto-download for new episodes
+        if auto_download and inserted_episodes:
+            user_id = get_user_id_from_pod_id(cnx, database_type, podcast_id)
+            for result in inserted_episodes:
+                if isinstance(result, dict):
+                    episode_id = result.get('episodeid') or result.get('EpisodeID')
+                else:
+                    episode_id = result[0]
+                try:
+                    download_podcast(cnx, database_type, episode_id, user_id)
+                except Exception as e:
+                    print(f"Error auto-downloading episode {episode_id}: {e}")
 
     cnx.commit()
 
@@ -1294,9 +1306,63 @@ def add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url, auto_dow
         print(f'getting first id pre')
         first_episode_id = get_first_episode_id(cnx, database_type, podcast_id)
         print(f'first result {first_episode_id}')
+    
+    cursor.close()
+    
     if websocket:
         return new_episodes
     return first_episode_id
+
+
+def parse_duration_optimized(entry):
+    """Optimized duration parsing with early returns"""
+    # Try iTunes duration first (most common)
+    duration_str = getattr(entry, 'itunes_duration', '')
+    if duration_str:
+        if duration_str.isdigit():
+            return int(duration_str)
+        elif ':' in duration_str:
+            try:
+                time_parts = list(map(int, duration_str.split(':')))
+                if len(time_parts) == 2:  # MM:SS
+                    return time_parts[0] * 60 + time_parts[1]
+                elif len(time_parts) == 3:  # HH:MM:SS
+                    return time_parts[0] * 3600 + time_parts[1] * 60 + time_parts[2]
+            except (ValueError, IndexError):
+                pass
+    
+    # Try other duration fields
+    if hasattr(entry, 'itunes_duration_seconds'):
+        try:
+            return int(entry.itunes_duration_seconds)
+        except (ValueError, TypeError):
+            pass
+    
+    if hasattr(entry, 'duration'):
+        try:
+            return parse_duration(entry.duration)
+        except:
+            pass
+    
+    if hasattr(entry, 'length'):
+        try:
+            return int(entry.length)
+        except (ValueError, TypeError):
+            pass
+    
+    # Last resort: estimate from file size (only for large files)
+    if entry.enclosures and len(entry.enclosures) > 0:
+        enclosure = entry.enclosures[0]
+        if hasattr(enclosure, 'length') and enclosure.length:
+            try:
+                file_size = int(enclosure.length)
+                if file_size > 1000000:  # Only estimate for files > 1MB
+                    bytes_per_second = (128 * 1000) / 8  # 128 kbps default
+                    return int(file_size / bytes_per_second)
+            except (ValueError, TypeError):
+                pass
+    
+    return 0  # Default fallback
 
 
 
@@ -2910,7 +2976,18 @@ def refresh_pods_for_user(cnx, database_type, podcast_id):
     return new_episodes
 
 
-def refresh_pods(cnx, database_type):
+def refresh_pods(cnx, database_type, batch_size=10, delay_between_batches=2.0):
+    """
+    Refresh podcast feeds with throttling to reduce CPU spikes
+    
+    Args:
+        cnx: Database connection
+        database_type: Type of database ('postgresql' or other)
+        batch_size: Number of podcasts to process before throttling (default: 10)
+        delay_between_batches: Seconds to wait between batches (default: 2.0)
+    """
+    import time
+    
     print('refresh begin')
     cursor = cnx.cursor()
     if database_type == "postgresql":
@@ -2927,6 +3004,13 @@ def refresh_pods(cnx, database_type):
         '''
     cursor.execute(select_podcasts)
     result_set = cursor.fetchall()
+    total_podcasts = len(result_set)
+    
+    print(f'Found {total_podcasts} podcasts to refresh')
+    
+    processed_count = 0
+    batch_count = 0
+    
     for result in result_set:
         podcast_id = None
         try:
@@ -2957,7 +3041,9 @@ def refresh_pods(cnx, database_type):
                     feed_cutoff = result["FeedCutoffDays"]
             else:
                 raise ValueError(f"Unexpected result type: {type(result)}")
-            print(f'Running for: {podcast_id}')
+                
+            print(f'Running for: {podcast_id} ({processed_count + 1}/{total_podcasts})')
+            
             if is_youtube:
                 # Extract channel ID from feed URL
                 channel_id = feed_url.split('channel/')[-1] if 'channel/' in feed_url else feed_url
@@ -2967,9 +3053,21 @@ def refresh_pods(cnx, database_type):
             else:
                 add_episodes(cnx, database_type, podcast_id, feed_url, artwork_url,
                            auto_download, username=username, password=password, websocket=False)
+            
+            processed_count += 1
+            
+            # Check if we need to throttle
+            if processed_count % batch_size == 0:
+                batch_count += 1
+                print(f'Completed batch {batch_count} ({processed_count}/{total_podcasts} podcasts). Throttling for {delay_between_batches}s...')
+                time.sleep(delay_between_batches)
+                
         except Exception as e:
             print(f"Error refreshing podcast {podcast_id}: {str(e)}")
+            processed_count += 1
             continue
+            
+    print(f'Refresh completed. Processed {processed_count}/{total_podcasts} podcasts')
     cursor.close()
 
 
