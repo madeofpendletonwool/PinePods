@@ -1,7 +1,11 @@
 name: Build iOS Release Archive
 
+permissions:
+  contents: read
+  secrets: read
+  actions: write
+
 on:
-  workflow_dispatch:
     inputs:
       version:
         description: "Version tag (e.g., v0.7.9001)"
