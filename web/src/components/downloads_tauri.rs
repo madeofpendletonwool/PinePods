@@ -944,41 +944,48 @@ pub fn render_podcast_with_episodes(
 
     html! {
         <div key={podcast.podcastid}>
-            {if is_delete_mode {
-                html! {
-                    <div class="flex items-center pl-4" onclick={|e: MouseEvent| e.stop_propagation()}>
-                        <input
-                            type="checkbox"
-                            class="h-5 w-5 rounded border-2 border-gray-400 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer appearance-none checked:bg-primary checked:border-primary relative
-                            before:content-[''] before:block before:w-full before:h-full before:checked:bg-[url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PScwIDAgMTYgMTYnIGZpbGw9JyNmZmYnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zyc+PHBhdGggZD0nTTEyLjIwNyA0Ljc5M2ExIDEgMCAwIDEgMCAxLjQxNGwtNSA1YTEgMSAwIDAgMS0xLjQxNCAwbC0yLTJhMSAxIDAgMCAxIDEuNDE0LTEuNDE0TDYuNSA5LjA4NmwzLjc5My0zLjc5M2ExIDEgMCAwIDEgMS40MTQgMHonLz48L3N2Zz4=')] before:checked:bg-no-repeat before:checked:bg-center"
-                            onchange={on_podcast_checkbox_change}
-                        />
-                    </div>
-                }
-            } else {
-                html! {}
-            }}
-            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full" onclick={toggle_expanded}>
-                <div class="flex flex-col w-auto object-cover pl-4">
+            <div class="podcast-dropdown-header">
+                <div class="podcast-dropdown-content" onclick={toggle_expanded}>
+                    {if is_delete_mode {
+                        html! {
+                            <div onclick={|e: MouseEvent| e.stop_propagation()}>
+                                <input
+                                    type="checkbox"
+                                    class="podcast-dropdown-checkbox"
+                                    onchange={on_podcast_checkbox_change}
+                                />
+                            </div>
+                        }
+                    } else {
+                        html! {}
+                    }}
+
                     <FallbackImage
                         src={podcast.artworkurl.clone().unwrap()}
-                        // onclick={on_title_click.clone()}
                         alt={format!("Cover for {}", podcast.podcastname.clone())}
-                        class="object-cover align-top-cover w-full item-container img"
+                        class="podcast-dropdown-image"
                     />
-                </div>
-                <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                    <p class="item_container-text text-xl font-semibold cursor-pointer">
-                        { &podcast.podcastname }
-                    </p>
-                    <hr class="my-2 border-t hidden md:block"/>
-                    <p class="item_container-text">{ format!("Episode Count: {}", podcast.episodecount.unwrap_or(0)) }</p>
+
+                    <div class="podcast-dropdown-info">
+                        <p class="podcast-dropdown-title item_container-text">
+                            { &podcast.podcastname }
+                        </p>
+                        <p class="podcast-dropdown-count item_container-text">
+                            { format!("{} Downloaded Episodes", episodes.len()) }
+                        </p>
+                    </div>
+
+                    <div class={classes!("podcast-dropdown-arrow", is_expanded.then(|| "expanded"))}>
+                        <i class="ph ph-caret-down text-2xl"></i>
+                    </div>
                 </div>
             </div>
+
             { if is_expanded {
                 html! {
-                    <div class="episodes-dropdown, pl-4">
-                        { for episodes.into_iter().map(|episode| {
+                    <div class="podcast-episodes-container expanded">
+                        <div class="podcast-episodes-inner">
+                            { for episodes.into_iter().map(|episode| {
                             let id_string = &episode.episodeid.to_string();
 
                             let app_dispatch = html_dispatch.clone();
@@ -1076,6 +1083,7 @@ pub fn render_podcast_with_episodes(
                                 state.clone()
                             )
                         }) }
+                        </div>
                     </div>
                 }
             } else {

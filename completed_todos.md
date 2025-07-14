@@ -21,15 +21,14 @@ Major Version:
 - [x] Issue with rss caused by new migration system
 - [x] user stats gpodder sync css fix
 - [x] Fix playback speed setting css
-- [] test ntfy sending on nightly
+- [x] test ntfy sending on nightly
 - [x] Test everything in mysql
 - [x] Test everything in postgres
 - [x] Test upgrades from previous in postgres
 - [x] Test upgrades from previous in mysql
 - [x] Test fresh postgres
 - [x] Test fresh mysql
-- [] External Podcast sync
-- [] retest rss in nightly
+- [x] retest rss in nightly
 - [x] Package upgrades
 - [] Local downloads tauri are broken again
 - [x] Fix downloads Layout
