@@ -40,6 +40,20 @@ COPY ./gpodder-api/internal ./internal
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -o gpodder-api ./cmd/server/
 
+# Rust API builder stage
+FROM rust:alpine AS rust-api-builder
+WORKDIR /rust-api
+
+# Install build dependencies
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev
+
+# Copy Rust API files
+COPY ./rust-api/Cargo.toml ./rust-api/Cargo.lock ./
+COPY ./rust-api/src ./src
+
+# Build the Rust API
+RUN cargo build --release
+
 # Final stage for setting up runtime environment
 FROM alpine
 # Metadata
@@ -60,6 +74,8 @@ RUN chmod +x /wait-for-it.sh
 COPY --from=builder /app/dist /var/www/html/
 # Copy Go API binary from the go-builder stage
 COPY --from=go-builder /gpodder-api/gpodder-api /usr/local/bin/
+# Copy Rust API binary from the rust-api-builder stage
+COPY --from=rust-api-builder /rust-api/target/release/pinepods-api /usr/local/bin/
 # Move to the root directory to execute the startup script
 WORKDIR /
 # Copy startup scripts
