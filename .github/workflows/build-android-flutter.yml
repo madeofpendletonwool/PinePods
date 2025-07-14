@@ -1,0 +1,93 @@
+permissions:
+  contents: read
+name: Build Android Flutter App
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Manual override version tag (optional)"
+        required: false
+
+jobs:
+  build:
+    name: Build Android Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set Image Tag
+        run: echo "IMAGE_TAG=${{ github.event.release.tag_name || github.event.inputs.version || 'latest' }}" >> $GITHUB_ENV
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.0'
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: |
+          cd mobile
+          flutter pub get
+
+      - name: Setup Android signing
+        run: |
+          cd mobile/android
+          echo "storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}" > key.properties
+          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> key.properties
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> key.properties
+          echo "storeFile=../upload-keystore.jks" >> key.properties
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > upload-keystore.jks
+
+      - name: Update app version
+        run: |
+          cd mobile
+          # Update pubspec.yaml version
+          if [[ "$IMAGE_TAG" != "latest" ]]; then
+            sed -i "s/^version: .*/version: ${IMAGE_TAG#v}/" pubspec.yaml
+          fi
+
+      - name: Build APK
+        run: |
+          cd mobile
+          flutter build apk --release --split-per-abi
+
+      - name: Build AAB
+        run: |
+          cd mobile
+          flutter build appbundle --release
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-builds
+          path: mobile/build/app/outputs/flutter-apk/*.apk
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab-build
+          path: mobile/build/app/outputs/bundle/release/app-release.aab
+
+      - name: Upload to Google Play Store
+        if: github.event_name == 'release'
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          echo "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > service-account.json
+          # Install fastlane if needed for Play Store upload
+          # gem install fastlane
+          # fastlane supply --aab mobile/build/app/outputs/bundle/release/app-release.aab --json_key service-account.json --package_name com.gooseberrydevelopment.pinepods --track production

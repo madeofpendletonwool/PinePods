@@ -1,0 +1,127 @@
+name: pinepods_mobile
+description: Pinepods Podcast Server
+
+version: 0.7.9001
+
+environment:
+  sdk: ">=3.8.0 <4.0.0"
+  flutter: ">=3.32.0"
+
+dependencies:
+  accessibility_tools: ^2.3.0
+  app_links: ^6.3.0
+  auto_size_text: ^3.0.0
+  audio_service: ^0.18.17
+  audio_session: ^0.2.2
+  collection: ^1.18.0
+  connectivity_plus: ^6.0.11
+  crypto: ^3.0.3
+  cupertino_icons: ^1.0.6
+  device_info_plus: ^11.2.0
+  extended_image: ^10.0.1
+  file_picker: ^10.2.0
+  flutter_dialogs: ^3.0.0
+  flutter_downloader: ^1.11.8
+  flutter_html: ^3.0.0-beta.2
+  flutter_html_svg: ^3.0.0-beta.2
+  flutter_html_table: ^3.0.0-beta.2
+  flutter_launcher_icons: ^0.14.2
+  flutter_spinkit: ^5.0.0
+  html: ^0.15.0
+  intl: ^0.20.2
+  intl_translation: ^0.20.0
+  just_audio: ^0.10.4
+  logging: ^1.0.2
+  meta: ^1.17.0
+  mp3_info: ^0.2.0
+  path: ^1.8.3
+  path_provider: ^2.1.4
+  path_provider_platform_interface: ^2.0.4
+  percent_indicator: ^4.2.5
+  permission_handler: ^12.0.1
+  podcast_search: ^0.7.11
+  provider: ^6.0.3
+  rxdart: ^0.28.0
+  scrollable_positioned_list: ^0.3.7
+  sembast: ^3.8.3
+  share_plus: ^11.0.0
+  shared_preferences: ^2.3.4
+  sliver_tools: ^0.2.12
+  url_launcher: ^6.3.1
+  xml: ^6.5.0
+
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+dev_dependencies:
+  mockito: ^5.4.5
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+dependency_overrides:
+  # Override layout grid to fix dependency issue with flutter_html_table
+  flutter_layout_grid: ^2.0.5
+  # Override meta to use latest version
+  meta: ^1.17.0
+  # Force latest versions for release prep
+  analyzer: ^7.5.6
+  _fe_analyzer_shared: ^85.0.0
+  dart_style: ^3.1.0
+  mockito: ^5.4.6
+  vector_math: ^2.2.0
+  characters: ^1.4.1
+  flutter_svg: ^2.2.0
+  material_color_utilities: ^0.13.0
+  leak_tracker: ^11.0.1
+  test_api: ^0.7.6
+  vm_service: ^15.0.2
+  # Override vector graphics to support latest xml
+  vector_graphics_compiler: ^1.1.17
+  vector_graphics_codec: ^1.1.13
+  # Force remaining packages to latest
+  leak_tracker_flutter_testing: ^3.0.10
+  leak_tracker_testing: ^3.0.2
+  petitparser: ^7.0.0
+  xml: ^6.6.0
+
+flutter_icons:
+  image_path_android: "assets/images/favicon.png"
+  image_path_ios: "assets/images/icon-192.png"
+  remove_alpha_ios: true
+  android: true
+  ios: true
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/favicon.png
+    - assets/images/icon-192.png
+    - assets/images/pinepods-logo.png
+    - assets/images/1.jpg
+    - assets/images/2.jpg
+    - assets/images/3.jpg
+    - assets/images/4.jpg
+    - assets/images/5.jpg
+    - assets/images/6.jpg
+    - assets/images/7.jpg
+    - assets/images/8.jpg
+    - assets/images/9.jpg
+
+    # Certificate authorities
+    - assets/ca/lets-encrypt-r3.pem
+    - assets/ca/globalsign-gcc-r6-alphassl-ca-2023.pem
+
+  fonts:
+    - family: MontserratMedium
+      fonts:
+        - asset: assets/fonts/Montserrat-Medium.otf
+    - family: MontserratRegular
+      fonts:
+        - asset: assets/fonts/Montserrat-Regular.otf
+    - family: MontserratBold
+      fonts:
+        - asset: assets/fonts/Montserrat-Bold.otf
