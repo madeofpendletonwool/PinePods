@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version tag (e.g., v0.7.9001)"
+        description: "Version tag (e.g., v0.7.9)"
         required: false
         default: "manual-build"
 

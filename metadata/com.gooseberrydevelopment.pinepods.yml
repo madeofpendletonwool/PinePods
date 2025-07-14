@@ -8,52 +8,47 @@ WebSite: https://www.pinepods.online/
 SourceCode: https://github.com/madeofpendletonwool/pinepods
 IssueTracker: https://github.com/madeofpendletonwool/pinepods/issues
 Changelog: https://github.com/madeofpendletonwool/pinepods/releases
-
 Summary: Self-hosted podcast management and streaming server
 Description: |-
-    PinePods is a Rust-based podcast management system that allows users to search,
-    subscribe to, and manage podcasts through a web interface or mobile app. It provides
-    a centralized way to organize podcast subscriptions, stream episodes, and track
-    listening progress across devices.
+  PinePods is a Rust-based podcast management system that allows users to search,
+  subscribe to, and manage podcasts through a web interface or mobile app. It provides
+  a centralized way to organize podcast subscriptions, stream episodes, and track
+  listening progress across devices.
 
-    Features:
-    * Subscribe to and manage podcast feeds
-    * Stream episodes directly or download for offline listening
-    * Cross-platform synchronization of listening progress
-    * Web and mobile interfaces
-    * Self-hosted solution for privacy and control
-    * Search and discovery of new podcasts
-    * Episode bookmarking and queue management
-    * User management and multi-user support
+  Features:
+  * Subscribe to and manage podcast feeds
+  * Stream episodes directly or download for offline listening
+  * Cross-platform synchronization of listening progress
+  * Web and mobile interfaces
+  * Self-hosted solution for privacy and control
+  * Search and discovery of new podcasts
+  * Episode bookmarking and queue management
+  * User management and multi-user support
 
 RepoType: git
 Repo: https://github.com/madeofpendletonwool/pinepods
 
 Builds:
-  - versionName: '0.7.9001'
+  - versionName: "0.7.9"
     versionCode: 79001
-    commit: mobile-app
-    # Flutter build directory structure
+    commit: main
     subdir: mobile
+    output: build/app/outputs/flutter-apk/app-release.apk
     sudo:
       - apt-get update
       - apt-get install -y librsvg2-bin curl unzip
       - update-alternatives --auto java
-    # Use Flutter build system instead of gradle directly
-    output: build/app/outputs/flutter-apk/app-release.apk
     srclibs:
-      - flutter@3.32.0
-    prebuild:
-      - export ANDROID_SDK_ROOT="$$SDK$$"
-      - export PATH="$$flutter$$/bin:$PATH"
-      - flutter pub get
-      - flutter doctor -v
-    build:
-      - export ANDROID_SDK_ROOT="$$SDK$$"
-      - export PATH="$$flutter$$/bin:$PATH"
-      - flutter build apk --release
+      - flutter@3.24.0
+    rm:
+      - ios
+      - android/gradle
+      - android/gradlew
+      - android/gradlew.bat
+    prebuild: $flutter$/bin/flutter pub get
+    build: $flutter$/bin/flutter build apk --release
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[\d.]+$
-CurrentVersion: '0.7.9001'
+CurrentVersion: "0.7.9"
 CurrentVersionCode: 79001
