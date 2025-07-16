@@ -1,4 +1,5 @@
 Categories:
+  - Multimedia
   - Podcast
 License: GPL-3.0-or-later
 AuthorName: Collin Pendleton
@@ -16,7 +17,7 @@ Repo: https://github.com/madeofpendletonwool/pinepods
 Builds:
   - versionName: 0.7.10
     versionCode: 20250714
-    commit: 80e2e9f806bbd9899cce49513de062e79ac83fdd
+    commit: 1397b4a59c518482076e25b5e202276b4110d281
     subdir: mobile
     sudo:
       - apt-get update
@@ -37,6 +38,6 @@ Builds:
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^[\d.]+$
-UpdateCheckData: pubspec.yaml||.|version:\s([0-9.]+)
+UpdateCheckData: mobile/pubspec.yaml|version:\s.+\+(\d+)|.|version:\s(.+)\+
 CurrentVersion: 0.7.10
 CurrentVersionCode: 20250714
