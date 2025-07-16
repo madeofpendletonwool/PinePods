@@ -1,0 +1,17 @@
+PinePods is a complete podcast management solution that allows you to host your own podcast server and enjoy a beautiful mobile experience.
+
+Features:
+• Self-hosted podcast server synchronization
+• Beautiful, intuitive mobile interface
+• Download episodes for offline listening
+• Chapter support with navigation
+• Playlist management
+• User statistics and listening history
+• Multi-device synchronization
+• Search and discovery
+• Background audio playback
+• Sleep timer and playback speed controls
+
+PinePods gives you complete control over your podcast experience while providing the convenience of modern podcast apps. Perfect for users who want privacy, control, and a great listening experience.
+
+Note: This app requires a PinePods server to be set up. Visit the PinePods GitHub repository for server installation instructions.
