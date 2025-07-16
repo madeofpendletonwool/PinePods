@@ -3,6 +3,9 @@ permissions:
 name: Build Android Flutter App
 
 on:
+  push:
+    tags:
+      - "*"
   release:
     types: [published]
   workflow_dispatch:
@@ -35,8 +38,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.0'
-          channel: 'stable'
+          flutter-version: "3.32.0"
+          channel: "stable"
 
       - name: Install dependencies
         run: |
@@ -55,9 +58,12 @@ jobs:
       - name: Update app version
         run: |
           cd mobile
-          # Update pubspec.yaml version
+          # Update pubspec.yaml version to use Flutter format (version+build)
           if [[ "$IMAGE_TAG" != "latest" ]]; then
-            sed -i "s/^version: .*/version: ${IMAGE_TAG#v}/" pubspec.yaml
+            # Remove 'v' prefix if present and create build number from date
+            VERSION_NAME=${IMAGE_TAG#v}
+            BUILD_NUMBER=$(date +%Y%m%d)
+            sed -i "s/^version: .*/version: ${VERSION_NAME}+${BUILD_NUMBER}/" pubspec.yaml
           fi
 
       - name: Build APK
