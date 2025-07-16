@@ -193,6 +193,199 @@ pub struct UserStats {
     pub downloaded_episodes: i32,
 }
 
+// API-specific podcast models to match Python responses
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PodcastResponse {
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub artworkurl: Option<String>,
+    pub description: Option<String>,
+    pub episodecount: Option<i32>,
+    pub websiteurl: Option<String>,
+    pub feedurl: String,
+    pub author: Option<String>,
+    pub categories: String,
+    pub explicit: bool,
+    pub podcastindexid: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PodcastExtraResponse {
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub artworkurl: Option<String>,
+    pub description: Option<String>,
+    pub episodecount: Option<i32>,
+    pub websiteurl: Option<String>,
+    pub feedurl: String,
+    pub author: Option<String>,
+    pub categories: String,
+    pub explicit: bool,
+    pub podcastindexid: Option<i64>,
+    pub play_count: i64,
+    pub episodes_played: i32,
+    pub oldest_episode_date: Option<String>,
+    pub is_youtube: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PodcastListResponse {
+    pub pods: Vec<PodcastResponse>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PodcastExtraListResponse {
+    pub pods: Vec<PodcastExtraResponse>,
+}
+
+// Remove podcast request model
+#[derive(Debug, Deserialize)]
+pub struct RemovePodcastByNameRequest {
+    pub user_id: i32,
+    pub podcast_name: String,
+    pub podcast_url: String,
+}
+
+// Time info response model
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TimeInfoResponse {
+    pub timezone: String,
+    pub hour_pref: i32,
+    pub date_format: Option<String>,
+}
+
+// Check podcast response model  
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CheckPodcastResponse {
+    pub exists: bool,
+}
+
+// Check episode in database response model
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EpisodeInDbResponse {
+    pub episode_in_db: bool,
+}
+
+// Queue-related models
+#[derive(Debug, Deserialize)]
+pub struct QueuePodcastRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    pub is_youtube: bool,
+}
+
+// Saved episodes models
+#[derive(Debug, Deserialize)]
+pub struct SavePodcastRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    pub is_youtube: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SavedEpisode {
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
+    pub websiteurl: String,
+    pub completed: bool,
+    pub saved: bool,
+    pub queued: bool,
+    pub downloaded: bool,
+    pub is_youtube: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SavedEpisodesResponse {
+    pub saved_episodes: Vec<SavedEpisode>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SaveEpisodeResponse {
+    pub detail: String,
+}
+
+// History models
+#[derive(Debug, Deserialize)]
+pub struct HistoryAddRequest {
+    pub episode_id: i32,
+    pub episode_pos: f32,
+    pub user_id: i32,
+    pub is_youtube: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HistoryEpisode {
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
+    pub completed: bool,
+    pub listendate: Option<String>,
+    pub is_youtube: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserHistoryResponse {
+    pub data: Vec<HistoryEpisode>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HistoryResponse {
+    pub detail: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QueueResponse {
+    pub data: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QueuedEpisode {
+    pub episodetitle: String,
+    pub podcastname: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: String,
+    pub episodeurl: String,
+    pub queueposition: Option<i32>,
+    pub episodeduration: i32,
+    pub queuedate: String,
+    pub listenduration: Option<i32>,
+    pub episodeid: i32,
+    pub completed: bool,
+    pub saved: bool,
+    pub queued: bool,
+    pub downloaded: bool,
+    pub is_youtube: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct QueuedEpisodesResponse {
+    pub data: Vec<QueuedEpisode>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReorderQueueRequest {
+    pub episode_ids: Vec<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReorderQueueResponse {
+    pub message: String,
+}
+
 // Background task models
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TaskStatus {

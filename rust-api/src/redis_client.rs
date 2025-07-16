@@ -1,10 +1,10 @@
-use redis::{aio::ConnectionManager, AsyncCommands, Client};
+use redis::{aio::MultiplexedConnection, AsyncCommands, Client};
 use std::time::Duration;
 use crate::{config::Config, error::{AppError, AppResult}};
 
 #[derive(Clone)]
 pub struct RedisClient {
-    connection_manager: ConnectionManager,
+    connection: MultiplexedConnection,
 }
 
 impl RedisClient {
@@ -12,21 +12,21 @@ impl RedisClient {
         let redis_url = config.redis_url();
         
         let client = Client::open(redis_url)?;
-        let connection_manager = ConnectionManager::new(client).await?;
+        let connection = client.get_multiplexed_async_connection().await?;
 
         // Test the connection
-        let mut conn = connection_manager.clone();
+        let mut conn = connection.clone();
         let _: String = redis::cmd("PING").query_async(&mut conn).await?;
         
         tracing::info!("Successfully connected to Redis/Valkey");
         
         Ok(RedisClient {
-            connection_manager,
+            connection,
         })
     }
 
     pub async fn health_check(&self) -> AppResult<bool> {
-        let mut conn = self.connection_manager.clone();
+        let mut conn = self.connection.clone();
         let result: String = redis::cmd("PING").query_async(&mut conn).await?;
         Ok(result == "PONG")
     }
@@ -35,55 +35,55 @@ impl RedisClient {
     where
         T: redis::FromRedisValue,
     {
-        let mut conn = self.connection_manager.clone();
+        let mut conn = self.connection.clone();
         let result: Option<T> = conn.get(key).await?;
         Ok(result)
     }
 
     pub async fn set<T>(&self, key: &str, value: T) -> AppResult<()>
     where
-        T: redis::ToRedisArgs,
+        T: redis::ToRedisArgs + Send + Sync,
     {
-        let mut conn = self.connection_manager.clone();
-        conn.set(key, value).await?;
+        let mut conn = self.connection.clone();
+        let _: () = conn.set(key, value).await?;
         Ok(())
     }
 
     pub async fn set_ex<T>(&self, key: &str, value: T, seconds: u64) -> AppResult<()>
     where
-        T: redis::ToRedisArgs,
+        T: redis::ToRedisArgs + Send + Sync,
     {
-        let mut conn = self.connection_manager.clone();
-        conn.set_ex(key, value, seconds).await?;
+        let mut conn = self.connection.clone();
+        let _: () = conn.set_ex(key, value, seconds).await?;
         Ok(())
     }
 
     pub async fn delete(&self, key: &str) -> AppResult<bool> {
-        let mut conn = self.connection_manager.clone();
+        let mut conn = self.connection.clone();
         let result: bool = conn.del(key).await?;
         Ok(result)
     }
 
     pub async fn exists(&self, key: &str) -> AppResult<bool> {
-        let mut conn = self.connection_manager.clone();
+        let mut conn = self.connection.clone();
         let result: bool = conn.exists(key).await?;
         Ok(result)
     }
 
     pub async fn expire(&self, key: &str, seconds: u64) -> AppResult<bool> {
-        let mut conn = self.connection_manager.clone();
-        let result: bool = conn.expire(key, seconds).await?;
+        let mut conn = self.connection.clone();
+        let result: bool = conn.expire(key, seconds as i64).await?;
         Ok(result)
     }
 
     pub async fn incr(&self, key: &str) -> AppResult<i64> {
-        let mut conn = self.connection_manager.clone();
+        let mut conn = self.connection.clone();
         let result: i64 = conn.incr(key, 1).await?;
         Ok(result)
     }
 
     pub async fn decr(&self, key: &str) -> AppResult<i64> {
-        let mut conn = self.connection_manager.clone();
+        let mut conn = self.connection.clone();
         let result: i64 = conn.decr(key, 1).await?;
         Ok(result)
     }
@@ -119,11 +119,11 @@ impl RedisClient {
     pub async fn check_rate_limit(&self, identifier: &str, limit: u32, window_seconds: u64) -> AppResult<bool> {
         let rate_key = format!("rate_limit:{}", identifier);
         
-        let mut conn = self.connection_manager.clone();
+        let mut conn = self.connection.clone();
         let current_count: i64 = conn.incr(&rate_key, 1).await?;
         
         if current_count == 1 {
-            conn.expire(&rate_key, window_seconds).await?;
+            let _: () = conn.expire(&rate_key, window_seconds as i64).await?;
         }
         
         Ok(current_count <= limit as i64)
@@ -154,5 +154,10 @@ impl RedisClient {
     pub async fn clear_podcast_refreshing(&self, podcast_id: i32) -> AppResult<bool> {
         let refresh_key = format!("refreshing:{}", podcast_id);
         self.delete(&refresh_key).await
+    }
+
+    // Get a connection for direct Redis operations
+    pub async fn get_connection(&self) -> AppResult<MultiplexedConnection> {
+        Ok(self.connection.clone())
     }
 }

@@ -4,6 +4,9 @@ pub mod podcasts;
 pub mod episodes;
 pub mod playlists;
 pub mod users;
+pub mod websocket;
+pub mod async_tasks_examples;
+pub mod refresh;
 
 // Common handler utilities
 use axum::{

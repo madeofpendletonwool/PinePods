@@ -45,11 +45,16 @@ FROM rust:alpine AS rust-api-builder
 WORKDIR /rust-api
 
 # Install build dependencies
-RUN apk add --no-cache musl-dev pkgconfig openssl-dev
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static
 
 # Copy Rust API files
 COPY ./rust-api/Cargo.toml ./rust-api/Cargo.lock ./
 COPY ./rust-api/src ./src
+
+# Set environment for static linking
+ENV OPENSSL_STATIC=1
+ENV OPENSSL_LIB_DIR=/usr/lib
+ENV OPENSSL_INCLUDE_DIR=/usr/include
 
 # Build the Rust API
 RUN cargo build --release
@@ -67,9 +72,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Install Python packages
 COPY ./requirements.txt /
 RUN pip install --no-cache-dir -r /requirements.txt
-# Copy wait-for-it script and give execute permission
-COPY ./wait-for-it/wait-for-it.sh /wait-for-it.sh
-RUN chmod +x /wait-for-it.sh
 # Copy built files from the builder stage to the Nginx serving directory
 COPY --from=builder /app/dist /var/www/html/
 # Copy Go API binary from the go-builder stage
