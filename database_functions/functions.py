@@ -672,8 +672,10 @@ def add_oidc_provider(cnx, database_type, provider_values):
                 INSERT INTO "OIDCProviders"
                 (ProviderName, ClientID, ClientSecret, AuthorizationURL,
                 TokenURL, UserInfoURL, ButtonText, Scope,
-                ButtonColor, ButtonTextColor, IconSVG)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ButtonColor, ButtonTextColor, IconSVG, NameClaim, EmailClaim,
+                UsernameClaim, RolesClaim, UserRole, AdminRole)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s)
                 RETURNING ProviderID
             """
         else:  # MySQL
@@ -681,8 +683,10 @@ def add_oidc_provider(cnx, database_type, provider_values):
                 INSERT INTO OIDCProviders
                 (ProviderName, ClientID, ClientSecret, AuthorizationURL,
                 TokenURL, UserInfoURL, ButtonText, Scope,
-                ButtonColor, ButtonTextColor, IconSVG)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ButtonColor, ButtonTextColor, IconSVG, NameClaim, EmailClaim,
+                UsernameClaim, RolesClaim, UserRole, AdminRole)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s)
             """
         cursor.execute(add_provider_query, provider_values)
 
@@ -734,16 +738,18 @@ def list_oidc_providers(cnx, database_type):
         if database_type == "postgresql":
             list_query = """
                 SELECT ProviderID, ProviderName, ClientID, AuthorizationURL,
-                TokenURL, UserInfoURL, ButtonText,
-                Scope, ButtonColor, ButtonTextColor, IconSVG, Enabled, Created, Modified
+                TokenURL, UserInfoURL, ButtonText, Scope, ButtonColor,
+                ButtonTextColor, IconSVG, NameClaim, EmailClaim, UsernameClaim,
+                RolesClaim, UserRole, AdminRole, Enabled, Created, Modified
                 FROM "OIDCProviders"
                 ORDER BY ProviderName
             """
         else:
             list_query = """
                 SELECT ProviderID, ProviderName, ClientID, AuthorizationURL,
-                TokenURL, UserInfoURL, ButtonText,
-                Scope, ButtonColor, ButtonTextColor, IconSVG, Enabled, Created, Modified
+                TokenURL, UserInfoURL, ButtonText, Scope, ButtonColor,
+                ButtonTextColor, IconSVG, NameClaim, EmailClaim, UsernameClaim,
+                RolesClaim, UserRole, AdminRole, Enabled, Created, Modified
                 FROM OIDCProviders
                 ORDER BY ProviderName
             """
@@ -777,6 +783,18 @@ def list_oidc_providers(cnx, database_type):
                             normalized["button_text_color"] = value
                         elif normalized_key == "iconsvg":
                             normalized["icon_svg"] = value
+                        elif normalized_key == "nameclaim":
+                            normalized["name_claim"] = value
+                        elif normalized_key == "emailclaim":
+                            normalized["email_claim"] = value
+                        elif normalized_key == "usernameclaim":
+                            normalized["username_claim"] = value
+                        elif normalized_key == "rolesclaim":
+                            normalized["roles_claim"] = value
+                        elif normalized_key == "userrole":
+                            normalized["user_role"] = value
+                        elif normalized_key == "adminrole":
+                            normalized["admin_role"] = value
                         else:
                             normalized[normalized_key] = value
                     providers.append(normalized)
@@ -794,9 +812,15 @@ def list_oidc_providers(cnx, database_type):
                         'button_color': row[8],
                         'button_text_color': row[9],
                         'icon_svg': row[10],
-                        'enabled': row[11],
-                        'created': row[12],
-                        'modified': row[13]
+                        'name_claim': row[11],
+                        'email_claim': row[12],
+                        'username_claim': row[13],
+                        'roles_claim': row[14],
+                        'user_role': row[15],
+                        'admin_role': row[16],
+                        'enabled': row[17],
+                        'created': row[18],
+                        'modified': row[19]
                     })
         else:
             columns = [col[0] for col in cursor.description]
@@ -827,6 +851,18 @@ def list_oidc_providers(cnx, database_type):
                         normalized["button_text_color"] = value
                     elif normalized_key == "iconsvg":
                         normalized["icon_svg"] = value
+                    elif normalized_key == "nameclaim":
+                        normalized["name_claim"] = value
+                    elif normalized_key == "emailclaim":
+                        normalized["email_claim"] = value
+                    elif normalized_key == "usernameclaim":
+                        normalized["username_claim"] = value
+                    elif normalized_key == "rolesclaim":
+                        normalized["roles_claim"] = value
+                    elif normalized_key == "userrole":
+                        normalized["user_role"] = value
+                    elif normalized_key == "adminrole":
+                        normalized["admin_role"] = value
                     elif normalized_key == "enabled":
                         # Convert MySQL TINYINT to boolean
                         normalized["enabled"] = bool(value)
@@ -14664,13 +14700,13 @@ def get_oidc_provider(cnx, database_type, client_id):
     try:
         if database_type == "postgresql":
             query = """
-                SELECT ProviderID, ClientID, ClientSecret, TokenURL, UserInfoURL
+                SELECT ProviderID, ClientID, ClientSecret, TokenURL, UserInfoURL, NameClaim, EmailClaim, UsernameClaim, RolesClaim, UserRole, AdminRole
                 FROM "OIDCProviders"
                 WHERE ClientID = %s AND Enabled = true
             """
         else:
             query = """
-                SELECT ProviderID, ClientID, ClientSecret, TokenURL, UserInfoURL
+                SELECT ProviderID, ClientID, ClientSecret, TokenURL, UserInfoURL, NameClaim, EmailClaim, UsernameClaim, RolesClaim, UserRole, AdminRole
                 FROM OIDCProviders
                 WHERE ClientID = %s AND Enabled = true
             """
@@ -14683,7 +14719,13 @@ def get_oidc_provider(cnx, database_type, client_id):
                     result['clientid'],
                     result['clientsecret'],
                     result['tokenurl'],
-                    result['userinfourl']
+                    result['userinfourl'],
+                    result['nameclaim'],
+                    result['emailclaim'],
+                    result['usernameclaim'],
+                    result['rolesclaim'],
+                    result['userrole'],
+                    result['adminrole']
                 )
             return result
         return None
@@ -14721,49 +14763,10 @@ def get_user_by_email(cnx, database_type, email):
     finally:
         cursor.close()
 
-def create_oidc_user(cnx, database_type, email, fullname, base_username):
+def create_oidc_user(cnx, database_type, email, fullname, username):
     cursor = cnx.cursor()
     try:
-        print(f"Starting create_oidc_user for email: {email}, fullname: {fullname}, base_username: {base_username}")
-        # Check if username exists and find a unique one
-        username = base_username
-        counter = 1
-        while True:
-            # Check if username exists
-            check_query = """
-                SELECT COUNT(*) FROM "Users" WHERE Username = %s
-            """ if database_type == "postgresql" else """
-                SELECT COUNT(*) FROM Users WHERE Username = %s
-            """
-            print(f"Checking if username '{username}' exists")
-            cursor.execute(check_query, (username,))
-            result = cursor.fetchone()
-            print(f"Username check result: {result}, type: {type(result)}")
-
-            count = 0
-            if isinstance(result, tuple):
-                count = result[0]
-            elif isinstance(result, dict):
-                count = result.get('count', 0)
-            else:
-                # Try to extract the count value safely
-                try:
-                    count = int(result)
-                except (TypeError, ValueError):
-                    print(f"Unable to extract count from result: {result}")
-                    count = 1  # Assume username exists to be safe
-
-            print(f"Username count: {count}")
-            if count == 0:
-                print(f"Username '{username}' is unique, proceeding")
-                break  # Username is unique
-
-            # Try with incremented counter
-            print(f"Username '{username}' already exists, trying next")
-            username = f"{base_username}{counter}"
-            counter += 1
-            if counter > 10:  # Limit attempts
-                raise Exception("Could not find a unique username")
+        print(f"Starting create_oidc_user for email: {email}, fullname: {fullname}, username: {username}")
 
         # Create a random salt using base64 (which is what Argon2 expects)
         salt = base64.b64encode(secrets.token_bytes(16)).decode('utf-8')
