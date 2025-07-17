@@ -1,0 +1,197 @@
+name: Build iOS Release Archive
+
+permissions:
+  contents: read
+  secrets: read
+  actions: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g., v0.7.9)"
+        required: false
+        default: "manual-build"
+
+jobs:
+  build-ios:
+    name: Build iOS Release Archive
+    runs-on: macOS-latest
+
+    steps:
+      - name: Set Build Info
+        run: |
+          echo "VERSION_TAG=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          echo "BUILD_NUMBER=$(date +%s)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.32.0"
+          channel: "stable"
+
+      - name: Install dependencies
+        run: |
+          cd mobile
+          flutter pub get
+          cd ios
+          pod install
+
+      - name: Setup iOS signing
+        env:
+          IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          # Create keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -l build.keychain
+
+          # Import certificate
+          echo "$IOS_CERTIFICATE_BASE64" | base64 -d > certificate.p12
+          security import certificate.p12 -P "$IOS_CERTIFICATE_PASSWORD" -A
+
+          # Install provisioning profile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/build.mobileprovision
+
+      - name: Update app version
+        run: |
+          cd mobile
+          if [[ "$VERSION_TAG" != "manual-build" && "$VERSION_TAG" != "" ]]; then
+            # Remove 'v' prefix if present
+            CLEAN_VERSION=${VERSION_TAG#v}
+            sed -i '' "s/^version: .*/version: $CLEAN_VERSION/" pubspec.yaml
+            echo "Updated version to: $CLEAN_VERSION"
+          fi
+
+      - name: Create export options plist
+        run: |
+          cd mobile/ios
+          cat > exportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>teamID</key>
+              <string>${{ secrets.IOS_TEAM_ID }}</string>
+              <key>uploadBitcode</key>
+              <false/>
+              <key>uploadSymbols</key>
+              <true/>
+              <key>compileBitcode</key>
+              <false/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Build iOS app
+        run: |
+          cd mobile
+          flutter build ios --release --no-codesign
+          echo "iOS build completed"
+
+      - name: Archive and sign iOS app
+        run: |
+          cd mobile/ios
+          xcodebuild -workspace Runner.xcworkspace \
+                     -scheme Runner \
+                     -configuration Release \
+                     -destination generic/platform=iOS \
+                     -archivePath build/Runner.xcarchive \
+                     archive
+
+          xcodebuild -exportArchive \
+                     -archivePath build/Runner.xcarchive \
+                     -exportPath build \
+                     -exportOptionsPlist exportOptions.plist
+
+      - name: Prepare release artifacts
+        run: |
+          cd mobile
+          mkdir -p ../release-artifacts/ios
+
+          # Find and copy IPA
+          find ios/build -name "*.ipa" -exec cp {} ../release-artifacts/ios/PinePods-${VERSION_TAG}.ipa \;
+
+          # Create build info file
+          cat > ../release-artifacts/ios/BUILD_INFO.txt << EOF
+          PinePods Mobile - iOS Release Build
+          ==================================
+          Version: $VERSION_TAG
+          Build Date: $BUILD_DATE
+          Build Number: $BUILD_NUMBER
+          Flutter Version: 3.32.0
+          Bundle ID: com.gooseberrydevelopment.pinepods
+
+          📱 IPA FILE:
+          ===========
+          PinePods-${VERSION_TAG}.ipa - iOS App Store package
+
+          🚀 DISTRIBUTION:
+          ===============
+          • App Store: Upload IPA to App Store Connect
+          • TestFlight: Upload via App Store Connect for beta testing
+          • Enterprise: Use enterprise provisioning profile (separate build needed)
+
+          ⚡ UPLOAD INSTRUCTIONS:
+          ======================
+          1. Go to App Store Connect (appstoreconnect.apple.com)
+          2. Select your app → TestFlight or App Store tab
+          3. Click "+" to add new build
+          4. Upload the .ipa file
+          5. Wait for processing (10-30 minutes)
+          6. Submit for review when ready
+          EOF
+
+      - name: Upload iOS Release Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-release-${{ env.VERSION_TAG }}
+          path: release-artifacts/ios/
+          retention-days: 90
+
+      - name: Create Release Summary
+        run: |
+          echo "# 🍎 iOS Release Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## 📦 Generated Files" >> $GITHUB_STEP_SUMMARY
+          echo "- 📱 **PinePods-${{ github.event.inputs.version }}.ipa** - App Store ready package" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📥 Download Instructions" >> $GITHUB_STEP_SUMMARY
+          echo "1. Go to **Actions** tab → This workflow run" >> $GITHUB_STEP_SUMMARY
+          echo "2. Scroll down to **Artifacts** section" >> $GITHUB_STEP_SUMMARY
+          echo "3. Download \`ios-release-${{ github.event.inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. Extract the ZIP file" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "- Upload \`.ipa\` to App Store Connect" >> $GITHUB_STEP_SUMMARY
+          echo "- Submit to TestFlight for beta testing" >> $GITHUB_STEP_SUMMARY
+          echo "- Submit for App Store review when ready" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 💡 Requirements" >> $GITHUB_STEP_SUMMARY
+          echo "- Apple Developer Account (\$99/year)" >> $GITHUB_STEP_SUMMARY
+          echo "- Valid distribution certificate and provisioning profile" >> $GITHUB_STEP_SUMMARY
+          echo "- All iOS secrets configured in GitHub repository settings" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup keychain and provisioning profile
+        if: always()
+        run: |
+          if security list-keychains | grep -q "build.keychain"; then
+            security delete-keychain build.keychain
+          fi
+          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/build.mobileprovision
+          rm -f certificate.p12

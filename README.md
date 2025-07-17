@@ -8,10 +8,6 @@
 [![Docker Container Build](https://github.com/madeofpendletonwool/PinePods/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/madeofpendletonwool/PinePods/actions)
 [![GitHub Release](https://img.shields.io/github/v/release/madeofpendletonwool/pinepods)](https://github.com/madeofpendletonwool/PinePods/releases)
 
-# 👶 Currently on Baby Break 🍼
-
-*Taking some time off to welcome our newest family member!*
-
 ---
 
 - [PinePods :evergreen\_tree:](#pinepods-evergreen_tree)
@@ -111,6 +107,7 @@ services:
       # Basic Server Info
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       PEOPLE_API_URL: 'https://people.pinepods.online'
+      HOSTNAME: 'http://localhost:8040'
       # Database Vars
       DB_TYPE: postgresql
       DB_HOST: db
@@ -172,6 +169,7 @@ services:
       # Basic Server Info
       SEARCH_API_URL: 'https://search.pinepods.online/api/search'
       PEOPLE_API_URL: 'https://people.pinepods.online'
+      HOSTNAME: 'http://localhost:8040'
       # Database Vars
       DB_TYPE: mariadb
       DB_HOST: db
@@ -204,6 +202,8 @@ services:
 Make sure you change these variables to variables specific to yourself at a minimum.
 
 ```
+      # The url you hit the site at. Only used for sharing rss feeds
+      HOSTNAME: 'http://localhost:8040'
       # These next 4 are optional. They allow you to set an admin without setting on the first boot
       USERNAME: pinepods
       PASSWORD: password
@@ -317,71 +317,138 @@ To pull the container images and get started. Once fully started up you'll be ab
 ### Helm Deployment
 
 Alternatively, you can deploy Pinepods using Helm on a Kubernetes cluster. Helm is a package manager for Kubernetes that simplifies deployment.
-Adding the Helm Repository
+
+#### Adding the Helm Repository
 
 First, add the Pinepods Helm repository:
 
-```
+```bash
 helm repo add pinepods http://helm.pinepods.online
 helm repo update
 ```
+
 #### Installing the Chart
 
-To install the Pinepods Helm chart, run:
+To install the Pinepods Helm chart with default values:
 
+```bash
+helm install pinepods pinepods/pinepods --namespace pinepods-namespace --create-namespace
 ```
-helm install pinepods pinepods/pinepods -f my-values.yaml --namespace pinepods-namespace
-```
-#### Customizing Values
 
-Create a my-values.yaml file to override default values - Any value with {{  }} are things you need to set yourself.:
+Or with custom values:
 
+```bash
+helm install pinepods pinepods/pinepods -f my-values.yaml --namespace pinepods-namespace --create-namespace
 ```
-## Container image configuration
+
+#### Configuration Options
+
+The Helm chart supports extensive configuration. Key areas include:
+
+**Main Application:**
+- Image repository and tag configuration
+- Service type and port settings
+- Ingress configuration with TLS support
+- Persistent storage for downloads and backups
+- Resource limits and requests
+- Security contexts and pod placement
+
+**Dependencies:**
+- PostgreSQL database (can be disabled for external database)
+- Valkey/Redis for caching (can be disabled)
+- Optional backend API deployment for self-hosted search
+- Optional PodPeople database for podcast host information
+
+**Example values.yaml:**
+
+```yaml
+# Main application configuration
 image:
   repository: madeofpendletonwool/pinepods
   tag: latest
-  pullPolicy: Always
+  pullPolicy: IfNotPresent
 
 service:
   type: ClusterIP
   port: 8040
 
-
 ingress:
   enabled: true
   className: ""
   annotations:
-    annotations:
-      # Whatever you need to set here
+    traefik.ingress.kubernetes.io/router.entrypoints: web
   hosts:
-    - host: {{ pinepods_domain }}
+    - host: pinepods.example.com
       paths:
         - path: /
           pathType: Prefix
+  tls: []
 
-
+# Persistent storage
 persistence:
   enabled: true
   downloads:
-    storageClass: {{ storage_class }}
-    accessMode: ReadWriteOnce
-    size: {{ downloads_size }}
+    storageClass: ""  # Use default storage class
+    size: 5Gi
   backups:
-    storageClass: {{ storage_class }}
-    accessMode: ReadWriteOnce
-    size: {{ backups_size }}
+    storageClass: ""
+    size: 2Gi
 
+# Database configuration
 postgresql:
   enabled: true
   auth:
     username: postgres
-    password: {{ postgres_password }}
+    password: "changeme"
     database: pinepods_database
   persistence:
     enabled: true
-    storageClass: {{ storage_class }}
-    size: {{ postgres_size }}
+    size: 3Gi
+
+# Valkey/Redis configuration
+valkey:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+
+# Optional backend API (self-hosted search)
+backend:
+  enabled: false
+  secrets:
+    apiKey: "YOUR_PODCAST_INDEX_KEY"
+    apiSecret: "YOUR_PODCAST_INDEX_SECRET"
+
+# Optional PodPeople database
+podpeople:
+  enabled: false
+
+# Application environment
+env:
+  USERNAME: "admin"
+  PASSWORD: "password"
+  FULLNAME: "Admin User"
+  EMAIL: "admin@example.com"
+  DEBUG_MODE: "false"
+  HOSTNAME: 'http://localhost:8040'
+```
+
+#### External Database Configuration
+
+To use an external database instead of the included PostgreSQL:
+
+```yaml
+postgresql:
+  enabled: false
+
+externalDatabase:
+  host: "your-postgres-host"
+  port: 5432
+  user: postgres
+  password: "your-password"
+  database: pinepods_database
+```
+    size: 3Gi
 
 valkey:
   enabled: true
@@ -399,10 +466,11 @@ valkey:
 env:
   SEARCH_API_URL: "https://search.pinepods.online/api/search"
   PEOPLE_API_URL: "https://people.pinepods.online"
-  USERNAME: {{ admin_username }}
-  PASSWORD: {{ admin_password }}
-  FULLNAME: {{ admin_fullname }}
-  EMAIL: {{ admin_email }}
+  USERNAME: "admin"
+  PASSWORD: "password"
+  FULLNAME: "Admin User"
+  EMAIL: "admin@example.com"
+  HOSTNAME: 'http://localhost:8040'
   DB_TYPE: "postgresql"
   DB_USER: "postgres"
   DB_NAME: "pinepods_database"
@@ -421,8 +489,8 @@ backend:
     type: ClusterIP
     port: 5000
   secrets:
-    apiKey: {{ backend_api_key }}
-    apiSecret: {{ backend_api_secret }}
+    apiKey: "YOUR_PODCAST_INDEX_KEY"
+    apiSecret: "YOUR_PODCAST_INDEX_SECRET"
 # This ingress is specific to pinepods backend. If you don't use that change to disabled.
   ingress:
     enabled: true
@@ -430,7 +498,7 @@ backend:
     annotations:
       # Whatever you need to set here
     hosts:
-      - host: {{ backend_domain }}
+      - host: backend.example.com
         paths:
           - path: /
             pathType: Prefix
@@ -446,17 +514,17 @@ podpeople:
     port: 8085
   persistence:
     enabled: true
-    storageClass: {{ storage_class }}
-    size: {{ podpeople_size }}
+    storageClass: ""
+    size: 1Gi
     accessMode: ReadWriteOnce
   auth:
-    adminUsername: {{ admin_username }}
-    adminPassword: {{ admin_password }}
+    adminUsername: "admin"
+    adminPassword: "password"
   environment:
-    ntfyUrl: {{ ntfy_url }}
-    ntfyTopic: {{ ntfy_topic }}
-    searchApiUrl: {{ search_api_url }}
-    baseurl: {{ pod_people_base_url }}
+    ntfyUrl: "https://ntfy.sh"
+    ntfyTopic: "your-topic"
+    searchApiUrl: "http://pinepods-backend:5000"
+    baseurl: "https://podpeople.example.com"
 # This ingress is specific to podpeople db. If you don't use that change to disabled.
   ingress:
     enabled: true
@@ -464,7 +532,7 @@ podpeople:
     annotations:
       # Whatever you need to set here
     hosts:
-      - host: {{ podpeople_domain }}
+      - host: podpeople.example.com
         paths:
           - path: /
             pathType: Prefix
@@ -668,3 +736,20 @@ Mobile support baked right in!
 
 Arm Images made possible by Runs-On:
 https://runs-on.com
+
+#### 📜 Credits & Licensing
+
+PinePods is an open-source podcast player developed by Gooseberry Development, licensed under the GNU General Public License v3.0 (GPL-3.0).
+
+The Pinepods Mobile app in the mobile directory includes code adapted from the excellent [Anytime Podcast Player](https://github.com/amugofjava/anytime_podcast_player), originally created by Ben Hills.
+🧩 Included Third-Party Code
+
+    Anytime Podcast Player
+    © 2020 Ben Hills and project contributors
+    Licensed under the BSD 3-Clause License
+
+Portions of the mobile app retain the original BSD license and attribution as required. Files with this license are labeled at the top to clearly indicate. See the LICENSE.ben_hills in the mobile directory for details.
+
+#### 💬 Acknowledgment
+
+Huge thanks to Ben Hills for open-sourcing the Anytime Podcast Player. It served as a solid foundation and greatly accelerated development of PinePods.

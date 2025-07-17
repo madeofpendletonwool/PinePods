@@ -326,8 +326,11 @@ pub fn episode(props: &EpisodeProps) -> Html {
     };
 
     // Setup long press detection
-    let (on_touch_start, on_touch_end, on_touch_move, is_long_press) =
+    let (on_touch_start, on_touch_end, on_touch_move, is_long_press_state, is_pressing_state) =
         use_long_press(on_long_press, Some(600)); // 600ms for long press
+
+    let is_long_press = is_long_press_state;
+    let is_pressing = is_pressing_state;
 
     // When long press is detected through the hook, update our state
     {
@@ -488,6 +491,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         *context_menu_position,
         close_context_menu,
         context_button_ref,
+        is_pressing,
     );
 
     item

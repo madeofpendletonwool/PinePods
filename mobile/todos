@@ -1,0 +1,29 @@
+Searching functionality
+	- Allow playing even if pod isn't added
+setting to go full screen default still doesn't work
+
+Clicking to a podcast from episode details page results in 0 episode count
+Host links don't work in podcast detail page or episode detail page, currenlty they only work on full player description page
+
+print statements
+pay apples developer tax
+
+pre-release
+fix search on web
+return saved, downloaded, queued status on user_history call - double check app hsitory page
+
+post beta
+---
+oidc login
+logout page not always working after logout. Just navigates back to home screen
+on episode page player goes too high. Needs padding
+Fix android homescreen icon
+full screen player via scroll up, not just tap
+
+
+app stores
+    fdroid
+    apple
+    google
+
+android auto

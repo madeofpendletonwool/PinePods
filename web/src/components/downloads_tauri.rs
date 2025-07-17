@@ -319,6 +319,11 @@ pub fn downloads() -> Html {
         .map(|ud| ud.server_name.clone());
     let loading = use_state(|| true);
 
+    // Filter state for episodes
+    let episode_search_term = use_state(|| String::new());
+    let show_completed = use_state(|| false);
+    let show_in_progress = use_state(|| false);
+
     // Fetch episodes on component mount
     let loading_ep = loading.clone();
     let local_download_increment = audio_state.local_download_increment;
@@ -654,6 +659,98 @@ pub fn downloads() -> Html {
                                         }
                                     }
                                 </div>
+
+                                // Modern mobile-friendly filter bar
+                                <div class="mb-6 space-y-4">
+                                    // Search bar (full width - no sort dropdown for downloads)
+                                    <div class="w-full">
+                                        <div class="relative">
+                                            <input
+                                                type="text"
+                                                class="search-input"
+                                                placeholder="Search downloaded episodes..."
+                                                value={(*episode_search_term).clone()}
+                                                oninput={let episode_search_term = episode_search_term.clone();
+                                                    Callback::from(move |e: InputEvent| {
+                                                        if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                                                            episode_search_term.set(input.value());
+                                                        }
+                                                    })
+                                                }
+                                            />
+                                            <i class="ph ph-magnifying-glass absolute right-4 top-1/2 -translate-y-1/2 text-xl text-text-color-muted pointer-events-none"></i>
+                                        </div>
+                                    </div>
+
+                                    // Filter chips (horizontal scroll on mobile)
+                                    <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+                                        // Clear all filters
+                                        <button
+                                            onclick={
+                                                let show_completed = show_completed.clone();
+                                                let show_in_progress = show_in_progress.clone();
+                                                let episode_search_term = episode_search_term.clone();
+                                                Callback::from(move |_| {
+                                                    show_completed.set(false);
+                                                    show_in_progress.set(false);
+                                                    episode_search_term.set(String::new());
+                                                })
+                                            }
+                                            class="filter-chip"
+                                        >
+                                            <i class="ph ph-broom text-lg"></i>
+                                            <span class="text-sm font-medium">{"Clear All"}</span>
+                                        </button>
+
+                                        // Completed filter chip
+                                        <button
+                                            onclick={let show_completed = show_completed.clone();
+                                                let show_in_progress = show_in_progress.clone();
+                                                Callback::from(move |_| {
+                                                    show_completed.set(!*show_completed);
+                                                    if *show_in_progress {
+                                                        show_in_progress.set(false);
+                                                    }
+                                                })
+                                            }
+                                            class={classes!(
+                                                "filter-chip",
+                                                if *show_completed {
+                                                    "filter-chip--active"
+                                                } else {
+                                                    ""
+                                                }
+                                            )}
+                                        >
+                                            <i class="ph ph-check-circle text-lg"></i>
+                                            <span class="text-sm font-medium">{"Completed"}</span>
+                                        </button>
+
+                                        // In progress filter chip
+                                        <button
+                                            onclick={let show_in_progress = show_in_progress.clone();
+                                                let show_completed = show_completed.clone();
+                                                Callback::from(move |_| {
+                                                    show_in_progress.set(!*show_in_progress);
+                                                    if *show_completed {
+                                                        show_completed.set(false);
+                                                    }
+                                                })
+                                            }
+                                            class={classes!(
+                                                "filter-chip",
+                                                if *show_in_progress {
+                                                    "filter-chip--active"
+                                                } else {
+                                                    ""
+                                                }
+                                            )}
+                                        >
+                                            <i class="ph ph-hourglass-medium text-lg"></i>
+                                            <span class="text-sm font-medium">{"In Progress"}</span>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         }
                     }
@@ -673,6 +770,44 @@ pub fn downloads() -> Html {
                             } else {
                                 let grouped_episodes = group_episodes_by_podcast(int_download_eps.episodes);
 
+                                // Create filtered episodes
+                                let filtered_grouped_episodes = {
+                                    let mut filtered_map: HashMap<i32, Vec<EpisodeDownload>> = HashMap::new();
+
+                                    for (podcast_id, episodes) in grouped_episodes.iter() {
+                                        let filtered_episodes: Vec<EpisodeDownload> = episodes.iter()
+                                            .filter(|episode| {
+                                                // Search filter
+                                                let matches_search = if !episode_search_term.is_empty() {
+                                                    episode.episodetitle.to_lowercase().contains(&episode_search_term.to_lowercase())
+                                                } else {
+                                                    true
+                                                };
+
+                                                // Completion filter
+                                                let matches_completion = if *show_completed && *show_in_progress {
+                                                    true // Both filters active = show all
+                                                } else if *show_completed {
+                                                    episode.completed
+                                                } else if *show_in_progress {
+                                                    !episode.completed && episode.listenduration.is_some() && episode.listenduration.unwrap() > 0
+                                                } else {
+                                                    true // No filters = show all
+                                                };
+
+                                                matches_search && matches_completion
+                                            })
+                                            .cloned()
+                                            .collect();
+
+                                        if !filtered_episodes.is_empty() {
+                                            filtered_map.insert(*podcast_id, filtered_episodes);
+                                        }
+                                    }
+
+                                    filtered_map
+                                };
+
                                 html! {
                                     <>
                                     {
@@ -681,7 +816,7 @@ pub fn downloads() -> Html {
                                                 html! {
                                                     <>
                                                         { for pods.iter().filter_map(|podcast| {
-                                                            let episodes = grouped_episodes.get(&podcast.podcastid).unwrap_or(&Vec::new()).clone();
+                                                            let episodes = filtered_grouped_episodes.get(&podcast.podcastid).unwrap_or(&Vec::new()).clone();
                                                             if episodes.is_empty() {
                                                                 None
                                                             } else {
@@ -809,41 +944,48 @@ pub fn render_podcast_with_episodes(
 
     html! {
         <div key={podcast.podcastid}>
-            {if is_delete_mode {
-                html! {
-                    <div class="flex items-center pl-4" onclick={|e: MouseEvent| e.stop_propagation()}>
-                        <input
-                            type="checkbox"
-                            class="h-5 w-5 rounded border-2 border-gray-400 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer appearance-none checked:bg-primary checked:border-primary relative
-                            before:content-[''] before:block before:w-full before:h-full before:checked:bg-[url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PScwIDAgMTYgMTYnIGZpbGw9JyNmZmYnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zyc+PHBhdGggZD0nTTEyLjIwNyA0Ljc5M2ExIDEgMCAwIDEgMCAxLjQxNGwtNSA1YTEgMSAwIDAgMS0xLjQxNCAwbC0yLTJhMSAxIDAgMCAxIDEuNDE0LTEuNDE0TDYuNSA5LjA4NmwzLjc5My0zLjc5M2ExIDEgMCAwIDEgMS40MTQgMHonLz48L3N2Zz4=')] before:checked:bg-no-repeat before:checked:bg-center"
-                            onchange={on_podcast_checkbox_change}
-                        />
-                    </div>
-                }
-            } else {
-                html! {}
-            }}
-            <div class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg h-full" onclick={toggle_expanded}>
-                <div class="flex flex-col w-auto object-cover pl-4">
+            <div class="podcast-dropdown-header">
+                <div class="podcast-dropdown-content" onclick={toggle_expanded}>
+                    {if is_delete_mode {
+                        html! {
+                            <div onclick={|e: MouseEvent| e.stop_propagation()}>
+                                <input
+                                    type="checkbox"
+                                    class="podcast-dropdown-checkbox"
+                                    onchange={on_podcast_checkbox_change}
+                                />
+                            </div>
+                        }
+                    } else {
+                        html! {}
+                    }}
+
                     <FallbackImage
                         src={podcast.artworkurl.clone().unwrap()}
-                        // onclick={on_title_click.clone()}
                         alt={format!("Cover for {}", podcast.podcastname.clone())}
-                        class="object-cover align-top-cover w-full item-container img"
+                        class="podcast-dropdown-image"
                     />
-                </div>
-                <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
-                    <p class="item_container-text text-xl font-semibold cursor-pointer">
-                        { &podcast.podcastname }
-                    </p>
-                    <hr class="my-2 border-t hidden md:block"/>
-                    <p class="item_container-text">{ format!("Episode Count: {}", podcast.episodecount.unwrap_or(0)) }</p>
+
+                    <div class="podcast-dropdown-info">
+                        <p class="podcast-dropdown-title item_container-text">
+                            { &podcast.podcastname }
+                        </p>
+                        <p class="podcast-dropdown-count item_container-text">
+                            { format!("{} Downloaded Episodes", episodes.len()) }
+                        </p>
+                    </div>
+
+                    <div class={classes!("podcast-dropdown-arrow", is_expanded.then(|| "expanded"))}>
+                        <i class="ph ph-caret-down text-2xl"></i>
+                    </div>
                 </div>
             </div>
+
             { if is_expanded {
                 html! {
-                    <div class="episodes-dropdown, pl-4">
-                        { for episodes.into_iter().map(|episode| {
+                    <div class="podcast-episodes-container expanded">
+                        <div class="podcast-episodes-inner">
+                            { for episodes.into_iter().map(|episode| {
                             let id_string = &episode.episodeid.to_string();
 
                             let app_dispatch = html_dispatch.clone();
@@ -941,6 +1083,7 @@ pub fn render_podcast_with_episodes(
                                 state.clone()
                             )
                         }) }
+                        </div>
                     </div>
                 }
             } else {

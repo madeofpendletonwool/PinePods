@@ -1,0 +1,172 @@
+permissions:
+  contents: read
+name: Build Android Release Archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g., v0.7.9)"
+        required: false
+        default: "manual-build"
+
+jobs:
+  build-android:
+    name: Build Android Release Archive
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set Build Info
+        run: |
+          echo "VERSION_TAG=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          echo "BUILD_NUMBER=$(date +%s)" >> $GITHUB_ENV
+          echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          link-to-sdk: true
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.32.0"
+          channel: "stable"
+
+      - name: Install dependencies
+        run: |
+          cd mobile
+          flutter pub get
+
+      - name: Setup Android signing
+        run: |
+          cd mobile/android
+          echo "storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}" > key.properties
+          echo "keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}" >> key.properties
+          echo "keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}" >> key.properties
+          echo "storeFile=../upload-keystore.jks" >> key.properties
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > upload-keystore.jks
+
+      - name: Update app version
+        run: |
+          cd mobile
+          if [[ "$VERSION_TAG" != "manual-build" && "$VERSION_TAG" != "" ]]; then
+            # Remove 'v' prefix if present
+            CLEAN_VERSION=${VERSION_TAG#v}
+            sed -i "s/^version: .*/version: $CLEAN_VERSION/" pubspec.yaml
+            echo "Updated version to: $CLEAN_VERSION"
+          fi
+
+      - name: Build signed APK (split per ABI)
+        run: |
+          cd mobile
+          flutter build apk --release --split-per-abi
+          echo "Split APK build completed"
+
+      - name: Build signed APK (universal)
+        run: |
+          cd mobile
+          flutter build apk --release
+          echo "Universal APK build completed"
+
+      - name: Build signed AAB (App Bundle)
+        run: |
+          cd mobile
+          flutter build appbundle --release
+          echo "AAB build completed"
+
+      - name: Prepare release artifacts
+        run: |
+          cd mobile
+          mkdir -p ../release-artifacts/android
+
+          # Copy split APKs with descriptive names
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ../release-artifacts/android/PinePods-${VERSION_TAG}-arm64-v8a.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ../release-artifacts/android/PinePods-${VERSION_TAG}-armeabi-v7a.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk ../release-artifacts/android/PinePods-${VERSION_TAG}-x86_64.apk
+
+          # Copy universal APK
+          cp build/app/outputs/flutter-apk/app-release.apk ../release-artifacts/android/PinePods-${VERSION_TAG}-universal.apk
+
+          # Copy AAB for Play Store
+          cp build/app/outputs/bundle/release/app-release.aab ../release-artifacts/android/PinePods-${VERSION_TAG}-playstore.aab
+
+          # Create build info file
+          cat > ../release-artifacts/android/BUILD_INFO.txt << EOF
+          PinePods Mobile - Android Release Build
+          =====================================
+          Version: $VERSION_TAG
+          Build Date: $BUILD_DATE
+          Build Number: $BUILD_NUMBER
+          Flutter Version: 3.32.0
+          Package: com.gooseberrydevelopment.pinepods
+
+          📱 APK FILES:
+          =============
+          PinePods-${VERSION_TAG}-arm64-v8a.apk      - 64-bit ARM (most modern phones)
+          PinePods-${VERSION_TAG}-armeabi-v7a.apk    - 32-bit ARM (older phones)
+          PinePods-${VERSION_TAG}-x86_64.apk         - 64-bit Intel (emulators/some tablets)
+          PinePods-${VERSION_TAG}-universal.apk      - Works on all devices (larger size)
+
+          📦 STORE FILES:
+          ==============
+          PinePods-${VERSION_TAG}-playstore.aab      - Google Play Store upload (.aab format)
+
+          🚀 DISTRIBUTION:
+          ================
+          • Google Play Store: Use the .aab file
+          • F-Droid: They build from source (no APK needed)
+          • IzzyOnDroid: Use universal.apk or arm64-v8a.apk
+          • Direct install: Use arm64-v8a.apk for most users
+
+          ⚡ QUICK INSTALL:
+          ================
+          Most users should download: PinePods-${VERSION_TAG}-arm64-v8a.apk
+          EOF
+
+      - name: Upload Android Release Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release-${{ env.VERSION_TAG }}
+          path: release-artifacts/android/
+          retention-days: 90
+
+      - name: Create Release Summary
+        run: |
+          echo "# 🤖 Android Release Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Build Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "## 📦 Generated Files" >> $GITHUB_STEP_SUMMARY
+          echo "- 🎯 **arm64-v8a.apk** - Recommended for most users" >> $GITHUB_STEP_SUMMARY
+          echo "- 📱 **armeabi-v7a.apk** - For older Android devices" >> $GITHUB_STEP_SUMMARY
+          echo "- 💻 **x86_64.apk** - For emulators and Intel devices" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌍 **universal.apk** - Works on all devices (larger file)" >> $GITHUB_STEP_SUMMARY
+          echo "- 🏪 **playstore.aab** - For Google Play Store upload" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📥 Download Instructions" >> $GITHUB_STEP_SUMMARY
+          echo "1. Go to **Actions** tab → This workflow run" >> $GITHUB_STEP_SUMMARY
+          echo "2. Scroll down to **Artifacts** section" >> $GITHUB_STEP_SUMMARY
+          echo "3. Download \`android-release-${{ github.event.inputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "4. Extract the ZIP file" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "- Test the APK on your device" >> $GITHUB_STEP_SUMMARY
+          echo "- Submit \`.aab\` file to Google Play Console" >> $GITHUB_STEP_SUMMARY
+          echo "- Submit \`universal.apk\` to IzzyOnDroid" >> $GITHUB_STEP_SUMMARY
+          echo "- Create GitHub release with APKs for direct download" >> $GITHUB_STEP_SUMMARY

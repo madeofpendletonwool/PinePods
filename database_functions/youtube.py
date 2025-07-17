@@ -20,7 +20,9 @@ async def get_channel_info(channel_id: str) -> Dict:
         'quiet': True,
         'extract_flat': True,
         'no_warnings': True,
-        'playlist_items': '0'  # Just get channel info, not videos
+        'playlist_items': '0',  # Just get channel info, not videos
+        'socket_timeout': 30,  # 30 second socket timeout
+        'timeout': 60,  # 60 second overall timeout
     }
     print('in get channel info')
 
@@ -80,6 +82,8 @@ def download_youtube_audio(video_id: str, output_path: str):
         }],
         'outtmpl': base_path,
         'ignoreerrors': True,  # Add this to not fail on individual errors
+        'socket_timeout': 30,  # 30 second socket timeout
+        'timeout': 60,  # 60 second overall timeout
     }
     with YoutubeDL(ydl_opts) as ydl:
         ydl.download([f"https://www.youtube.com/watch?v={video_id}"])
@@ -109,6 +113,8 @@ def process_youtube_videos(database_type, podcast_id: int, channel_id: str, cnx,
             'no_warnings': True,
             'extract_flat': True,  # Fast initial fetch
             'ignoreerrors': True,
+            'socket_timeout': 30,  # 30 second socket timeout
+            'timeout': 60,  # 60 second overall timeout
         }
 
         logger.info("Initializing YouTube-DL with options:")

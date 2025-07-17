@@ -1,6 +1,7 @@
-name: Build Android Pinepods App
+name: Build Android Pinepods App (Legacy Tauri - Deprecated)
 
 on:
+  # This workflow is deprecated in favor of build-android-flutter.yml
   # release:
   #   types: [published]
   workflow_dispatch:

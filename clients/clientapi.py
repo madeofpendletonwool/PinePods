@@ -795,7 +795,7 @@ def process_opml_import(import_request: OPMLImportRequest, database_type):
         try:
             with get_db_connection() as cnx:
                 podcast_values = database_functions.app_functions.get_podcast_values(podcast_url, import_request.user_id, None, None, False)
-                database_functions.functions.add_podcast(cnx, database_type, podcast_values, import_request.user_id)
+                database_functions.functions.add_podcast(cnx, database_type, podcast_values, import_request.user_id, 30)
                 database_functions.import_progress.import_progress_manager.update_progress(import_request.user_id, index, podcast_url)
         except Exception as e:
             print(f"Error importing podcast {podcast_url}: {str(e)}")
@@ -3697,15 +3697,38 @@ async def api_set_theme(user_id: int = Body(...), new_theme: str = Body(...), cn
                             detail="You can only set your own theme!")
 
 @app.post("/api/data/create_api_key")
-async def api_create_api_key(user_id: int = Body(..., embed=True), cnx=Depends(get_database_connection),
-                             api_key: str = Depends(get_api_key_from_header)):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-    if is_valid_key:
-        new_api_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
-        return {"api_key": new_api_key}
+async def api_create_api_key(
+        user_id: int = Body(..., embed=True),
+        rssonly: bool = Body(..., embed=True),
+        podcast_ids: Optional[List[int]] = Body(None, embed=True),
+        cnx=Depends(get_database_connection),
+        api_key: str = Depends(get_api_key_from_header)):
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if user_id == key_id or is_web_key:
+        if rssonly:
+            new_key = database_functions.functions.create_rss_key(cnx, database_type, user_id, podcast_ids)
+        else:
+            new_key = database_functions.functions.create_api_key(cnx, database_type, user_id)
+        return {"rss_key" if rssonly else "api_key": new_key}
     else:
         raise HTTPException(status_code=403,
                             detail="Your API key is either invalid or does not have correct permission")
+
+@app.post("/api/data/set_rss_key_podcasts")
+async def api_set_rss_key_podcasts(
+        user_id: int = Body(..., embed=True),
+        rss_key_id: int = Body(..., embed=True),
+        podcast_ids: Optional[List[int]] = Body(None, embed=True),
+        cnx=Depends(get_database_connection),
+        api_key: str = Depends(get_api_key_from_header)):
+    is_web_key = api_key == base_webkey.web_key
+    key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if user_id == key_id or is_web_key:
+        database_functions.functions.set_rss_key_podcasts(cnx, database_type, rss_key_id, podcast_ids)
+        return {"message": "Podcast IDs updated successfully"}
+    else:
+        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
 
 class SendTestEmailValues(BaseModel):
     server_name: str
@@ -5746,14 +5769,18 @@ async def stream_episode(
     cnx=Depends(get_database_connection),
     api_key: str = Query(..., alias='api_key'),
     user_id: int = Query(..., alias='user_id'),
-    source_type: str = Query(None, alias='type')  # Add source type parameter
+    source_type: str = Query(None, alias='type')
 ):
-    is_valid_key = database_functions.functions.verify_api_key(cnx, database_type, api_key)
-    if not is_valid_key:
-        raise HTTPException(status_code=403, detail="Your API key is either invalid or does not have correct permission")
-
     is_web_key = api_key == base_webkey.web_key
     key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+    if not key_id and not is_web_key:
+        rss_key = database_functions.functions.get_rss_key_if_valid(cnx, database_type, api_key)
+        if not rss_key:
+            raise HTTPException(status_code=403, detail="Invalid API key")
+        key_id = rss_key.get('user_id')
+        universal_key = (not rss_key.get('podcast_ids') or len(rss_key.get('podcast_ids')) == 0 or -1 in rss_key.get('podcast_ids'))
+        if not universal_key and not database_functions.functions.validate_episode_access(cnx, database_type, episode_id, rss_key.get('podcast_ids')):
+            raise HTTPException(status_code=403, detail="You do not have permission to access this episode")
 
     if key_id == user_id or is_web_key:
         # Choose which lookup to use based on source_type
@@ -5765,7 +5792,8 @@ async def stream_episode(
             print(f'file path in if source else {file_path}')
 
         if file_path:
-            return FileResponse(path=file_path, media_type='audio/mpeg', filename=os.path.basename(file_path))
+            # Don't set filename to allow streaming instead of forced download
+            return FileResponse(path=file_path, media_type='audio/mpeg')
         else:
             raise HTTPException(status_code=404, detail="Episode not found or not downloaded")
     else:
@@ -6055,25 +6083,46 @@ async def toggle_rss_feeds_endpoint(
 
 @app.get("/api/feed/{user_id}")
 async def get_user_feed(
+    request: Request,
     user_id: int,
     api_key: str,  # Now a query parameter
+    limit: int = 1000,
     podcast_id: Optional[int] = None,
+    source_type: str = Query(None, alias='type'),
     cnx=Depends(get_database_connection)
 ):
     """Get RSS feed for all podcasts or a specific podcast"""
     print(f'user: {user_id}, api: {api_key}')
+    print(f'podcast_id parameter: {podcast_id}, type: {type(podcast_id)}')
+    print(f'podcast_id_list will be: {[podcast_id] if podcast_id is not None else None}')
     try:
-        # Use id_from_api_key to verify the API key from query param
-        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
-        if not key_id:
-            raise HTTPException(status_code=403, detail="Invalid API key")
+        domain = os.getenv('HOSTNAME', f'{request.url.scheme}://{request.url.hostname}:{request.url.port or 80}')
+
+
+        # Convert single podcast_id to list format if provided
+        podcast_id_list = [podcast_id] if podcast_id is not None else None
+
+        rss_key = database_functions.functions.get_rss_key_if_valid(cnx, database_type, api_key, podcast_id_list)
+
+        # TODO: remove this once backwards compatibility is no longer needed
+        if not rss_key:
+            key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+            if not key_id:
+                raise HTTPException(status_code=403, detail="Invalid API key")
+            rss_key = {
+                "podcast_ids": [ -1 ],
+                "user_id": key_id,
+                "key": api_key
+            }
 
         feed_content = database_functions.functions.generate_podcast_rss(
             database_type,
             cnx,
-            user_id,
-            api_key,
-            podcast_id
+            rss_key,
+            limit,
+            source_type,
+            domain,
+            podcast_id=podcast_id_list
         )
         return Response(
             content=feed_content,
@@ -6097,6 +6146,27 @@ async def toggle_rss_feeds(
 
         new_status = database_functions.functions.set_rss_feed_status(cnx, database_type, user_id, enable)
         return {"status": "success", "enabled": new_status}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/data/rss_key")
+async def get_user_rss_key(
+    cnx=Depends(get_database_connection),
+    api_key: str = Depends(get_api_key_from_header)
+):
+    """Get the RSS key for the current user"""
+    try:
+        key_id = database_functions.functions.id_from_api_key(cnx, database_type, api_key)
+        if not key_id:
+            raise HTTPException(status_code=403, detail="Invalid API key")
+
+        rss_key = database_functions.functions.get_user_rss_key(cnx, database_type, key_id)
+        if not rss_key:
+            raise HTTPException(status_code=404, detail="No RSS key found. Please enable RSS feeds first.")
+
+        return {"rss_key": rss_key}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -6718,9 +6788,9 @@ async def run_startup_tasks(request: InitRequest, cnx=Depends(get_database_conne
         print('start of startup')
         # Verify if the API key is valid
         is_valid = database_functions.functions.verify_api_key(cnx, database_type, request.api_key)
-        is_web_key = database_functions.functions.get_web_key(cnx, database_type)
+        web_key = database_functions.functions.get_web_key(cnx, database_type)
         # Check if the provided API key is the web key
-        is_web_key = request.api_key == base_webkey.web_key
+        is_web_key = request.api_key == web_key
 
         if not is_valid or not is_web_key:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid or unauthorized API key")

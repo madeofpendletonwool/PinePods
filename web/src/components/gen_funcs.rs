@@ -325,28 +325,45 @@ pub fn use_long_press(
     Callback<TouchEvent>,
     Callback<TouchEvent>,
     UseStateHandle<bool>,
+    UseStateHandle<bool>,
 ) {
     let timeout_handle = use_state(|| None::<Timeout>);
     let is_long_press = use_state(|| false);
     let start_position = use_state(|| None::<(i32, i32)>);
+    let is_pressing = use_state(|| false);
 
     // Configure the threshold for movement that cancels a long press
     let movement_threshold = 10; // pixels
-    let delay = delay_ms.unwrap_or(500); // Default to 500ms
+    let delay = delay_ms.unwrap_or(600); // Increased to 600ms for better iOS compatibility
 
     let on_touch_start = {
         let timeout_handle = timeout_handle.clone();
         let is_long_press = is_long_press.clone();
         let start_position = start_position.clone();
+        let is_pressing = is_pressing.clone();
         let on_long_press = on_long_press.clone();
 
         Callback::from(move |event: TouchEvent| {
-            event.prevent_default();
+            // Don't prevent default on touch start - let iOS handle it naturally
+
+            // Disable text selection for iOS
+            if let Some(target) = event.target() {
+                if let Ok(element) = target.dyn_into::<web_sys::HtmlElement>() {
+                    let _ = element.style().set_property("user-select", "none");
+                    let _ = element.style().set_property("-webkit-user-select", "none");
+                    let _ = element
+                        .style()
+                        .set_property("-webkit-touch-callout", "none");
+                }
+            }
 
             // Store the initial touch position
             if let Some(touch) = event.touches().get(0) {
                 start_position.set(Some((touch.client_x(), touch.client_y())));
             }
+
+            // Set pressing state for visual feedback
+            is_pressing.set(true);
 
             // Reset long press state
             is_long_press.set(false);
@@ -370,16 +387,30 @@ pub fn use_long_press(
 
     let on_touch_end = {
         let timeout_handle = timeout_handle.clone();
+        let is_pressing = is_pressing.clone();
 
-        Callback::from(move |_event: TouchEvent| {
+        Callback::from(move |event: TouchEvent| {
             // Clear the timeout if the touch ends before the long press is triggered
             timeout_handle.set(None);
+
+            // Clear pressing state
+            is_pressing.set(false);
+
+            // Re-enable text selection
+            if let Some(target) = event.target() {
+                if let Ok(element) = target.dyn_into::<web_sys::HtmlElement>() {
+                    let _ = element.style().remove_property("user-select");
+                    let _ = element.style().remove_property("-webkit-user-select");
+                    let _ = element.style().remove_property("-webkit-touch-callout");
+                }
+            }
         })
     };
 
     let on_touch_move = {
         let timeout_handle = timeout_handle.clone();
         let start_position = start_position.clone();
+        let is_pressing = is_pressing.clone();
 
         Callback::from(move |event: TouchEvent| {
             // If the touch moves too much, cancel the long press
@@ -394,13 +425,29 @@ pub fn use_long_press(
                     if distance_x > movement_threshold || distance_y > movement_threshold {
                         // Movement exceeded threshold, cancel the long press
                         timeout_handle.set(None);
+                        is_pressing.set(false);
+
+                        // Re-enable text selection
+                        if let Some(target) = event.target() {
+                            if let Ok(element) = target.dyn_into::<web_sys::HtmlElement>() {
+                                let _ = element.style().remove_property("user-select");
+                                let _ = element.style().remove_property("-webkit-user-select");
+                                let _ = element.style().remove_property("-webkit-touch-callout");
+                            }
+                        }
                     }
                 }
             }
         })
     };
 
-    (on_touch_start, on_touch_end, on_touch_move, is_long_press)
+    (
+        on_touch_start,
+        on_touch_end,
+        on_touch_move,
+        is_long_press,
+        is_pressing,
+    )
 }
 
 /// A hook for setting up a context menu triggered by long press.
@@ -424,6 +471,7 @@ pub fn use_context_menu_long_press(
     Callback<TouchEvent>,
     Callback<TouchEvent>,
     Callback<()>,
+    bool,
 ) {
     let show_context_menu = use_state(|| false);
     let context_menu_position = use_state(|| (0, 0));
@@ -453,14 +501,17 @@ pub fn use_context_menu_long_press(
     };
 
     // Setup long press detection
-    let (on_touch_start, on_touch_end, on_touch_move, is_long_press) =
+    let (on_touch_start, on_touch_end, on_touch_move, is_long_press_state, is_pressing_state) =
         use_long_press(on_long_press, delay_ms); // default to 600ms for long press
+
+    let is_long_press = is_long_press_state;
+    let is_pressing = is_pressing_state;
 
     // When long press is detected through the hook, update our state
     {
         let show_context_menu = show_context_menu.clone();
-        use_effect_with(*is_long_press, move |is_pressed| {
-            if *is_pressed {
+        use_effect_with(is_long_press.clone(), move |is_pressed| {
+            if **is_pressed {
                 show_context_menu.set(true);
             }
             || ()
@@ -483,6 +534,7 @@ pub fn use_context_menu_long_press(
         on_touch_end,
         on_touch_move,
         close_context_menu,
+        *is_pressing,
     )
 }
 

@@ -1064,12 +1064,9 @@ pub struct EpisodeDownload {
     pub podcastid: i32,
     pub podcastindexid: Option<i64>,
     pub completed: bool,
-    #[serde(rename = "is_queued")]
-    pub queued: bool,
-    #[serde(rename = "is_saved")]
-    pub saved: bool,
-    #[serde(rename = "is_downloaded")]
-    pub downloaded: bool,
+    pub queued: bool,     // Remove #[serde(rename = "is_queued")]
+    pub saved: bool,      // Remove #[serde(rename = "is_saved")]
+    pub downloaded: bool, // Remove #[serde(rename = "is_downloaded")]
     pub is_youtube: bool,
 }
 
@@ -3490,5 +3487,44 @@ pub async fn call_get_playlist_episodes(
             "Server returned error: {}",
             response.status()
         ))
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct RssKeyResponse {
+    pub rss_key: String,
+}
+
+pub async fn call_get_rss_key(
+    server_name: &str,
+    api_key: &Option<String>,
+) -> Result<String, anyhow::Error> {
+    let url = format!("{}/api/data/rss_key", server_name);
+    
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if response.ok() {
+        let rss_key_response: RssKeyResponse = response
+            .json()
+            .await
+            .map_err(|e| anyhow::Error::new(e))?;
+        Ok(rss_key_response.rss_key)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to get RSS key: {} - {}",
+            response.status_text(),
+            error_text
+        )))
     }
 }

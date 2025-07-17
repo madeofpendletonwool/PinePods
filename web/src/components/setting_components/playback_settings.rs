@@ -261,7 +261,7 @@ pub fn playback_settings() -> Html {
                         />
                         <span class="text-sm">{"x"}</span>
                         <button
-                            class="submit-button ml-2"
+                            class="playback-submit-button ml-2"
                             onclick={on_save_playback_speed}
                             disabled={*is_loading}
                         >
