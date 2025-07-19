@@ -7,6 +7,7 @@ pub mod users;
 pub mod websocket;
 pub mod async_tasks_examples;
 pub mod refresh;
+pub mod proxy;
 
 // Common handler utilities
 use axum::{

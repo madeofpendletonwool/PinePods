@@ -302,11 +302,13 @@ pub struct PodcastForRefresh {
     pub id: i32,
     pub name: String,
     pub feed_url: String,
+    pub artwork_url: String,
     pub is_youtube: bool,
     pub auto_download: bool,
     pub username: Option<String>,
     pub password: Option<String>,
     pub feed_cutoff_days: Option<i32>,
+    pub user_id: i32,
 }
 
 async fn refresh_single_podcast(

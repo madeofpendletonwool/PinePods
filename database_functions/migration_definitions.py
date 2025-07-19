@@ -577,9 +577,7 @@ def migration_004_default_users(conn, db_type: str):
             # Extract API key from existing record
             api_key = result[0] if isinstance(result, tuple) else result['apikey']
         
-        # Always write API key to temp file for web service (file may not exist after container restart)
-        with open("/tmp/web_api_key.txt", "w") as f:
-            f.write(api_key)
+        # Note: Web API key file removed for security - background tasks now authenticate via database
         
         logger.info("Created default users successfully")
         

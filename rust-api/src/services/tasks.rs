@@ -212,3 +212,100 @@ pub async fn refresh_all_feeds_task(
         "success": true
     }))
 }
+
+impl TaskSpawner {
+    // Download task spawners for podcast episodes and YouTube videos
+    pub async fn spawn_download_podcast_episode(&self, episode_id: i32, user_id: i32) -> AppResult<String> {
+        self.spawn_task(
+            "download_episode".to_string(),
+            user_id,
+            move |task_id, task_manager| async move {
+                // TODO: Implement actual download logic
+                tracing::info!("Downloading podcast episode {} for user {}", episode_id, user_id);
+                
+                // Placeholder - in real implementation this would:
+                // 1. Get episode metadata from database
+                // 2. Download the audio file
+                // 3. Save to filesystem
+                // 4. Update database with download location
+                // 5. Update progress via task_manager.update_progress()
+                
+                Ok(serde_json::json!({
+                    "episode_id": episode_id,
+                    "user_id": user_id,
+                    "status": "downloaded"
+                }))
+            },
+        ).await
+    }
+
+    pub async fn spawn_download_youtube_video(&self, video_id: i32, user_id: i32) -> AppResult<String> {
+        self.spawn_task(
+            "download_video".to_string(),
+            user_id,
+            move |task_id, task_manager| async move {
+                // TODO: Implement actual YouTube download logic
+                tracing::info!("Downloading YouTube video {} for user {}", video_id, user_id);
+                
+                // Placeholder - in real implementation this would:
+                // 1. Get video metadata from database
+                // 2. Download the video file using youtube-dl or similar
+                // 3. Save to filesystem
+                // 4. Update database with download location
+                // 5. Update progress via task_manager.update_progress()
+                
+                Ok(serde_json::json!({
+                    "video_id": video_id,
+                    "user_id": user_id,
+                    "status": "downloaded"
+                }))
+            },
+        ).await
+    }
+
+    pub async fn spawn_download_all_podcast_episodes(&self, podcast_id: i32, user_id: i32) -> AppResult<String> {
+        self.spawn_task(
+            "download_all_episodes".to_string(),
+            user_id,
+            move |task_id, task_manager| async move {
+                // TODO: Implement actual bulk download logic
+                tracing::info!("Downloading all episodes for podcast {} for user {}", podcast_id, user_id);
+                
+                // Placeholder - in real implementation this would:
+                // 1. Get all episodes for the podcast from database
+                // 2. Queue individual download tasks for each episode
+                // 3. Monitor progress of all downloads
+                // 4. Update overall progress via task_manager.update_progress()
+                
+                Ok(serde_json::json!({
+                    "podcast_id": podcast_id,
+                    "user_id": user_id,
+                    "status": "all_episodes_queued"
+                }))
+            },
+        ).await
+    }
+
+    pub async fn spawn_download_all_youtube_videos(&self, channel_id: i32, user_id: i32) -> AppResult<String> {
+        self.spawn_task(
+            "download_all_videos".to_string(),
+            user_id,
+            move |task_id, task_manager| async move {
+                // TODO: Implement actual bulk YouTube download logic
+                tracing::info!("Downloading all videos for channel {} for user {}", channel_id, user_id);
+                
+                // Placeholder - in real implementation this would:
+                // 1. Get all videos for the channel from database
+                // 2. Queue individual download tasks for each video
+                // 3. Monitor progress of all downloads
+                // 4. Update overall progress via task_manager.update_progress()
+                
+                Ok(serde_json::json!({
+                    "channel_id": channel_id,
+                    "user_id": user_id,
+                    "status": "all_videos_queued"
+                }))
+            },
+        ).await
+    }
+}

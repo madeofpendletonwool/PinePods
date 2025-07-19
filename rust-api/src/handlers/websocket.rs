@@ -1,7 +1,7 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        Path, State,
+        Path, Query, State,
     },
     response::Response,
 };
@@ -136,4 +136,26 @@ pub async fn get_task_status(
 ) -> Result<axum::Json<crate::services::task_manager::TaskInfo>, crate::error::AppError> {
     let task = state.task_manager.get_task(&task_id).await?;
     Ok(axum::Json(task))
+}
+
+pub async fn get_active_tasks(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> Result<axum::Json<Vec<crate::services::task_manager::TaskInfo>>, crate::error::AppError> {
+    // Get user_id from query parameter
+    let user_id: Option<i32> = params.get("user_id")
+        .and_then(|id| id.parse().ok());
+    
+    if let Some(user_id) = user_id {
+        // Get active tasks for specific user
+        let tasks = state.task_manager.get_user_tasks(user_id).await?;
+        // Filter only active tasks (status = Running or Pending)
+        let active_tasks: Vec<_> = tasks.into_iter()
+            .filter(|task| matches!(task.status, crate::services::task_manager::TaskStatus::Pending | crate::services::task_manager::TaskStatus::Running))
+            .collect();
+        Ok(axum::Json(active_tasks))
+    } else {
+        // Return empty if no user_id provided
+        Ok(axum::Json(vec![]))
+    }
 }

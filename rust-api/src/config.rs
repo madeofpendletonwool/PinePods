@@ -56,14 +56,16 @@ impl Config {
     pub fn new() -> AppResult<Self> {
         // Load environment variables
         dotenvy::dotenv().ok();
+        
 
         let database = DatabaseConfig {
             db_type: env::var("DB_TYPE").unwrap_or_else(|_| "mariadb".to_string()),
             host: env::var("DB_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
-            port: env::var("DB_PORT")
-                .unwrap_or_else(|_| "3306".to_string())
-                .parse()
-                .map_err(|_| AppError::Config("Invalid DB_PORT".to_string()))?,
+            port: {
+                let port_str = env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
+                port_str.trim().parse()
+                    .map_err(|e| AppError::Config(format!("Invalid DB_PORT '{}': {}", port_str, e)))?
+            },
             username: env::var("DB_USER").unwrap_or_else(|_| "root".to_string()),
             password: env::var("DB_PASSWORD").unwrap_or_else(|_| "password".to_string()),
             name: env::var("DB_NAME").unwrap_or_else(|_| "pypods_database".to_string()),
@@ -73,10 +75,13 @@ impl Config {
 
         let redis = RedisConfig {
             host: env::var("VALKEY_HOST").unwrap_or_else(|_| "localhost".to_string()),
-            port: env::var("VALKEY_PORT")
-                .unwrap_or_else(|_| "6379".to_string())
-                .parse()
-                .unwrap_or(6379),
+            port: {
+                env::var("VALKEY_PORT")
+                    .unwrap_or_else(|_| "6379".to_string())
+                    .trim()
+                    .parse()
+                    .unwrap_or(6379)
+            },
             max_connections: 32,
         };
 
@@ -109,24 +114,29 @@ impl Config {
     }
 
     pub fn database_url(&self) -> String {
-        match self.database.db_type.as_str() {
+        // URL encode username and password to handle special characters
+        let encoded_username = urlencoding::encode(&self.database.username);
+        let encoded_password = urlencoding::encode(&self.database.password);
+        
+        let url = match self.database.db_type.as_str() {
             "postgresql" => format!(
                 "postgresql://{}:{}@{}:{}/{}",
-                self.database.username,
-                self.database.password,
+                encoded_username,
+                encoded_password,
                 self.database.host,
                 self.database.port,
                 self.database.name
             ),
             _ => format!(
                 "mysql://{}:{}@{}:{}/{}",
-                self.database.username,
-                self.database.password,
+                encoded_username,
+                encoded_password,
                 self.database.host,
                 self.database.port,
                 self.database.name
             ),
-        }
+        };
+        url
     }
 
     pub fn redis_url(&self) -> String {

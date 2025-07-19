@@ -5,6 +5,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use chrono::{DateTime, Utc};
 
 use crate::{
     error::AppError,
@@ -29,6 +30,40 @@ pub struct Episode {
     pub queued: bool,
     pub downloaded: bool,
     pub is_youtube: bool,
+}
+
+// Separate struct for podcast_episodes endpoint that matches frontend expectations
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[allow(non_snake_case)]
+pub struct PodcastEpisode {
+    pub podcastname: String,
+    #[serde(rename = "Episodetitle")]
+    pub episodetitle: String,
+    #[serde(rename = "Episodepubdate")]
+    pub episodepubdate: String,
+    #[serde(rename = "Episodedescription")]
+    pub episodedescription: String,
+    #[serde(rename = "Episodeartwork")]
+    pub episodeartwork: String,
+    #[serde(rename = "Episodeurl")]
+    pub episodeurl: String,
+    #[serde(rename = "Episodeduration")]
+    pub episodeduration: i32,
+    #[serde(rename = "Listenduration")]
+    pub listenduration: Option<i32>,
+    #[serde(rename = "Episodeid")]
+    pub episodeid: i32,
+    #[serde(rename = "Completed")]
+    pub completed: bool,
+    pub saved: bool,
+    pub queued: bool,
+    pub downloaded: bool,
+    pub is_youtube: bool,
+}
+
+#[derive(Serialize)]
+pub struct PodcastEpisodesResponse {
+    pub episodes: Vec<PodcastEpisode>,
 }
 
 #[derive(Serialize)]
@@ -129,12 +164,14 @@ pub async fn add_podcast(
     let (podcast_id, first_episode_id) = state.db_pool.add_podcast(
         &request.podcast_values,
         request.podcast_index_id.unwrap_or(0),
+        None, // username
+        None, // password
     ).await?;
     
     Ok(Json(PodcastStatusResponse {
         success: true,
         podcast_id,
-        first_episode_id,
+        first_episode_id: first_episode_id.unwrap_or(0),
     }))
 }
 
@@ -648,4 +685,710 @@ pub async fn get_user_history(
     let data = state.db_pool.get_user_history(user_id).await?;
     
     Ok(Json(crate::models::UserHistoryResponse { data }))
+}
+
+// Query parameters for get_podcast_id
+#[derive(Deserialize)]
+pub struct GetPodcastIdQuery {
+    pub user_id: i32,
+    pub podcast_feed: String,
+    pub podcast_title: String,
+}
+
+// Get podcast ID - matches Python get_podcast_id endpoint
+pub async fn get_podcast_id(
+    Query(query): Query<GetPodcastIdQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check authorization - users can only get their own podcast IDs
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // TODO: Add web key check for elevated access
+    if requesting_user_id != query.user_id {
+        return Err(AppError::forbidden("You can only return pocast ids of your own podcasts!"));
+    }
+
+    // Get podcast ID from database
+    let podcast_id = state.db_pool.get_podcast_id(query.user_id, &query.podcast_feed, &query.podcast_title).await?;
+    
+    // Return single podcast_id or null, matching Python behavior
+    let episodes = podcast_id;
+    
+    Ok(Json(serde_json::json!({ "episodes": episodes })))
+}
+
+// Query parameters for download_episode_list
+#[derive(Deserialize)]
+pub struct DownloadEpisodeListQuery {
+    pub user_id: i32,
+}
+
+// Get downloaded episodes list - matches Python download_episode_list endpoint
+pub async fn download_episode_list(
+    Query(query): Query<DownloadEpisodeListQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check authorization - users can only get their own downloaded episodes
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // TODO: Add web key check for elevated access
+    if requesting_user_id != query.user_id {
+        return Err(AppError::forbidden("You can only return downloaded episodes for yourself!"));
+    }
+
+    // Get downloaded episodes from database
+    let downloaded_episodes = state.db_pool.download_episode_list(query.user_id).await?;
+    
+    Ok(Json(serde_json::json!({ "downloaded_episodes": downloaded_episodes })))
+}
+
+// Request models for download operations
+#[derive(Deserialize)]
+pub struct DownloadPodcastRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    pub is_youtube: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct DeleteEpisodeRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    pub is_youtube: Option<bool>,
+}
+
+#[derive(Deserialize)]
+pub struct DownloadAllPodcastRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub is_youtube: Option<bool>,
+}
+
+// Download a single episode - matches Python download_podcast endpoint
+pub async fn download_podcast(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<DownloadPodcastRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check authorization - users can only download for themselves
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // TODO: Add web key check for elevated access
+    if requesting_user_id != request.user_id {
+        return Err(AppError::forbidden("You can only download content for yourself!"));
+    }
+
+    let is_youtube = request.is_youtube.unwrap_or(false);
+    
+    // Check if already downloaded
+    let is_downloaded = state.db_pool.check_downloaded(request.user_id, request.episode_id, is_youtube).await?;
+    if is_downloaded {
+        return Ok(Json(serde_json::json!({ "detail": "Content already downloaded." })));
+    }
+
+    // Queue the download task using the task system
+    let task_id = if is_youtube {
+        state.task_spawner.spawn_download_youtube_video(request.episode_id, request.user_id).await?
+    } else {
+        state.task_spawner.spawn_download_podcast_episode(request.episode_id, request.user_id).await?
+    };
+
+    let content_type = if is_youtube { "YouTube video" } else { "Podcast episode" };
+    
+    Ok(Json(serde_json::json!({
+        "detail": format!("{} download has been queued and will process in the background.", content_type),
+        "task_id": task_id
+    })))
+}
+
+// Delete a downloaded episode - matches Python delete_episode endpoint  
+pub async fn delete_episode(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<DeleteEpisodeRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check authorization - users can only delete their own downloads
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // TODO: Add web key check for elevated access
+    if requesting_user_id != request.user_id {
+        return Err(AppError::forbidden("You can only delete your own downloads!"));
+    }
+
+    let is_youtube = request.is_youtube.unwrap_or(false);
+    
+    // Delete the episode
+    state.db_pool.delete_episode(request.user_id, request.episode_id, is_youtube).await?;
+    
+    let content_type = if is_youtube { "Video" } else { "Episode" };
+    
+    Ok(Json(serde_json::json!({
+        "detail": format!("{} deleted successfully.", content_type)
+    })))
+}
+
+// Download all episodes of a podcast - matches Python download_all_podcast endpoint
+pub async fn download_all_podcast(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<DownloadAllPodcastRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check authorization - users can only download for themselves
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // TODO: Add web key check for elevated access
+    if requesting_user_id != request.user_id {
+        return Err(AppError::forbidden("You can only download content for yourself!"));
+    }
+
+    let is_youtube = request.is_youtube.unwrap_or(false);
+    
+    // Queue the download all task using the task system
+    let task_id = if is_youtube {
+        state.task_spawner.spawn_download_all_youtube_videos(request.podcast_id, request.user_id).await?
+    } else {
+        state.task_spawner.spawn_download_all_podcast_episodes(request.podcast_id, request.user_id).await?
+    };
+
+    let content_type = if is_youtube { "YouTube channel" } else { "Podcast" };
+    
+    Ok(Json(serde_json::json!({
+        "detail": format!("All {} downloads have been queued and will process in the background.", content_type),
+        "task_id": task_id
+    })))
+}
+
+// Get download status for a user - matches Python download_status endpoint
+pub async fn download_status(
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check authorization - users can only get their own download status
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // TODO: Add web key check for elevated access
+    if requesting_user_id != user_id {
+        return Err(AppError::forbidden("You can only get your own download status!"));
+    }
+
+    // Get download status from database
+    let status = state.db_pool.get_download_status(user_id).await?;
+    
+    Ok(Json(serde_json::json!(status)))
+}
+
+// Query parameters for podcast_episodes
+#[derive(Deserialize)]
+pub struct PodcastEpisodesQuery {
+    pub user_id: i32,
+    pub podcast_id: i32,
+}
+
+// Get episodes for a specific podcast - matches Python podcast_episodes endpoint
+pub async fn podcast_episodes(
+    Query(query): Query<PodcastEpisodesQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<PodcastEpisodesResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check authorization - users can only get their own podcast episodes
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // TODO: Add web key check for elevated access
+    if requesting_user_id != query.user_id {
+        return Err(AppError::forbidden("You can only return episodes of your own!"));
+    }
+
+    // Get podcast episodes from database 
+    let episodes = state.db_pool.return_podcast_episodes_capitalized(query.user_id, query.podcast_id).await?;
+    
+    Ok(Json(PodcastEpisodesResponse { episodes }))
+}
+
+// Query parameters for get_podcast_id_from_ep_name
+#[derive(Deserialize)]
+pub struct GetPodcastIdFromEpNameQuery {
+    pub episode_name: String,
+    pub episode_url: String,
+    pub user_id: i32,
+}
+
+// Get podcast ID from episode name and URL - matches Python get_podcast_id_from_ep_name endpoint
+pub async fn get_podcast_id_from_ep_name(
+    Query(query): Query<GetPodcastIdFromEpNameQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check authorization - users can only get podcast IDs for their own episodes
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // TODO: Add web key check for elevated access
+    if requesting_user_id != query.user_id {
+        return Err(AppError::forbidden("You can only return podcast ids of your own episodes!"));
+    }
+
+    // Get podcast ID from episode name and URL
+    let podcast_id = state.db_pool.get_podcast_id_from_episode_name(query.user_id, &query.episode_url, &query.episode_name).await?;
+    
+    Ok(Json(serde_json::json!({ "podcast_id": podcast_id })))
+}
+
+// Request for get_episode_metadata - matches Python EpisodeMetadata model
+#[derive(Deserialize)]
+pub struct EpisodeMetadataRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    pub person_episode: Option<bool>,
+    pub is_youtube: Option<bool>,
+}
+
+// Get episode metadata - matches Python get_episode_metadata endpoint exactly
+pub async fn get_episode_metadata(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<EpisodeMetadataRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    // Check if it's web key or user's own key
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == request.user_id || is_web_key {
+        let episode = state.db_pool.get_episode_metadata(
+            request.episode_id,
+            request.user_id,
+            request.person_episode.unwrap_or(false),
+            request.is_youtube.unwrap_or(false)
+        ).await?;
+        
+        Ok(Json(serde_json::json!({"episode": episode})))
+    } else {
+        Err(AppError::forbidden("You can only get metadata for yourself!"))
+    }
+}
+
+// Query parameters for fetch_podcasting_2_data
+#[derive(Deserialize)]
+pub struct FetchPodcasting2DataQuery {
+    pub episode_id: i32,
+    pub user_id: i32,
+}
+
+// Fetch podcasting 2.0 data for episode - matches Python fetch_podcasting_2_data endpoint exactly
+pub async fn fetch_podcasting_2_data(
+    Query(query): Query<FetchPodcasting2DataQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key or insufficient permissions"));
+    }
+
+    // For now, return placeholder data like the Python version does
+    // This would need actual implementation to fetch podcasting 2.0 data from feeds
+    let data = serde_json::json!({
+        "chapters": [],
+        "transcripts": [],
+        "people": []
+    });
+    
+    Ok(Json(data))
+}
+
+// Request for get_auto_download_status - matches Python AutoDownloadStatusRequest
+#[derive(Deserialize)]
+pub struct AutoDownloadStatusRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+// Response for auto download status - matches Python AutoDownloadStatusResponse
+#[derive(Serialize)]
+pub struct AutoDownloadStatusResponse {
+    pub auto_download: bool,
+}
+
+// Get auto download status - matches Python get_auto_download_status endpoint exactly
+pub async fn get_auto_download_status(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<AutoDownloadStatusRequest>,
+) -> Result<Json<AutoDownloadStatusResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You can only get the status for your own podcast."));
+    }
+
+    let status = state.db_pool.call_get_auto_download_status(request.podcast_id, request.user_id).await?;
+    if status.is_none() {
+        return Err(AppError::not_found("Podcast not found"));
+    }
+
+    Ok(Json(AutoDownloadStatusResponse {
+        auto_download: status.unwrap()
+    }))
+}
+
+// Query parameters for get_feed_cutoff_days
+#[derive(Deserialize)]
+pub struct FeedCutoffDaysQuery {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+// Response for feed cutoff days - matches Python response format
+#[derive(Serialize)]
+pub struct FeedCutoffDaysResponse {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub feed_cutoff_days: i32,
+}
+
+// Get feed cutoff days - matches Python get_feed_cutoff_days endpoint exactly
+pub async fn get_feed_cutoff_days(
+    Query(query): Query<FeedCutoffDaysQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<FeedCutoffDaysResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    // Check if it's web key or user's own key
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == query.user_id || is_web_key {
+        let feed_cutoff_days = state.db_pool.get_feed_cutoff_days(query.podcast_id, query.user_id).await?;
+        if let Some(cutoff_days) = feed_cutoff_days {
+            Ok(Json(FeedCutoffDaysResponse {
+                podcast_id: query.podcast_id,
+                user_id: query.user_id,
+                feed_cutoff_days: cutoff_days
+            }))
+        } else {
+            Err(AppError::not_found("Podcast not found or does not belong to the user."))
+        }
+    } else {
+        Err(AppError::forbidden("You can only access settings of your own podcasts!"))
+    }
+}
+
+// Request for podcast notification status - matches Python PodcastNotificationStatusData
+#[derive(Deserialize)]
+pub struct PodcastNotificationStatusRequest {
+    pub user_id: i32,
+    pub podcast_id: i32,
+}
+
+// Response for notification status
+#[derive(Serialize)]
+pub struct NotificationStatusResponse {
+    pub enabled: bool,
+}
+
+// Get podcast notification status - matches Python podcast/notification_status endpoint exactly
+pub async fn get_notification_status(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<PodcastNotificationStatusRequest>,
+) -> Result<Json<NotificationStatusResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == request.user_id || is_web_key {
+        let enabled = state.db_pool.get_podcast_notification_status(
+            request.podcast_id,
+            request.user_id
+        ).await?;
+        Ok(Json(NotificationStatusResponse { enabled }))
+    } else {
+        Err(AppError::forbidden("You can only check your own podcast settings"))
+    }
+}
+
+// Request for get_play_episode_details - matches Python PlayEpisodeDetailsRequest
+#[derive(Deserialize)]
+pub struct PlayEpisodeDetailsRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub is_youtube: Option<bool>,
+}
+
+// Response for play episode details - matches Python PlayEpisodeDetailsResponse
+#[derive(Serialize)]
+pub struct PlayEpisodeDetailsResponse {
+    pub playback_speed: f64,
+    pub start_skip: i32,
+    pub end_skip: i32,
+}
+
+// Get play episode details - matches Python get_play_episode_details endpoint exactly
+pub async fn get_play_episode_details(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<PlayEpisodeDetailsRequest>,
+) -> Result<Json<PlayEpisodeDetailsResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == request.user_id || is_web_key {
+        // Get all details in one function call
+        let (playback_speed, start_skip, end_skip) = state.db_pool.get_play_episode_details(
+            request.user_id,
+            request.podcast_id,
+            request.is_youtube.unwrap_or(false)
+        ).await?;
+
+        Ok(Json(PlayEpisodeDetailsResponse {
+            playback_speed,
+            start_skip,
+            end_skip
+        }))
+    } else {
+        Err(AppError::forbidden("You can only get metadata for yourself!"))
+    }
+}
+
+// Query parameters for fetch_podcasting_2_pod_data
+#[derive(Deserialize)]
+pub struct FetchPodcasting2PodDataQuery {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+// Fetch podcasting 2.0 podcast data - matches Python fetch_podcasting_2_pod_data endpoint exactly
+pub async fn fetch_podcasting_2_pod_data(
+    Query(query): Query<FetchPodcasting2PodDataQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key or insufficient permissions"));
+    }
+
+    // For now, return placeholder data like the Python version does
+    // This would need actual implementation to fetch podcasting 2.0 data from feeds
+    let data = serde_json::json!({
+        "funding": [],
+        "locked": false,
+        "guid": null
+    });
+    
+    Ok(Json(data))
+}
+
+// Request for mark_episode_completed - matches Python MarkEpisodeCompletedData
+#[derive(Deserialize)]
+pub struct MarkEpisodeCompletedRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    pub is_youtube: Option<bool>,
+}
+
+// Mark episode as completed - matches Python mark_episode_completed endpoint exactly
+pub async fn mark_episode_completed(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<MarkEpisodeCompletedRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == request.user_id || is_web_key {
+        state.db_pool.mark_episode_completed(
+            request.episode_id,
+            request.user_id,
+            request.is_youtube.unwrap_or(false)
+        ).await?;
+        
+        Ok(Json(serde_json::json!({ "detail": "Episode marked as completed." })))
+    } else {
+        Err(AppError::forbidden("You can only mark episodes as completed for yourself."))
+    }
+}
+
+// Increment played count - matches Python increment_played endpoint exactly
+pub async fn increment_played(
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == user_id || is_web_key {
+        state.db_pool.increment_played(user_id).await?;
+        
+        Ok(Json(serde_json::json!({ "detail": "Played count incremented." })))
+    } else {
+        Err(AppError::forbidden("You can only increment your own play count."))
+    }
+}
+
+// Query parameters for get_podcast_id_from_ep_id
+#[derive(Deserialize)]
+pub struct GetPodcastIdFromEpIdQuery {
+    pub episode_id: i32,
+    pub user_id: i32,
+    pub is_youtube: Option<bool>,
+}
+
+// Get podcast ID from episode ID - matches Python get_podcast_id_from_ep_id endpoint exactly
+pub async fn get_podcast_id_from_ep_id(
+    Query(query): Query<GetPodcastIdFromEpIdQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == query.user_id || is_web_key {
+        let podcast_id = state.db_pool.get_podcast_id_from_episode(
+            query.episode_id,
+            query.user_id,
+            query.is_youtube.unwrap_or(false)
+        ).await?;
+        
+        if let Some(podcast_id) = podcast_id {
+            Ok(Json(serde_json::json!({ "podcast_id": podcast_id })))
+        } else {
+            Err(AppError::not_found("Episode not found or does not belong to user"))
+        }
+    } else {
+        Err(AppError::forbidden("You can only return podcast ids of your own podcasts!"))
+    }
 }

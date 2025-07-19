@@ -40,6 +40,39 @@ COPY ./gpodder-api/internal ./internal
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -o gpodder-api ./cmd/server/
 
+# Python builder stage for database setup
+FROM python:3.11-alpine AS python-builder
+WORKDIR /build
+
+# Install build dependencies for PyInstaller
+RUN apk add --no-cache gcc musl-dev libffi-dev openssl-dev
+
+# Copy Python source files
+COPY ./database_functions ./database_functions
+COPY ./startup/setup_database_new.py ./startup/setup_database_new.py
+COPY ./requirements.txt ./requirements.txt
+
+# Install Python dependencies including PyInstaller
+RUN pip install --no-cache-dir -r requirements.txt pyinstaller
+
+# Build standalone database setup binary
+RUN pyinstaller --onefile \
+    --name pinepods-db-setup \
+    --hidden-import psycopg \
+    --hidden-import mysql.connector \
+    --hidden-import cryptography \
+    --hidden-import cryptography.fernet \
+    --hidden-import passlib \
+    --hidden-import passlib.hash \
+    --hidden-import passlib.hash.argon2 \
+    --hidden-import argon2 \
+    --hidden-import argon2.exceptions \
+    --hidden-import argon2.profiles \
+    --hidden-import argon2._password_hasher \
+    --add-data "database_functions:database_functions" \
+    --console \
+    startup/setup_database_new.py
+
 # Rust API builder stage
 FROM rust:alpine AS rust-api-builder
 WORKDIR /rust-api
@@ -63,15 +96,11 @@ RUN cargo build --release
 FROM alpine
 # Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
-# Install runtime dependencies
-RUN apk add --no-cache tzdata nginx python3 openssl py3-pip bash mariadb-client postgresql-client curl cronie openrc ffmpeg supervisor
+# Install runtime dependencies (removed python3 and py3-pip)
+RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl cronie openrc ffmpeg supervisor
 ENV TZ=UTC
-# Setup Python environment
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-# Install Python packages
-COPY ./requirements.txt /
-RUN pip install --no-cache-dir -r /requirements.txt
+# Copy compiled database setup binary (replaces Python dependency)
+COPY --from=python-builder /build/dist/pinepods-db-setup /usr/local/bin/
 # Copy built files from the builder stage to the Nginx serving directory
 COPY --from=builder /app/dist /var/www/html/
 # Copy Go API binary from the go-builder stage

@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::Json,
 };
@@ -11,6 +11,7 @@ use crate::{
     error::{AppError, AppResult},
     handlers::{extract_api_key, validate_api_key},
     services::auth::{hash_password, verify_password},
+    database::{SelfServiceStatus, PublicOidcProvider},
     AppState,
 };
 
@@ -40,6 +41,69 @@ pub struct UserDetails {
     pub Email: Option<String>,
     pub Hashed_PW: Option<String>,
     pub Salt: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct SelfServiceStatusResponse {
+    pub status: bool,
+    pub first_admin_created: bool,
+}
+
+#[derive(Serialize)]
+pub struct PublicOidcProvidersResponse {
+    pub providers: Vec<PublicOidcProviderResponse>,
+}
+
+#[derive(Serialize)]
+pub struct PublicOidcProviderResponse {
+    pub provider_id: i32,
+    pub provider_name: String,
+    pub client_id: String,
+    pub authorization_url: String,
+    pub scope: String,
+    pub button_color: String,
+    pub button_text: String,
+    pub button_text_color: String,
+    pub icon_svg: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateFirstAdminRequest {
+    pub username: String,
+    pub password: String,
+    pub email: String,
+    pub fullname: String,
+}
+
+#[derive(Deserialize)]
+pub struct TimeZoneInfo {
+    pub user_id: i32,
+    pub timezone: String,
+    pub hour_pref: i32,
+    pub date_format: String,
+}
+
+#[derive(Deserialize)]
+pub struct OPMLImportRequest {
+    pub podcasts: Vec<String>,
+    pub user_id: i32,
+}
+
+#[derive(Serialize)]
+pub struct CreateFirstAdminResponse {
+    pub message: String,
+    pub user_id: i32,
+}
+
+#[derive(Serialize)]
+pub struct ConfigResponse {
+    pub api_url: String,
+    pub proxy_url: String,
+    pub proxy_host: String,
+    pub proxy_port: String,
+    pub proxy_protocol: String,
+    pub reverse_proxy: String,
+    pub people_url: String,
 }
 
 // Extract basic auth credentials from Authorization header
@@ -151,4 +215,551 @@ pub async fn get_user_details_by_id(
     let user_details = state.db_pool.get_user_details_by_id(user_id).await?;
     
     Ok(Json(user_details))
+}
+
+// Get self-service status - matches Python api_self_service_status
+pub async fn get_self_service_status(
+    State(state): State<AppState>,
+) -> Result<Json<SelfServiceStatusResponse>, AppError> {
+    let status = state.db_pool.get_self_service_status().await?;
+    
+    Ok(Json(SelfServiceStatusResponse {
+        status: status.status,
+        first_admin_created: status.admin_exists,
+    }))
+}
+
+// Get public OIDC providers - matches Python api_public_oidc_providers
+pub async fn get_public_oidc_providers(
+    State(state): State<AppState>,
+) -> Result<Json<PublicOidcProvidersResponse>, AppError> {
+    let providers = state.db_pool.get_public_oidc_providers().await?;
+    
+    let response_providers: Vec<PublicOidcProviderResponse> = providers
+        .into_iter()
+        .map(|p| PublicOidcProviderResponse {
+            provider_id: p.provider_id,
+            provider_name: p.provider_name,
+            client_id: p.client_id,
+            authorization_url: p.authorization_url,
+            scope: p.scope,
+            button_color: p.button_color,
+            button_text: p.button_text,
+            button_text_color: p.button_text_color,
+            icon_svg: p.icon_svg,
+        })
+        .collect();
+    
+    Ok(Json(PublicOidcProvidersResponse {
+        providers: response_providers,
+    }))
+}
+
+// Create first admin - matches Python create_first_admin
+pub async fn create_first_admin(
+    State(state): State<AppState>,
+    Json(request): Json<CreateFirstAdminRequest>,
+) -> Result<Json<CreateFirstAdminResponse>, AppError> {
+    // Check if admin already exists
+    if state.db_pool.check_admin_exists().await? {
+        return Err(AppError::forbidden("An admin user already exists"));
+    }
+    
+    // Add the admin user
+    let user_id = state.db_pool.add_admin_user(
+        &request.fullname,
+        &request.username.to_lowercase(),
+        &request.email,
+        &request.password, // Password should already be hashed by frontend
+    ).await?;
+    
+    // TODO: Add background task for startup tasks
+    
+    Ok(Json(CreateFirstAdminResponse {
+        message: "Admin user created successfully".to_string(),
+        user_id,
+    }))
+}
+
+// Get configuration - matches Python api_config
+pub async fn get_config(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<ConfigResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    
+    // Get configuration from environment variables (same as Python)
+    let proxy_host = std::env::var("HOSTNAME").unwrap_or_else(|_| "localhost".to_string());
+    let proxy_port = std::env::var("PINEPODS_PORT").unwrap_or_else(|_| "8040".to_string());
+    let proxy_protocol = std::env::var("PROXY_PROTOCOL").unwrap_or_else(|_| "http".to_string());
+    let reverse_proxy = std::env::var("REVERSE_PROXY").unwrap_or_else(|_| "False".to_string());
+    let api_url = std::env::var("SEARCH_API_URL").unwrap_or_else(|_| "https://search.pinepods.online/api/search".to_string());
+    let people_url = std::env::var("PEOPLE_API_URL").unwrap_or_else(|_| "https://people.pinepods.online".to_string());
+    
+    // Build proxy URL based on reverse proxy setting
+    let proxy_url = if reverse_proxy == "True" {
+        format!("{}://{}/mover/?url=", proxy_protocol, proxy_host)
+    } else {
+        format!("{}://{}:{}/mover/?url=", proxy_protocol, proxy_host, proxy_port)
+    };
+    
+    Ok(Json(ConfigResponse {
+        api_url,
+        proxy_url,
+        proxy_host,
+        proxy_port,
+        proxy_protocol,
+        reverse_proxy,
+        people_url,
+    }))
+}
+
+// First login done - matches Python first_login_done
+pub async fn first_login_done(
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    
+    // Get user ID from API key for authorization check
+    let key_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user (Python checks this)
+    if key_user_id != user_id {
+        return Err(AppError::forbidden("You can only run first login for yourself!"));
+    }
+    
+    let first_login_status = state.db_pool.first_login_done(user_id).await?;
+    
+    Ok(Json(json!({
+        "FirstLogin": first_login_status
+    })))
+}
+
+// Check MFA enabled - matches Python check_mfa_enabled
+pub async fn check_mfa_enabled(
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    
+    // Get user ID from API key for authorization check
+    let key_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user (Python checks this)
+    if key_user_id != user_id {
+        return Err(AppError::forbidden("You are not authorized to check mfa status for other users."));
+    }
+    
+    let is_enabled = state.db_pool.check_mfa_enabled(user_id).await?;
+    
+    Ok(Json(json!({
+        "mfa_enabled": is_enabled
+    })))
+}
+
+// Get theme - matches Python get_theme
+pub async fn get_theme(
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    
+    // Get user ID from API key for authorization check
+    let key_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user (Python checks this)
+    if key_user_id != user_id {
+        return Err(AppError::forbidden("You can only get themes for yourself!"));
+    }
+    
+    let theme = state.db_pool.get_theme(user_id).await?;
+    
+    Ok(Json(json!({
+        "theme": theme
+    })))
+}
+
+// Get user startpage - matches Python get_user_startpage
+pub async fn get_user_startpage(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    
+    // Get user_id from query parameter
+    let user_id: i32 = params.get("user_id")
+        .ok_or_else(|| AppError::bad_request("Missing user_id parameter"))?
+        .parse()
+        .map_err(|_| AppError::bad_request("Invalid user_id parameter"))?;
+    
+    // Get user ID from API key for authorization check
+    let key_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user (Python checks this)
+    if key_user_id != user_id {
+        return Err(AppError::forbidden("You can only view your own StartPage setting!"));
+    }
+    
+    let startpage = state.db_pool.get_user_startpage(user_id).await?;
+    
+    Ok(Json(json!({
+        "StartPage": startpage
+    })))
+}
+
+// Setup time info - matches Python setup_timezone_info
+pub async fn setup_time_info(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(data): Json<TimeZoneInfo>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    
+    // Get user ID from API key for authorization check
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user (Python checks this)
+    if data.user_id != user_id_from_api_key {
+        return Err(AppError::forbidden("You are not authorized to access these user details"));
+    }
+    
+    let success = state.db_pool.setup_timezone_info(
+        data.user_id,
+        &data.timezone,
+        data.hour_pref,
+        &data.date_format,
+    ).await?;
+    
+    if success {
+        Ok(Json(json!({
+            "success": success
+        })))
+    } else {
+        Err(AppError::not_found("User not found"))
+    }
+}
+
+// User admin check - matches Python api_user_admin_check_route
+pub async fn user_admin_check(
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    
+    // Get user ID from API key for authorization check
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user (Python checks this)
+    if user_id != user_id_from_api_key {
+        return Err(AppError::forbidden("You are not authorized to check admin status for other users"));
+    }
+    
+    let is_admin = state.db_pool.user_admin_check(user_id).await?;
+    
+    Ok(Json(json!({
+        "is_admin": is_admin
+    })))
+}
+
+// Import progress - matches Python api_import_progress
+pub async fn import_progress(
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Invalid API key"));
+    }
+    
+    // Get user ID from API key for authorization check
+    let key_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user
+    if key_user_id != user_id {
+        return Err(AppError::forbidden("You can only check import progress for yourself!"));
+    }
+    
+    // Get progress from Redis
+    let progress_key = format!("import_progress:{}", user_id);
+    let progress_data: Option<String> = state.redis_client.get(&progress_key).await?;
+    
+    if let Some(data) = progress_data {
+        let progress: serde_json::Value = serde_json::from_str(&data)?;
+        Ok(Json(progress))
+    } else {
+        // No progress data found - import not running or completed
+        Ok(Json(json!({
+            "current": 0,
+            "total": 0,
+            "current_podcast": ""
+        })))
+    }
+}
+
+// Import OPML - matches Python api_import_opml
+pub async fn import_opml(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(import_request): Json<OPMLImportRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Invalid API key"));
+    }
+    
+    // Get user ID from API key for authorization check
+    let key_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user (Python checks this)
+    if key_user_id != import_request.user_id {
+        return Err(AppError::forbidden("You can only import podcasts for yourself!"));
+    }
+    
+    // Create background task for OPML import
+    let _total_podcasts = import_request.podcasts.len();
+    let task_id = state.task_manager.create_task(
+        "opml_import".to_string(),
+        import_request.user_id,
+    ).await?;
+    
+    // Spawn the import task
+    let task_spawner = state.task_spawner.clone();
+    let db_pool = state.db_pool.clone();
+    let task_manager = state.task_manager.clone();
+    let redis_client = state.redis_client.clone();
+    let task_id_clone = task_id.clone();
+    
+    tokio::spawn(async move {
+        process_opml_import(
+            import_request,
+            task_id_clone,
+            db_pool,
+            task_manager,
+            redis_client,
+        ).await;
+    });
+    
+    Ok(Json(json!({
+        "success": true,
+        "message": "Import process started",
+        "task_id": task_id
+    })))
+}
+
+// Process OPML import in background - matches Python process_opml_import
+async fn process_opml_import(
+    import_request: OPMLImportRequest,
+    task_id: String,
+    db_pool: crate::database::DatabasePool,
+    task_manager: std::sync::Arc<crate::services::task_manager::TaskManager>,
+    redis_client: crate::redis_client::RedisClient,
+) {
+    let total_podcasts = import_request.podcasts.len();
+    let progress_key = format!("import_progress:{}", import_request.user_id);
+    
+    // Initialize progress in Redis
+    let _ = redis_client.set_ex(&progress_key, &json!({
+        "current": 0,
+        "total": total_podcasts,
+        "current_podcast": ""
+    }).to_string(), 3600).await; // 1 hour timeout
+    
+    // Update task status to running
+    let _ = task_manager.update_task_progress(
+        &task_id,
+        0.0,
+        Some("Starting OPML import".to_string()),
+    ).await;
+    
+    for (index, podcast_url) in import_request.podcasts.iter().enumerate() {
+        // Update progress in Redis
+        let _ = redis_client.set_ex(&progress_key, &json!({
+            "current": index + 1,
+            "total": total_podcasts,
+            "current_podcast": podcast_url
+        }).to_string(), 3600).await;
+        
+        // Update progress
+        let progress = ((index + 1) as f64 / total_podcasts as f64) * 100.0;
+        let _ = task_manager.update_task_progress(
+            &task_id,
+            progress,
+            Some(format!("Processing podcast {}/{}: {}", index + 1, total_podcasts, podcast_url)),
+        ).await;
+        
+        // Try to get podcast values and add podcast
+        match get_podcast_values_from_url(podcast_url).await {
+            Ok(mut podcast_values) => {
+                podcast_values.user_id = import_request.user_id;
+                match db_pool.add_podcast(&podcast_values, 0, None, None).await {
+                    Ok(_) => {
+                        tracing::info!("Successfully imported podcast: {}", podcast_url);
+                    }
+                    Err(e) => {
+                        tracing::error!("Error importing podcast {}: {}", podcast_url, e);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("Error getting podcast values for {}: {}", podcast_url, e);
+            }
+        }
+        
+        // Small delay to allow other requests to be processed
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+    
+    // Mark task as completed
+    let _ = task_manager.update_task_progress(
+        &task_id,
+        100.0,
+        Some("OPML import completed".to_string()),
+    ).await;
+    
+    // Clear progress from Redis
+    let _ = redis_client.delete(&progress_key).await;
+}
+
+// Get podcast values from URL - simplified version of Python get_podcast_values
+async fn get_podcast_values_from_url(url: &str) -> Result<crate::handlers::podcasts::PodcastValues, AppError> {
+    use std::collections::HashMap;
+    
+    let client = reqwest::Client::new();
+    let response = client.get(url)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .send()
+        .await
+        .map_err(|e| AppError::Http(e))?;
+    
+    let content = response.text().await.map_err(|e| AppError::Http(e))?;
+    
+    // Parse RSS feed to extract podcast information
+    use quick_xml::Reader;
+    use quick_xml::events::Event;
+    
+    let mut reader = Reader::from_str(&content);
+    reader.config_mut().trim_text(true);
+    
+    let mut podcast_title = "Unknown Podcast".to_string();
+    let mut podcast_description = "No description available".to_string();
+    let mut podcast_author = "Unknown Author".to_string();
+    let mut podcast_artwork = "".to_string();
+    let mut podcast_website = "".to_string();
+    let mut podcast_explicit = false;
+    
+    let mut current_tag = String::new();
+    let mut current_text = String::new();
+    
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(ref e)) => {
+                current_tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                current_text.clear();
+                
+                // Handle image tag for artwork
+                if current_tag == "image" {
+                    // Look for href attribute
+                    for attr in e.attributes() {
+                        if let Ok(attr) = attr {
+                            if attr.key.as_ref() == b"href" {
+                                podcast_artwork = String::from_utf8_lossy(&attr.value).to_string();
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(Event::Text(e)) => {
+                current_text = e.decode().unwrap_or_default().into_owned();
+            }
+            Ok(Event::End(ref e)) => {
+                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                
+                match tag.as_str() {
+                    "title" => {
+                        if podcast_title == "Unknown Podcast" {
+                            podcast_title = current_text.clone();
+                        }
+                    }
+                    "description" => podcast_description = current_text.clone(),
+                    "author" | "managingEditor" | "itunes:author" => podcast_author = current_text.clone(),
+                    "link" => {
+                        if podcast_website.is_empty() {
+                            podcast_website = current_text.clone();
+                        }
+                    }
+                    "itunes:explicit" => {
+                        podcast_explicit = current_text.to_lowercase() == "yes" || current_text.to_lowercase() == "true";
+                    }
+                    "url" => {
+                        if podcast_artwork.is_empty() {
+                            podcast_artwork = current_text.clone();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
+        }
+    }
+    
+    Ok(crate::handlers::podcasts::PodcastValues {
+        pod_title: podcast_title,
+        pod_artwork: podcast_artwork,
+        pod_author: podcast_author,
+        categories: HashMap::new(),
+        pod_description: podcast_description,
+        pod_episode_count: 0,
+        pod_feed_url: url.to_string(),
+        pod_website: podcast_website,
+        pod_explicit: podcast_explicit,
+        user_id: 0, // Will be set by the caller
+    })
 }
