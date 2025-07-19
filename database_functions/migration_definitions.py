@@ -1710,7 +1710,41 @@ def fix_missing_rss_tables(conn, db_type: str) -> None:
             logger.info("RssKeyMap table already exists")
         
         logger.info("Missing RSS tables migration completed")
+
+    finally:
+        cursor.close()
     
+
+# Migration 015: OIDC settings for claims & roles.
+@register_migration("015", "oidc_claims_and_roles", "Add columns for OIDC claims & roles settings", requires=["002"])
+def migration_015_oidc_claims_and_roles(conn, db_type: str):
+    """Add columns for OIDC claims & roles settings"""
+    cursor = conn.cursor()
+
+    try:
+        if db_type == "postgresql":
+            cursor.execute("""
+                ALTER TABLE "OIDCProviders"
+                ADD COLUMN IF NOT EXISTS NameClaim VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS EmailClaim VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS UsernameClaim VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS RolesClaim VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS UserRole VARCHAR(255),
+                ADD COLUMN IF NOT EXISTS AdminRole VARCHAR(255);
+            """)
+        else:
+            cursor.execute("""
+                ALTER TABLE OIDCProviders
+                ADD COLUMN NameClaim VARCHAR(255) AFTER IconSVG,
+                ADD COLUMN EmailClaim VARCHAR(255) AFTER NameClaim,
+                ADD COLUMN UsernameClaim VARCHAR(255) AFTER EmailClaim,
+                ADD COLUMN RolesClaim VARCHAR(255) AFTER UsernameClaim,
+                ADD COLUMN UserRole VARCHAR(255) AFTER RolesClaim,
+                ADD COLUMN AdminRole VARCHAR(255) AFTER UserRole;
+            """)
+
+        logger.info("Added claim & roles settings to OIDC table")
+
     finally:
         cursor.close()
 

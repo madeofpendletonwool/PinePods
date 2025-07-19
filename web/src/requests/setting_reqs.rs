@@ -2104,6 +2104,12 @@ pub struct AddOIDCProviderRequest {
     pub button_color: Option<String>,
     pub button_text_color: Option<String>,
     pub icon_svg: Option<String>,
+    pub name_claim: Option<String>,
+    pub email_claim: Option<String>,
+    pub username_claim: Option<String>,
+    pub roles_claim: Option<String>,
+    pub user_role: Option<String>,
+    pub admin_role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2120,6 +2126,12 @@ pub struct OIDCProvider {
     pub button_color: String,
     pub button_text_color: String,
     pub icon_svg: Option<String>,
+    pub name_claim: Option<String>,
+    pub email_claim: Option<String>,
+    pub username_claim: Option<String>,
+    pub roles_claim: Option<String>,
+    pub user_role: Option<String>,
+    pub admin_role: Option<String>,
     pub enabled: bool,
 }
 
