@@ -198,6 +198,11 @@ fn create_data_routes() -> Router<AppState> {
         .route("/mark_episode_completed", post(handlers::podcasts::mark_episode_completed))
         .route("/increment_played/{user_id}", put(handlers::podcasts::increment_played))
         .route("/get_podcast_id_from_ep_id", get(handlers::podcasts::get_podcast_id_from_ep_id))
+        .route("/get_stats", get(handlers::podcasts::get_stats))
+        .route("/get_pinepods_version", get(handlers::podcasts::get_pinepods_version))
+        .route("/search_data", post(handlers::podcasts::search_data))
+        .route("/home_overview", get(handlers::podcasts::home_overview))
+        .route("/get_playlists", get(handlers::podcasts::get_playlists))
         .route("/refresh_pods", post(handlers::refresh::refresh_pods_admin))
         // Add more data routes as needed
 }

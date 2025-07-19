@@ -2137,6 +2137,949 @@ impl DatabasePool {
         }
     }
 
+    // Get PinePods version - matches Python get_pinepods_version function
+    pub async fn get_pinepods_version(&self) -> AppResult<String> {
+        match std::fs::read_to_string("/pinepods/current_version") {
+            Ok(version) => {
+                let version = version.trim();
+                if version.is_empty() {
+                    Ok("dev_mode".to_string())
+                } else {
+                    Ok(version.to_string())
+                }
+            }
+            Err(_) => Ok("Version file not found.".to_string()),
+        }
+    }
+
+    // Get user stats - matches Python get_stats function
+    pub async fn get_stats(&self, user_id: i32) -> AppResult<Option<serde_json::Value>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(
+                    r#"SELECT usercreated, podcastsplayed, timelistened, podcastsadded, episodessaved, episodesdownloaded 
+                       FROM "UserStats" WHERE userid = $1"#
+                )
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    // Get additional stats from Episodes and Podcasts
+                    let episode_count_row = sqlx::query(
+                        r#"SELECT COUNT(*) as total_episodes FROM "Episodes" e
+                           INNER JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                           WHERE p.userid = $1"#
+                    )
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+
+                    let total_episodes: i64 = episode_count_row.try_get("total_episodes")?;
+
+                    let stats = serde_json::json!({
+                        "user_created": row.try_get::<chrono::NaiveDateTime, _>("usercreated")?.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                        "podcasts_played": row.try_get::<i32, _>("podcastsplayed")?,
+                        "time_listened": row.try_get::<i32, _>("timelistened")?,
+                        "podcasts_added": row.try_get::<i32, _>("podcastsadded")?,
+                        "episodes_saved": row.try_get::<i32, _>("episodessaved")?,
+                        "episodes_downloaded": row.try_get::<i32, _>("episodesdownloaded")?,
+                        "total_episodes": total_episodes
+                    });
+
+                    Ok(Some(stats))
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(
+                    "SELECT UserCreated, PodcastsPlayed, TimeListened, PodcastsAdded, EpisodesSaved, EpisodesDownloaded 
+                     FROM UserStats WHERE UserID = ?"
+                )
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    // Get additional stats from Episodes and Podcasts
+                    let episode_count_row = sqlx::query(
+                        "SELECT COUNT(*) as total_episodes FROM Episodes e
+                         INNER JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                         WHERE p.UserID = ?"
+                    )
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+
+                    let total_episodes: i64 = episode_count_row.try_get("total_episodes")?;
+
+                    let stats = serde_json::json!({
+                        "user_created": row.try_get::<chrono::NaiveDateTime, _>("UserCreated")?.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                        "podcasts_played": row.try_get::<i32, _>("PodcastsPlayed")?,
+                        "time_listened": row.try_get::<i32, _>("TimeListened")?,
+                        "podcasts_added": row.try_get::<i32, _>("PodcastsAdded")?,
+                        "episodes_saved": row.try_get::<i32, _>("EpisodesSaved")?,
+                        "episodes_downloaded": row.try_get::<i32, _>("EpisodesDownloaded")?,
+                        "total_episodes": total_episodes
+                    });
+
+                    Ok(Some(stats))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Search data - matches Python search_data function (simplified version)
+    pub async fn search_data(&self, search_term: &str, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(
+                    r#"SELECT
+                        p.podcastid,
+                        p.podcastname,
+                        p.artworkurl,
+                        p.author,
+                        p.categories,
+                        p.description,
+                        p.episodecount,
+                        p.feedurl,
+                        p.websiteurl,
+                        p.explicit,
+                        p.userid,
+                        COALESCE(p.isyoutubechannel, false) as is_youtube,
+                        e.episodeid,
+                        e.episodetitle,
+                        e.episodedescription,
+                        e.episodeurl,
+                        e.episodeartwork,
+                        e.episodepubdate,
+                        e.episodeduration,
+                        COALESCE(h.listenduration, 0) as listenduration,
+                        COALESCE(e.completed, false) as completed,
+                        CASE WHEN se.episodeid IS NOT NULL THEN true ELSE false END as saved,
+                        CASE WHEN eq.episodeid IS NOT NULL THEN true ELSE false END as queued,
+                        CASE WHEN de.episodeid IS NOT NULL THEN true ELSE false END as downloaded
+                    FROM "Podcasts" p
+                    LEFT JOIN "Episodes" e ON p.podcastid = e.podcastid
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
+                    LEFT JOIN "SavedEpisodes" se ON e.episodeid = se.episodeid AND se.userid = $2
+                    LEFT JOIN "EpisodeQueue" eq ON e.episodeid = eq.episodeid AND eq.userid = $2 AND eq.is_youtube = false
+                    LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid AND de.userid = $2
+                    WHERE p.userid = $2 
+                      AND (LOWER(p.podcastname) LIKE LOWER($1) 
+                           OR LOWER(e.episodetitle) LIKE LOWER($1)
+                           OR LOWER(e.episodedescription) LIKE LOWER($1))
+                    ORDER BY p.podcastname, e.episodepubdate DESC"#
+                )
+                .bind(format!("%{}%", search_term))
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut results = Vec::new();
+                for row in rows {
+                    let pub_date = if let Ok(date) = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate") {
+                        date.format("%Y-%m-%dT%H:%M:%S").to_string()
+                    } else {
+                        "".to_string()
+                    };
+
+                    let result = serde_json::json!({
+                        "podcastid": row.try_get::<i32, _>("podcastid").unwrap_or(0),
+                        "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default(),
+                        "artworkurl": row.try_get::<String, _>("artworkurl").unwrap_or_default(),
+                        "author": row.try_get::<String, _>("author").unwrap_or_default(),
+                        "categories": row.try_get::<String, _>("categories").unwrap_or_default(),
+                        "description": row.try_get::<String, _>("description").unwrap_or_default(),
+                        "episodecount": row.try_get::<Option<i32>, _>("episodecount").ok().flatten(),
+                        "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
+                        "websiteurl": row.try_get::<String, _>("websiteurl").unwrap_or_default(),
+                        "explicit": row.try_get::<bool, _>("explicit").unwrap_or(false),
+                        "userid": row.try_get::<i32, _>("userid").unwrap_or(0),
+                        "episodeid": row.try_get::<Option<i32>, _>("episodeid").ok().flatten(),
+                        "episodetitle": row.try_get::<Option<String>, _>("episodetitle").ok().flatten(),
+                        "episodedescription": row.try_get::<Option<String>, _>("episodedescription").ok().flatten(),
+                        "episodeurl": row.try_get::<Option<String>, _>("episodeurl").ok().flatten(),
+                        "episodeartwork": row.try_get::<Option<String>, _>("episodeartwork").ok().flatten(),
+                        "episodepubdate": if pub_date.is_empty() { None } else { Some(pub_date) },
+                        "episodeduration": row.try_get::<Option<i32>, _>("episodeduration").ok().flatten(),
+                        "listenduration": row.try_get::<Option<i32>, _>("listenduration").ok().flatten(),
+                        "completed": row.try_get::<bool, _>("completed").unwrap_or(false),
+                        "saved": row.try_get::<bool, _>("saved").unwrap_or(false),
+                        "queued": row.try_get::<bool, _>("queued").unwrap_or(false),
+                        "downloaded": row.try_get::<bool, _>("downloaded").unwrap_or(false),
+                        "is_youtube": row.try_get::<bool, _>("is_youtube").unwrap_or(false)
+                    });
+                    results.push(result);
+                }
+                Ok(results)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    "SELECT
+                        p.PodcastID as podcastid,
+                        p.PodcastName as podcastname,
+                        p.ArtworkURL as artworkurl,
+                        p.Author as author,
+                        p.Categories as categories,
+                        p.Description as description,
+                        p.EpisodeCount as episodecount,
+                        p.FeedURL as feedurl,
+                        p.WebsiteURL as websiteurl,
+                        p.Explicit as explicit,
+                        p.UserID as userid,
+                        COALESCE(p.IsYouTubeChannel, false) as is_youtube,
+                        e.EpisodeID as episodeid,
+                        e.EpisodeTitle as episodetitle,
+                        e.EpisodeDescription as episodedescription,
+                        e.EpisodeURL as episodeurl,
+                        e.EpisodeArtwork as episodeartwork,
+                        e.EpisodePubDate as episodepubdate,
+                        e.EpisodeDuration as episodeduration,
+                        COALESCE(h.ListenDuration, 0) as listenduration,
+                        COALESCE(e.Completed, false) as completed,
+                        CASE WHEN se.EpisodeID IS NOT NULL THEN true ELSE false END as saved,
+                        CASE WHEN eq.EpisodeID IS NOT NULL THEN true ELSE false END as queued,
+                        CASE WHEN de.EpisodeID IS NOT NULL THEN true ELSE false END as downloaded
+                    FROM Podcasts p
+                    LEFT JOIN Episodes e ON p.PodcastID = e.PodcastID
+                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = ?
+                    LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
+                    LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ? AND eq.is_youtube = false
+                    LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
+                    WHERE p.UserID = ? 
+                      AND (LOWER(p.PodcastName) LIKE LOWER(?) 
+                           OR LOWER(e.EpisodeTitle) LIKE LOWER(?)
+                           OR LOWER(e.EpisodeDescription) LIKE LOWER(?))
+                    ORDER BY p.PodcastName, e.EpisodePubDate DESC"
+                )
+                .bind(user_id)
+                .bind(user_id)
+                .bind(user_id)
+                .bind(user_id)
+                .bind(user_id)
+                .bind(format!("%{}%", search_term))
+                .bind(format!("%{}%", search_term))
+                .bind(format!("%{}%", search_term))
+                .fetch_all(pool)
+                .await?;
+
+                let mut results = Vec::new();
+                for row in rows {
+                    let pub_date = if let Ok(date) = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate") {
+                        date.format("%Y-%m-%dT%H:%M:%S").to_string()
+                    } else {
+                        "".to_string()
+                    };
+
+                    let result = serde_json::json!({
+                        "podcastid": row.try_get::<i32, _>("podcastid").unwrap_or(0),
+                        "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default(),
+                        "artworkurl": row.try_get::<String, _>("artworkurl").unwrap_or_default(),
+                        "author": row.try_get::<String, _>("author").unwrap_or_default(),
+                        "categories": row.try_get::<String, _>("categories").unwrap_or_default(),
+                        "description": row.try_get::<String, _>("description").unwrap_or_default(),
+                        "episodecount": row.try_get::<Option<i32>, _>("episodecount").ok().flatten(),
+                        "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
+                        "websiteurl": row.try_get::<String, _>("websiteurl").unwrap_or_default(),
+                        "explicit": row.try_get::<bool, _>("explicit").unwrap_or(false),
+                        "userid": row.try_get::<i32, _>("userid").unwrap_or(0),
+                        "episodeid": row.try_get::<Option<i32>, _>("episodeid").ok().flatten(),
+                        "episodetitle": row.try_get::<Option<String>, _>("episodetitle").ok().flatten(),
+                        "episodedescription": row.try_get::<Option<String>, _>("episodedescription").ok().flatten(),
+                        "episodeurl": row.try_get::<Option<String>, _>("episodeurl").ok().flatten(),
+                        "episodeartwork": row.try_get::<Option<String>, _>("episodeartwork").ok().flatten(),
+                        "episodepubdate": if pub_date.is_empty() { None } else { Some(pub_date) },
+                        "episodeduration": row.try_get::<Option<i32>, _>("episodeduration").ok().flatten(),
+                        "listenduration": row.try_get::<Option<i32>, _>("listenduration").ok().flatten(),
+                        "completed": row.try_get::<bool, _>("completed").unwrap_or(false),
+                        "saved": row.try_get::<bool, _>("saved").unwrap_or(false),
+                        "queued": row.try_get::<bool, _>("queued").unwrap_or(false),
+                        "downloaded": row.try_get::<bool, _>("downloaded").unwrap_or(false),
+                        "is_youtube": row.try_get::<bool, _>("is_youtube").unwrap_or(false)
+                    });
+                    results.push(result);
+                }
+                Ok(results)
+            }
+        }
+    }
+
+    // Get home overview data - matches Python get_home_overview function
+    pub async fn get_home_overview(&self, user_id: i32) -> AppResult<serde_json::Value> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut home_data = serde_json::json!({
+                    "recent_episodes": [],
+                    "in_progress_episodes": [],
+                    "top_podcasts": [],
+                    "saved_count": 0,
+                    "downloaded_count": 0,
+                    "queue_count": 0
+                });
+
+                // Recent Episodes query
+                let recent_query = r#"
+                    SELECT
+                        "Episodes".episodeid,
+                        "Episodes".episodetitle,
+                        "Episodes".episodepubdate,
+                        "Episodes".episodedescription,
+                        "Episodes".episodeartwork,
+                        "Episodes".episodeurl,
+                        "Episodes".episodeduration,
+                        "Episodes".completed,
+                        "Podcasts".podcastname,
+                        "Podcasts".podcastid,
+                        "Podcasts".isyoutubechannel as is_youtube,
+                        "UserEpisodeHistory".listenduration,
+                        CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                        CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                        CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
+                    FROM "Episodes"
+                    INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                    LEFT JOIN "UserEpisodeHistory" ON
+                        "Episodes".episodeid = "UserEpisodeHistory".episodeid
+                        AND "UserEpisodeHistory".userid = $1
+                    LEFT JOIN "SavedEpisodes" ON
+                        "Episodes".episodeid = "SavedEpisodes".episodeid
+                        AND "SavedEpisodes".userid = $2
+                    LEFT JOIN "EpisodeQueue" ON
+                        "Episodes".episodeid = "EpisodeQueue".episodeid
+                        AND "EpisodeQueue".userid = $3
+                    LEFT JOIN "DownloadedEpisodes" ON
+                        "Episodes".episodeid = "DownloadedEpisodes".episodeid
+                        AND "DownloadedEpisodes".userid = $4
+                    WHERE "Podcasts".userid = $5
+                        AND "Episodes".episodepubdate >= NOW() - INTERVAL '7 days'
+                    ORDER BY "Episodes".episodepubdate DESC
+                    LIMIT 10
+                "#;
+
+                let recent_rows = sqlx::query(recent_query)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                let mut recent_episodes = Vec::new();
+                for row in recent_rows {
+                    recent_episodes.push(serde_json::json!({
+                        "episodeid": row.try_get::<i32, _>("episodeid")?,
+                        "episodetitle": row.try_get::<String, _>("episodetitle")?,
+                        "episodepubdate": row.try_get::<chrono::DateTime<chrono::Utc>, _>("episodepubdate")?.to_rfc3339(),
+                        "episodedescription": row.try_get::<String, _>("episodedescription")?,
+                        "episodeartwork": row.try_get::<String, _>("episodeartwork")?,
+                        "episodeurl": row.try_get::<String, _>("episodeurl")?,
+                        "episodeduration": row.try_get::<i32, _>("episodeduration")?,
+                        "completed": row.try_get::<bool, _>("completed")?,
+                        "podcastname": row.try_get::<String, _>("podcastname")?,
+                        "podcastid": row.try_get::<i32, _>("podcastid")?,
+                        "is_youtube": row.try_get::<bool, _>("is_youtube")?,
+                        "listenduration": row.try_get::<Option<i32>, _>("listenduration")?,
+                        "saved": row.try_get::<bool, _>("saved")?,
+                        "queued": row.try_get::<bool, _>("queued")?,
+                        "downloaded": row.try_get::<bool, _>("downloaded")?
+                    }));
+                }
+                home_data["recent_episodes"] = serde_json::Value::Array(recent_episodes);
+
+                // In Progress Episodes query
+                let in_progress_query = r#"
+                    SELECT
+                        "Episodes".episodeid,
+                        "Episodes".episodetitle,
+                        "Episodes".episodepubdate,
+                        "Episodes".episodedescription,
+                        "Episodes".episodeartwork,
+                        "Episodes".episodeurl,
+                        "Episodes".episodeduration,
+                        "Episodes".completed,
+                        "Podcasts".podcastname,
+                        "Podcasts".isyoutubechannel as is_youtube,
+                        "UserEpisodeHistory".listenduration,
+                        CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                        CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                        CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
+                    FROM "UserEpisodeHistory"
+                    JOIN "Episodes" ON "UserEpisodeHistory".episodeid = "Episodes".episodeid
+                    JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                    LEFT JOIN "SavedEpisodes" ON
+                        "Episodes".episodeid = "SavedEpisodes".episodeid
+                        AND "SavedEpisodes".userid = $1
+                    LEFT JOIN "EpisodeQueue" ON
+                        "Episodes".episodeid = "EpisodeQueue".episodeid
+                        AND "EpisodeQueue".userid = $2
+                    LEFT JOIN "DownloadedEpisodes" ON
+                        "Episodes".episodeid = "DownloadedEpisodes".episodeid
+                        AND "DownloadedEpisodes".userid = $3
+                    WHERE "UserEpisodeHistory".userid = $4
+                    AND "UserEpisodeHistory".listenduration > 0
+                    AND "Episodes".completed = FALSE
+                    ORDER BY "UserEpisodeHistory".listendate DESC
+                    LIMIT 10
+                "#;
+
+                let in_progress_rows = sqlx::query(in_progress_query)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                let mut in_progress_episodes = Vec::new();
+                for row in in_progress_rows {
+                    in_progress_episodes.push(serde_json::json!({
+                        "episodeid": row.try_get::<i32, _>("episodeid")?,
+                        "episodetitle": row.try_get::<String, _>("episodetitle")?,
+                        "episodepubdate": row.try_get::<chrono::DateTime<chrono::Utc>, _>("episodepubdate")?.to_rfc3339(),
+                        "episodedescription": row.try_get::<String, _>("episodedescription")?,
+                        "episodeartwork": row.try_get::<String, _>("episodeartwork")?,
+                        "episodeurl": row.try_get::<String, _>("episodeurl")?,
+                        "episodeduration": row.try_get::<i32, _>("episodeduration")?,
+                        "completed": row.try_get::<bool, _>("completed")?,
+                        "podcastname": row.try_get::<String, _>("podcastname")?,
+                        "is_youtube": row.try_get::<bool, _>("is_youtube")?,
+                        "listenduration": row.try_get::<Option<i32>, _>("listenduration")?,
+                        "saved": row.try_get::<bool, _>("saved")?,
+                        "queued": row.try_get::<bool, _>("queued")?,
+                        "downloaded": row.try_get::<bool, _>("downloaded")?
+                    }));
+                }
+                home_data["in_progress_episodes"] = serde_json::Value::Array(in_progress_episodes);
+
+                // Top Podcasts query
+                let top_podcasts_query = r#"
+                    SELECT
+                        "Podcasts".podcastid,
+                        "Podcasts".podcastname,
+                        "Podcasts".podcastindexid,
+                        "Podcasts".artworkurl,
+                        "Podcasts".author,
+                        "Podcasts".categories,
+                        "Podcasts".description,
+                        "Podcasts".episodecount,
+                        "Podcasts".feedurl,
+                        "Podcasts".websiteurl,
+                        "Podcasts".explicit,
+                        "Podcasts".isyoutubechannel as is_youtube,
+                        COUNT(DISTINCT "UserEpisodeHistory".episodeid) as play_count,
+                        SUM("UserEpisodeHistory".listenduration) as total_listen_time
+                    FROM "Podcasts"
+                    LEFT JOIN "Episodes" ON "Podcasts".podcastid = "Episodes".podcastid
+                    LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid
+                    WHERE "Podcasts".userid = $1
+                    GROUP BY "Podcasts".podcastid
+                    ORDER BY total_listen_time DESC NULLS LAST
+                    LIMIT 6
+                "#;
+
+                let top_podcasts_rows = sqlx::query(top_podcasts_query)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                let mut top_podcasts = Vec::new();
+                for row in top_podcasts_rows {
+                    top_podcasts.push(serde_json::json!({
+                        "podcastid": row.try_get::<i32, _>("podcastid").unwrap_or(0),
+                        "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default(),
+                        "podcastindexid": row.try_get::<Option<i64>, _>("podcastindexid")?,
+                        "artworkurl": row.try_get::<String, _>("artworkurl")?,
+                        "author": row.try_get::<String, _>("author")?,
+                        "categories": row.try_get::<String, _>("categories")?,
+                        "description": row.try_get::<String, _>("description")?,
+                        "episodecount": row.try_get::<i32, _>("episodecount")?,
+                        "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
+                        "websiteurl": row.try_get::<String, _>("websiteurl")?,
+                        "explicit": row.try_get::<bool, _>("explicit")?,
+                        "is_youtube": row.try_get::<bool, _>("is_youtube")?,
+                        "play_count": row.try_get::<i64, _>("play_count")?,
+                        "total_listen_time": row.try_get::<Option<i64>, _>("total_listen_time")?
+                    }));
+                }
+                home_data["top_podcasts"] = serde_json::Value::Array(top_podcasts);
+
+                // Get counts
+                let saved_count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "SavedEpisodes" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                home_data["saved_count"] = serde_json::Value::Number(serde_json::Number::from(saved_count));
+
+                let downloaded_count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "DownloadedEpisodes" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                home_data["downloaded_count"] = serde_json::Value::Number(serde_json::Number::from(downloaded_count));
+
+                let queue_count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "EpisodeQueue" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                home_data["queue_count"] = serde_json::Value::Number(serde_json::Number::from(queue_count));
+
+                Ok(home_data)
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut home_data = serde_json::json!({
+                    "recent_episodes": [],
+                    "in_progress_episodes": [],
+                    "top_podcasts": [],
+                    "saved_count": 0,
+                    "downloaded_count": 0,
+                    "queue_count": 0
+                });
+
+                // Recent Episodes query for MySQL
+                let recent_query = r#"
+                    SELECT
+                        Episodes.EpisodeID,
+                        Episodes.EpisodeTitle,
+                        Episodes.EpisodePubDate,
+                        Episodes.EpisodeDescription,
+                        Episodes.EpisodeArtwork,
+                        Episodes.EpisodeURL,
+                        Episodes.EpisodeDuration,
+                        Episodes.Completed,
+                        Podcasts.PodcastName,
+                        Podcasts.PodcastID,
+                        Podcasts.IsYouTubeChannel as is_youtube,
+                        UserEpisodeHistory.ListenDuration,
+                        CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                        CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                        CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
+                    FROM Episodes
+                    INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                    LEFT JOIN UserEpisodeHistory ON
+                        Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+                        AND UserEpisodeHistory.UserID = ?
+                    LEFT JOIN SavedEpisodes ON
+                        Episodes.EpisodeID = SavedEpisodes.EpisodeID
+                        AND SavedEpisodes.UserID = ?
+                    LEFT JOIN EpisodeQueue ON
+                        Episodes.EpisodeID = EpisodeQueue.EpisodeID
+                        AND EpisodeQueue.UserID = ?
+                    LEFT JOIN DownloadedEpisodes ON
+                        Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
+                        AND DownloadedEpisodes.UserID = ?
+                    WHERE Podcasts.UserID = ?
+                        AND Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                    ORDER BY Episodes.EpisodePubDate DESC
+                    LIMIT 10
+                "#;
+
+                let recent_rows = sqlx::query(recent_query)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                let mut recent_episodes = Vec::new();
+                for row in recent_rows {
+                    recent_episodes.push(serde_json::json!({
+                        "episodeid": row.try_get::<i32, _>("EpisodeID")?,
+                        "episodetitle": row.try_get::<String, _>("EpisodeTitle")?,
+                        "episodepubdate": row.try_get::<chrono::DateTime<chrono::Utc>, _>("EpisodePubDate")?.to_rfc3339(),
+                        "episodedescription": row.try_get::<String, _>("EpisodeDescription")?,
+                        "episodeartwork": row.try_get::<String, _>("EpisodeArtwork")?,
+                        "episodeurl": row.try_get::<String, _>("EpisodeURL")?,
+                        "episodeduration": row.try_get::<i32, _>("EpisodeDuration")?,
+                        "completed": row.try_get::<i8, _>("Completed")? != 0,
+                        "podcastname": row.try_get::<String, _>("PodcastName")?,
+                        "podcastid": row.try_get::<i32, _>("PodcastID")?,
+                        "is_youtube": row.try_get::<i8, _>("is_youtube")? != 0,
+                        "listenduration": row.try_get::<Option<i32>, _>("ListenDuration")?,
+                        "saved": row.try_get::<i8, _>("saved")? != 0,
+                        "queued": row.try_get::<i8, _>("queued")? != 0,
+                        "downloaded": row.try_get::<i8, _>("downloaded")? != 0
+                    }));
+                }
+                home_data["recent_episodes"] = serde_json::Value::Array(recent_episodes);
+
+                // In Progress Episodes query for MySQL
+                let in_progress_query = r#"
+                    SELECT
+                        Episodes.EpisodeID,
+                        Episodes.EpisodeTitle,
+                        Episodes.EpisodePubDate,
+                        Episodes.EpisodeDescription,
+                        Episodes.EpisodeArtwork,
+                        Episodes.EpisodeURL,
+                        Episodes.EpisodeDuration,
+                        Episodes.Completed,
+                        Podcasts.PodcastName,
+                        Podcasts.IsYouTubeChannel as is_youtube,
+                        UserEpisodeHistory.ListenDuration,
+                        CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                        CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                        CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
+                    FROM UserEpisodeHistory
+                    JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID
+                    JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                    LEFT JOIN SavedEpisodes ON
+                        Episodes.EpisodeID = SavedEpisodes.EpisodeID
+                        AND SavedEpisodes.UserID = ?
+                    LEFT JOIN EpisodeQueue ON
+                        Episodes.EpisodeID = EpisodeQueue.EpisodeID
+                        AND EpisodeQueue.UserID = ?
+                    LEFT JOIN DownloadedEpisodes ON
+                        Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
+                        AND DownloadedEpisodes.UserID = ?
+                    WHERE UserEpisodeHistory.UserID = ?
+                    AND UserEpisodeHistory.ListenDuration > 0
+                    AND Episodes.Completed = 0
+                    ORDER BY UserEpisodeHistory.ListenDate DESC
+                    LIMIT 10
+                "#;
+
+                let in_progress_rows = sqlx::query(in_progress_query)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                let mut in_progress_episodes = Vec::new();
+                for row in in_progress_rows {
+                    in_progress_episodes.push(serde_json::json!({
+                        "episodeid": row.try_get::<i32, _>("EpisodeID")?,
+                        "episodetitle": row.try_get::<String, _>("EpisodeTitle")?,
+                        "episodepubdate": row.try_get::<chrono::DateTime<chrono::Utc>, _>("EpisodePubDate")?.to_rfc3339(),
+                        "episodedescription": row.try_get::<String, _>("EpisodeDescription")?,
+                        "episodeartwork": row.try_get::<String, _>("EpisodeArtwork")?,
+                        "episodeurl": row.try_get::<String, _>("EpisodeURL")?,
+                        "episodeduration": row.try_get::<i32, _>("EpisodeDuration")?,
+                        "completed": row.try_get::<i8, _>("Completed")? != 0,
+                        "podcastname": row.try_get::<String, _>("PodcastName")?,
+                        "is_youtube": row.try_get::<i8, _>("is_youtube")? != 0,
+                        "listenduration": row.try_get::<Option<i32>, _>("ListenDuration")?,
+                        "saved": row.try_get::<i8, _>("saved")? != 0,
+                        "queued": row.try_get::<i8, _>("queued")? != 0,
+                        "downloaded": row.try_get::<i8, _>("downloaded")? != 0
+                    }));
+                }
+                home_data["in_progress_episodes"] = serde_json::Value::Array(in_progress_episodes);
+
+                // Top Podcasts query for MySQL
+                let top_podcasts_query = r#"
+                    SELECT
+                        Podcasts.PodcastID,
+                        Podcasts.PodcastName,
+                        Podcasts.PodcastIndexID,
+                        Podcasts.ArtworkURL,
+                        Podcasts.Author,
+                        Podcasts.Categories,
+                        Podcasts.Description,
+                        Podcasts.EpisodeCount,
+                        Podcasts.FeedURL,
+                        Podcasts.WebsiteURL,
+                        Podcasts.Explicit,
+                        Podcasts.IsYouTubeChannel as is_youtube,
+                        COUNT(DISTINCT UserEpisodeHistory.EpisodeID) as play_count,
+                        SUM(UserEpisodeHistory.ListenDuration) as total_listen_time
+                    FROM Podcasts
+                    LEFT JOIN Episodes ON Podcasts.PodcastID = Episodes.PodcastID
+                    LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+                    WHERE Podcasts.UserID = ?
+                    GROUP BY Podcasts.PodcastID
+                    ORDER BY total_listen_time DESC
+                    LIMIT 5
+                "#;
+
+                let top_podcasts_rows = sqlx::query(top_podcasts_query)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                let mut top_podcasts = Vec::new();
+                for row in top_podcasts_rows {
+                    top_podcasts.push(serde_json::json!({
+                        "podcastid": row.try_get::<i32, _>("PodcastID")?,
+                        "podcastname": row.try_get::<String, _>("PodcastName")?,
+                        "podcastindexid": row.try_get::<Option<i64>, _>("PodcastIndexID")?,
+                        "artworkurl": row.try_get::<String, _>("ArtworkURL")?,
+                        "author": row.try_get::<String, _>("Author")?,
+                        "categories": row.try_get::<String, _>("Categories")?,
+                        "description": row.try_get::<String, _>("Description")?,
+                        "episodecount": row.try_get::<i32, _>("EpisodeCount")?,
+                        "feedurl": row.try_get::<String, _>("FeedURL")?,
+                        "websiteurl": row.try_get::<String, _>("WebsiteURL")?,
+                        "explicit": row.try_get::<i8, _>("Explicit")? != 0,
+                        "is_youtube": row.try_get::<i8, _>("is_youtube")? != 0,
+                        "play_count": row.try_get::<i64, _>("play_count")?,
+                        "total_listen_time": row.try_get::<Option<i64>, _>("total_listen_time")?
+                    }));
+                }
+                home_data["top_podcasts"] = serde_json::Value::Array(top_podcasts);
+
+                // Get counts for MySQL
+                let saved_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM SavedEpisodes WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                home_data["saved_count"] = serde_json::Value::Number(serde_json::Number::from(saved_count));
+
+                let downloaded_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM DownloadedEpisodes WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                home_data["downloaded_count"] = serde_json::Value::Number(serde_json::Number::from(downloaded_count));
+
+                let queue_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM EpisodeQueue WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                home_data["queue_count"] = serde_json::Value::Number(serde_json::Number::from(queue_count));
+
+                Ok(home_data)
+            }
+        }
+    }
+
+    // Get playlists - matches Python get_playlists function
+    pub async fn get_playlists(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let query = r#"
+                    WITH filtered_episodes AS (
+                        SELECT pc.playlistid, pc.episodeid
+                        FROM "PlaylistContents" pc
+                        JOIN "Episodes" e ON pc.episodeid = e.episodeid
+                        JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                        WHERE p.userid = $1
+                    )
+                    SELECT
+                        p.playlistid,
+                        p.userid,
+                        p.name,
+                        p.description,
+                        p.issystemplaylist,
+                        p.podcastids,
+                        p.includeunplayed,
+                        p.includepartiallyplayed,
+                        p.includeplayed,
+                        p.minduration,
+                        p.maxduration,
+                        p.sortorder,
+                        p.groupbypodcast,
+                        p.maxepisodes,
+                        p.lastupdated,
+                        p.created,
+                        p.iconname,
+                        COUNT(fe.episodeid)::INTEGER as episode_count
+                    FROM "Playlists" p
+                    LEFT JOIN filtered_episodes fe ON p.playlistid = fe.playlistid
+                    WHERE p.issystemplaylist = TRUE
+                        OR p.userid = $2
+                    GROUP BY p.playlistid
+                    ORDER BY p.issystemplaylist DESC, p.name ASC
+                "#;
+
+                let rows = sqlx::query(query)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                let mut playlists = Vec::new();
+                for row in rows {
+                    let playlist_id: i32 = row.try_get("playlistid")?;
+                    
+                    // Get preview episodes
+                    let preview_query = r#"
+                        SELECT e.episodetitle, e.episodeartwork
+                        FROM "PlaylistContents" pc
+                        JOIN "Episodes" e ON pc.episodeid = e.episodeid
+                        JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                        WHERE pc.playlistid = $1
+                        AND p.userid = $2
+                        ORDER BY pc.position
+                        LIMIT 3
+                    "#;
+
+                    let preview_rows = sqlx::query(preview_query)
+                        .bind(playlist_id)
+                        .bind(user_id)
+                        .fetch_all(pool)
+                        .await?;
+
+                    let mut preview_episodes = Vec::new();
+                    for preview_row in preview_rows {
+                        preview_episodes.push(serde_json::json!({
+                            "title": preview_row.try_get::<String, _>("episodetitle")?,
+                            "artwork": preview_row.try_get::<String, _>("episodeartwork")?
+                        }));
+                    }
+
+                    // Process podcast_ids - in PostgreSQL it's stored as an array
+                    let podcast_ids: Option<Vec<i32>> = row.try_get("podcastids").ok();
+
+                    let playlist = serde_json::json!({
+                        "playlist_id": playlist_id,
+                        "user_id": row.try_get::<i32, _>("userid")?,
+                        "name": row.try_get::<String, _>("name")?,
+                        "description": row.try_get::<String, _>("description")?,
+                        "is_system_playlist": row.try_get::<bool, _>("issystemplaylist")?,
+                        "podcast_ids": podcast_ids,
+                        "include_unplayed": row.try_get::<bool, _>("includeunplayed")?,
+                        "include_partially_played": row.try_get::<bool, _>("includepartiallyplayed")?,
+                        "include_played": row.try_get::<bool, _>("includeplayed")?,
+                        "min_duration": row.try_get::<Option<i32>, _>("minduration")?,
+                        "max_duration": row.try_get::<Option<i32>, _>("maxduration")?,
+                        "sort_order": row.try_get::<Option<String>, _>("sortorder")?,
+                        "group_by_podcast": row.try_get::<bool, _>("groupbypodcast")?,
+                        "max_episodes": row.try_get::<Option<i32>, _>("maxepisodes")?,
+                        "last_updated": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("lastupdated")?.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
+                        "created": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("created")?.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
+                        "icon_name": row.try_get::<Option<String>, _>("iconname")?.unwrap_or_default(),
+                        "episode_count": row.try_get::<i32, _>("episode_count")?,
+                        "preview_episodes": preview_episodes
+                    });
+
+                    playlists.push(playlist);
+                }
+
+                Ok(playlists)
+            }
+            DatabasePool::MySQL(pool) => {
+                let query = r#"
+                    WITH filtered_episodes AS (
+                        SELECT pc.PlaylistID, pc.EpisodeID
+                        FROM PlaylistContents pc
+                        JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
+                        JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                        WHERE p.UserID = ?
+                    )
+                    SELECT
+                        p.PlaylistID,
+                        p.UserID,
+                        p.Name,
+                        p.Description,
+                        p.IsSystemPlaylist,
+                        p.PodcastIDs,
+                        p.IncludeUnplayed,
+                        p.IncludePartiallyPlayed,
+                        p.IncludePlayed,
+                        p.MinDuration,
+                        p.MaxDuration,
+                        p.SortOrder,
+                        p.GroupByPodcast,
+                        p.MaxEpisodes,
+                        p.LastUpdated,
+                        p.Created,
+                        p.IconName,
+                        COUNT(fe.EpisodeID) as episode_count
+                    FROM Playlists p
+                    LEFT JOIN filtered_episodes fe ON p.PlaylistID = fe.PlaylistID
+                    WHERE p.IsSystemPlaylist = TRUE
+                        OR p.UserID = ?
+                    GROUP BY p.PlaylistID
+                    ORDER BY p.IsSystemPlaylist DESC, p.Name ASC
+                "#;
+
+                let rows = sqlx::query(query)
+                    .bind(user_id)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                let mut playlists = Vec::new();
+                for row in rows {
+                    let playlist_id: i32 = row.try_get("PlaylistID")?;
+                    
+                    // Get preview episodes
+                    let preview_query = r#"
+                        SELECT e.EpisodeTitle, e.EpisodeArtwork
+                        FROM PlaylistContents pc
+                        JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
+                        JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                        WHERE pc.PlaylistID = ?
+                        AND p.UserID = ?
+                        ORDER BY pc.Position
+                        LIMIT 3
+                    "#;
+
+                    let preview_rows = sqlx::query(preview_query)
+                        .bind(playlist_id)
+                        .bind(user_id)
+                        .fetch_all(pool)
+                        .await?;
+
+                    let mut preview_episodes = Vec::new();
+                    for preview_row in preview_rows {
+                        preview_episodes.push(serde_json::json!({
+                            "title": preview_row.try_get::<String, _>("EpisodeTitle")?,
+                            "artwork": preview_row.try_get::<String, _>("EpisodeArtwork")?
+                        }));
+                    }
+
+                    // Process podcast_ids - in MySQL it might be stored as JSON string
+                    let raw_podcast_ids: Option<String> = row.try_get("PodcastIDs").ok();
+                    let mut podcast_ids: Option<Vec<i32>> = None;
+                    
+                    if let Some(raw_ids) = raw_podcast_ids {
+                        if !raw_ids.is_empty() {
+                            // Try to parse as JSON first
+                            if let Ok(parsed) = serde_json::from_str::<Vec<i32>>(&raw_ids) {
+                                podcast_ids = Some(parsed);
+                            } else {
+                                // Handle other formats like comma-separated strings
+                                let parsed: Result<Vec<i32>, _> = raw_ids
+                                    .trim_matches(|c| c == '[' || c == ']' || c == '"' || c == '\'')
+                                    .split(',')
+                                    .filter(|s| !s.trim().is_empty())
+                                    .map(|s| s.trim().parse::<i32>())
+                                    .collect();
+                                
+                                if let Ok(ids) = parsed {
+                                    podcast_ids = Some(ids);
+                                }
+                            }
+                        }
+                    }
+
+                    let playlist = serde_json::json!({
+                        "playlist_id": playlist_id,
+                        "user_id": row.try_get::<i32, _>("UserID")?,
+                        "name": row.try_get::<String, _>("Name")?,
+                        "description": row.try_get::<String, _>("Description")?,
+                        "is_system_playlist": row.try_get::<i8, _>("IsSystemPlaylist")? != 0,
+                        "podcast_ids": podcast_ids,
+                        "include_unplayed": row.try_get::<i8, _>("IncludeUnplayed")? != 0,
+                        "include_partially_played": row.try_get::<i8, _>("IncludePartiallyPlayed")? != 0,
+                        "include_played": row.try_get::<i8, _>("IncludePlayed")? != 0,
+                        "min_duration": row.try_get::<Option<i32>, _>("MinDuration")?,
+                        "max_duration": row.try_get::<Option<i32>, _>("MaxDuration")?,
+                        "sort_order": row.try_get::<Option<String>, _>("SortOrder")?,
+                        "group_by_podcast": row.try_get::<i8, _>("GroupByPodcast")? != 0,
+                        "max_episodes": row.try_get::<Option<i32>, _>("MaxEpisodes")?,
+                        "last_updated": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("LastUpdated")?.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
+                        "created": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("Created")?.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
+                        "icon_name": row.try_get::<Option<String>, _>("IconName")?.unwrap_or_default(),
+                        "episode_count": row.try_get::<i64, _>("episode_count")?,
+                        "preview_episodes": preview_episodes
+                    });
+
+                    playlists.push(playlist);
+                }
+
+                Ok(playlists)
+            }
+        }
+    }
+
     // Get saved episodes - matches Python saved_episode_list function
     pub async fn get_saved_episodes(&self, user_id: i32) -> AppResult<Vec<crate::models::SavedEpisode>> {
         match self {
@@ -4097,7 +5040,7 @@ impl DatabasePool {
                         return Ok(serde_json::json!({
                             "podcastid": row.try_get::<i32, _>("podcastid")?,
                             "podcastindexid": row.try_get::<Option<i32>, _>("podcastindexid")?,
-                            "feedurl": row.try_get::<String, _>("feedurl")?,
+                            "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
                             "podcastname": row.try_get::<String, _>("podcastname")?,
                             "artworkurl": row.try_get::<String, _>("artworkurl")?,
                             "episodetitle": row.try_get::<String, _>("episodetitle")?,
@@ -4154,7 +5097,7 @@ impl DatabasePool {
                     Ok(serde_json::json!({
                         "podcastid": row.try_get::<i32, _>("podcastid")?,
                         "podcastindexid": row.try_get::<Option<i32>, _>("podcastindexid")?,
-                        "feedurl": row.try_get::<String, _>("feedurl")?,
+                        "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
                         "podcastname": row.try_get::<String, _>("podcastname")?,
                         "artworkurl": row.try_get::<String, _>("artworkurl")?,
                         "episodetitle": row.try_get::<String, _>("episodetitle")?,

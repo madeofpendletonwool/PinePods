@@ -1392,3 +1392,137 @@ pub async fn get_podcast_id_from_ep_id(
         Err(AppError::forbidden("You can only return podcast ids of your own podcasts!"))
     }
 }
+
+// Query parameters for get_stats
+#[derive(Deserialize)]
+pub struct GetStatsQuery {
+    pub user_id: i32,
+}
+
+// Get user stats - matches Python get_stats endpoint exactly
+pub async fn get_stats(
+    Query(query): Query<GetStatsQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == query.user_id || is_web_key {
+        let stats = state.db_pool.get_stats(query.user_id).await?;
+        
+        if let Some(stats) = stats {
+            Ok(Json(stats))
+        } else {
+            Err(AppError::not_found("Stats not found for the given user ID"))
+        }
+    } else {
+        Err(AppError::forbidden("You can only get stats for your own account."))
+    }
+}
+
+// Get PinePods version - matches Python get_pinepods_version endpoint exactly
+pub async fn get_pinepods_version(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let version = state.db_pool.get_pinepods_version().await?;
+    
+    Ok(Json(serde_json::json!({ "data": version })))
+}
+
+// Request for search_data - matches Python SearchPodcastData
+#[derive(Deserialize)]
+pub struct SearchDataRequest {
+    pub search_term: String,
+    pub user_id: i32,
+}
+
+// Search data - matches Python search_data endpoint exactly
+pub async fn search_data(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<SearchDataRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let result = state.db_pool.search_data(&request.search_term, request.user_id).await?;
+    
+    Ok(Json(serde_json::json!({ "data": result })))
+}
+
+// Query struct for home_overview
+#[derive(Deserialize)]
+pub struct HomeOverviewQuery {
+    pub user_id: i32,
+}
+
+// Get home overview - matches Python api_home_overview function
+pub async fn home_overview(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Query(query): Query<HomeOverviewQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - user can only access their own data
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id != query.user_id {
+        return Err(AppError::forbidden("You can only view your own home overview!"));
+    }
+
+    let home_data = state.db_pool.get_home_overview(query.user_id).await?;
+    
+    Ok(Json(home_data))
+}
+
+// Query struct for get_playlists
+#[derive(Deserialize)]
+pub struct GetPlaylistsQuery {
+    pub user_id: i32,
+}
+
+// Get playlists - matches Python api_get_playlists function
+pub async fn get_playlists(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Query(query): Query<GetPlaylistsQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - user can only access their own data
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id != query.user_id {
+        return Err(AppError::forbidden("You can only view your own playlists!"));
+    }
+
+    let playlists = state.db_pool.get_playlists(query.user_id).await?;
+    
+    Ok(Json(serde_json::json!({ "playlists": playlists })))
+}
