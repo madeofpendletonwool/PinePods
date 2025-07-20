@@ -2,7 +2,7 @@ use axum::{
     extract::State,
     http::StatusCode,
     response::Json,
-    routing::{get, post, put},
+    routing::{delete, get, post, put},
     Router,
 };
 use std::net::SocketAddr;
@@ -122,6 +122,7 @@ fn create_app(state: AppState) -> Router {
         .nest("/api/tasks", create_task_routes())
         .nest("/api/async", create_async_routes())
         .nest("/api/proxy", create_proxy_routes())
+        .nest("/api/gpodder", create_gpodder_routes())
         .nest("/ws", create_websocket_routes())
         
         // Middleware stack
@@ -211,7 +212,45 @@ fn create_data_routes() -> Router<AppState> {
         .route("/add_user", post(handlers::settings::add_user))
         .route("/set_fullname/{user_id}", put(handlers::settings::set_fullname))
         .route("/set_password/{user_id}", put(handlers::settings::set_password))
+        .route("/user/delete/{user_id}", delete(handlers::settings::delete_user))
+        .route("/user/set_email", put(handlers::settings::set_email))
+        .route("/user/set_username", put(handlers::settings::set_username))
+        .route("/user/set_isadmin", put(handlers::settings::set_isadmin))
+        .route("/user/final_admin/{user_id}", get(handlers::settings::final_admin))
+        .route("/enable_disable_guest", post(handlers::settings::enable_disable_guest))
+        .route("/enable_disable_downloads", post(handlers::settings::enable_disable_downloads))
+        .route("/enable_disable_self_service", post(handlers::settings::enable_disable_self_service))
+        .route("/guest_status", get(handlers::settings::guest_status))
+        .route("/rss_feed_status", get(handlers::settings::rss_feed_status))
+        .route("/toggle_rss_feeds", post(handlers::settings::toggle_rss_feeds))
+        .route("/download_status", get(handlers::settings::download_status))
+        .route("/self_service_status", get(handlers::settings::self_service_status))
+        .route("/save_email_settings", post(handlers::settings::save_email_settings))
+        .route("/get_email_settings", get(handlers::settings::get_email_settings))
+        .route("/send_test_email", post(handlers::settings::send_test_email))
+        .route("/send_email", post(handlers::settings::send_email))
+        .route("/get_api_info/{user_id}", get(handlers::settings::get_api_info))
+        .route("/create_api_key", post(handlers::settings::create_api_key))
+        .route("/delete_api_key", delete(handlers::settings::delete_api_key))
+        .route("/backup_user", post(handlers::settings::backup_user))
+        .route("/backup_server", post(handlers::settings::backup_server))
+        .route("/restore_server", post(handlers::settings::restore_server))
+        .route("/generate_mfa_secret/{user_id}", get(handlers::settings::generate_mfa_secret))
+        .route("/verify_temp_mfa", post(handlers::settings::verify_temp_mfa))
+        .route("/check_mfa_enabled/{user_id}", get(handlers::settings::check_mfa_enabled))
+        .route("/save_mfa_secret", post(handlers::settings::save_mfa_secret))
+        .route("/delete_mfa", delete(handlers::settings::delete_mfa))
+        .route("/initiate_nextcloud_login", post(handlers::settings::initiate_nextcloud_login))
+        .route("/add_nextcloud_server", post(handlers::settings::add_nextcloud_server))
+        .route("/verify_gpodder_auth", post(handlers::settings::verify_gpodder_auth))
+        .route("/add_gpodder_server", post(handlers::settings::add_gpodder_server))
+        .route("/get_gpodder_settings/{user_id}", get(handlers::settings::get_gpodder_settings))
+        .route("/check_gpodder_settings/{user_id}", get(handlers::settings::check_gpodder_settings))
+        .route("/remove_podcast_sync", post(handlers::settings::remove_podcast_sync))
+        .route("/gpodder/status", get(handlers::sync::gpodder_status))
+        .route("/gpodder/toggle", post(handlers::sync::gpodder_toggle))
         .route("/refresh_pods", post(handlers::refresh::refresh_pods_admin))
+        .route("/refresh_nextcloud_subscriptions", post(handlers::refresh::refresh_nextcloud_subscriptions_admin))
         // Add more data routes as needed
 }
 
@@ -248,6 +287,18 @@ fn create_async_routes() -> Router<AppState> {
 fn create_proxy_routes() -> Router<AppState> {
     Router::new()
         .route("/image", get(handlers::proxy::proxy_image))
+}
+
+fn create_gpodder_routes() -> Router<AppState> {
+    Router::new()
+        .route("/test-connection", get(handlers::sync::gpodder_test_connection))
+        .route("/set_default/{device_id}", post(handlers::sync::gpodder_set_default))
+        .route("/devices/{user_id}", get(handlers::sync::gpodder_get_user_devices))
+        .route("/devices", get(handlers::sync::gpodder_get_all_devices))
+        .route("/default_device", get(handlers::sync::gpodder_get_default_device))
+        .route("/devices", post(handlers::sync::gpodder_create_device))
+        .route("/sync/force", post(handlers::sync::gpodder_force_sync))
+        .route("/sync", post(handlers::sync::gpodder_sync))
 }
 
 fn create_websocket_routes() -> Router<AppState> {

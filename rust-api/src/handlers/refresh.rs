@@ -59,10 +59,12 @@ lazy_static::lazy_static! {
     static ref ACTIVE_WEBSOCKETS: ActiveWebSockets = Arc::new(RwLock::new(HashMap::new()));
 }
 
-// Admin refresh endpoint (background task)
+// Admin refresh endpoint (background task) - matches Python refresh_pods function
 pub async fn refresh_pods_admin(
     State(state): State<AppState>,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
+    println!("Starting admin refresh process for all users");
+    
     // This would be called by admin/system - spawn background task
     let task_id = state.task_spawner.spawn_progress_task(
         "refresh_all_pods".to_string(),
@@ -70,18 +72,193 @@ pub async fn refresh_pods_admin(
         move |reporter| async move {
             reporter.update_progress(10.0, Some("Starting system-wide refresh...".to_string())).await?;
             
-            // TODO: Implement system-wide podcast refresh
-            // This would iterate through all users and refresh their podcasts
+            // Get all users who have podcasts to refresh
+            let all_users = state.db_pool.get_all_users_with_podcasts().await
+                .map_err(|e| format!("Failed to get users: {}", e))?;
             
-            reporter.update_progress(100.0, Some("System refresh completed".to_string())).await?;
-            Ok(serde_json::json!({"success": true}))
+            println!("Found {} users with podcasts to refresh", all_users.len());
+            
+            let mut successful_users = 0;
+            let mut failed_users = 0;
+            let mut total_podcasts_refreshed = 0;
+            let mut total_new_episodes = 0;
+            
+            for (index, user_id) in all_users.iter().enumerate() {
+                let progress = 10.0 + (80.0 * (index as f64) / (all_users.len() as f64));
+                reporter.update_progress(progress, Some(format!("Refreshing user {}/{}", index + 1, all_users.len()))).await?;
+                
+                println!("Refreshing podcasts for user {} ({}/{})", user_id, index + 1, all_users.len());
+                
+                match refresh_user_podcasts_admin(&state, *user_id).await {
+                    Ok((podcast_count, episode_count)) => {
+                        successful_users += 1;
+                        total_podcasts_refreshed += podcast_count;
+                        total_new_episodes += episode_count;
+                        println!("Successfully refreshed user {}: {} podcasts, {} new episodes", 
+                            user_id, podcast_count, episode_count);
+                    }
+                    Err(e) => {
+                        failed_users += 1;
+                        println!("Failed to refresh user {}: {}", user_id, e);
+                        tracing::error!("Failed to refresh user {}: {}", user_id, e);
+                        // Continue with other users
+                    }
+                }
+            }
+            
+            println!("Admin refresh completed: {}/{} users successful, {} podcasts refreshed, {} new episodes", 
+                successful_users, all_users.len(), total_podcasts_refreshed, total_new_episodes);
+            
+            reporter.update_progress(100.0, Some(format!(
+                "System refresh completed: {}/{} users, {} podcasts, {} episodes", 
+                successful_users, all_users.len(), total_podcasts_refreshed, total_new_episodes
+            ))).await?;
+            
+            Ok(serde_json::json!({
+                "success": true,
+                "users_refreshed": successful_users,
+                "users_failed": failed_users,
+                "total_podcasts": total_podcasts_refreshed,
+                "total_new_episodes": total_new_episodes
+            }))
         },
     ).await?;
 
     Ok(axum::Json(serde_json::json!({
-        "detail": "Refresh initiated.",
+        "detail": "System-wide refresh initiated.",
         "task_id": task_id
     })))
+}
+
+// Separate endpoint for gPodder refresh (scheduled separately like Python)
+pub async fn refresh_nextcloud_subscriptions_admin(
+    State(state): State<AppState>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    println!("Starting admin gPodder sync process for all users");
+    
+    let task_id = state.task_spawner.spawn_progress_task(
+        "refresh_nextcloud_subscriptions".to_string(),
+        0, // System user
+        move |reporter| async move {
+            reporter.update_progress(10.0, Some("Starting gPodder sync for all users...".to_string())).await?;
+            
+            // Get all users who have gPodder sync enabled
+            let gpodder_users = state.db_pool.get_all_users_with_gpodder_sync().await
+                .map_err(|e| format!("Failed to get gPodder users: {}", e))?;
+            
+            println!("Found {} users with gPodder sync enabled", gpodder_users.len());
+            
+            let mut successful_syncs = 0;
+            let mut failed_syncs = 0;
+            let mut total_synced_podcasts = 0;
+            
+            for (index, user_id) in gpodder_users.iter().enumerate() {
+                let progress = 10.0 + (80.0 * (index as f64) / (gpodder_users.len() as f64));
+                reporter.update_progress(progress, Some(format!("Syncing user {}/{}", index + 1, gpodder_users.len()))).await?;
+                
+                println!("Running gPodder sync for user {} ({}/{})", user_id, index + 1, gpodder_users.len());
+                
+                // Get user's sync type
+                let gpodder_status = state.db_pool.gpodder_get_status(*user_id).await
+                    .map_err(|e| format!("Failed to get status for user {}: {}", user_id, e))?;
+                
+                if gpodder_status.enabled && gpodder_status.sync_type != "None" {
+                    match run_admin_gpodder_sync(&state, *user_id, &gpodder_status.sync_type).await {
+                        Ok(sync_result) => {
+                            successful_syncs += 1;
+                            total_synced_podcasts += sync_result.synced_podcasts;
+                            println!("gPodder sync successful for user {}: {} podcasts", 
+                                user_id, sync_result.synced_podcasts);
+                        }
+                        Err(e) => {
+                            failed_syncs += 1;
+                            println!("gPodder sync failed for user {}: {}", user_id, e);
+                            tracing::error!("gPodder sync failed for user {}: {}", user_id, e);
+                            // Continue with other users
+                        }
+                    }
+                } else {
+                    println!("gPodder sync not properly configured for user {}", user_id);
+                }
+            }
+            
+            println!("Admin gPodder sync completed: {}/{} users successful, {} total podcasts synced", 
+                successful_syncs, gpodder_users.len(), total_synced_podcasts);
+            
+            reporter.update_progress(100.0, Some(format!(
+                "gPodder sync completed: {}/{} users, {} podcasts", 
+                successful_syncs, gpodder_users.len(), total_synced_podcasts
+            ))).await?;
+            
+            Ok(serde_json::json!({
+                "success": true,
+                "users_synced": successful_syncs,
+                "users_failed": failed_syncs,
+                "total_podcasts": total_synced_podcasts
+            }))
+        },
+    ).await?;
+
+    Ok(axum::Json(serde_json::json!({
+        "detail": "gPodder sync for all users initiated.",
+        "task_id": task_id
+    })))
+}
+
+// Helper function to refresh podcasts for a single user (admin refresh)
+async fn refresh_user_podcasts_admin(state: &AppState, user_id: i32) -> AppResult<(i32, i32)> {
+    let podcasts = state.db_pool.get_user_podcasts_for_refresh(user_id).await?;
+    let mut successful_podcasts = 0;
+    let mut total_new_episodes = 0;
+    
+    for podcast in podcasts {
+        match refresh_single_podcast(state, &podcast, user_id, false).await {
+            Ok(new_episodes) => {
+                successful_podcasts += 1;
+                total_new_episodes += new_episodes.len() as i32;
+                println!("Refreshed podcast '{}': {} new episodes", podcast.name, new_episodes.len());
+            }
+            Err(e) => {
+                println!("Failed to refresh podcast '{}': {}", podcast.name, e);
+                // Continue with other podcasts
+            }
+        }
+        
+        // Small delay to prevent overwhelming
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    }
+    
+    Ok((successful_podcasts, total_new_episodes))
+}
+
+// Helper function for admin gPodder sync
+async fn run_admin_gpodder_sync(state: &AppState, user_id: i32, sync_type: &str) -> AppResult<SyncResult> {
+    match sync_type {
+        "nextcloud" => {
+            match state.db_pool.sync_with_nextcloud_for_user(user_id).await {
+                Ok(success) => {
+                    if success {
+                        Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
+                    } else {
+                        Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
+                    }
+                }
+                Err(e) => Err(e)
+            }
+        }
+        "gpodder" | "external" | "both" => {
+            match state.db_pool.gpodder_sync(user_id).await {
+                Ok(sync_result) => {
+                    Ok(SyncResult {
+                        synced_podcasts: sync_result.synced_podcasts,
+                        synced_episodes: sync_result.synced_episodes,
+                    })
+                }
+                Err(e) => Err(e)
+            }
+        }
+        _ => Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
+    }
 }
 
 // User-specific refresh via WebSocket with real-time progress
@@ -221,25 +398,96 @@ async fn run_refresh_process(
     tx: tokio::sync::mpsc::Sender<RefreshMessage>,
     state: AppState,
 ) -> AppResult<()> {
-    // Get total podcast count
+    println!("Starting refresh process for user_id: {}, nextcloud_refresh: {}", user_id, nextcloud_refresh);
+    
+    // PRE-REFRESH GPODDER SYNC - matches Python implementation exactly
+    if nextcloud_refresh {
+        println!("Pre-refresh gPodder sync requested for user {}", user_id);
+        
+        let _ = tx.send(RefreshMessage::Status(RefreshStatus {
+            progress: RefreshProgress {
+                current: 0,
+                total: 1,
+                current_podcast: "Checking gPodder sync settings...".to_string(),
+            },
+        })).await;
+
+        // Check if user has gPodder sync configured
+        let gpodder_status = state.db_pool.gpodder_get_status(user_id).await?;
+        
+        if gpodder_status.enabled && gpodder_status.sync_type != "None" {
+            println!("gPodder sync is enabled for user {}, sync_type: {}", user_id, gpodder_status.sync_type);
+            
+            let _ = tx.send(RefreshMessage::Status(RefreshStatus {
+                progress: RefreshProgress {
+                    current: 0,
+                    total: 1,
+                    current_podcast: format!("Syncing with gPodder ({})...", gpodder_status.sync_type),
+                },
+            })).await;
+
+            match handle_gpodder_sync(&state, user_id, &gpodder_status.sync_type).await {
+                Ok(sync_result) => {
+                    println!("gPodder sync successful for user {}: {} podcasts, {} episodes", 
+                        user_id, sync_result.synced_podcasts, sync_result.synced_episodes);
+                    
+                    let _ = tx.send(RefreshMessage::Status(RefreshStatus {
+                        progress: RefreshProgress {
+                            current: 0,
+                            total: 1,
+                            current_podcast: format!("gPodder sync completed: {} podcasts, {} episodes", 
+                                sync_result.synced_podcasts, sync_result.synced_episodes),
+                        },
+                    })).await;
+                }
+                Err(e) => {
+                    println!("gPodder sync failed for user {}: {}", user_id, e);
+                    tracing::error!("gPodder sync failed for user {}: {}", user_id, e);
+                    
+                    let _ = tx.send(RefreshMessage::Status(RefreshStatus {
+                        progress: RefreshProgress {
+                            current: 0,
+                            total: 1,
+                            current_podcast: format!("gPodder sync failed: {}", e),
+                        },
+                    })).await;
+                    
+                    // Continue with regular refresh even if gPodder sync fails
+                }
+            }
+        } else {
+            println!("gPodder sync not enabled for user {} (enabled: {}, type: {})", 
+                user_id, gpodder_status.enabled, gpodder_status.sync_type);
+        }
+    }
+
+    // Get total podcast count for progress tracking
     let total_podcasts = state.db_pool.get_user_podcast_count(user_id).await?;
+    println!("Found {} podcasts to refresh for user {}", total_podcasts, user_id);
     
     // Send initial progress
     let _ = tx.send(RefreshMessage::Status(RefreshStatus {
         progress: RefreshProgress {
             current: 0,
             total: total_podcasts,
-            current_podcast: "".to_string(),
+            current_podcast: "Starting podcast refresh...".to_string(),
         },
     })).await;
 
     // Get user's podcasts for refresh
     let podcasts = state.db_pool.get_user_podcasts_for_refresh(user_id).await?;
+    println!("Retrieved {} podcast details for refresh", podcasts.len());
     
     let mut current = 0;
+    let mut successful_refreshes = 0;
+    let mut failed_refreshes = 0;
+    let mut total_new_episodes = 0;
     
     for podcast in podcasts {
         current += 1;
+        
+        println!("Refreshing podcast {}/{}: {} (ID: {}, is_youtube: {})", 
+            current, total_podcasts, podcast.name, podcast.id, podcast.is_youtube);
         
         // Send progress update
         let _ = tx.send(RefreshMessage::Status(RefreshStatus {
@@ -250,9 +498,15 @@ async fn run_refresh_process(
             },
         })).await;
 
-        // Refresh individual podcast
+        // Refresh individual podcast with error handling like Python version
         match refresh_single_podcast(&state, &podcast, user_id, nextcloud_refresh).await {
             Ok(new_episodes) => {
+                let episode_count = new_episodes.len();
+                total_new_episodes += episode_count;
+                successful_refreshes += 1;
+                
+                println!("Successfully refreshed podcast '{}': {} new episodes", podcast.name, episode_count);
+                
                 // Send new episodes through WebSocket
                 for episode in new_episodes {
                     let _ = tx.send(RefreshMessage::NewEpisode(NewEpisode {
@@ -261,8 +515,10 @@ async fn run_refresh_process(
                 }
             }
             Err(e) => {
-                tracing::error!("Error refreshing podcast {}: {}", podcast.id, e);
-                // Continue with other podcasts
+                failed_refreshes += 1;
+                println!("Error refreshing podcast '{}' (ID: {}): {}", podcast.name, podcast.id, e);
+                tracing::error!("Error refreshing podcast '{}' (ID: {}): {}", podcast.name, podcast.id, e);
+                // Continue with other podcasts - matches Python error handling
             }
         }
 
@@ -270,27 +526,16 @@ async fn run_refresh_process(
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }
 
-    // Handle GPodder sync if needed
-    if nextcloud_refresh {
-        let _ = tx.send(RefreshMessage::Status(RefreshStatus {
-            progress: RefreshProgress {
-                current: total_podcasts,
-                total: total_podcasts,
-                current_podcast: "Syncing with GPodder...".to_string(),
-            },
-        })).await;
+    // Final completion summary - matches Python logging
+    println!("Refresh completed for user {}: {}/{} podcasts successful, {} failed, {} total new episodes", 
+        user_id, successful_refreshes, total_podcasts, failed_refreshes, total_new_episodes);
 
-        if let Err(e) = handle_gpodder_sync(&state, user_id).await {
-            tracing::error!("GPodder sync failed for user {}: {}", user_id, e);
-        }
-    }
-
-    // Final completion message
     let _ = tx.send(RefreshMessage::Status(RefreshStatus {
         progress: RefreshProgress {
             current: total_podcasts,
             total: total_podcasts,
-            current_podcast: "Refresh completed".to_string(),
+            current_podcast: format!("Refresh completed: {}/{} successful, {} new episodes", 
+                successful_refreshes, total_podcasts, total_new_episodes),
         },
     })).await;
 
@@ -366,16 +611,61 @@ async fn refresh_youtube_channel(
     Ok(Vec::new())
 }
 
-async fn handle_gpodder_sync(state: &AppState, user_id: i32) -> AppResult<()> {
-    // TODO: Implement GPodder synchronization
-    // This would:
-    // 1. Get user's GPodder settings
-    // 2. Determine sync type (nextcloud, gpodder, both, etc.)
-    // 3. Sync subscriptions and episode states
-    // 4. Handle device management
+// Define sync result structure to match our database return type
+#[derive(Debug)]
+pub struct SyncResult {
+    pub synced_podcasts: i32,
+    pub synced_episodes: i32,
+}
+
+async fn handle_gpodder_sync(state: &AppState, user_id: i32, sync_type: &str) -> AppResult<SyncResult> {
+    println!("Starting gPodder sync for user {}, sync_type: {}", user_id, sync_type);
     
-    tracing::info!("Starting GPodder sync for user: {}", user_id);
-    
-    // Placeholder implementation
-    Ok(())
+    // Determine which sync function to call based on sync type - matches Python logic exactly
+    match sync_type {
+        "nextcloud" => {
+            println!("Performing Nextcloud gPodder sync for user {}", user_id);
+            
+            // Use the nextcloud sync functionality - this handles the /index.php/apps/gpoddersync endpoints
+            match state.db_pool.sync_with_nextcloud_for_user(user_id).await {
+                Ok(success) => {
+                    if success {
+                        println!("Nextcloud sync successful for user {}", user_id);
+                        Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
+                    } else {
+                        println!("Nextcloud sync returned false for user {}", user_id);
+                        Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
+                    }
+                }
+                Err(e) => {
+                    println!("Nextcloud sync failed for user {}: {}", user_id, e);
+                    Err(e)
+                }
+            }
+        }
+        "gpodder" | "external" | "both" => {
+            println!("Performing standard gPodder sync for user {}, type: {}", user_id, sync_type);
+            
+            // Use the standard gPodder sync functionality
+            match state.db_pool.gpodder_sync(user_id).await {
+                Ok(sync_result) => {
+                    println!("Standard gPodder sync successful for user {}: {} podcasts, {} episodes", 
+                        user_id, sync_result.synced_podcasts, sync_result.synced_episodes);
+                    
+                    Ok(SyncResult {
+                        synced_podcasts: sync_result.synced_podcasts,
+                        synced_episodes: sync_result.synced_episodes,
+                    })
+                }
+                Err(e) => {
+                    println!("Standard gPodder sync failed for user {}: {}", user_id, e);
+                    Err(e)
+                }
+            }
+        }
+        _ => {
+            println!("Unknown sync type '{}' for user {}, skipping sync", sync_type, user_id);
+            Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
+        }
+    }
 }

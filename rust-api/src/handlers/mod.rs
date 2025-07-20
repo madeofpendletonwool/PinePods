@@ -9,6 +9,7 @@ pub mod async_tasks_examples;
 pub mod refresh;
 pub mod proxy;
 pub mod settings;
+pub mod sync;
 
 // Common handler utilities
 use axum::{
