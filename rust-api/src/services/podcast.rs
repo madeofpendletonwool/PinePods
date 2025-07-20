@@ -59,24 +59,50 @@ async fn refresh_podcast_internal(db_pool: &DatabasePool, podcast_id: i32) -> Ap
 
 /// Refresh all podcasts - matches Python refresh_pods function exactly
 pub async fn refresh_all_podcasts(state: &AppState) -> AppResult<()> {
-    info!("Refresh begin for all podcasts");
+    println!("🚀 Starting refresh process for all podcasts");
     
     // Get all podcasts from database
     let podcasts = get_all_podcasts_for_refresh(&state.db_pool).await?;
+    println!("📊 Found {} podcasts to refresh", podcasts.len());
+    
+    let mut successful_refreshes = 0;
+    let mut failed_refreshes = 0;
     
     for podcast in podcasts {
         match refresh_single_podcast(&state.db_pool, &podcast).await {
-            Ok(_) => info!("Successfully refreshed podcast {}", podcast.id),
-            Err(e) => error!("Error refreshing podcast {}: {}", podcast.id, e),
+            Ok(_) => {
+                successful_refreshes += 1;
+            }
+            Err(e) => {
+                failed_refreshes += 1;
+                println!("❌ Error refreshing podcast '{}' (ID: {}): {}", podcast.name, podcast.id, e);
+            }
         }
     }
     
+    println!("🎯 Refresh process completed: {} successful, {} failed", successful_refreshes, failed_refreshes);
     Ok(())
 }
 
 /// Refresh a single podcast - matches Python refresh logic
 async fn refresh_single_podcast(db_pool: &DatabasePool, podcast: &PodcastForRefresh) -> AppResult<()> {
-    info!("Running refresh for podcast: {}", podcast.id);
+    println!("🔄 Starting refresh for podcast '{}' (ID: {})", podcast.name, podcast.id);
+    
+    // Count episodes before refresh
+    let episodes_before = match db_pool {
+        crate::database::DatabasePool::Postgres(pool) => {
+            sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE podcastid = $1"#)
+                .bind(podcast.id)
+                .fetch_one(pool)
+                .await.unwrap_or(0)
+        }
+        crate::database::DatabasePool::MySQL(pool) => {
+            sqlx::query_scalar("SELECT COUNT(*) FROM Episodes WHERE PodcastID = ?")
+                .bind(podcast.id)
+                .fetch_one(pool)
+                .await.unwrap_or(0)
+        }
+    };
     
     if podcast.is_youtube {
         // Handle YouTube channel
@@ -91,6 +117,29 @@ async fn refresh_single_podcast(db_pool: &DatabasePool, podcast: &PodcastForRefr
             podcast.username.as_deref(),
             podcast.password.as_deref(),
         ).await?;
+    }
+    
+    // Count episodes after refresh
+    let episodes_after: i64 = match db_pool {
+        crate::database::DatabasePool::Postgres(pool) => {
+            sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE podcastid = $1"#)
+                .bind(podcast.id)
+                .fetch_one(pool)
+                .await.unwrap_or(0)
+        }
+        crate::database::DatabasePool::MySQL(pool) => {
+            sqlx::query_scalar("SELECT COUNT(*) FROM Episodes WHERE PodcastID = ?")
+                .bind(podcast.id)
+                .fetch_one(pool)
+                .await.unwrap_or(0)
+        }
+    };
+    
+    let new_episodes = episodes_after - episodes_before;
+    if new_episodes > 0 {
+        println!("✅ Completed refresh for podcast '{}' - added {} new episodes", podcast.name, new_episodes);
+    } else {
+        println!("✅ Completed refresh for podcast '{}' - no new episodes found", podcast.name);
     }
     
     Ok(())

@@ -1526,3 +1526,74 @@ pub async fn get_playlists(
     
     Ok(Json(serde_json::json!({ "playlists": playlists })))
 }
+
+// Request struct for mark_episode_uncompleted
+#[derive(Deserialize)]
+pub struct MarkEpisodeUncompletedRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    #[serde(default)]
+    pub is_youtube: bool,
+}
+
+// Mark episode as uncompleted - matches Python api_mark_episode_uncompleted function
+pub async fn mark_episode_uncompleted(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Json(request): Json<MarkEpisodeUncompletedRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - user can only mark their own episodes as uncompleted
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You can only mark episodes as uncompleted for yourself."));
+    }
+
+    state.db_pool.mark_episode_uncompleted(request.episode_id, request.user_id, request.is_youtube).await?;
+    
+    Ok(Json(serde_json::json!({ "detail": "Episode marked as uncompleted." })))
+}
+
+// Request struct for record_listen_duration
+#[derive(Deserialize)]
+pub struct RecordListenDurationRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+    pub listen_duration: f64,
+    #[serde(default)]
+    pub is_youtube: bool,
+}
+
+// Record listen duration - matches Python api record_listen_duration function exactly
+pub async fn record_listen_duration(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Json(data): Json<RecordListenDurationRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Ignore listen duration for episodes with ID 0
+    if data.episode_id == 0 {
+        return Ok(Json(serde_json::json!({ "detail": "Listen duration for episode ID 0 is ignored." })));
+    }
+
+    // Check authorization - web key or user can only record their own duration
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != data.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only record your own listen duration"));
+    }
+
+    if data.is_youtube {
+        state.db_pool.record_youtube_listen_duration(data.episode_id, data.user_id, data.listen_duration).await?;
+    } else {
+        state.db_pool.record_listen_duration(data.episode_id, data.user_id, data.listen_duration).await?;
+    }
+
+    Ok(Json(serde_json::json!({ "detail": "Listen duration recorded." })))
+}

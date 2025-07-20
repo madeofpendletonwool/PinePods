@@ -3,6 +3,7 @@ use std::time::Duration;
 use crate::{config::Config, error::{AppError, AppResult}};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use bigdecimal::ToPrimitive;
 
 #[derive(Clone)]
 pub enum DatabasePool {
@@ -635,6 +636,15 @@ impl DatabasePool {
                                                           &podcast_values.pod_artwork, false, 
                                                           username, password).await?;
                 
+                // Count episodes for logging
+                let episode_count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE podcastid = $1"#)
+                    .bind(podcast_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                println!("✅ Added podcast '{}' for user {} with {} episodes", 
+                    podcast_values.pod_title, podcast_values.user_id, episode_count);
+                
                 Ok((podcast_id, first_episode_id))
             }
             DatabasePool::MySQL(pool) => {
@@ -704,6 +714,15 @@ impl DatabasePool {
                 let first_episode_id = self.add_episodes(podcast_id, &podcast_values.pod_feed_url, 
                                                           &podcast_values.pod_artwork, false, 
                                                           username, password).await?;
+                
+                // Count episodes for logging
+                let episode_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM Episodes WHERE PodcastID = ?")
+                    .bind(podcast_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                println!("✅ Added podcast '{}' for user {} with {} episodes", 
+                    podcast_values.pod_title, podcast_values.user_id, episode_count);
                 
                 Ok((podcast_id, first_episode_id))
             }
@@ -1581,7 +1600,10 @@ impl DatabasePool {
                         episodeurl: row.try_get("episodeurl")?,
                         queueposition: row.try_get("queueposition").ok(),
                         episodeduration: row.try_get("episodeduration")?,
-                        queuedate: row.try_get("queuedate")?,
+                        queuedate: {
+                        let naive = row.try_get::<chrono::NaiveDateTime, _>("queuedate")?;
+                        naive.format("%Y-%m-%dT%H:%M:%S").to_string()
+                    },
                         listenduration: row.try_get("listenduration").ok(),
                         episodeid: row.try_get("episodeid")?,
                         completed: row.try_get("completed")?,
@@ -1678,7 +1700,10 @@ impl DatabasePool {
                         episodeurl: row.try_get("episodeurl")?,
                         queueposition: row.try_get("queueposition").ok(),
                         episodeduration: row.try_get("episodeduration")?,
-                        queuedate: row.try_get("queuedate")?,
+                        queuedate: {
+                        let naive = row.try_get::<chrono::NaiveDateTime, _>("queuedate")?;
+                        naive.format("%Y-%m-%dT%H:%M:%S").to_string()
+                    },
                         listenduration: row.try_get("listenduration").ok(),
                         episodeid: row.try_get("episodeid")?,
                         completed: row.try_get("completed")?,
@@ -2470,22 +2495,39 @@ impl DatabasePool {
 
                 let mut recent_episodes = Vec::new();
                 for row in recent_rows {
+                    let episodeid: i32 = row.try_get("episodeid")?;
+                    let episodetitle: String = row.try_get("episodetitle")?;
+                    let naive = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
+                    let episodepubdate = naive.format("%Y-%m-%dT%H:%M:%S").to_string();
+                    let episodedescription: String = row.try_get("episodedescription")?;
+                    let episodeartwork: String = row.try_get("episodeartwork")?;
+                    let episodeurl: String = row.try_get("episodeurl")?;
+                    let episodeduration: i32 = row.try_get("episodeduration")?;
+                    let completed: bool = row.try_get("completed")?;
+                    let podcastname: String = row.try_get("podcastname")?;
+                    let podcastid: i32 = row.try_get("podcastid")?;
+                    let is_youtube: bool = row.try_get("is_youtube")?;
+                    let listenduration: Option<i32> = row.try_get("listenduration")?;
+                    let saved: bool = row.try_get("saved")?;
+                    let queued: bool = row.try_get("queued")?;
+                    let downloaded: bool = row.try_get("downloaded")?;
+
                     recent_episodes.push(serde_json::json!({
-                        "episodeid": row.try_get::<i32, _>("episodeid")?,
-                        "episodetitle": row.try_get::<String, _>("episodetitle")?,
-                        "episodepubdate": row.try_get::<chrono::DateTime<chrono::Utc>, _>("episodepubdate")?.to_rfc3339(),
-                        "episodedescription": row.try_get::<String, _>("episodedescription")?,
-                        "episodeartwork": row.try_get::<String, _>("episodeartwork")?,
-                        "episodeurl": row.try_get::<String, _>("episodeurl")?,
-                        "episodeduration": row.try_get::<i32, _>("episodeduration")?,
-                        "completed": row.try_get::<bool, _>("completed")?,
-                        "podcastname": row.try_get::<String, _>("podcastname")?,
-                        "podcastid": row.try_get::<i32, _>("podcastid")?,
-                        "is_youtube": row.try_get::<bool, _>("is_youtube")?,
-                        "listenduration": row.try_get::<Option<i32>, _>("listenduration")?,
-                        "saved": row.try_get::<bool, _>("saved")?,
-                        "queued": row.try_get::<bool, _>("queued")?,
-                        "downloaded": row.try_get::<bool, _>("downloaded")?
+                        "episodeid": episodeid,
+                        "episodetitle": episodetitle,
+                        "episodepubdate": episodepubdate,
+                        "episodedescription": episodedescription,
+                        "episodeartwork": episodeartwork,
+                        "episodeurl": episodeurl,
+                        "episodeduration": episodeduration,
+                        "completed": completed,
+                        "podcastname": podcastname,
+                        "podcastid": podcastid,
+                        "is_youtube": is_youtube,
+                        "listenduration": listenduration,
+                        "saved": saved,
+                        "queued": queued,
+                        "downloaded": downloaded
                     }));
                 }
                 home_data["recent_episodes"] = serde_json::Value::Array(recent_episodes);
@@ -2536,21 +2578,37 @@ impl DatabasePool {
 
                 let mut in_progress_episodes = Vec::new();
                 for row in in_progress_rows {
+                    let episodeid: i32 = row.try_get("episodeid")?;
+                    let episodetitle: String = row.try_get("episodetitle")?;
+                    let naive = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
+                    let episodepubdate = naive.format("%Y-%m-%dT%H:%M:%S").to_string();
+                    let episodedescription: String = row.try_get("episodedescription")?;
+                    let episodeartwork: String = row.try_get("episodeartwork")?;
+                    let episodeurl: String = row.try_get("episodeurl")?;
+                    let episodeduration: i32 = row.try_get("episodeduration")?;
+                    let completed: bool = row.try_get("completed")?;
+                    let podcastname: String = row.try_get("podcastname")?;
+                    let is_youtube: bool = row.try_get("is_youtube")?;
+                    let listenduration: Option<i32> = row.try_get("listenduration")?;
+                    let saved: bool = row.try_get("saved")?;
+                    let queued: bool = row.try_get("queued")?;
+                    let downloaded: bool = row.try_get("downloaded")?;
+
                     in_progress_episodes.push(serde_json::json!({
-                        "episodeid": row.try_get::<i32, _>("episodeid")?,
-                        "episodetitle": row.try_get::<String, _>("episodetitle")?,
-                        "episodepubdate": row.try_get::<chrono::DateTime<chrono::Utc>, _>("episodepubdate")?.to_rfc3339(),
-                        "episodedescription": row.try_get::<String, _>("episodedescription")?,
-                        "episodeartwork": row.try_get::<String, _>("episodeartwork")?,
-                        "episodeurl": row.try_get::<String, _>("episodeurl")?,
-                        "episodeduration": row.try_get::<i32, _>("episodeduration")?,
-                        "completed": row.try_get::<bool, _>("completed")?,
-                        "podcastname": row.try_get::<String, _>("podcastname")?,
-                        "is_youtube": row.try_get::<bool, _>("is_youtube")?,
-                        "listenduration": row.try_get::<Option<i32>, _>("listenduration")?,
-                        "saved": row.try_get::<bool, _>("saved")?,
-                        "queued": row.try_get::<bool, _>("queued")?,
-                        "downloaded": row.try_get::<bool, _>("downloaded")?
+                        "episodeid": episodeid,
+                        "episodetitle": episodetitle,
+                        "episodepubdate": episodepubdate,
+                        "episodedescription": episodedescription,
+                        "episodeartwork": episodeartwork,
+                        "episodeurl": episodeurl,
+                        "episodeduration": episodeduration,
+                        "completed": completed,
+                        "podcastname": podcastname,
+                        "is_youtube": is_youtube,
+                        "listenduration": listenduration,
+                        "saved": saved,
+                        "queued": queued,
+                        "downloaded": downloaded
                     }));
                 }
                 home_data["in_progress_episodes"] = serde_json::Value::Array(in_progress_episodes);
@@ -2588,21 +2646,36 @@ impl DatabasePool {
 
                 let mut top_podcasts = Vec::new();
                 for row in top_podcasts_rows {
+                    let podcastid: i32 = row.try_get("podcastid").unwrap_or(0);
+                    let podcastname: String = row.try_get("podcastname").unwrap_or_default();
+                    let podcastindexid: Option<i32> = row.try_get("podcastindexid").ok();
+                    let artworkurl: String = row.try_get("artworkurl").unwrap_or_default();
+                    let author: String = row.try_get("author").unwrap_or_default();
+                    let categories: String = row.try_get("categories").unwrap_or_default();
+                    let description: String = row.try_get("description").unwrap_or_default();
+                    let episodecount: i32 = row.try_get("episodecount").unwrap_or(0);
+                    let feedurl: String = row.try_get("feedurl").unwrap_or_default();
+                    let websiteurl: String = row.try_get("websiteurl").unwrap_or_default();
+                    let explicit: bool = row.try_get("explicit").unwrap_or(false);
+                    let is_youtube: bool = row.try_get("is_youtube").unwrap_or(false);
+                    let play_count: i64 = row.try_get("play_count").unwrap_or(0);
+                    let total_listen_time: Option<i64> = row.try_get("total_listen_time").ok();
+
                     top_podcasts.push(serde_json::json!({
-                        "podcastid": row.try_get::<i32, _>("podcastid").unwrap_or(0),
-                        "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default(),
-                        "podcastindexid": row.try_get::<Option<i64>, _>("podcastindexid")?,
-                        "artworkurl": row.try_get::<String, _>("artworkurl")?,
-                        "author": row.try_get::<String, _>("author")?,
-                        "categories": row.try_get::<String, _>("categories")?,
-                        "description": row.try_get::<String, _>("description")?,
-                        "episodecount": row.try_get::<i32, _>("episodecount")?,
-                        "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
-                        "websiteurl": row.try_get::<String, _>("websiteurl")?,
-                        "explicit": row.try_get::<bool, _>("explicit")?,
-                        "is_youtube": row.try_get::<bool, _>("is_youtube")?,
-                        "play_count": row.try_get::<i64, _>("play_count")?,
-                        "total_listen_time": row.try_get::<Option<i64>, _>("total_listen_time")?
+                        "podcastid": podcastid,
+                        "podcastname": podcastname,
+                        "podcastindexid": podcastindexid,
+                        "artworkurl": artworkurl,
+                        "author": author,
+                        "categories": categories,
+                        "description": description,
+                        "episodecount": episodecount,
+                        "feedurl": feedurl,
+                        "websiteurl": websiteurl,
+                        "explicit": explicit,
+                        "is_youtube": is_youtube,
+                        "play_count": play_count,
+                        "total_listen_time": total_listen_time
                     }));
                 }
                 home_data["top_podcasts"] = serde_json::Value::Array(top_podcasts);
@@ -2687,22 +2760,39 @@ impl DatabasePool {
 
                 let mut recent_episodes = Vec::new();
                 for row in recent_rows {
+                    let episodeid: i32 = row.try_get("EpisodeID")?;
+                    let episodetitle: String = row.try_get("EpisodeTitle")?;
+                    let naive = row.try_get::<chrono::NaiveDateTime, _>("EpisodePubDate")?;
+                    let episodepubdate = naive.format("%Y-%m-%dT%H:%M:%S").to_string();
+                    let episodedescription: String = row.try_get("EpisodeDescription")?;
+                    let episodeartwork: String = row.try_get("EpisodeArtwork")?;
+                    let episodeurl: String = row.try_get("EpisodeURL")?;
+                    let episodeduration: i32 = row.try_get("EpisodeDuration")?;
+                    let completed: bool = row.try_get::<i8, _>("Completed")? != 0;
+                    let podcastname: String = row.try_get("PodcastName")?;
+                    let podcastid: i32 = row.try_get("PodcastID")?;
+                    let is_youtube: bool = row.try_get::<i8, _>("is_youtube")? != 0;
+                    let listenduration: Option<i32> = row.try_get("ListenDuration")?;
+                    let saved: bool = row.try_get::<i8, _>("saved")? != 0;
+                    let queued: bool = row.try_get::<i8, _>("queued")? != 0;
+                    let downloaded: bool = row.try_get::<i8, _>("downloaded")? != 0;
+
                     recent_episodes.push(serde_json::json!({
-                        "episodeid": row.try_get::<i32, _>("EpisodeID")?,
-                        "episodetitle": row.try_get::<String, _>("EpisodeTitle")?,
-                        "episodepubdate": row.try_get::<chrono::DateTime<chrono::Utc>, _>("EpisodePubDate")?.to_rfc3339(),
-                        "episodedescription": row.try_get::<String, _>("EpisodeDescription")?,
-                        "episodeartwork": row.try_get::<String, _>("EpisodeArtwork")?,
-                        "episodeurl": row.try_get::<String, _>("EpisodeURL")?,
-                        "episodeduration": row.try_get::<i32, _>("EpisodeDuration")?,
-                        "completed": row.try_get::<i8, _>("Completed")? != 0,
-                        "podcastname": row.try_get::<String, _>("PodcastName")?,
-                        "podcastid": row.try_get::<i32, _>("PodcastID")?,
-                        "is_youtube": row.try_get::<i8, _>("is_youtube")? != 0,
-                        "listenduration": row.try_get::<Option<i32>, _>("ListenDuration")?,
-                        "saved": row.try_get::<i8, _>("saved")? != 0,
-                        "queued": row.try_get::<i8, _>("queued")? != 0,
-                        "downloaded": row.try_get::<i8, _>("downloaded")? != 0
+                        "episodeid": episodeid,
+                        "episodetitle": episodetitle,
+                        "episodepubdate": episodepubdate,
+                        "episodedescription": episodedescription,
+                        "episodeartwork": episodeartwork,
+                        "episodeurl": episodeurl,
+                        "episodeduration": episodeduration,
+                        "completed": completed,
+                        "podcastname": podcastname,
+                        "podcastid": podcastid,
+                        "is_youtube": is_youtube,
+                        "listenduration": listenduration,
+                        "saved": saved,
+                        "queued": queued,
+                        "downloaded": downloaded
                     }));
                 }
                 home_data["recent_episodes"] = serde_json::Value::Array(recent_episodes);
@@ -2753,21 +2843,37 @@ impl DatabasePool {
 
                 let mut in_progress_episodes = Vec::new();
                 for row in in_progress_rows {
+                    let episodeid: i32 = row.try_get("EpisodeID")?;
+                    let episodetitle: String = row.try_get("EpisodeTitle")?;
+                    let naive = row.try_get::<chrono::NaiveDateTime, _>("EpisodePubDate")?;
+                    let episodepubdate = naive.format("%Y-%m-%dT%H:%M:%S").to_string();
+                    let episodedescription: String = row.try_get("EpisodeDescription")?;
+                    let episodeartwork: String = row.try_get("EpisodeArtwork")?;
+                    let episodeurl: String = row.try_get("EpisodeURL")?;
+                    let episodeduration: i32 = row.try_get("EpisodeDuration")?;
+                    let completed: bool = row.try_get::<i8, _>("Completed")? != 0;
+                    let podcastname: String = row.try_get("PodcastName")?;
+                    let is_youtube: bool = row.try_get::<i8, _>("is_youtube")? != 0;
+                    let listenduration: Option<i32> = row.try_get("ListenDuration")?;
+                    let saved: bool = row.try_get::<i8, _>("saved")? != 0;
+                    let queued: bool = row.try_get::<i8, _>("queued")? != 0;
+                    let downloaded: bool = row.try_get::<i8, _>("downloaded")? != 0;
+
                     in_progress_episodes.push(serde_json::json!({
-                        "episodeid": row.try_get::<i32, _>("EpisodeID")?,
-                        "episodetitle": row.try_get::<String, _>("EpisodeTitle")?,
-                        "episodepubdate": row.try_get::<chrono::DateTime<chrono::Utc>, _>("EpisodePubDate")?.to_rfc3339(),
-                        "episodedescription": row.try_get::<String, _>("EpisodeDescription")?,
-                        "episodeartwork": row.try_get::<String, _>("EpisodeArtwork")?,
-                        "episodeurl": row.try_get::<String, _>("EpisodeURL")?,
-                        "episodeduration": row.try_get::<i32, _>("EpisodeDuration")?,
-                        "completed": row.try_get::<i8, _>("Completed")? != 0,
-                        "podcastname": row.try_get::<String, _>("PodcastName")?,
-                        "is_youtube": row.try_get::<i8, _>("is_youtube")? != 0,
-                        "listenduration": row.try_get::<Option<i32>, _>("ListenDuration")?,
-                        "saved": row.try_get::<i8, _>("saved")? != 0,
-                        "queued": row.try_get::<i8, _>("queued")? != 0,
-                        "downloaded": row.try_get::<i8, _>("downloaded")? != 0
+                        "episodeid": episodeid,
+                        "episodetitle": episodetitle,
+                        "episodepubdate": episodepubdate,
+                        "episodedescription": episodedescription,
+                        "episodeartwork": episodeartwork,
+                        "episodeurl": episodeurl,
+                        "episodeduration": episodeduration,
+                        "completed": completed,
+                        "podcastname": podcastname,
+                        "is_youtube": is_youtube,
+                        "listenduration": listenduration,
+                        "saved": saved,
+                        "queued": queued,
+                        "downloaded": downloaded
                     }));
                 }
                 home_data["in_progress_episodes"] = serde_json::Value::Array(in_progress_episodes);
@@ -2805,21 +2911,36 @@ impl DatabasePool {
 
                 let mut top_podcasts = Vec::new();
                 for row in top_podcasts_rows {
+                    let podcastid: i32 = row.try_get("PodcastID").unwrap_or(0);
+                    let podcastname: String = row.try_get("PodcastName").unwrap_or_default();
+                    let podcastindexid: Option<i32> = row.try_get("PodcastIndexID").ok();
+                    let artworkurl: String = row.try_get("ArtworkURL").unwrap_or_default();
+                    let author: String = row.try_get("Author").unwrap_or_default();
+                    let categories: String = row.try_get("Categories").unwrap_or_default();
+                    let description: String = row.try_get("Description").unwrap_or_default();
+                    let episodecount: i32 = row.try_get("EpisodeCount").unwrap_or(0);
+                    let feedurl: String = row.try_get("FeedURL").unwrap_or_default();
+                    let websiteurl: String = row.try_get("WebsiteURL").unwrap_or_default();
+                    let explicit: bool = row.try_get::<i8, _>("Explicit").unwrap_or(0) != 0;
+                    let is_youtube: bool = row.try_get::<i8, _>("is_youtube").unwrap_or(0) != 0;
+                    let play_count: i64 = row.try_get("play_count").unwrap_or(0);
+                    let total_listen_time: Option<i64> = row.try_get("total_listen_time").ok();
+
                     top_podcasts.push(serde_json::json!({
-                        "podcastid": row.try_get::<i32, _>("PodcastID")?,
-                        "podcastname": row.try_get::<String, _>("PodcastName")?,
-                        "podcastindexid": row.try_get::<Option<i64>, _>("PodcastIndexID")?,
-                        "artworkurl": row.try_get::<String, _>("ArtworkURL")?,
-                        "author": row.try_get::<String, _>("Author")?,
-                        "categories": row.try_get::<String, _>("Categories")?,
-                        "description": row.try_get::<String, _>("Description")?,
-                        "episodecount": row.try_get::<i32, _>("EpisodeCount")?,
-                        "feedurl": row.try_get::<String, _>("FeedURL")?,
-                        "websiteurl": row.try_get::<String, _>("WebsiteURL")?,
-                        "explicit": row.try_get::<i8, _>("Explicit")? != 0,
-                        "is_youtube": row.try_get::<i8, _>("is_youtube")? != 0,
-                        "play_count": row.try_get::<i64, _>("play_count")?,
-                        "total_listen_time": row.try_get::<Option<i64>, _>("total_listen_time")?
+                        "podcastid": podcastid,
+                        "podcastname": podcastname,
+                        "podcastindexid": podcastindexid,
+                        "artworkurl": artworkurl,
+                        "author": author,
+                        "categories": categories,
+                        "description": description,
+                        "episodecount": episodecount,
+                        "feedurl": feedurl,
+                        "websiteurl": websiteurl,
+                        "explicit": explicit,
+                        "is_youtube": is_youtube,
+                        "play_count": play_count,
+                        "total_listen_time": total_listen_time
                     }));
                 }
                 home_data["top_podcasts"] = serde_json::Value::Array(top_podcasts);
@@ -2941,8 +3062,8 @@ impl DatabasePool {
                         "sort_order": row.try_get::<Option<String>, _>("sortorder")?,
                         "group_by_podcast": row.try_get::<bool, _>("groupbypodcast")?,
                         "max_episodes": row.try_get::<Option<i32>, _>("maxepisodes")?,
-                        "last_updated": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("lastupdated")?.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
-                        "created": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("created")?.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
+                        "last_updated": row.try_get::<Option<chrono::NaiveDateTime>, _>("lastupdated")?.map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()).unwrap_or_default(),
+                        "created": row.try_get::<Option<chrono::NaiveDateTime>, _>("created")?.map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()).unwrap_or_default(),
                         "icon_name": row.try_get::<Option<String>, _>("iconname")?.unwrap_or_default(),
                         "episode_count": row.try_get::<i32, _>("episode_count")?,
                         "preview_episodes": preview_episodes
@@ -3065,8 +3186,8 @@ impl DatabasePool {
                         "sort_order": row.try_get::<Option<String>, _>("SortOrder")?,
                         "group_by_podcast": row.try_get::<i8, _>("GroupByPodcast")? != 0,
                         "max_episodes": row.try_get::<Option<i32>, _>("MaxEpisodes")?,
-                        "last_updated": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("LastUpdated")?.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
-                        "created": row.try_get::<Option<chrono::DateTime<chrono::Utc>>, _>("Created")?.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
+                        "last_updated": row.try_get::<Option<chrono::NaiveDateTime>, _>("LastUpdated")?.map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()).unwrap_or_default(),
+                        "created": row.try_get::<Option<chrono::NaiveDateTime>, _>("Created")?.map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()).unwrap_or_default(),
                         "icon_name": row.try_get::<Option<String>, _>("IconName")?.unwrap_or_default(),
                         "episode_count": row.try_get::<i64, _>("episode_count")?,
                         "preview_episodes": preview_episodes
@@ -3076,6 +3197,76 @@ impl DatabasePool {
                 }
 
                 Ok(playlists)
+            }
+        }
+    }
+
+    // Mark episode as uncompleted - matches Python mark_episode_uncompleted function
+    pub async fn mark_episode_uncompleted(&self, episode_id: i32, user_id: i32, is_youtube: bool) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut transaction = pool.begin().await?;
+                
+                if is_youtube {
+                    // Handle YouTube video
+                    sqlx::query(r#"UPDATE "YouTubeVideos" SET completed = FALSE WHERE videoid = $1"#)
+                        .bind(episode_id)
+                        .execute(&mut *transaction)
+                        .await?;
+                    
+                    sqlx::query(r#"UPDATE "UserVideoHistory" SET listenduration = 0, listendate = NOW() WHERE userid = $1 AND videoid = $2"#)
+                        .bind(user_id)
+                        .bind(episode_id)
+                        .execute(&mut *transaction)
+                        .await?;
+                } else {
+                    // Handle regular episode
+                    sqlx::query(r#"UPDATE "Episodes" SET completed = FALSE WHERE episodeid = $1"#)
+                        .bind(episode_id)
+                        .execute(&mut *transaction)
+                        .await?;
+                    
+                    sqlx::query(r#"UPDATE "UserEpisodeHistory" SET listenduration = 0, listendate = NOW() WHERE userid = $1 AND episodeid = $2"#)
+                        .bind(user_id)
+                        .bind(episode_id)
+                        .execute(&mut *transaction)
+                        .await?;
+                }
+                
+                transaction.commit().await?;
+                Ok(())
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut transaction = pool.begin().await?;
+                
+                if is_youtube {
+                    // Handle YouTube video
+                    sqlx::query("UPDATE YouTubeVideos SET Completed = 0 WHERE VideoID = ?")
+                        .bind(episode_id)
+                        .execute(&mut *transaction)
+                        .await?;
+                    
+                    sqlx::query("UPDATE UserVideoHistory SET ListenDuration = 0, ListenDate = NOW() WHERE UserID = ? AND VideoID = ?")
+                        .bind(user_id)
+                        .bind(episode_id)
+                        .execute(&mut *transaction)
+                        .await?;
+                } else {
+                    // Handle regular episode
+                    sqlx::query("UPDATE Episodes SET Completed = 0 WHERE EpisodeID = ?")
+                        .bind(episode_id)
+                        .execute(&mut *transaction)
+                        .await?;
+                    
+                    sqlx::query("UPDATE UserEpisodeHistory SET ListenDuration = 0, ListenDate = NOW() WHERE UserID = ? AND EpisodeID = ?")
+                        .bind(user_id)
+                        .bind(episode_id)
+                        .execute(&mut *transaction)
+                        .await?;
+                }
+                
+                transaction.commit().await?;
+                Ok(())
             }
         }
     }
@@ -3297,10 +3488,10 @@ impl DatabasePool {
                 if is_youtube {
                     // Insert or update video history
                     sqlx::query(
-                        r#"INSERT INTO "UserVideoHistory" ("VideoID", "UserID", "ListenDuration", "ListenDate")
+                        r#"INSERT INTO "UserVideoHistory" ("videoid", "userid", "listenduration", "listendate")
                            VALUES ($1, $2, $3, NOW())
-                           ON CONFLICT ("VideoID", "UserID") 
-                           DO UPDATE SET "ListenDuration" = $3, "ListenDate" = NOW()"#
+                           ON CONFLICT ("videoid", "userid") 
+                           DO UPDATE SET "listenduration" = $3, "listendate" = NOW()"#
                     )
                     .bind(episode_id)
                     .bind(user_id)
@@ -3310,10 +3501,10 @@ impl DatabasePool {
                 } else {
                     // Insert or update episode history
                     sqlx::query(
-                        r#"INSERT INTO "UserEpisodeHistory" ("EpisodeID", "UserID", "ListenDuration", "ListenDate")
+                        r#"INSERT INTO "UserEpisodeHistory" ("episodeid", "userid", "listenduration", "listendate")
                            VALUES ($1, $2, $3, NOW())
-                           ON CONFLICT ("EpisodeID", "UserID") 
-                           DO UPDATE SET "ListenDuration" = $3, "ListenDate" = NOW()"#
+                           ON CONFLICT ("episodeid", "userid") 
+                           DO UPDATE SET "listenduration" = $3, "listendate" = NOW()"#
                     )
                     .bind(episode_id)
                     .bind(user_id)
@@ -4069,6 +4260,20 @@ impl DatabasePool {
                         }
                     }
                     
+                    // Handle media:content tag (Media RSS extension)
+                    if current_tag == "media:content" && in_item {
+                        if let Some(url) = current_attrs.get("url") {
+                            // Check if it's an audio file by MIME type or extension
+                            if let Some(type_attr) = current_attrs.get("type") {
+                                if type_attr.starts_with("audio/") {
+                                    episode_data.insert("media_audio_url".to_string(), url.clone());
+                                }
+                            } else if self.is_audio_url(url) {
+                                episode_data.insert("media_audio_url".to_string(), url.clone());
+                            }
+                        }
+                    }
+                    
                     // Handle content:encoded differently
                     if current_tag == "content:encoded" && in_item {
                         in_content = true;
@@ -4115,161 +4320,488 @@ impl DatabasePool {
     
     // Apply Python-style parsing logic with all fallbacks
     fn apply_python_style_parsing(&self, episode: &mut EpisodeData, data: &HashMap<String, String>, default_artwork: &str) {
-        // Title - required field
+        // Title - REQUIRED field with robust cleaning
         if let Some(title) = data.get("title") {
-            episode.title = title.clone();
+            episode.title = self.clean_and_normalize_title(title);
+        }
+        // Skip episodes without titles - this is critical like Python version
+        if episode.title.is_empty() {
+            println!("⚠️  Skipping episode with no title");
+            return;
         }
         
-        // Description with multiple fallbacks like Python version
-        episode.description = data.get("content:encoded")
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| data.get("description"))
-            .or_else(|| data.get("summary"))
-            .or_else(|| data.get("itunes:summary"))
-            .or_else(|| data.get("subtitle"))
-            .cloned()
-            .unwrap_or_else(|| "No description available".to_string());
+        // Description with comprehensive fallbacks and HTML cleaning like Python version
+        episode.description = self.parse_description_comprehensive(data);
         
-        // Audio URL - enclosure URL has priority, then link
-        episode.url = data.get("enclosure_url")
-            .or_else(|| data.get("link"))
-            .cloned()
-            .unwrap_or_default();
+        // Audio URL - comprehensive fallback chain like Python version  
+        episode.url = self.parse_audio_url_comprehensive(data);
         
-        // Artwork with multiple fallbacks
-        episode.artwork_url = data.get("itunes:image")
-            .or_else(|| data.get("image"))
-            .or_else(|| data.get("media:thumbnail"))
-            .filter(|s| !s.trim().is_empty())
-            .cloned()
-            .unwrap_or_else(|| default_artwork.to_string());
+        // Debug logging for episode URL extraction
+        println!("🎵 Episode URL extraction: title='{}', enclosure_url={:?}, media_audio_url={:?}, guid={:?}, link={:?}, final_url='{}'", 
+            episode.title, 
+            data.get("enclosure_url"), 
+            data.get("media_audio_url"),
+            data.get("guid"), 
+            data.get("link"), 
+            episode.url);
         
-        // Publication date with fallbacks
-        if let Some(pub_date_str) = data.get("pubDate")
-            .or_else(|| data.get("published"))
-            .or_else(|| data.get("dc:date")) {
-            
-            // Try multiple date formats
-            if let Ok(parsed) = DateTime::parse_from_rfc2822(pub_date_str) {
-                episode.pub_date = parsed.with_timezone(&Utc);
-            } else if let Ok(parsed) = DateTime::parse_from_rfc3339(pub_date_str) {
-                episode.pub_date = parsed.with_timezone(&Utc);
-            } else {
-                // Try other common formats
-                let formats = [
-                    "%Y-%m-%d %H:%M:%S",
-                    "%Y-%m-%dT%H:%M:%S",
-                    "%a, %d %b %Y %H:%M:%S %z",
-                    "%d %b %Y %H:%M:%S %z",
-                ];
-                
-                for format in &formats {
-                    if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(pub_date_str, format) {
-                        episode.pub_date = DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc);
-                        break;
-                    }
-                }
-            }
-        }
+        // Artwork with comprehensive fallbacks and validation like Python
+        episode.artwork_url = self.parse_artwork_comprehensive(data, default_artwork);
+        
+        // Publication date with extensive format support and timezone handling
+        episode.pub_date = self.parse_publication_date_comprehensive(data);
         
         // Duration parsing with extensive fallbacks like Python
         episode.duration = self.parse_duration_comprehensive(data);
     }
     
-    // Comprehensive duration parsing matching Python logic
-    fn parse_duration_comprehensive(&self, data: &HashMap<String, String>) -> i32 {
-        // Try itunes:duration first
-        if let Some(duration_str) = data.get("itunes:duration") {
-            if let Some(duration) = self.parse_duration_string(duration_str) {
-                return duration;
-            }
-        }
+    // Clean and normalize titles like Python version
+    fn clean_and_normalize_title(&self, title: &str) -> String {
+        // HTML entity decoding
+        let title = self.decode_html_entities(title);
         
-        // Try other duration fields
-        for field in ["duration", "itunes:duration_seconds", "length"] {
-            if let Some(duration_str) = data.get(field) {
-                if let Some(duration) = self.parse_duration_string(duration_str) {
-                    return duration;
-                }
-            }
-        }
+        // HTML tag stripping
+        let title = self.strip_html_tags(&title);
         
-        // Estimate from file size as last resort (like Python)
-        if let Some(length_str) = data.get("enclosure_length") {
-            if let Ok(file_size) = length_str.parse::<i64>() {
-                if file_size > 1_000_000 { // Only for files > 1MB
-                    return self.estimate_duration_from_file_size(file_size);
-                }
-            }
-        }
+        // Unicode normalization and whitespace cleaning
+        let title = title.trim()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         
-        0 // Default fallback
+        // Truncate if too long (reasonable limit)
+        if title.len() > 200 {
+            format!("{}...", &title[..197])
+        } else {
+            title
+        }
     }
     
-    // Parse duration string with multiple formats
-    fn parse_duration_string(&self, duration_str: &str) -> Option<i32> {
-        let duration_str = duration_str.trim();
+    // Comprehensive description parsing with HTML cleaning
+    fn parse_description_comprehensive(&self, data: &HashMap<String, String>) -> String {
+        // Fallback chain exactly like Python version
+        let raw_description = data.get("content:encoded")
+            .or_else(|| data.get("content"))
+            .or_else(|| data.get("summary"))
+            .or_else(|| data.get("description"))
+            .or_else(|| data.get("itunes:summary"))
+            .or_else(|| data.get("subtitle"))
+            .filter(|s| !s.trim().is_empty())
+            .cloned()
+            .unwrap_or_else(|| "No description available".to_string());
         
-        if duration_str.contains(':') {
-            // Handle HH:MM:SS or MM:SS format
-            let parts: Vec<&str> = duration_str.split(':').collect();
-            let mut time_parts: Vec<i32> = Vec::new();
-            
-            for part in parts.iter().rev() { // Reverse to handle missing hours
-                if let Ok(num) = part.parse::<i32>() {
-                    time_parts.insert(0, num);
-                } else {
-                    return None;
+        // HTML cleaning and normalization
+        let description = self.decode_html_entities(&raw_description);
+        let description = self.strip_html_tags(&description);
+        let description = self.normalize_whitespace(&description);
+        
+        // Reasonable length limit for descriptions
+        if description.len() > 5000 {
+            format!("{}...", &description[..4997])
+        } else {
+            description
+        }
+    }
+    
+    // Comprehensive audio URL parsing
+    fn parse_audio_url_comprehensive(&self, data: &HashMap<String, String>) -> String {
+        // Priority chain based on reliability and Python patterns
+        
+        // 1. Standard RSS enclosure (most reliable)
+        if let Some(url) = data.get("enclosure_url") {
+            if !url.trim().is_empty() {
+                return self.validate_and_clean_url(url);
+            }
+        }
+        
+        // 2. Media RSS content with audio MIME type
+        if let Some(url) = data.get("media_audio_url") {
+            if !url.trim().is_empty() {
+                return self.validate_and_clean_url(url);
+            }
+        }
+        
+        // 3. iTunes or other namespace-specific URLs
+        if let Some(url) = data.get("itunes:audio_url") {
+            if !url.trim().is_empty() && self.is_audio_url(url) {
+                return self.validate_and_clean_url(url);
+            }
+        }
+        
+        // 4. GUID field if it contains an audio URL
+        if let Some(guid) = data.get("guid") {
+            if !guid.trim().is_empty() && self.is_audio_url(guid) {
+                return self.validate_and_clean_url(guid);
+            }
+        }
+        
+        // 5. Parse descriptions/content for embedded audio URLs
+        if let Some(url) = self.extract_audio_url_from_description(data) {
+            return self.validate_and_clean_url(&url);
+        }
+        
+        // 6. Check if link field is actually an audio URL (not just website)
+        if let Some(link) = data.get("link") {
+            if !link.trim().is_empty() && self.is_audio_url(link) {
+                return self.validate_and_clean_url(link);
+            }
+        }
+        
+        // 7. Last resort - use link even if it might not be audio (Python behavior)
+        if let Some(link) = data.get("link") {
+            if !link.trim().is_empty() {
+                return self.validate_and_clean_url(link);
+            }
+        }
+        
+        // 8. No URL found
+        String::new()
+    }
+    
+    // Comprehensive artwork URL parsing
+    fn parse_artwork_comprehensive(&self, data: &HashMap<String, String>, default_artwork: &str) -> String {
+        // Fallback chain like Python version with additional sources
+        let artwork_candidates = [
+            data.get("itunes:image"),
+            data.get("image"),
+            data.get("media:thumbnail"),
+            data.get("media:content_image"),
+            data.get("thumbnail"),
+            data.get("logo"),
+        ];
+        
+        for candidate in artwork_candidates.iter().flatten() {
+            if !candidate.trim().is_empty() && self.is_valid_image_url(candidate) {
+                return self.validate_and_clean_url(candidate);
+            }
+        }
+        
+        // Use default artwork
+        default_artwork.to_string()
+    }
+    
+    // Comprehensive publication date parsing
+    fn parse_publication_date_comprehensive(&self, data: &HashMap<String, String>) -> DateTime<Utc> {
+        // Multiple date field sources
+        let date_candidates = [
+            data.get("pubDate"),
+            data.get("published"),
+            data.get("dc:date"),
+            data.get("updated"),
+            data.get("lastBuildDate"),
+            data.get("date"),
+        ];
+        
+        for date_str in date_candidates.iter().flatten() {
+            if let Some(parsed_date) = self.try_parse_date(date_str) {
+                // Validate date is reasonable (not too far in future, not before 1990)
+                let now = Utc::now();
+                let year_1990 = DateTime::parse_from_rfc3339("1990-01-01T00:00:00Z").unwrap().with_timezone(&Utc);
+                let one_year_future = now + chrono::Duration::days(365);
+                
+                if parsed_date >= year_1990 && parsed_date <= one_year_future {
+                    return parsed_date;
                 }
             }
-            
-            // Pad with zeros for missing parts
-            while time_parts.len() < 3 {
-                time_parts.insert(0, 0);
+        }
+        
+        // Fallback to current time like Python version
+        Utc::now()
+    }
+    
+    // Try to parse a date string with multiple formats
+    fn try_parse_date(&self, date_str: &str) -> Option<DateTime<Utc>> {
+        let date_str = date_str.trim();
+        
+        // RFC 2822 format (most common in RSS)
+        if let Ok(parsed) = DateTime::parse_from_rfc2822(date_str) {
+            return Some(parsed.with_timezone(&Utc));
+        }
+        
+        // RFC 3339/ISO 8601 format
+        if let Ok(parsed) = DateTime::parse_from_rfc3339(date_str) {
+            return Some(parsed.with_timezone(&Utc));
+        }
+        
+        // Common custom formats found in real feeds
+        let formats = [
+            "%Y-%m-%d %H:%M:%S %z",
+            "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S",
+            "%a, %d %b %Y %H:%M:%S %z",
+            "%a, %d %b %Y %H:%M:%S",
+            "%d %b %Y %H:%M:%S %z",
+            "%d %b %Y %H:%M:%S",
+            "%Y-%m-%d",
+            "%d/%m/%Y",
+            "%m/%d/%Y",
+            "%b %d, %Y",
+            "%B %d, %Y",
+            "%Y%m%d",
+        ];
+        
+        // Try parsing with timezone
+        for format in &formats[..8] {
+            if let Ok(parsed) = DateTime::parse_from_str(date_str, format) {
+                return Some(parsed.with_timezone(&Utc));
             }
-            
-            if time_parts.len() >= 3 {
-                let (h, m, s) = (time_parts[0], time_parts[1], time_parts[2]);
-                return Some(h * 3600 + m * 60 + s);
+        }
+        
+        // Try parsing as naive datetime (assume UTC)
+        for format in &formats[8..] {
+            if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(date_str, format) {
+                return Some(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc));
             }
-        } else if let Ok(seconds) = duration_str.parse::<i32>() {
-            // Direct seconds format
-            return Some(seconds);
+        }
+        
+        // Try parsing date only (assume midnight UTC)
+        for format in &formats[10..] {
+            if let Ok(naive_date) = chrono::NaiveDate::parse_from_str(date_str, format) {
+                if let Some(naive_datetime) = naive_date.and_hms_opt(0, 0, 0) {
+                    return Some(DateTime::<Utc>::from_naive_utc_and_offset(naive_datetime, Utc));
+                }
+            }
         }
         
         None
     }
     
-    // Estimate duration from file size (matching Python logic)
-    fn estimate_duration_from_file_size(&self, file_size_bytes: i64) -> i32 {
-        let bitrate_kbps = 128; // Default bitrate assumption
-        let bytes_per_second = (bitrate_kbps * 1000) / 8;
-        (file_size_bytes / bytes_per_second as i64) as i32
+    // Validate and clean URLs
+    fn validate_and_clean_url(&self, url: &str) -> String {
+        let url = url.trim();
+        
+        // Basic URL validation
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            if url.starts_with("//") {
+                return format!("https:{}", url);
+            } else if url.starts_with("/") {
+                // Relative URL - can't fix without base URL
+                return url.to_string();
+            } else {
+                return format!("https://{}", url);
+            }
+        }
+        
+        url.to_string()
+    }
+    
+    // Check if URL is likely a valid image
+    fn is_valid_image_url(&self, url: &str) -> bool {
+        let url_lower = url.to_lowercase();
+        url_lower.contains(".jpg") || 
+        url_lower.contains(".jpeg") || 
+        url_lower.contains(".png") || 
+        url_lower.contains(".gif") || 
+        url_lower.contains(".webp") || 
+        url_lower.contains(".svg") ||
+        url_lower.contains("image") ||
+        url_lower.contains("artwork") ||
+        url_lower.contains("thumbnail") ||
+        url_lower.contains("cover")
+    }
+    
+    fn decode_html_entities(&self, text: &str) -> String {
+        text.replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#x27;", "'")
+            .replace("&#39;", "'")
+            .replace("&apos;", "'")
+            .replace("&nbsp;", " ")
+            .replace("&#160;", " ")
+            .replace("&mdash;", "—")
+            .replace("&ndash;", "–")
+            .replace("&hellip;", "…")
+            .replace("&rsquo;", "'")
+            .replace("&lsquo;", "'")
+            .replace("&rdquo;", "\"")
+            .replace("&ldquo;", "\"")
     }
 
-    // Parse duration from various formats
-    fn parse_duration(&self, duration_str: &str) -> i32 {
+    
+    // Strip HTML tags (basic but effective)
+    fn strip_html_tags(&self, text: &str) -> String {
+        let mut result = String::new();
+        let mut in_tag = false;
+        
+        for ch in text.chars() {
+            match ch {
+                '<' => in_tag = true,
+                '>' => {
+                    in_tag = false;
+                    result.push(' '); // Replace tags with space
+                }
+                _ if !in_tag => result.push(ch),
+                _ => {} // Skip characters inside tags
+            }
+        }
+        
+        result
+    }
+    
+    // Normalize whitespace
+    fn normalize_whitespace(&self, text: &str) -> String {
+        text.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .trim()
+            .to_string()
+    }
+    
+    // Comprehensive duration parsing matching Python logic
+    fn parse_duration_comprehensive(&self, data: &HashMap<String, String>) -> i32 {
+        // Priority order like Python version
+        let duration_candidates = [
+            data.get("itunes:duration"),
+            data.get("duration"),
+            data.get("itunes:duration_seconds"),
+            data.get("length"),
+            data.get("time"),
+        ];
+        
+        for candidate in duration_candidates.iter().flatten() {
+            if let Some(duration) = self.parse_duration_string(candidate) {
+                if duration > 0 && duration < 86400 { // Reasonable range: 0-24 hours
+                    return duration;
+                }
+            }
+        }
+        
+        // Try to estimate from file size if available (like Python version)
+        if let Some(length_str) = data.get("enclosure_length") {
+            if let Ok(file_size) = length_str.parse::<i64>() {
+                if file_size > 1_000_000 { // > 1MB
+                    return self.estimate_duration_from_file_size(file_size);
+                }
+            }
+        }
+        
+        // Default duration
+        0
+    }
+    
+    // Parse duration string with multiple formats like Python
+    fn parse_duration_string(&self, duration_str: &str) -> Option<i32> {
+        let duration_str = duration_str.trim();
+        
+        // Format: HH:MM:SS or MM:SS
         if duration_str.contains(':') {
             let parts: Vec<&str> = duration_str.split(':').collect();
             match parts.len() {
                 2 => {
-                    // MM:SS
-                    let minutes = parts[0].parse::<i32>().unwrap_or(0);
-                    let seconds = parts[1].parse::<i32>().unwrap_or(0);
-                    minutes * 60 + seconds
+                    // MM:SS format
+                    if let (Ok(minutes), Ok(seconds)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>()) {
+                        return Some(minutes * 60 + seconds);
+                    }
                 }
                 3 => {
-                    // HH:MM:SS
-                    let hours = parts[0].parse::<i32>().unwrap_or(0);
-                    let minutes = parts[1].parse::<i32>().unwrap_or(0);
-                    let seconds = parts[2].parse::<i32>().unwrap_or(0);
-                    hours * 3600 + minutes * 60 + seconds
+                    // HH:MM:SS format
+                    if let (Ok(hours), Ok(minutes), Ok(seconds)) = (
+                        parts[0].parse::<i32>(),
+                        parts[1].parse::<i32>(),
+                        parts[2].parse::<i32>(),
+                    ) {
+                        return Some(hours * 3600 + minutes * 60 + seconds);
+                    }
                 }
-                _ => 0,
+                _ => {
+                    // Handle weird cases like HH:MM:SS:MS - take first 3 parts
+                    if parts.len() > 3 {
+                        if let (Ok(hours), Ok(minutes), Ok(seconds)) = (
+                            parts[0].parse::<i32>(),
+                            parts[1].parse::<i32>(),
+                            parts[2].parse::<i32>(),
+                        ) {
+                            return Some(hours * 3600 + minutes * 60 + seconds);
+                        }
+                    }
+                }
             }
-        } else {
-            duration_str.parse::<i32>().unwrap_or(0)
         }
+        
+        // Format: Direct seconds
+        if let Ok(seconds) = duration_str.parse::<i32>() {
+            return Some(seconds);
+        }
+        
+        // Format: Milliseconds (convert to seconds)
+        if duration_str.len() > 6 {
+            if let Ok(milliseconds) = duration_str.parse::<i64>() {
+                return Some((milliseconds / 1000) as i32);
+            }
+        }
+        
+        // Format: Human readable like "1h 30m", "45min", "2hr 15min"
+        if let Some(duration) = self.parse_human_readable_duration(duration_str) {
+            return Some(duration);
+        }
+        
+        None
+    }
+    
+    // Parse human-readable duration formats
+    fn parse_human_readable_duration(&self, duration_str: &str) -> Option<i32> {
+        let duration_str = duration_str.to_lowercase();
+        let mut total_seconds = 0;
+        
+        // Extract hours
+        if let Some(hours_match) = self.extract_time_component(&duration_str, &["h", "hr", "hour", "hours"]) {
+            total_seconds += hours_match * 3600;
+        }
+        
+        // Extract minutes
+        if let Some(minutes_match) = self.extract_time_component(&duration_str, &["m", "min", "mins", "minute", "minutes"]) {
+            total_seconds += minutes_match * 60;
+        }
+        
+        // Extract seconds
+        if let Some(seconds_match) = self.extract_time_component(&duration_str, &["s", "sec", "secs", "second", "seconds"]) {
+            total_seconds += seconds_match;
+        }
+        
+        if total_seconds > 0 {
+            Some(total_seconds)
+        } else {
+            None
+        }
+    }
+    
+    // Extract time component (e.g., "30" from "30min")
+    fn extract_time_component(&self, text: &str, suffixes: &[&str]) -> Option<i32> {
+        for suffix in suffixes {
+            if let Some(pos) = text.find(suffix) {
+                // Look backwards from position to find the number
+                let before = &text[..pos];
+                
+                // Find the last sequence of digits
+                let mut number_start = pos;
+                for (i, ch) in before.char_indices().rev() {
+                    if ch.is_ascii_digit() {
+                        number_start = i;
+                    } else if number_start < pos {
+                        // Found start of number sequence
+                        break;
+                    }
+                }
+                
+                if number_start < pos {
+                    if let Ok(number) = before[number_start..].trim().parse::<i32>() {
+                        return Some(number);
+                    }
+                }
+            }
+        }
+        None
+    }
+    
+    // Estimate duration from file size like Python version
+    fn estimate_duration_from_file_size(&self, file_size_bytes: i64) -> i32 {
+        // Assume 128 kbps average bitrate like Python version
+        let bitrate_kbps = 128;
+        let bytes_per_second = (bitrate_kbps * 1000) / 8;
+        (file_size_bytes / bytes_per_second) as i32
     }
 
     // Update episode count - matches Python update_episode_count function
@@ -5339,7 +5871,11 @@ impl DatabasePool {
                     .await?;
                     
                 let user_playback_speed = if let Some(row) = user_row {
-                    row.try_get::<Option<f64>, _>("playbackspeed")?.unwrap_or(1.0)
+                    if let Ok(speed) = row.try_get::<Option<bigdecimal::BigDecimal>, _>("playbackspeed") {
+                        speed.map(|s| s.to_f64().unwrap_or(1.0)).unwrap_or(1.0)
+                    } else {
+                        1.0
+                    }
                 } else {
                     1.0
                 };
@@ -5357,7 +5893,11 @@ impl DatabasePool {
                     
                 if let Some(row) = podcast_row {
                     let playback_speed_customized: Option<bool> = row.try_get("playbackspeedcustomized")?;
-                    let podcast_playback_speed: Option<f64> = row.try_get("playbackspeed")?;
+                    let podcast_playback_speed: Option<f64> = if let Ok(speed) = row.try_get::<Option<bigdecimal::BigDecimal>, _>("playbackspeed") {
+                        speed.map(|s| s.to_f64().unwrap_or(1.0))
+                    } else {
+                        None
+                    };
                     let start_skip: Option<i32> = row.try_get("startskip")?;
                     let end_skip: Option<i32> = row.try_get("endskip")?;
                     
@@ -5522,6 +6062,447 @@ impl DatabasePool {
                 Ok(vec![])
             }
         }
+    }
+
+    // Record listen duration - matches Python record_listen_duration function exactly
+    pub async fn record_listen_duration(&self, episode_id: i32, user_id: i32, listen_duration: f64) -> AppResult<()> {
+        println!("Recording listen duration: episode_id={}, user_id={}, duration={}", episode_id, user_id, listen_duration);
+        
+        if listen_duration < 0.0 {
+            println!("Skipped updating listen duration for user {} and episode {} due to invalid duration: {}", user_id, episode_id, listen_duration);
+            return Ok(());
+        }
+        
+        let listen_duration_int = listen_duration as i32;
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Check if record exists and get existing duration
+                let existing_row = sqlx::query(r#"SELECT listenduration FROM "UserEpisodeHistory" WHERE userid = $1 AND episodeid = $2"#)
+                    .bind(user_id)
+                    .bind(episode_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = existing_row {
+                    let existing_duration: Option<i32> = row.try_get("listenduration")?;
+                    let existing_duration = existing_duration.unwrap_or(0);
+                    
+                    // Update only if new duration is greater than existing
+                    if listen_duration_int > existing_duration {
+                        sqlx::query(r#"UPDATE "UserEpisodeHistory" SET listenduration = $1, listendate = NOW() WHERE userid = $2 AND episodeid = $3"#)
+                            .bind(listen_duration_int)
+                            .bind(user_id)
+                            .bind(episode_id)
+                            .execute(pool)
+                            .await?;
+                        println!("Updated listen duration for user {} episode {} from {} to {}", user_id, episode_id, existing_duration, listen_duration_int);
+                    } else {
+                        println!("No update required for user {} and episode {} as existing duration {} is greater than or equal to new duration {}", user_id, episode_id, existing_duration, listen_duration_int);
+                    }
+                } else {
+                    // Insert new record
+                    sqlx::query(r#"INSERT INTO "UserEpisodeHistory" (userid, episodeid, listendate, listenduration) VALUES ($1, $2, NOW(), $3)"#)
+                        .bind(user_id)
+                        .bind(episode_id)
+                        .bind(listen_duration_int)
+                        .execute(pool)
+                        .await?;
+                    println!("Inserted new listen duration record for user {} episode {} with duration {}", user_id, episode_id, listen_duration_int);
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                // Check if record exists and get existing duration
+                let existing_row = sqlx::query("SELECT ListenDuration FROM UserEpisodeHistory WHERE UserID = ? AND EpisodeID = ?")
+                    .bind(user_id)
+                    .bind(episode_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = existing_row {
+                    let existing_duration: Option<i32> = row.try_get("ListenDuration")?;
+                    let existing_duration = existing_duration.unwrap_or(0);
+                    
+                    // Update only if new duration is greater than existing
+                    if listen_duration_int > existing_duration {
+                        sqlx::query("UPDATE UserEpisodeHistory SET ListenDuration = ?, ListenDate = NOW() WHERE UserID = ? AND EpisodeID = ?")
+                            .bind(listen_duration_int)
+                            .bind(user_id)
+                            .bind(episode_id)
+                            .execute(pool)
+                            .await?;
+                        println!("Updated listen duration for user {} episode {} from {} to {}", user_id, episode_id, existing_duration, listen_duration_int);
+                    } else {
+                        println!("No update required for user {} and episode {} as existing duration {} is greater than or equal to new duration {}", user_id, episode_id, existing_duration, listen_duration_int);
+                    }
+                } else {
+                    // Insert new record
+                    sqlx::query("INSERT INTO UserEpisodeHistory (UserID, EpisodeID, ListenDate, ListenDuration) VALUES (?, ?, NOW(), ?)")
+                        .bind(user_id)
+                        .bind(episode_id)
+                        .bind(listen_duration_int)
+                        .execute(pool)
+                        .await?;
+                    println!("Inserted new listen duration record for user {} episode {} with duration {}", user_id, episode_id, listen_duration_int);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // Record YouTube listen duration - matches Python record_youtube_listen_duration function exactly  
+    pub async fn record_youtube_listen_duration(&self, video_id: i32, user_id: i32, listen_duration: f64) -> AppResult<()> {
+        println!("Recording YouTube listen duration: video_id={}, user_id={}, duration={}", video_id, user_id, listen_duration);
+        
+        if listen_duration < 0.0 {
+            println!("Skipped updating listen duration for user {} and video {} due to invalid duration: {}", user_id, video_id, listen_duration);
+            return Ok(());
+        }
+        
+        let listen_duration_int = listen_duration as i32;
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Check if record exists and get existing duration
+                let existing_row = sqlx::query(r#"SELECT listenduration FROM "UserVideoHistory" WHERE userid = $1 AND videoid = $2"#)
+                    .bind(user_id)
+                    .bind(video_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = existing_row {
+                    let existing_duration: Option<i32> = row.try_get("listenduration")?;
+                    let existing_duration = existing_duration.unwrap_or(0);
+                    
+                    // Update only if new duration is greater than existing
+                    if listen_duration_int > existing_duration {
+                        sqlx::query(r#"UPDATE "UserVideoHistory" SET listenduration = $1, listendate = NOW() WHERE userid = $2 AND videoid = $3"#)
+                            .bind(listen_duration_int)
+                            .bind(user_id)
+                            .bind(video_id)
+                            .execute(pool)
+                            .await?;
+                        println!("Updated YouTube listen duration for user {} video {} from {} to {}", user_id, video_id, existing_duration, listen_duration_int);
+                    } else {
+                        println!("No update required for user {} and video {} as existing duration {} is greater than or equal to new duration {}", user_id, video_id, existing_duration, listen_duration_int);
+                    }
+                } else {
+                    // Insert new record
+                    sqlx::query(r#"INSERT INTO "UserVideoHistory" (userid, videoid, listendate, listenduration) VALUES ($1, $2, NOW(), $3)"#)
+                        .bind(user_id)
+                        .bind(video_id)
+                        .bind(listen_duration_int)
+                        .execute(pool)
+                        .await?;
+                    println!("Inserted new YouTube listen duration record for user {} video {} with duration {}", user_id, video_id, listen_duration_int);
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                // Check if record exists and get existing duration
+                let existing_row = sqlx::query("SELECT ListenDuration FROM UserVideoHistory WHERE UserID = ? AND VideoID = ?")
+                    .bind(user_id)
+                    .bind(video_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = existing_row {
+                    let existing_duration: Option<i32> = row.try_get("ListenDuration")?;
+                    let existing_duration = existing_duration.unwrap_or(0);
+                    
+                    // Update only if new duration is greater than existing
+                    if listen_duration_int > existing_duration {
+                        sqlx::query("UPDATE UserVideoHistory SET ListenDuration = ?, ListenDate = NOW() WHERE UserID = ? AND VideoID = ?")
+                            .bind(listen_duration_int)
+                            .bind(user_id)
+                            .bind(video_id)
+                            .execute(pool)
+                            .await?;
+                        println!("Updated YouTube listen duration for user {} video {} from {} to {}", user_id, video_id, existing_duration, listen_duration_int);
+                    } else {
+                        println!("No update required for user {} and video {} as existing duration {} is greater than or equal to new duration {}", user_id, video_id, existing_duration, listen_duration_int);
+                    }
+                } else {
+                    // Insert new record
+                    sqlx::query("INSERT INTO UserVideoHistory (UserID, VideoID, ListenDate, ListenDuration) VALUES (?, ?, NOW(), ?)")
+                        .bind(user_id)
+                        .bind(video_id)
+                        .bind(listen_duration_int)
+                        .execute(pool)
+                        .await?;
+                    println!("Inserted new YouTube listen duration record for user {} video {} with duration {}", user_id, video_id, listen_duration_int);
+                }
+            }
+        }
+        Ok(())
+    }
+
+
+    // Helper function to check if a URL is likely an audio file
+    fn is_audio_url(&self, url: &str) -> bool {
+        let url_lower = url.to_lowercase();
+        url_lower.contains(".mp3") || 
+        url_lower.contains(".m4a") || 
+        url_lower.contains(".wav") || 
+        url_lower.contains(".ogg") || 
+        url_lower.contains(".aac") || 
+        url_lower.contains(".flac") || 
+        url_lower.contains(".opus") ||
+        url_lower.contains("audio") ||
+        url_lower.contains("podcast") ||
+        url_lower.contains("media") ||
+        // Common podcast hosting patterns
+        url_lower.contains("feeds.feedburner.com") ||
+        url_lower.contains("anchor.fm") ||
+        url_lower.contains("buzzsprout.com") ||
+        url_lower.contains("libsyn.com") ||
+        url_lower.contains("soundcloud.com") ||
+        url_lower.contains("podomatic.com") ||
+        url_lower.contains("blubrry.com") ||
+        url_lower.contains("simplecast.com") ||
+        url_lower.contains("podbean.com")
+    }
+
+    // Extract audio URL from description/content HTML - matches Python logic
+    fn extract_audio_url_from_description(&self, data: &std::collections::HashMap<String, String>) -> Option<String> {
+        // Check various description fields for audio URLs
+        for field in ["content:encoded", "description", "summary", "itunes:summary"] {
+            if let Some(content) = data.get(field) {
+                if let Some(url) = self.find_audio_url_in_text(content) {
+                    return Some(url.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    fn find_audio_url_in_text<'a>(&self, text: &'a str) -> Option<&'a str> {
+        // Look for href= or src= attributes
+        for pattern in ["href=\"", "src=\"", "url=\""] {
+            // Use lowercase only for finding pattern positions
+            if let Some(start) = text.to_lowercase().find(pattern) {
+                // Match same index in original text
+                let url_start = start + pattern.len();
+                if let Some(end) = text[url_start..].find('\"') {
+                    let url = &text[url_start..url_start + end];
+                    if self.is_audio_url(url) {
+                        return Some(url);
+                    }
+                }
+            }
+        }
+
+        // Look for standalone URLs
+        for word in text.split_whitespace() {
+            if word.starts_with("http") && self.is_audio_url(word) {
+                return Some(word);
+            }
+        }
+
+        None
+    }
+
+
+    // Set user theme - matches Python set_theme function exactly
+    pub async fn set_theme(&self, user_id: i32, theme: &str) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "UserSettings" SET theme = $1 WHERE userid = $2"#)
+                    .bind(theme)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE UserSettings SET Theme = ? WHERE UserID = ?")
+                    .bind(theme)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Get all users info - matches Python get_user_info function exactly
+    pub async fn get_user_info(&self) -> AppResult<Vec<crate::handlers::settings::UserInfo>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(
+                    r#"SELECT userid, fullname, username, email, CASE WHEN isadmin THEN true ELSE false END AS isadmin FROM "Users""#
+                )
+                .fetch_all(pool)
+                .await?;
+
+                let mut users = Vec::new();
+                for row in rows {
+                    users.push(crate::handlers::settings::UserInfo {
+                        userid: row.try_get("userid")?,
+                        fullname: row.try_get("fullname")?,
+                        username: row.try_get("username")?,
+                        email: row.try_get("email")?,
+                        isadmin: row.try_get("isadmin")?,
+                    });
+                }
+                Ok(users)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    "SELECT UserID as userid, Fullname as fullname, Username as username, Email as email, IsAdmin as isadmin FROM Users"
+                )
+                .fetch_all(pool)
+                .await?;
+
+                let mut users = Vec::new();
+                for row in rows {
+                    users.push(crate::handlers::settings::UserInfo {
+                        userid: row.try_get("userid")?,
+                        fullname: row.try_get("fullname")?,
+                        username: row.try_get("username")?,
+                        email: row.try_get("email")?,
+                        isadmin: row.try_get("isadmin")?,
+                    });
+                }
+                Ok(users)
+            }
+        }
+    }
+
+    // Get specific user info - matches Python get_my_user_info function exactly
+    pub async fn get_my_user_info(&self, user_id: i32) -> AppResult<Option<crate::handlers::settings::UserInfo>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(
+                    r#"SELECT userid, fullname, username, email, CASE WHEN isadmin THEN true ELSE false END AS isadmin FROM "Users" WHERE userid = $1"#
+                )
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    Ok(Some(crate::handlers::settings::UserInfo {
+                        userid: row.try_get("userid")?,
+                        fullname: row.try_get("fullname")?,
+                        username: row.try_get("username")?,
+                        email: row.try_get("email")?,
+                        isadmin: row.try_get("isadmin")?,
+                    }))
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(
+                    "SELECT UserID as userid, Fullname as fullname, Username as username, Email as email, IsAdmin as isadmin FROM Users WHERE UserID = ?"
+                )
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    Ok(Some(crate::handlers::settings::UserInfo {
+                        userid: row.try_get("userid")?,
+                        fullname: row.try_get("fullname")?,
+                        username: row.try_get("username")?,
+                        email: row.try_get("email")?,
+                        isadmin: row.try_get("isadmin")?,
+                    }))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Add user - matches Python add_user function exactly
+    pub async fn add_user(&self, fullname: &str, username: &str, email: &str, hashed_pw: &str) -> AppResult<i32> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(
+                    r#"INSERT INTO "Users" (fullname, username, email, hashed_pw, isadmin) VALUES ($1, $2, $3, $4, false) RETURNING userid"#
+                )
+                .bind(fullname)
+                .bind(username)
+                .bind(email)
+                .bind(hashed_pw)
+                .fetch_one(pool)
+                .await?;
+
+                let user_id: i32 = row.try_get("userid")?;
+
+                // Add user settings like Python version
+                sqlx::query(r#"INSERT INTO "UserSettings" (userid, theme) VALUES ($1, $2)"#)
+                    .bind(user_id)
+                    .bind("light")
+                    .execute(pool)
+                    .await?;
+
+                Ok(user_id)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(
+                    "INSERT INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin) VALUES (?, ?, ?, ?, 0)"
+                )
+                .bind(fullname)
+                .bind(username)
+                .bind(email)
+                .bind(hashed_pw)
+                .execute(pool)
+                .await?;
+
+                let user_id = result.last_insert_id() as i32;
+
+                // Add user settings like Python version
+                sqlx::query("INSERT INTO UserSettings (UserID, Theme) VALUES (?, ?)")
+                    .bind(user_id)
+                    .bind("light")
+                    .execute(pool)
+                    .await?;
+
+                Ok(user_id)
+            }
+        }
+    }
+
+    // Set fullname - matches Python set_fullname function exactly
+    pub async fn set_fullname(&self, user_id: i32, new_name: &str) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Users" SET fullname = $1 WHERE userid = $2"#)
+                    .bind(new_name)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Users SET Fullname = ? WHERE UserID = ?")
+                    .bind(new_name)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Set password - matches Python set_password function exactly
+    pub async fn set_password(&self, user_id: i32, hash_pw: &str) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Users" SET hashed_pw = $1 WHERE userid = $2"#)
+                    .bind(hash_pw)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Users SET Hashed_PW = ? WHERE UserID = ?")
+                    .bind(hash_pw)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
     }
 
     // Add more database operations as needed...
