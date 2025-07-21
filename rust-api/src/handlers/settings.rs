@@ -1,7 +1,6 @@
 use axum::{
-    extract::{Path, Query, State, Multipart},
+    extract::{Path, Query, State, Multipart, Json},
     http::HeaderMap,
-    response::Json,
 };
 use serde::{Deserialize, Serialize};
 
@@ -1299,20 +1298,21 @@ pub async fn check_mfa_enabled(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
     headers: HeaderMap,
-) -> Result<Json<bool>, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
-    // Check authorization - web key or own user
-    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    // Check for elevated access (admin/web key)
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-
-    if user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only check MFA status for yourself!"));
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // If not elevated access, user can only check their own MFA status
+    if !is_web_key && user_id != user_id_from_api_key {
+        return Err(AppError::forbidden("You are not authorized to check mfa status for other users."));
     }
 
-    let enabled = state.db_pool.check_mfa_enabled(user_id).await?;
-    Ok(Json(enabled))
+    let is_enabled = state.db_pool.check_mfa_enabled(user_id).await?;
+    Ok(Json(serde_json::json!({"mfa_enabled": is_enabled})))
 }
 
 // Request struct for save_mfa_secret

@@ -4189,6 +4189,25 @@ impl DatabasePool {
                         });
                     }
                     
+                    // Handle content:encoded differently
+                    if current_tag == "content:encoded" && in_item {
+                        in_content = true;
+                    }
+                }
+                Ok(Event::Empty(ref e)) => {
+                    // Handle self-closing tags like <enclosure/>, <media:content/>
+                    current_tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                    current_attrs.clear();
+                    
+                    // Store attributes from self-closing tag
+                    for attr in e.attributes() {
+                        if let Ok(attr) = attr {
+                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+                            let value = String::from_utf8_lossy(&attr.value).to_string();
+                            current_attrs.insert(key, value);
+                        }
+                    }
+                    
                     // Handle enclosure tag for audio URL and file size
                     if current_tag == "enclosure" && in_item {
                         if let Some(url) = current_attrs.get("url") {
@@ -4211,11 +4230,6 @@ impl DatabasePool {
                                 episode_data.insert("media_audio_url".to_string(), url.clone());
                             }
                         }
-                    }
-                    
-                    // Handle content:encoded differently
-                    if current_tag == "content:encoded" && in_item {
-                        in_content = true;
                     }
                 }
                 Ok(Event::Text(e)) => {
@@ -7008,13 +7022,15 @@ impl DatabasePool {
         let charset: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
                                 abcdefghijklmnopqrstuvwxyz\
                                 0123456789";
-        let mut rng = rand::thread_rng();
-        let api_key: String = (0..64)
-            .map(|_| {
-                let idx = rng.gen_range(0..charset.len());
-                charset[idx] as char
-            })
-            .collect();
+        let api_key: String = {
+            let mut rng = rand::thread_rng();
+            (0..64)
+                .map(|_| {
+                    let idx = rng.gen_range(0..charset.len());
+                    charset[idx] as char
+                })
+                .collect()
+        };
 
         match self {
             DatabasePool::Postgres(pool) => {
@@ -7039,7 +7055,7 @@ impl DatabasePool {
     // Create RSS key - matches Python create_rss_key function exactly
     pub async fn create_rss_key(&self, user_id: i32, podcast_ids: Option<Vec<i32>>) -> AppResult<String> {
         use rand::{Rng, thread_rng};
-        use rand::distributions::Alphanumeric;
+        use rand::distr::Alphanumeric;
         
         // Generate 64-character RSS key
         let rss_key: String = rand::thread_rng()
@@ -7383,9 +7399,11 @@ impl DatabasePool {
         use rand::Rng;
         
         // Generate random base32 secret (matches Python random_base32())
-        let mut rng = rand::thread_rng();
-        let secret_bytes: [u8; 20] = rng.gen(); // 160 bits = 32 base32 chars
-        let secret = Secret::Raw(secret_bytes.to_vec()).to_encoded().to_string();
+        let secret = {
+            let mut rng = rand::thread_rng();
+            let secret_bytes: [u8; 20] = rng.gen(); // 160 bits = 32 base32 chars
+            Secret::Raw(secret_bytes.to_vec()).to_encoded().to_string()
+        };
         
         // Get user email for provisioning URI
         let email = match self {
@@ -10002,22 +10020,33 @@ impl DatabasePool {
                     .await?;
                 
                 for row in rows {
+                    let episodeid = row.try_get::<i32, _>("episodeid")?;
+                    let episodetitle = row.try_get::<String, _>("episodetitle")?;
+                    let episodedescription = row.try_get::<String, _>("episodedescription")?;
+                    let episodeurl = row.try_get::<String, _>("episodeurl")?;
+                    let episodeartwork = row.try_get::<String, _>("episodeartwork")?;
+                    let dt = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
+                    let episodepubdate = dt.format("%Y-%m-%dT%H:%M:%S").to_string();
+                    let episodeduration = row.try_get::<i32, _>("episodeduration")?;
+                    let podcastname = row.try_get::<String, _>("podcastname")?;
+                    let podcast_artwork = row.try_get::<String, _>("podcast_artwork")?;
+                    let saved = row.try_get::<bool, _>("saved")?;
+                    let downloaded = row.try_get::<bool, _>("downloaded")?;
+                    let listenduration = row.try_get::<i32, _>("listenduration")?;
+
                     let episode = serde_json::json!({
-                        "episodeid": row.try_get::<i32, _>("episodeid")?,
-                        "episodetitle": row.try_get::<String, _>("episodetitle")?,
-                        "episodedescription": row.try_get::<String, _>("episodedescription")?,
-                        "episodeurl": row.try_get::<String, _>("episodeurl")?,
-                        "episodeartwork": row.try_get::<String, _>("episodeartwork")?,
-                        "episodepubdate": {
-                            let dt = row.try_get::<chrono::NaiveDateTime>("episodepubdate")?;
-                            dt.format("%Y-%m-%dT%H:%M:%S").to_string()
-                        },
-                        "episodeduration": row.try_get::<i32, _>("episodeduration")?,
-                        "podcastname": row.try_get::<String, _>("podcastname")?,
-                        "podcast_artwork": row.try_get::<String, _>("podcast_artwork")?,
-                        "saved": row.try_get::<bool, _>("saved")?,
-                        "downloaded": row.try_get::<bool, _>("downloaded")?,
-                        "listenduration": row.try_get::<i32, _>("listenduration")?,
+                        "episodeid": episodeid,
+                        "episodetitle": episodetitle,
+                        "episodedescription": episodedescription,
+                        "episodeurl": episodeurl,
+                        "episodeartwork": episodeartwork,
+                        "episodepubdate": episodepubdate,
+                        "episodeduration": episodeduration,
+                        "podcastname": podcastname,
+                        "podcast_artwork": podcast_artwork,
+                        "saved": saved,
+                        "downloaded": downloaded,
+                        "listenduration": listenduration
                     });
                     episodes.push(episode);
                 }
@@ -10056,22 +10085,33 @@ impl DatabasePool {
                     .await?;
                 
                 for row in rows {
+                    let episodeid = row.try_get::<i32, _>("EpisodeID")?;
+                    let episodetitle = row.try_get::<String, _>("EpisodeTitle")?;
+                    let episodedescription = row.try_get::<String, _>("EpisodeDescription")?;
+                    let episodeurl = row.try_get::<String, _>("EpisodeURL")?;
+                    let episodeartwork = row.try_get::<String, _>("EpisodeArtwork")?;
+                    let dt = row.try_get::<chrono::NaiveDateTime, _>("EpisodePubDate")?;
+                    let episodepubdate = dt.format("%Y-%m-%dT%H:%M:%S").to_string();
+                    let episodeduration = row.try_get::<i32, _>("EpisodeDuration")?;
+                    let podcastname = row.try_get::<String, _>("PodcastName")?;
+                    let podcast_artwork = row.try_get::<String, _>("podcast_artwork")?;
+                    let saved = row.try_get::<bool, _>("saved")?;
+                    let downloaded = row.try_get::<bool, _>("downloaded")?;
+                    let listenduration = row.try_get::<i32, _>("listenduration")?;
+
                     let episode = serde_json::json!({
-                        "episodeid": row.try_get::<i32, _>("EpisodeID")?,
-                        "episodetitle": row.try_get::<String, _>("EpisodeTitle")?,
-                        "episodedescription": row.try_get::<String, _>("EpisodeDescription")?,
-                        "episodeurl": row.try_get::<String, _>("EpisodeURL")?,
-                        "episodeartwork": row.try_get::<String, _>("EpisodeArtwork")?,
-                        "episodepubdate": {
-                            let dt = row.try_get::<chrono::NaiveDateTime>("EpisodePubDate")?;
-                            dt.format("%Y-%m-%dT%H:%M:%S").to_string()
-                        },
-                        "episodeduration": row.try_get::<i32, _>("EpisodeDuration")?,
-                        "podcastname": row.try_get::<String, _>("PodcastName")?,
-                        "podcast_artwork": row.try_get::<String, _>("podcast_artwork")?,
-                        "saved": row.try_get::<bool, _>("saved")?,
-                        "downloaded": row.try_get::<bool, _>("downloaded")?,
-                        "listenduration": row.try_get::<i32, _>("listenduration")?,
+                        "episodeid": episodeid,
+                        "episodetitle": episodetitle,
+                        "episodedescription": episodedescription,
+                        "episodeurl": episodeurl,
+                        "episodeartwork": episodeartwork,
+                        "episodepubdate": episodepubdate,
+                        "episodeduration": episodeduration,
+                        "podcastname": podcastname,
+                        "podcast_artwork": podcast_artwork,
+                        "saved": saved,
+                        "downloaded": downloaded,
+                        "listenduration": listenduration
                     });
                     episodes.push(episode);
                 }

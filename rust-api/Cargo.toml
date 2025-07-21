@@ -16,7 +16,7 @@ serde_json = "1.0.141"
 
 # Database
 sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "mysql", "uuid", "chrono", "json", "bigdecimal"] }
-bigdecimal = "0.4"
+bigdecimal = "0.4.8"
 
 # Redis/Valkey
 redis = { version = "0.32.4", features = ["aio", "tokio-comp"] }
@@ -47,7 +47,7 @@ jsonwebtoken = "9.3.1"
 rand = "0.9.2"
 
 # MFA/TOTP Support
-totp-rs = "5.6.1"
+totp-rs = { version = "5.7.0", features = ["otpauth"] }
 qrcode = "0.14.1"
 image = "0.25.6"
 

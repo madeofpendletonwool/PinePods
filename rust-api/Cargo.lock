@@ -3787,6 +3787,8 @@ dependencies = [
  "hmac",
  "sha1",
  "sha2",
+ "url",
+ "urlencoding",
 ]
 
 [[package]]
