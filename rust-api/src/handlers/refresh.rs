@@ -66,15 +66,17 @@ pub async fn refresh_pods_admin(
     println!("Starting admin refresh process for all users");
     
     // This would be called by admin/system - spawn background task
+    let state_clone = state.clone();
     let task_id = state.task_spawner.spawn_progress_task(
         "refresh_all_pods".to_string(),
         0, // System user
         move |reporter| async move {
+            let state = state_clone;
             reporter.update_progress(10.0, Some("Starting system-wide refresh...".to_string())).await?;
             
             // Get all users who have podcasts to refresh
             let all_users = state.db_pool.get_all_users_with_podcasts().await
-                .map_err(|e| format!("Failed to get users: {}", e))?;
+                .map_err(|e| AppError::internal(&format!("Failed to get users: {}", e)))?;
             
             println!("Found {} users with podcasts to refresh", all_users.len());
             
@@ -136,15 +138,17 @@ pub async fn refresh_nextcloud_subscriptions_admin(
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
     println!("Starting admin gPodder sync process for all users");
     
+    let state_clone = state.clone();
     let task_id = state.task_spawner.spawn_progress_task(
         "refresh_nextcloud_subscriptions".to_string(),
         0, // System user
         move |reporter| async move {
+            let state = state_clone;
             reporter.update_progress(10.0, Some("Starting gPodder sync for all users...".to_string())).await?;
             
             // Get all users who have gPodder sync enabled
             let gpodder_users = state.db_pool.get_all_users_with_gpodder_sync().await
-                .map_err(|e| format!("Failed to get gPodder users: {}", e))?;
+                .map_err(|e| AppError::internal(&format!("Failed to get gPodder users: {}", e)))?;
             
             println!("Found {} users with gPodder sync enabled", gpodder_users.len());
             
@@ -160,7 +164,7 @@ pub async fn refresh_nextcloud_subscriptions_admin(
                 
                 // Get user's sync type
                 let gpodder_status = state.db_pool.gpodder_get_status(*user_id).await
-                    .map_err(|e| format!("Failed to get status for user {}: {}", user_id, e))?;
+                    .map_err(|e| AppError::internal(&format!("Failed to get status for user {}: {}", user_id, e)))?;
                 
                 if gpodder_status.enabled && gpodder_status.sync_type != "None" {
                     match run_admin_gpodder_sync(&state, *user_id, &gpodder_status.sync_type).await {

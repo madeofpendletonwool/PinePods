@@ -10,6 +10,7 @@ pub mod refresh;
 pub mod proxy;
 pub mod settings;
 pub mod sync;
+pub mod youtube;
 
 // Common handler utilities
 use axum::{

@@ -21,6 +21,7 @@ mod error;
 mod handlers;
 mod models;
 mod redis_client;
+mod redis_manager;
 mod services;
 
 use config::Config;
@@ -29,6 +30,7 @@ use error::AppResult;
 use redis_client::RedisClient;
 use services::{task_manager::TaskManager, tasks::TaskSpawner};
 use handlers::websocket::WebSocketManager;
+use redis_manager::{ImportProgressManager, NotificationManager};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -39,6 +41,8 @@ pub struct AppState {
     pub task_manager: Arc<TaskManager>,
     pub task_spawner: Arc<TaskSpawner>,
     pub websocket_manager: Arc<WebSocketManager>,
+    pub import_progress_manager: Arc<ImportProgressManager>,
+    pub notification_manager: Arc<NotificationManager>,
 }
 
 #[tokio::main]
@@ -76,6 +80,8 @@ async fn main() -> AppResult<()> {
     let task_manager = Arc::new(TaskManager::new(redis_client.clone()));
     let task_spawner = Arc::new(TaskSpawner::new(task_manager.clone()));
     let websocket_manager = Arc::new(WebSocketManager::new());
+    let import_progress_manager = Arc::new(ImportProgressManager::new(redis_client.clone()));
+    let notification_manager = Arc::new(NotificationManager::new(redis_client.clone()));
     info!("Task management system initialized");
 
     // Create shared application state
@@ -86,6 +92,8 @@ async fn main() -> AppResult<()> {
         task_manager,
         task_spawner,
         websocket_manager,
+        import_progress_manager,
+        notification_manager,
     };
 
     // Build the application with routes
@@ -251,6 +259,19 @@ fn create_data_routes() -> Router<AppState> {
         .route("/gpodder/toggle", post(handlers::sync::gpodder_toggle))
         .route("/refresh_pods", post(handlers::refresh::refresh_pods_admin))
         .route("/refresh_nextcloud_subscriptions", post(handlers::refresh::refresh_nextcloud_subscriptions_admin))
+        .route("/add_custom_podcast", post(handlers::settings::add_custom_podcast))
+        .route("/user/notification_settings", get(handlers::settings::get_notification_settings))
+        .route("/user/notification_settings", post(handlers::settings::update_notification_settings))
+        .route("/user/test_notification", post(handlers::settings::test_notification))
+        .route("/add_oidc_provider", post(handlers::settings::add_oidc_provider))
+        .route("/list_oidc_providers", get(handlers::settings::list_oidc_providers))
+        .route("/startpage", get(handlers::settings::get_startpage))
+        .route("/startpage", post(handlers::settings::update_startpage))
+        .route("/person/subscribe/{user_id}/{person_id}", post(handlers::settings::subscribe_to_person))
+        .route("/person/unsubscribe/{user_id}/{person_id}", delete(handlers::settings::unsubscribe_from_person))
+        .route("/person/subscriptions/{user_id}", get(handlers::settings::get_person_subscriptions))
+        .route("/person/episodes/{user_id}/{person_id}", get(handlers::settings::get_person_episodes))
+        .route("/youtube/subscribe", post(handlers::youtube::subscribe_to_youtube_channel))
         // Add more data routes as needed
 }
 

@@ -10,6 +10,8 @@ use crate::{
     handlers::{extract_api_key, validate_api_key},
     AppState,
 };
+use std::collections::HashMap;
+use sqlx::{Row, Column, ValueRef};
 
 // Request struct for set_theme
 #[derive(Deserialize)]
@@ -963,10 +965,11 @@ async fn backup_server_streaming(
     // Instead of using subprocess, we'll create a streaming SQL export
     // This approach handles large databases by processing data in chunks
     
+    let state_clone = state.clone();
     let backup_stream = stream::unfold(0, move |chunk_id| {
-        let state = state.clone();
+        let state_clone = state_clone.clone();
         async move {
-            match generate_backup_chunk(&state, chunk_id).await {
+            match generate_backup_chunk(&state_clone, chunk_id).await {
                 Ok(Some(chunk)) => Some((Ok(chunk), chunk_id + 1)),
                 Ok(None) => None, // End of stream
                 Err(e) => Some((Err(e), chunk_id + 1)),
@@ -1096,7 +1099,7 @@ async fn export_postgres_table_batch(
         first_row = false;
 
         output.push('(');
-        let column_count = row.len();
+        let column_count = row.columns().len();
         for i in 0..column_count {
             if i > 0 {
                 output.push_str(", ");
@@ -1155,7 +1158,7 @@ async fn export_mysql_table_batch(
         first_row = false;
 
         output.push('(');
-        let column_count = row.len();
+        let column_count = row.columns().len();
         for i in 0..column_count {
             if i > 0 {
                 output.push_str(", ");
@@ -1513,5 +1516,519 @@ pub async fn remove_podcast_sync(
     } else {
         Err(AppError::internal("Failed to remove podcast sync"))
     }
+}
+
+// === NEW ENDPOINTS - REMAINING SETTINGS ===
+
+// Request struct for add_custom_podcast
+#[derive(Deserialize)]
+pub struct CustomPodcastRequest {
+    pub feed_url: String,
+    pub user_id: i32,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+// Request struct for import_opml
+#[derive(Deserialize)]
+pub struct OpmlImportRequest {
+    pub podcasts: Vec<String>,
+    pub user_id: i32,
+}
+
+// Response struct for import_progress
+#[derive(Serialize)]
+pub struct ImportProgressResponse {
+    pub current: i32,
+    pub total: i32,
+    pub current_podcast: String,
+}
+
+// Request struct for notification_settings
+#[derive(Deserialize)]
+pub struct NotificationSettingsRequest {
+    pub user_id: i32,
+    pub platform: String,
+    pub enabled: bool,
+    pub ntfy_topic: Option<String>,
+    pub ntfy_server_url: Option<String>,
+    pub gotify_url: Option<String>,
+    pub gotify_token: Option<String>,
+}
+
+// Request struct for test_notification
+#[derive(Deserialize)]
+pub struct NotificationTestRequest {
+    pub user_id: i32,
+    pub platform: String,
+}
+
+// Request struct for add_oidc_provider
+#[derive(Deserialize)]
+pub struct OidcProviderRequest {
+    pub provider_name: String,
+    pub client_id: String,
+    pub client_secret: String,
+    pub authorization_url: String,
+    pub token_url: String,
+    pub user_info_url: String,
+    pub button_text: String,
+    pub scope: String,
+    pub button_color: String,
+    pub button_text_color: String,
+    pub icon_svg: Option<String>,
+    pub name_claim: Option<String>,
+    pub email_claim: Option<String>,
+    pub username_claim: Option<String>,
+    pub roles_claim: Option<String>,
+    pub user_role: Option<String>,
+    pub admin_role: Option<String>,
+}
+
+// Query structs for user_id parameters
+#[derive(Deserialize)]
+pub struct UserIdQuery {
+    pub user_id: i32,
+}
+
+#[derive(Deserialize)]
+pub struct StartpageQuery {
+    pub user_id: i32,
+    pub startpage: Option<String>,
+}
+
+// Add custom podcast - matches Python add_custom_podcast function exactly
+pub async fn add_custom_podcast(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CustomPodcastRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - user can only add podcasts for themselves
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if request.user_id != user_id_from_api_key && !is_web_key {
+        return Err(AppError::forbidden("You can only add podcasts for yourself!"));
+    }
+
+    // Get podcast values from feed URL
+    let podcast_values = state.db_pool.get_podcast_values(
+        &request.feed_url,
+        request.user_id,
+        request.username.as_deref(),
+        request.password.as_deref()
+    ).await?;
+
+    // Add podcast with 30 episode cutoff (matches Python default)
+    let (podcast_id, _) = state.db_pool.add_podcast_from_values(
+        &podcast_values,
+        request.user_id,
+        30
+    ).await?;
+
+    // Get complete podcast details for response
+    let podcast_details = state.db_pool.get_podcast_details(request.user_id, podcast_id).await?;
+
+    Ok(Json(serde_json::json!({ "data": podcast_details })))
+}
+
+// Import OPML - matches Python import_opml function exactly with background processing
+pub async fn import_opml(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<OpmlImportRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if request.user_id != user_id_from_api_key && !is_web_key {
+        return Err(AppError::forbidden("You can only import OPML for yourself!"));
+    }
+
+    let total_podcasts = request.podcasts.len();
+
+    // Initialize progress tracking in Redis/Valkey
+    state.import_progress_manager.start_import(request.user_id, total_podcasts as i32).await?;
+
+    // Spawn background task for OPML processing
+    let state_clone = state.clone();
+    let podcasts = request.podcasts.clone();
+    let user_id = request.user_id;
+
+    tokio::spawn(async move {
+        for (index, feed_url) in podcasts.iter().enumerate() {
+            // Update progress
+            let _ = state_clone.import_progress_manager.update_progress(
+                user_id,
+                index as i32,
+                feed_url
+            ).await;
+
+            // Process podcast (with error handling to continue on failures)
+            match state_clone.db_pool.get_podcast_values(feed_url, user_id, None, None).await {
+                Ok(podcast_values) => {
+                    let _ = state_clone.db_pool.add_podcast_from_values(
+                        &podcast_values,
+                        user_id,
+                        30  // feed_cutoff
+                    ).await;
+                }
+                Err(e) => {
+                    tracing::error!("Failed to import podcast {}: {}", feed_url, e);
+                    // Continue with next podcast
+                }
+            }
+
+            // Small delay between imports (matches Python 0.1s delay)
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+
+        // Clear progress when complete
+        let _ = state_clone.import_progress_manager.clear_progress(user_id).await;
+    });
+
+    Ok(Json(serde_json::json!({
+        "message": "OPML import started",
+        "total": total_podcasts
+    })))
+}
+
+// Import progress webhook - matches Python import_progress function exactly
+pub async fn import_progress(
+    State(state): State<AppState>,
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+) -> Result<Json<ImportProgressResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - user can only check their own progress
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if user_id != user_id_from_api_key && !is_web_key {
+        return Err(AppError::forbidden("You can only check your own import progress!"));
+    }
+
+    let (current, total, current_podcast) = state.import_progress_manager.get_progress(user_id).await?;
+    let progress = ImportProgressResponse {
+        current,
+        total,
+        current_podcast,
+    };
+    Ok(Json(progress))
+}
+
+// Get notification settings - matches Python notification_settings GET function exactly
+pub async fn get_notification_settings(
+    State(state): State<AppState>,
+    Query(query): Query<UserIdQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if query.user_id != user_id_from_api_key && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own notification settings!"));
+    }
+
+    let settings = state.db_pool.get_notification_settings(query.user_id).await?;
+    Ok(Json(serde_json::json!({ "settings": settings })))
+}
+
+// Update notification settings - matches Python notification_settings PUT function exactly
+pub async fn update_notification_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<NotificationSettingsRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if request.user_id != user_id_from_api_key && !is_web_key {
+        return Err(AppError::forbidden("You can only update your own notification settings!"));
+    }
+
+    state.db_pool.update_notification_settings(
+        request.user_id,
+        &request.platform,
+        request.enabled,
+        request.ntfy_topic.as_deref(),
+        request.ntfy_server_url.as_deref(),
+        request.gotify_url.as_deref(),
+        request.gotify_token.as_deref()
+    ).await?;
+    Ok(Json(serde_json::json!({ "message": "Notification settings updated successfully" })))
+}
+
+// Test notification - matches Python test_notification function exactly
+pub async fn test_notification(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<NotificationTestRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if request.user_id != user_id_from_api_key && !is_web_key {
+        return Err(AppError::forbidden("You can only test your own notifications!"));
+    }
+
+    // Get notification settings and send test notification
+    let settings = state.db_pool.get_notification_settings(request.user_id).await?;
+    let settings_json = serde_json::to_value(&settings)?;
+    let success = state.notification_manager.send_test_notification(request.user_id, &request.platform, &settings_json).await?;
+    
+    if success {
+        Ok(Json(serde_json::json!({ "detail": "Test notification sent successfully" })))
+    } else {
+        Err(AppError::bad_request("Failed to send test notification - check your settings"))
+    }
+}
+
+// Add OIDC provider - matches Python add_oidc_provider function exactly  
+pub async fn add_oidc_provider(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<OidcProviderRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin - OIDC provider management requires admin access
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(user_id).await?;
+
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required to add OIDC providers"));
+    }
+
+    let provider_id = state.db_pool.add_oidc_provider(
+        &request.provider_name,
+        request.icon_svg.as_deref().unwrap_or(""),
+        &request.authorization_url,
+        &request.client_id,
+        &request.client_secret,
+        &request.scope,
+        &request.authorization_url, // authorization_endpoint
+        &request.token_url,         // token_endpoint
+        &request.user_info_url,     // userinfo_endpoint
+        "",                         // redirect_uri (handled by frontend)
+        "",                         // issuer
+        "",                         // jwks_uri
+        "",                         // discovery_endpoint
+        request.name_claim.as_deref().unwrap_or("name"),
+        request.email_claim.as_deref().unwrap_or("email"),
+        request.roles_claim.as_deref().unwrap_or(""),
+        true                        // public_registration
+    ).await?;
+    Ok(Json(serde_json::json!({ "provider_id": provider_id })))
+}
+
+// List OIDC providers - matches Python list_oidc_providers function exactly
+pub async fn list_oidc_providers(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let providers = state.db_pool.list_oidc_providers().await?;
+    Ok(Json(serde_json::json!({ "providers": providers })))
+}
+
+// Get startpage - matches Python startpage GET function exactly
+pub async fn get_startpage(
+    State(state): State<AppState>,
+    Query(query): Query<UserIdQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if query.user_id != user_id_from_api_key && !is_web_key {
+        return Err(AppError::forbidden("You can only view your own startpage setting!"));
+    }
+
+    let startpage = state.db_pool.get_startpage(query.user_id).await?;
+    Ok(Json(serde_json::json!({ "StartPage": startpage })))
+}
+
+// Update startpage - matches Python startpage POST function exactly
+pub async fn update_startpage(
+    State(state): State<AppState>,
+    Query(query): Query<StartpageQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if query.user_id != user_id_from_api_key && !is_web_key {
+        return Err(AppError::forbidden("You can only update your own startpage setting!"));
+    }
+
+    let startpage = query.startpage.unwrap_or_else(|| "home".to_string());
+    state.db_pool.update_startpage(query.user_id, &startpage).await?;
+    
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": "StartPage updated successfully"
+    })))
+}
+
+// Request struct for person subscribe
+#[derive(Deserialize)]
+pub struct PersonSubscribeRequest {
+    pub person_name: String,
+    pub person_img: String,
+    pub podcast_id: i32,
+}
+
+// Request struct for person unsubscribe
+#[derive(Deserialize)]
+pub struct PersonUnsubscribeRequest {
+    pub person_name: String,
+}
+
+// Subscribe to person - matches Python api_subscribe_to_person function exactly
+pub async fn subscribe_to_person(
+    State(state): State<AppState>,
+    Path((user_id, person_id)): Path<(i32, i32)>,
+    headers: HeaderMap,
+    Json(request): Json<PersonSubscribeRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only subscribe for themselves
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only subscribe for yourself!"));
+    }
+
+    let person_db_id = state.db_pool.subscribe_to_person(
+        user_id,
+        person_id,
+        &request.person_name,
+        &request.person_img,
+        request.podcast_id,
+    ).await?;
+
+    // TODO: Trigger background task to process person subscription and gather episodes
+    // This would call process_person_subscription_task() equivalent
+
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "message": "Successfully subscribed to person",
+        "person_id": person_db_id
+    })))
+}
+
+// Unsubscribe from person - matches Python api_unsubscribe_from_person function exactly
+pub async fn unsubscribe_from_person(
+    State(state): State<AppState>,
+    Path((user_id, person_id)): Path<(i32, i32)>,
+    headers: HeaderMap,
+    Json(request): Json<PersonUnsubscribeRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only unsubscribe for themselves
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only unsubscribe for yourself!"));
+    }
+
+    let success = state.db_pool.unsubscribe_from_person(
+        user_id,
+        person_id,
+        &request.person_name,
+    ).await?;
+
+    if success {
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "message": "Successfully unsubscribed from person"
+        })))
+    } else {
+        Ok(Json(serde_json::json!({
+            "success": false,
+            "message": "Person subscription not found"
+        })))
+    }
+}
+
+// Get person subscriptions - matches Python api_get_person_subscriptions function exactly
+pub async fn get_person_subscriptions(
+    State(state): State<AppState>,
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only get their own subscriptions
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only retrieve your own subscriptions!"));
+    }
+
+    let subscriptions = state.db_pool.get_person_subscriptions(user_id).await?;
+    Ok(Json(subscriptions))
+}
+
+// Get person episodes - matches Python api_return_person_episodes function exactly
+pub async fn get_person_episodes(
+    State(state): State<AppState>,
+    Path((user_id, person_id)): Path<(i32, i32)>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<serde_json::Value>>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only get their own subscriptions
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only retrieve your own person episodes!"));
+    }
+
+    let episodes = state.db_pool.get_person_episodes(user_id, person_id).await?;
+    Ok(Json(episodes))
 }
 

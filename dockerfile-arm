@@ -66,8 +66,14 @@ LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 
 # Install runtime dependencies (removed Python)
 RUN apk update && apk upgrade && \
-    apk add --no-cache nginx tzdata openssl bash mariadb-client curl cronie openrc ffmpeg supervisor && \
+    apk add --no-cache nginx tzdata openssl bash mariadb-client curl cronie openrc ffmpeg supervisor wget jq && \
     rm -rf /var/cache/apk/*
+
+# Download and install latest yt-dlp binary for ARM64
+RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r .tag_name) && \
+    wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${LATEST_VERSION}/yt-dlp_linux_aarch64" && \
+    chmod +x /usr/local/bin/yt-dlp
+
 ENV TZ=UTC
 # Set environment variables
 ENV APP_ROOT=/pinepods

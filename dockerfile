@@ -97,7 +97,12 @@ FROM alpine
 # Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 # Install runtime dependencies (removed python3 and py3-pip)
-RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl cronie openrc ffmpeg supervisor
+RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl cronie openrc ffmpeg supervisor wget jq
+
+# Download and install latest yt-dlp binary
+RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r .tag_name) && \
+    wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${LATEST_VERSION}/yt-dlp_linux" && \
+    chmod +x /usr/local/bin/yt-dlp
 ENV TZ=UTC
 # Copy compiled database setup binary (replaces Python dependency)
 COPY --from=python-builder /build/dist/pinepods-db-setup /usr/local/bin/

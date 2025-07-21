@@ -125,4 +125,12 @@ impl AppError {
     pub fn validation(msg: impl Into<String>) -> Self {
         AppError::Validation(msg.into())
     }
+
+    pub fn external_error(msg: impl Into<String>) -> Self {
+        AppError::Internal(msg.into())
+    }
+
+    pub fn database_error(msg: impl Into<String>) -> Self {
+        AppError::Internal(msg.into())
+    }
 }
