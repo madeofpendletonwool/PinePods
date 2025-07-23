@@ -7,9 +7,13 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TaskStatus {
+    #[serde(rename = "PENDING")]
     Pending,
+    #[serde(rename = "DOWNLOADING")]
     Running,
+    #[serde(rename = "SUCCESS")]
     Completed,
+    #[serde(rename = "FAILED")]
     Failed,
 }
 
@@ -30,10 +34,23 @@ pub struct TaskInfo {
 pub struct TaskUpdate {
     pub task_id: String,
     pub user_id: i32,
-    pub status: TaskStatus,
+    #[serde(rename = "type")]
+    pub task_type: String,
+    pub item_id: Option<i32>,
     pub progress: f64,
-    pub message: Option<String>,
-    pub result: Option<serde_json::Value>,
+    pub status: TaskStatus,
+    pub details: serde_json::Value,
+    pub started_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<String>,
+}
+
+// WebSocket message format to match Python implementation
+#[derive(Debug, Clone, Serialize)]
+pub struct WebSocketMessage {
+    pub event: String,
+    pub task: Option<TaskUpdate>,
+    pub tasks: Option<Vec<TaskInfo>>,
 }
 
 pub type TaskProgressSender = broadcast::Sender<TaskUpdate>;
@@ -64,10 +81,19 @@ impl TaskManager {
         task_type: String,
         user_id: i32,
     ) -> AppResult<String> {
+        self.create_task_with_item_id(task_type, user_id, None).await
+    }
+
+    pub async fn create_task_with_item_id(
+        &self,
+        task_type: String,
+        user_id: i32,
+        item_id: Option<i32>,
+    ) -> AppResult<String> {
         let task_id = Uuid::new_v4().to_string();
         let task = TaskInfo {
             id: task_id.clone(),
-            task_type,
+            task_type: task_type.clone(),
             user_id,
             status: TaskStatus::Pending,
             progress: 0.0,
@@ -78,6 +104,21 @@ impl TaskManager {
         };
 
         self.save_task(&task).await?;
+        
+        // Send initial task update with item_id for frontend compatibility
+        let update = TaskUpdate {
+            task_id: task_id.clone(),
+            user_id,
+            task_type,
+            item_id,
+            progress: 0.0,
+            status: TaskStatus::Pending,
+            details: serde_json::json!({}),
+            started_at: chrono::Utc::now().to_rfc3339(),
+            completed_at: None,
+        };
+        let _ = self.progress_sender.send(update);
+        
         Ok(task_id)
     }
 
@@ -86,6 +127,29 @@ impl TaskManager {
         task_id: &str,
         progress: f64,
         message: Option<String>,
+    ) -> AppResult<()> {
+        self.update_task_progress_with_item_id(task_id, progress, message, None, None).await
+    }
+
+    pub async fn update_task_progress_with_item_id(
+        &self,
+        task_id: &str,
+        progress: f64,
+        message: Option<String>,
+        item_id: Option<i32>,
+        task_type: Option<String>,
+    ) -> AppResult<()> {
+        self.update_task_progress_with_details(task_id, progress, message, item_id, task_type, None).await
+    }
+
+    pub async fn update_task_progress_with_details(
+        &self,
+        task_id: &str,
+        progress: f64,
+        message: Option<String>,
+        item_id: Option<i32>,
+        task_type: Option<String>,
+        episode_title: Option<String>,
     ) -> AppResult<()> {
         let mut task = self.get_task(task_id).await?;
         task.progress = progress.clamp(0.0, 100.0);
@@ -98,13 +162,28 @@ impl TaskManager {
 
         self.save_task(&task).await?;
 
+        let mut details = serde_json::json!({
+            "status_text": message.as_deref().unwrap_or("Processing...")
+        });
+
+        // Add episode details if provided
+        if let Some(episode_id) = item_id {
+            details["episode_id"] = serde_json::json!(episode_id);
+        }
+        if let Some(title) = episode_title {
+            details["episode_title"] = serde_json::json!(title);
+        }
+
         let update = TaskUpdate {
             task_id: task_id.to_string(),
             user_id: task.user_id,
-            status: task.status.clone(),
+            task_type: task_type.unwrap_or_else(|| task.task_type.clone()),
+            item_id,
             progress,
-            message,
-            result: None,
+            status: task.status.clone(),
+            details,
+            started_at: task.created_at.to_rfc3339(),
+            completed_at: None,
         };
 
         let _ = self.progress_sender.send(update);
@@ -129,10 +208,16 @@ impl TaskManager {
         let update = TaskUpdate {
             task_id: task_id.to_string(),
             user_id: task.user_id,
-            status: TaskStatus::Completed,
+            task_type: task.task_type.clone(),
+            item_id: None,  // Completion updates don't need item_id
             progress: 100.0,
-            message,
-            result,
+            status: TaskStatus::Completed,
+            details: serde_json::json!({
+                "status_text": message.as_deref().unwrap_or("Completed"),
+                "result": result
+            }),
+            started_at: task.created_at.to_rfc3339(),
+            completed_at: Some(chrono::Utc::now().to_rfc3339()),
         };
 
         let _ = self.progress_sender.send(update);
@@ -154,10 +239,16 @@ impl TaskManager {
         let update = TaskUpdate {
             task_id: task_id.to_string(),
             user_id: task.user_id,
-            status: TaskStatus::Failed,
+            task_type: task.task_type.clone(),
+            item_id: None,  // Failure updates don't need item_id
             progress: task.progress,
-            message: Some(error_message),
-            result: None,
+            status: TaskStatus::Failed,
+            details: serde_json::json!({
+                "status_text": error_message,
+                "error": error_message
+            }),
+            started_at: task.created_at.to_rfc3339(),
+            completed_at: Some(chrono::Utc::now().to_rfc3339()),
         };
 
         let _ = self.progress_sender.send(update);

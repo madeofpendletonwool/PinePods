@@ -1065,8 +1065,11 @@ def migration_009_people_sharing_tables(conn, db_type: str):
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS "People" (
                     PersonID SERIAL PRIMARY KEY,
-                    Name VARCHAR(255) NOT NULL,
-                    UserID INT NOT NULL,
+                    Name TEXT,
+                    PersonImg TEXT,
+                    PeopleDBID INT,
+                    AssociatedPodcasts TEXT,
+                    UserID INT,
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
                 )
             """)
@@ -1099,8 +1102,11 @@ def migration_009_people_sharing_tables(conn, db_type: str):
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS People (
                     PersonID INT AUTO_INCREMENT PRIMARY KEY,
-                    Name VARCHAR(255) NOT NULL,
-                    UserID INT NOT NULL,
+                    Name TEXT,
+                    PersonImg TEXT,
+                    PeopleDBID INT,
+                    AssociatedPodcasts TEXT,
+                    UserID INT,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                 )
             """)

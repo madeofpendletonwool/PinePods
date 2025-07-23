@@ -78,7 +78,7 @@ async fn main() -> AppResult<()> {
 
     // Initialize task management
     let task_manager = Arc::new(TaskManager::new(redis_client.clone()));
-    let task_spawner = Arc::new(TaskSpawner::new(task_manager.clone()));
+    let task_spawner = Arc::new(TaskSpawner::new(task_manager.clone(), db_pool.clone()));
     let websocket_manager = Arc::new(WebSocketManager::new());
     let import_progress_manager = Arc::new(ImportProgressManager::new(redis_client.clone()));
     let notification_manager = Arc::new(NotificationManager::new(redis_client.clone()));
@@ -124,6 +124,7 @@ fn create_app(state: AppState) -> Router {
         
         // API routes (to be implemented)
         .nest("/api/data", create_data_routes())
+        .nest("/api/init", create_init_routes())
         .nest("/api/podcasts", create_podcast_routes())
         .nest("/api/episodes", create_episode_routes())
         .nest("/api/playlists", create_playlist_routes())
@@ -190,7 +191,6 @@ fn create_data_routes() -> Router<AppState> {
         .route("/remove_saved_episode", post(handlers::podcasts::remove_saved_episode))
         .route("/saved_episode_list/{user_id}", get(handlers::podcasts::get_saved_episodes))
         .route("/record_podcast_history", post(handlers::podcasts::add_history))
-        .route("/user_history/{user_id}", get(handlers::podcasts::get_user_history))
         .route("/get_podcast_id", get(handlers::podcasts::get_podcast_id))
         .route("/download_episode_list", get(handlers::podcasts::download_episode_list))
         .route("/download_podcast", post(handlers::podcasts::download_podcast))
@@ -214,11 +214,13 @@ fn create_data_routes() -> Router<AppState> {
         .route("/search_data", post(handlers::podcasts::search_data))
         .route("/home_overview", get(handlers::podcasts::home_overview))
         .route("/get_playlists", get(handlers::podcasts::get_playlists))
+        .route("/get_playlist_episodes", get(handlers::podcasts::get_playlist_episodes))
         .route("/mark_episode_uncompleted", post(handlers::podcasts::mark_episode_uncompleted))
         .route("/user/set_theme", put(handlers::settings::set_theme))
         .route("/get_user_info", get(handlers::settings::get_user_info))
         .route("/my_user_info/{user_id}", get(handlers::settings::get_my_user_info))
         .route("/add_user", post(handlers::settings::add_user))
+        .route("/add_login_user", post(handlers::settings::add_login_user))
         .route("/set_fullname/{user_id}", put(handlers::settings::set_fullname))
         .route("/set_password/{user_id}", put(handlers::settings::set_password))
         .route("/user/delete/{user_id}", delete(handlers::settings::delete_user))
@@ -258,11 +260,15 @@ fn create_data_routes() -> Router<AppState> {
         .route("/remove_podcast_sync", post(handlers::settings::remove_podcast_sync))
         .route("/gpodder/status", get(handlers::sync::gpodder_status))
         .route("/gpodder/toggle", post(handlers::sync::gpodder_toggle))
-        .route("/refresh_pods", post(handlers::refresh::refresh_pods_admin))
-        .route("/refresh_nextcloud_subscriptions", post(handlers::refresh::refresh_nextcloud_subscriptions_admin))
+        .route("/refresh_pods", get(handlers::refresh::refresh_pods_admin))
+        .route("/refresh_nextcloud_subscriptions", get(handlers::refresh::refresh_nextcloud_subscriptions_admin))
+        .route("/refresh_hosts", get(handlers::tasks::refresh_hosts))
+        .route("/cleanup_tasks", get(handlers::tasks::cleanup_tasks))
+        .route("/update_playlists", get(handlers::tasks::update_playlists))
         .route("/add_custom_podcast", post(handlers::settings::add_custom_podcast))
         .route("/user/notification_settings", get(handlers::settings::get_notification_settings))
-        .route("/user/notification_settings", post(handlers::settings::update_notification_settings))
+        .route("/user/notification_settings", put(handlers::settings::update_notification_settings))
+        .route("/user/set_playback_speed", post(handlers::settings::set_playback_speed_user))
         .route("/user/test_notification", post(handlers::settings::test_notification))
         .route("/add_oidc_provider", post(handlers::settings::add_oidc_provider))
         .route("/list_oidc_providers", get(handlers::settings::list_oidc_providers))
@@ -323,9 +329,14 @@ fn create_gpodder_routes() -> Router<AppState> {
         .route("/sync", post(handlers::sync::gpodder_sync))
 }
 
+fn create_init_routes() -> Router<AppState> {
+    Router::new()
+        .route("/startup_tasks", post(handlers::tasks::startup_tasks))
+}
+
 fn create_websocket_routes() -> Router<AppState> {
     Router::new()
-        .route("/tasks/{user_id}", get(handlers::websocket::task_progress_websocket))
+        .route("/api/tasks/{user_id}", get(handlers::websocket::task_progress_websocket))
         .route("/api/data/episodes/{user_id}", get(handlers::refresh::websocket_refresh_episodes))
 }
 

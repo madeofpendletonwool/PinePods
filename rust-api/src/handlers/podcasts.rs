@@ -32,6 +32,37 @@ pub struct Episode {
     pub is_youtube: bool,
 }
 
+// Separate struct for downloaded episodes that exactly matches Python implementation
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[allow(non_snake_case)]
+pub struct DownloadedEpisode {
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub artworkurl: Option<String>,
+    pub episodeid: i32,
+    pub episodetitle: String,
+    pub episodepubdate: String,
+    pub episodedescription: String,
+    pub episodeartwork: Option<String>,
+    pub episodeurl: String,
+    pub episodeduration: i32,
+    pub podcastindexid: Option<i32>,
+    pub websiteurl: Option<String>,
+    pub downloadedlocation: String,
+    pub listenduration: Option<i32>,
+    pub completed: bool,
+    pub saved: bool,
+    pub queued: bool,
+    pub downloaded: bool,  // Always true for downloaded episodes
+    pub is_youtube: bool,
+}
+
+// Response struct for downloaded episodes
+#[derive(Serialize, Deserialize, Debug)]
+pub struct DownloadedEpisodesResponse {
+    pub downloaded_episodes: Vec<DownloadedEpisode>,
+}
+
 // Separate struct for podcast_episodes endpoint that matches frontend expectations
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[allow(non_snake_case)]
@@ -737,7 +768,7 @@ pub async fn download_episode_list(
     Query(query): Query<DownloadEpisodeListQuery>,
     headers: HeaderMap,
     State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, AppError> {
+) -> Result<Json<DownloadedEpisodesResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
     
     // Verify API key
@@ -757,7 +788,7 @@ pub async fn download_episode_list(
     // Get downloaded episodes from database
     let downloaded_episodes = state.db_pool.download_episode_list(query.user_id).await?;
     
-    Ok(Json(serde_json::json!({ "downloaded_episodes": downloaded_episodes })))
+    Ok(Json(DownloadedEpisodesResponse { downloaded_episodes }))
 }
 
 // Request models for download operations
@@ -1596,4 +1627,102 @@ pub async fn record_listen_duration(
     }
 
     Ok(Json(serde_json::json!({ "detail": "Listen duration recorded." })))
+}
+
+// Get user history - matches Python user_history endpoint exactly
+pub async fn user_history(
+    State(state): State<AppState>,
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only get their own history
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only return history for yourself!"));
+    }
+
+    let history = state.db_pool.user_history(user_id).await?;
+    Ok(Json(serde_json::json!({ "data": history })))
+}
+
+// Increment listen time - matches Python increment_listen_time endpoint exactly
+pub async fn increment_listen_time(
+    State(state): State<AppState>,
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only increment their own time
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only increment your own listen time."));
+    }
+
+    state.db_pool.increment_listen_time(user_id).await?;
+    Ok(Json(serde_json::json!({ "detail": "Listen time incremented." })))
+}
+
+// Request struct for get_playback_speed
+#[derive(Deserialize)]
+pub struct GetPlaybackSpeedRequest {
+    pub user_id: i32,
+    pub podcast_id: Option<i32>,
+}
+
+// Get playback speed - matches Python get_playback_speed endpoint exactly
+pub async fn get_playback_speed(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(data): Json<GetPlaybackSpeedRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only get their own playback speed
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != data.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only get metadata for yourself!"));
+    }
+
+    let playback_speed = state.db_pool.get_playback_speed(data.user_id, false, data.podcast_id).await?;
+    Ok(Json(serde_json::json!({ "playback_speed": playback_speed })))
+}
+
+// Query struct for get_playlist_episodes
+#[derive(Deserialize)]
+pub struct GetPlaylistEpisodesQuery {
+    pub user_id: i32,
+    pub playlist_id: i32,
+}
+
+// Get playlist episodes - matches Python api_get_playlist_episodes function
+pub async fn get_playlist_episodes(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Query(query): Query<GetPlaylistEpisodesQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - user can only access their own playlists
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id != query.user_id {
+        return Err(AppError::forbidden("You can only view your own playlist episodes!"));
+    }
+
+    let playlist_episodes = state.db_pool.get_playlist_episodes(query.user_id, query.playlist_id).await?;
+    
+    Ok(Json(playlist_episodes))
 }

@@ -19,6 +19,13 @@ pub struct SetThemeRequest {
     pub new_theme: String,
 }
 
+// Request struct for set_playback_speed - matches Python SetPlaybackSpeedUser model exactly
+#[derive(Deserialize)]
+pub struct SetPlaybackSpeedUser {
+    pub user_id: i32,
+    pub playback_speed: f64,
+}
+
 // Set user theme - matches Python api_set_theme function exactly
 pub async fn set_theme(
     State(state): State<AppState>,
@@ -41,6 +48,28 @@ pub async fn set_theme(
     Ok(Json(serde_json::json!({ "message": "Theme updated successfully" })))
 }
 
+// Set user playback speed - matches Python api_set_playback_speed_user function exactly
+pub async fn set_playback_speed_user(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SetPlaybackSpeedUser>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only set their own playback speed
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own settings."));
+    }
+
+    state.db_pool.set_playback_speed_user(request.user_id, request.playback_speed).await?;
+
+    Ok(Json(serde_json::json!({ "detail": "Default playback speed updated." })))
+}
+
 // User info response struct
 #[derive(Serialize)]
 pub struct UserInfo {
@@ -48,7 +77,16 @@ pub struct UserInfo {
     pub fullname: String,
     pub username: String,
     pub email: String,
+    #[serde(serialize_with = "bool_to_int")]
     pub isadmin: bool,
+}
+
+// Helper function to serialize boolean as integer for Python compatibility
+fn bool_to_int<S>(value: &bool, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_i32(if *value { 1 } else { 0 })
 }
 
 // Get all users info - matches Python api_get_user_info function exactly (admin only)
@@ -76,7 +114,7 @@ pub async fn get_my_user_info(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
     headers: HeaderMap,
-) -> Result<Json<UserInfo>, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
@@ -131,6 +169,33 @@ pub async fn add_user(
                 Err(AppError::Conflict("This email is already in use. Please use a different email address.".to_string()))
             } else {
                 Err(AppError::internal("Failed to create user"))
+            }
+        }
+    }
+}
+
+// Add login user - matches Python api_add_user (add_login_user endpoint) function exactly (self-service)
+pub async fn add_login_user(
+    State(state): State<AppState>,
+    Json(user_values): Json<AddUserRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    // Check if self-service user registration is enabled (matches Python check_self_service)
+    let self_service_status = state.db_pool.self_service_status().await?;
+    
+    if !self_service_status.status {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+
+    match state.db_pool.add_user(&user_values.fullname, &user_values.username.to_lowercase(), &user_values.email, &user_values.hash_pw).await {
+        Ok(user_id) => Ok(Json(serde_json::json!({ "detail": "User added successfully", "user_id": user_id }))),
+        Err(e) => {
+            let error_msg = format!("{}", e);
+            if error_msg.contains("username") && error_msg.contains("duplicate") {
+                Err(AppError::Conflict("This username is already taken. Please choose a different username.".to_string()))
+            } else if error_msg.contains("email") && error_msg.contains("duplicate") {
+                Err(AppError::Conflict("This email address is already registered. Please use a different email.".to_string()))
+            } else {
+                Err(AppError::internal("An unexpected error occurred while creating the user"))
             }
         }
     }
@@ -410,7 +475,7 @@ pub async fn toggle_rss_feeds(
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let new_status = state.db_pool.toggle_rss_feeds(user_id).await?;
-    Ok(Json(serde_json::json!({ "status": "success", "enabled": new_status })))
+    Ok(Json(serde_json::json!({ "success": true, "enabled": new_status })))
 }
 
 // Get download status - matches Python api_download_status function exactly
@@ -773,21 +838,15 @@ async fn send_email_with_settings(
 }
 
 
-// API info response struct
+// API info response struct - matches Python get_api_info response exactly  
 #[derive(Serialize)]
 pub struct ApiInfo {
-    #[serde(rename = "APIKeyID")]
     pub apikeyid: i32,
-    #[serde(rename = "UserID")]
     pub userid: i32,
-    #[serde(rename = "Username")]
     pub username: String,
-    #[serde(rename = "LastFourDigits")]
-    pub last_four_digits: String,
-    #[serde(rename = "Created")]
+    pub lastfourdigits: String,
     pub created: String,
-    #[serde(rename = "PodcastIDs")]
-    pub podcast_ids: Vec<i32>,
+    pub podcastids: Vec<i32>,
 }
 
 // Get API info - matches Python api_get_api_info function exactly
@@ -965,13 +1024,18 @@ async fn backup_server_streaming(
     // This approach handles large databases by processing data in chunks
     
     let state_clone = state.clone();
-    let backup_stream = stream::unfold(0, move |chunk_id| {
+    let backup_stream = stream::unfold(Some(0), move |chunk_id_opt| {
         let state_clone = state_clone.clone();
         async move {
-            match generate_backup_chunk(&state_clone, chunk_id).await {
-                Ok(Some(chunk)) => Some((Ok(chunk), chunk_id + 1)),
-                Ok(None) => None, // End of stream
-                Err(e) => Some((Err(e), chunk_id + 1)),
+            match chunk_id_opt {
+                Some(chunk_id) => {
+                    match generate_backup_chunk(&state_clone, chunk_id).await {
+                        Ok(Some(chunk)) => Some((Ok(chunk), Some(chunk_id + 1))),
+                        Ok(None) => None, // End of stream
+                        Err(e) => Some((Err(e), None)), // End on error
+                    }
+                },
+                None => None, // Already ended
             }
         }
     });
@@ -993,17 +1057,23 @@ async fn backup_server_streaming(
 
 // Generate backup chunks to handle large databases efficiently
 async fn generate_backup_chunk(state: &AppState, chunk_id: usize) -> Result<Option<String>, String> {
-    // Define tables in order of dependencies (foreign keys)
+    // Define tables in order of dependencies (foreign keys) - complete list from migrations
     let tables = match &state.db_pool {
         crate::database::DatabasePool::Postgres(_) => vec![
-            "Users", "APIKeys", "AppSettings", "EmailSettings", "Podcasts", 
-            "Episodes", "UserEpisodeHistory", "EpisodeQueue", "DownloadedEpisodes",
-            "UserStats", "RssKeys", "RssKeyPodcasts"
+            "Users", "OIDCProviders", "APIKeys", "RssKeys", "RssKeyMap", 
+            "AppSettings", "EmailSettings", "UserStats", "UserSettings",
+            "Podcasts", "Episodes", "YouTubeVideos", "UserEpisodeHistory", "UserVideoHistory",
+            "EpisodeQueue", "SavedEpisodes", "SavedVideos", "DownloadedEpisodes", "DownloadedVideos",
+            "GpodderDevices", "GpodderSyncState", "People", "PeopleEpisodes", "SharedEpisodes",
+            "Playlists", "PlaylistContents", "Sessions", "UserNotificationSettings"
         ],
         crate::database::DatabasePool::MySQL(_) => vec![
-            "Users", "APIKeys", "AppSettings", "EmailSettings", "Podcasts",
-            "Episodes", "UserEpisodeHistory", "EpisodeQueue", "DownloadedEpisodes", 
-            "UserStats", "RssKeys", "RssKeyPodcasts"
+            "Users", "OIDCProviders", "APIKeys", "RssKeys", "RssKeyMap",
+            "AppSettings", "EmailSettings", "UserStats", "UserSettings", 
+            "Podcasts", "Episodes", "YouTubeVideos", "UserEpisodeHistory", "UserVideoHistory",
+            "EpisodeQueue", "SavedEpisodes", "SavedVideos", "DownloadedEpisodes", "DownloadedVideos",
+            "GpodderDevices", "GpodderSyncState", "People", "PeopleEpisodes", "SharedEpisodes",
+            "Playlists", "PlaylistContents", "Sessions", "UserNotificationSettings"
         ],
     };
 
@@ -1824,22 +1894,22 @@ pub async fn add_oidc_provider(
 
     let provider_id = state.db_pool.add_oidc_provider(
         &request.provider_name,
-        request.icon_svg.as_deref().unwrap_or(""),
-        &request.authorization_url,
         &request.client_id,
         &request.client_secret,
+        &request.authorization_url,
+        &request.token_url,
+        &request.user_info_url,
+        &request.button_text,
         &request.scope,
-        &request.authorization_url, // authorization_endpoint
-        &request.token_url,         // token_endpoint
-        &request.user_info_url,     // userinfo_endpoint
-        "",                         // redirect_uri (handled by frontend)
-        "",                         // issuer
-        "",                         // jwks_uri
-        "",                         // discovery_endpoint
+        &request.button_color,
+        &request.button_text_color,
+        request.icon_svg.as_deref().unwrap_or(""),
         request.name_claim.as_deref().unwrap_or("name"),
         request.email_claim.as_deref().unwrap_or("email"),
+        request.username_claim.as_deref().unwrap_or("username"),
         request.roles_claim.as_deref().unwrap_or(""),
-        true                        // public_registration
+        request.user_role.as_deref().unwrap_or(""),
+        request.admin_role.as_deref().unwrap_or("")
     ).await?;
     Ok(Json(serde_json::json!({ "provider_id": provider_id })))
 }

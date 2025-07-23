@@ -166,7 +166,7 @@ pub async fn refresh_nextcloud_subscriptions_admin(
                 let gpodder_status = state.db_pool.gpodder_get_status(*user_id).await
                     .map_err(|e| AppError::internal(&format!("Failed to get status for user {}: {}", user_id, e)))?;
                 
-                if gpodder_status.enabled && gpodder_status.sync_type != "None" {
+                if gpodder_status.sync_type != "None" && !gpodder_status.sync_type.is_empty() {
                     match run_admin_gpodder_sync(&state, *user_id, &gpodder_status.sync_type).await {
                         Ok(sync_result) => {
                             successful_syncs += 1;
@@ -419,7 +419,7 @@ async fn run_refresh_process(
         // Check if user has gPodder sync configured
         let gpodder_status = state.db_pool.gpodder_get_status(user_id).await?;
         
-        if gpodder_status.enabled && gpodder_status.sync_type != "None" {
+        if gpodder_status.sync_type != "None" && !gpodder_status.sync_type.is_empty() {
             println!("gPodder sync is enabled for user {}, sync_type: {}", user_id, gpodder_status.sync_type);
             
             let _ = tx.send(RefreshMessage::Status(RefreshStatus {
@@ -461,7 +461,7 @@ async fn run_refresh_process(
             }
         } else {
             println!("gPodder sync not enabled for user {} (enabled: {}, type: {})", 
-                user_id, gpodder_status.enabled, gpodder_status.sync_type);
+                user_id, gpodder_status.sync_type != "None" && !gpodder_status.sync_type.is_empty(), gpodder_status.sync_type);
         }
     }
 

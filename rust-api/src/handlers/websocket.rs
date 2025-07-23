@@ -10,7 +10,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{broadcast, RwLock};
 use crate::{
     error::AppResult,
-    services::task_manager::{TaskManager, TaskUpdate},
+    services::task_manager::{TaskManager, TaskUpdate, WebSocketMessage},
     AppState,
 };
 
@@ -52,12 +52,50 @@ impl WebSocketManager {
     }
 }
 
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+pub struct WebSocketQuery {
+    api_key: String,
+}
+
 pub async fn task_progress_websocket(
     ws: WebSocketUpgrade,
     Path(user_id): Path<i32>,
+    Query(query): Query<WebSocketQuery>,
     State(state): State<AppState>,
 ) -> Response {
-    ws.on_upgrade(move |socket| handle_task_progress_socket(socket, user_id, state))
+    // Validate API key before upgrading websocket
+    match state.db_pool.verify_api_key(&query.api_key).await {
+        Ok(true) => {
+            // Also verify the API key belongs to this user or is a web key
+            match state.db_pool.get_user_id_from_api_key(&query.api_key).await {
+                Ok(key_user_id) => {
+                    let is_web_key = state.db_pool.is_web_key(&query.api_key).await.unwrap_or(false);
+                    if key_user_id == user_id || is_web_key {
+                        ws.on_upgrade(move |socket| handle_task_progress_socket(socket, user_id, state))
+                    } else {
+                        axum::response::Response::builder()
+                            .status(403)
+                            .body("Unauthorized".into())
+                            .unwrap()
+                    }
+                }
+                Err(_) => {
+                    axum::response::Response::builder()
+                        .status(403)
+                        .body("Invalid API key".into())
+                        .unwrap()
+                }
+            }
+        }
+        _ => {
+            axum::response::Response::builder()
+                .status(403)
+                .body("Invalid API key".into())
+                .unwrap()
+        }
+    }
 }
 
 async fn handle_task_progress_socket(socket: WebSocket, user_id: i32, state: AppState) {
@@ -80,10 +118,30 @@ async fn handle_task_progress_socket(socket: WebSocket, user_id: i32, state: App
         }
     });
 
+    // Send initial task list to newly connected client
+    let initial_tasks = state.task_manager.get_user_tasks(user_id).await.unwrap_or_default();
+    let initial_message = WebSocketMessage {
+        event: "initial".to_string(),
+        task: None,
+        tasks: Some(initial_tasks),
+    };
+    let initial_json = match serde_json::to_string(&initial_message) {
+        Ok(json) => json,
+        Err(_) => "{}".to_string(),
+    };
+    let _ = sender.send(Message::Text(initial_json.into())).await;
+
     // Spawn task to send WebSocket messages
     let websocket_task = tokio::spawn(async move {
         while let Ok(update) = rx.recv().await {
-            let message = match serde_json::to_string(&update) {
+            // Wrap the update in the WebSocket event format
+            let ws_message = WebSocketMessage {
+                event: "update".to_string(),
+                task: Some(update),
+                tasks: None,
+            };
+            
+            let message = match serde_json::to_string(&ws_message) {
                 Ok(json) => Message::Text(json.into()),
                 Err(_) => continue,
             };

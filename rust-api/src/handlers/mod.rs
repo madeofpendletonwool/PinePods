@@ -11,6 +11,7 @@ pub mod proxy;
 pub mod settings;
 pub mod sync;
 pub mod youtube;
+pub mod tasks;
 
 // Common handler utilities
 use axum::{

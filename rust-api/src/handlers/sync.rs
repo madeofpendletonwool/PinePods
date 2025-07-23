@@ -112,9 +112,11 @@ pub async fn gpodder_status(
     let status = state.db_pool.gpodder_get_status(user_id).await?;
     
     Ok(Json(serde_json::json!({
-        "gpodder_enabled": status.enabled,
         "sync_type": status.sync_type,
-        "last_sync": status.last_sync
+        "gpodder_enabled": status.sync_type == "gpodder" || status.sync_type == "both",
+        "external_enabled": status.sync_type == "external" || status.sync_type == "both",
+        "external_url": status.gpodder_url,
+        "api_url": "http://localhost:8042" 
     })))
 }
 
