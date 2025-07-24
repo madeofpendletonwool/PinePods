@@ -5636,14 +5636,285 @@ impl DatabasePool {
 
     // Fetch podcasting 2.0 data for episode
     pub async fn fetch_podcasting_2_data(&self, episode_id: i32, user_id: i32) -> AppResult<serde_json::Value> {
-        // For now, return empty data as podcasting 2.0 features may not be fully implemented
+        // Get episode metadata and podcast details
+        let episode_metadata = self.get_episode_metadata(episode_id, user_id, false, false).await?;
+        
+        let episode_url = episode_metadata["episodeurl"].as_str()
+            .ok_or_else(|| AppError::internal("Episode URL not found"))?;
+        let podcast_id = episode_metadata["podcastid"].as_i64()
+            .ok_or_else(|| AppError::internal("Podcast ID not found"))? as i32;
+        
+        let podcast_details = self.get_podcast_details(user_id, podcast_id).await?
+            .ok_or_else(|| AppError::internal("Podcast details not found"))?;
+        
+        let feed_url = podcast_details["feedurl"].as_str()
+            .ok_or_else(|| AppError::internal("Feed URL not found"))?;
+        
+        // Get authentication if available
+        let username = podcast_details.get("username").and_then(|v| v.as_str());
+        let password = podcast_details.get("password").and_then(|v| v.as_str());
+        
+        // Fetch the RSS feed with authentication if needed
+        let feed_content = self.try_fetch_feed(feed_url, username, password).await?;
+        
+        // Parse podcasting 2.0 features
+        let chapters_url = self.parse_chapters(&feed_content, episode_url)?;
+        let transcripts = self.parse_transcripts(&feed_content, episode_url)?;
+        let people = self.parse_people(&feed_content, Some(episode_url)).await?;
+        
+        // Fetch chapters data if URL is available
+        let mut chapters_data = serde_json::Value::Array(vec![]);
+        if let Some(url) = chapters_url {
+            if let Ok(chapters) = self.fetch_chapters_data(&url, feed_url, username, password).await {
+                chapters_data = chapters;
+            }
+        }
+        
         Ok(serde_json::json!({
-            "transcript": null,
-            "chapters": [],
-            "funding": [],
-            "value": null,
-            "soundbites": []
+            "chapters": chapters_data,
+            "transcripts": transcripts,
+            "people": people
         }))
+    }
+
+    // Parse chapters from RSS feed content - matches Python parse_chapters function
+    fn parse_chapters(&self, feed_content: &str, episode_url: &str) -> AppResult<Option<String>> {
+        // Simple string-based parsing to match the Python implementation exactly
+        let lines: Vec<&str> = feed_content.lines().collect();
+        let mut in_item = false;
+        let mut found_episode = false;
+        
+        for line in lines {
+            let trimmed = line.trim();
+            
+            if trimmed.starts_with("<item>") || trimmed.starts_with("<item ") {
+                in_item = true;
+                found_episode = false;
+            } else if trimmed.starts_with("</item>") {
+                if found_episode {
+                    break; // Exit after processing the matching episode
+                }
+                in_item = false;
+                found_episode = false;
+            } else if in_item && trimmed.contains("<enclosure") && trimmed.contains(&format!("url=\"{}\"", episode_url)) {
+                found_episode = true;
+            } else if in_item && found_episode && (trimmed.contains("podcast:chapters") || trimmed.contains(":chapters")) {
+                // Extract URL from the chapters element
+                if let Some(start) = trimmed.find("url=\"") {
+                    let start_idx = start + 5; // Skip 'url="'
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        let url = &trimmed[start_idx..start_idx + end];
+                        return Ok(Some(url.to_string()));
+                    }
+                }
+            }
+        }
+        
+        Ok(None)
+    }
+
+    // Parse transcripts from RSS feed content - matches Python parse_transcripts function  
+    fn parse_transcripts(&self, feed_content: &str, episode_url: &str) -> AppResult<serde_json::Value> {
+        // Simple string-based parsing to match the Python implementation exactly
+        let lines: Vec<&str> = feed_content.lines().collect();
+        let mut in_item = false;
+        let mut found_episode = false;
+        let mut transcripts = Vec::new();
+        
+        for line in lines {
+            let trimmed = line.trim();
+            
+            if trimmed.starts_with("<item>") || trimmed.starts_with("<item ") {
+                in_item = true;
+                found_episode = false;
+            } else if trimmed.starts_with("</item>") {
+                if found_episode {
+                    break; // Exit after processing the matching episode
+                }
+                in_item = false;
+                found_episode = false;
+            } else if in_item && trimmed.contains("<enclosure") && trimmed.contains(&format!("url=\"{}\"", episode_url)) {
+                found_episode = true;
+            } else if in_item && found_episode && (trimmed.contains("podcast:transcript") || trimmed.contains(":transcript")) {
+                // Extract attributes from the transcript element
+                let mut transcript_url = None;
+                let mut transcript_type = None;
+                let mut transcript_language = None;
+                let mut transcript_rel = None;
+                
+                // Extract URL
+                if let Some(start) = trimmed.find("url=\"") {
+                    let start_idx = start + 5;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        transcript_url = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                // Extract type
+                if let Some(start) = trimmed.find("type=\"") {
+                    let start_idx = start + 6;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        transcript_type = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                // Extract language
+                if let Some(start) = trimmed.find("language=\"") {
+                    let start_idx = start + 10;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        transcript_language = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                // Extract rel
+                if let Some(start) = trimmed.find("rel=\"") {
+                    let start_idx = start + 5;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        transcript_rel = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                transcripts.push(serde_json::json!({
+                    "url": transcript_url,
+                    "mime_type": transcript_type,
+                    "language": transcript_language,
+                    "rel": transcript_rel
+                }));
+            }
+        }
+        
+        Ok(serde_json::Value::Array(transcripts))
+    }
+
+    // Parse people from RSS feed content - matches Python parse_people function
+    async fn parse_people(&self, feed_content: &str, episode_url: Option<&str>) -> AppResult<serde_json::Value> {
+        use std::collections::HashSet;
+        
+        // Simple string-based parsing to match the Python implementation exactly
+        let lines: Vec<&str> = feed_content.lines().collect();
+        let mut in_item = false;
+        let mut in_channel = false;
+        let mut found_episode = false;
+        let mut people = Vec::new();
+        let mut seen_people = HashSet::new();
+        
+        for line in lines {
+            let trimmed = line.trim();
+            
+            if trimmed.starts_with("<channel>") || trimmed.starts_with("<channel ") {
+                in_channel = true;
+            } else if trimmed.starts_with("</channel>") {
+                in_channel = false;
+            } else if trimmed.starts_with("<item>") || trimmed.starts_with("<item ") {
+                in_item = true;
+                found_episode = false;
+            } else if trimmed.starts_with("</item>") {
+                if found_episode && !people.is_empty() {
+                    break; // Exit after processing the matching episode
+                }
+                in_item = false;
+                found_episode = false;
+            } else if in_item && trimmed.contains("<enclosure") {
+                if let Some(episode_url) = episode_url {
+                    if trimmed.contains(&format!("url=\"{}\"", episode_url)) {
+                        found_episode = true;
+                    }
+                }
+            } else if (trimmed.contains("podcast:person") || trimmed.contains(":person")) && ((in_item && found_episode) || (in_channel && !in_item)) {
+                // Extract person data from the line
+                let mut name = String::new();
+                let mut role = None;
+                let mut group = None;
+                let mut img = None;
+                let mut href = None;
+                
+                // Extract name (text between tags)
+                if let Some(start) = trimmed.find(">") {
+                    if let Some(end) = trimmed.rfind("</") {
+                        if start < end {
+                            name = trimmed[start + 1..end].trim().to_string();
+                        }
+                    }
+                }
+                
+                // Extract attributes
+                if let Some(start) = trimmed.find("role=\"") {
+                    let start_idx = start + 6;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        role = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                if let Some(start) = trimmed.find("group=\"") {
+                    let start_idx = start + 7;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        group = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                if let Some(start) = trimmed.find("img=\"") {
+                    let start_idx = start + 5;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        img = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                if let Some(start) = trimmed.find("href=\"") {
+                    let start_idx = start + 6;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        href = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                if !name.is_empty() {
+                    // Create a unique key for deduplication
+                    let unique_key = format!("{}|{}|{}|{}", 
+                        name, 
+                        role.as_deref().unwrap_or(""), 
+                        group.as_deref().unwrap_or(""),
+                        img.as_deref().unwrap_or("")
+                    );
+                    
+                    if !seen_people.contains(&unique_key) {
+                        seen_people.insert(unique_key);
+                        people.push(serde_json::json!({
+                            "name": name,
+                            "role": role,
+                            "group": group,
+                            "img": img,
+                            "href": href
+                        }));
+                    }
+                }
+            }
+        }
+        
+        Ok(serde_json::Value::Array(people))
+    }
+
+    // Fetch chapters data from external JSON URL - matches Python chapter fetching logic
+    async fn fetch_chapters_data(&self, chapters_url: &str, feed_url: &str, username: Option<&str>, password: Option<&str>) -> AppResult<serde_json::Value> {
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()?;
+        
+        let mut request = client.get(chapters_url)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .header("Accept", "application/json, text/javascript, */*; q=0.01")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Referer", feed_url);
+        
+        // Use same auth for chapters if it's from the same domain
+        if chapters_url.starts_with(feed_url) {
+            if let (Some(user), Some(pass)) = (username, password) {
+                request = request.basic_auth(user, Some(pass));
+            }
+        }
+        
+        let response = request.send().await?;
+        let json_data: serde_json::Value = response.json().await?;
+        
+        Ok(json_data.get("chapters").unwrap_or(&serde_json::Value::Array(vec![])).clone())
     }
 
     // Get auto download status for user

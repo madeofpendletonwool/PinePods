@@ -1092,13 +1092,12 @@ pub async fn fetch_podcasting_2_data(
         return Err(AppError::unauthorized("Invalid API key or insufficient permissions"));
     }
 
-    // For now, return placeholder data like the Python version does
-    // This would need actual implementation to fetch podcasting 2.0 data from feeds
-    let data = serde_json::json!({
-        "chapters": [],
-        "transcripts": [],
-        "people": []
-    });
+    // Get the episode_id and user_id from query parameters  
+    let episode_id = query.episode_id;
+    let user_id = query.user_id;
+    
+    // Call the database method to fetch podcasting 2.0 data
+    let data = state.db_pool.fetch_podcasting_2_data(episode_id, user_id).await?;
     
     Ok(Json(data))
 }
