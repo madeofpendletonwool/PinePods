@@ -4,6 +4,13 @@ use crate::{config::Config, error::{AppError, AppResult}};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use bigdecimal::ToPrimitive;
+use std::sync::{Arc, Mutex};
+use lazy_static::lazy_static;
+
+// Global temporary MFA secrets storage (matches Python temp_mfa_secrets)
+lazy_static! {
+    static ref TEMP_MFA_SECRETS: Arc<Mutex<HashMap<String, String>>> = Arc::new(Mutex::new(HashMap::new()));
+}
 
 #[derive(Clone)]
 pub enum DatabasePool {
@@ -656,7 +663,7 @@ impl DatabasePool {
                     .await?;
                 
                 if let Some(row) = existing {
-                    let podcast_id: i32 = row.try_get("PodcastID")?;
+                    let podcast_id: i32 = row.try_get("podcastid")?;
                     // Check if there are episodes
                     let episode_count = sqlx::query("SELECT COUNT(*) as count FROM Episodes WHERE PodcastID = ?")
                         .bind(podcast_id)
@@ -740,7 +747,7 @@ impl DatabasePool {
             DatabasePool::Postgres(pool) => {
                 sqlx::query(
                     r#"DELETE FROM "Podcasts" 
-                       WHERE "PodcastName" = $1 AND "FeedURL" = $2 AND "UserID" = $3"#
+                       WHERE podcastname = $1 AND feedurl = $2 AND userid = $3"#
                 )
                 .bind(podcast_name)
                 .bind(podcast_url)
@@ -768,7 +775,7 @@ impl DatabasePool {
     pub async fn get_user_podcast_count(&self, user_id: i32) -> AppResult<u32> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT COUNT(*) as count FROM "Podcasts" WHERE "UserID" = $1"#)
+                let row = sqlx::query(r#"SELECT COUNT(*) as count FROM "Podcasts" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_one(pool)
                     .await?;
@@ -877,8 +884,8 @@ impl DatabasePool {
             DatabasePool::Postgres(pool) => {
                 // First get the podcast ID to cascade delete properly
                 let podcast_row = sqlx::query(
-                    r#"SELECT "PodcastID" FROM "Podcasts" 
-                       WHERE "PodcastName" = $1 AND "FeedURL" = $2 AND "UserID" = $3"#
+                    r#"SELECT podcastid FROM "Podcasts" 
+                       WHERE podcastname = $1 AND feedurl = $2 AND userid = $3"#
                 )
                 .bind(podcast_name)
                 .bind(podcast_url)
@@ -887,7 +894,7 @@ impl DatabasePool {
                 .await?;
 
                 if let Some(row) = podcast_row {
-                    let podcast_id: i32 = row.try_get("PodcastID")?;
+                    let podcast_id: i32 = row.try_get("podcastid")?;
                     
                     // Delete in the proper order to handle foreign key constraints
                     // 1. PlaylistContents first
@@ -933,7 +940,7 @@ impl DatabasePool {
                         .await?;
                     
                     // 8. Update UserStats - decrement PodcastsAdded
-                    sqlx::query(r#"UPDATE "UserStats" SET "PodcastsAdded" = "PodcastsAdded" - 1 WHERE "UserID" = $1"#)
+                    sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = $1"#)
                         .bind(user_id)
                         .execute(pool)
                         .await?;
@@ -954,7 +961,7 @@ impl DatabasePool {
                 .await?;
 
                 if let Some(row) = podcast_row {
-                    let podcast_id: i32 = row.try_get("PodcastID")?;
+                    let podcast_id: i32 = row.try_get("podcastid")?;
                     
                     // Delete in the proper order to handle foreign key constraints
                     sqlx::query("DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
@@ -2143,7 +2150,7 @@ impl DatabasePool {
                     .await?;
 
                 if let Some(row) = row {
-                    return Ok(Some(row.try_get("PodcastID")?));
+                    return Ok(Some(row.try_get("podcastid")?));
                 }
 
                 // If not found, try with system user (1)
@@ -2154,7 +2161,7 @@ impl DatabasePool {
                     .await?;
 
                 if let Some(row) = row {
-                    Ok(Some(row.try_get("PodcastID")?))
+                    Ok(Some(row.try_get("podcastid")?))
                 } else {
                     Ok(None)
                 }
@@ -2775,7 +2782,7 @@ impl DatabasePool {
                     let episodeduration: i32 = row.try_get("EpisodeDuration")?;
                     let completed: bool = row.try_get::<i8, _>("Completed")? != 0;
                     let podcastname: String = row.try_get("PodcastName")?;
-                    let podcastid: i32 = row.try_get("PodcastID")?;
+                    let podcastid: i32 = row.try_get("podcastid")?;
                     let is_youtube: bool = row.try_get::<i8, _>("is_youtube")? != 0;
                     let listenduration: Option<i32> = row.try_get("ListenDuration")?;
                     let saved: bool = row.try_get::<i8, _>("saved")? != 0;
@@ -2859,7 +2866,7 @@ impl DatabasePool {
                     let episodeduration: i32 = row.try_get("EpisodeDuration")?;
                     let completed: bool = row.try_get::<i8, _>("Completed")? != 0;
                     let podcastname: String = row.try_get("PodcastName")?;
-                    let podcastid: i32 = row.try_get("PodcastID")?;
+                    let podcastid: i32 = row.try_get("podcastid")?;
                     let is_youtube: bool = row.try_get::<i8, _>("is_youtube")? != 0;
                     let listenduration: Option<i32> = row.try_get("ListenDuration")?;
                     let saved: bool = row.try_get::<i8, _>("saved")? != 0;
@@ -4226,6 +4233,16 @@ impl DatabasePool {
                         }
                     }
                     
+                    // Handle episode-specific artwork - CRITICAL for episode artwork
+                    if (current_tag == "itunes:image" || current_tag == "image") && in_item {
+                        if let Some(href) = current_attrs.get("href") {
+                            if !href.trim().is_empty() && self.is_valid_image_url(href) {
+                                episode_data.insert("episode_artwork_href".to_string(), href.clone());
+                                println!("🖼️  Found episode artwork: {}", href);
+                            }
+                        }
+                    }
+                    
                     // Handle media:content tag (Media RSS extension)
                     if current_tag == "media:content" && in_item {
                         if let Some(url) = current_attrs.get("url") {
@@ -4233,9 +4250,26 @@ impl DatabasePool {
                             if let Some(type_attr) = current_attrs.get("type") {
                                 if type_attr.starts_with("audio/") {
                                     episode_data.insert("media_audio_url".to_string(), url.clone());
+                                } else if type_attr.starts_with("image/") {
+                                    // Media RSS image content
+                                    episode_data.insert("media_image_url".to_string(), url.clone());
+                                    println!("🖼️  Found media:content image: {}", url);
                                 }
                             } else if self.is_audio_url(url) {
                                 episode_data.insert("media_audio_url".to_string(), url.clone());
+                            } else if self.is_valid_image_url(url) {
+                                episode_data.insert("media_image_url".to_string(), url.clone());
+                                println!("🖼️  Found media:content image: {}", url);
+                            }
+                        }
+                    }
+                    
+                    // Handle media:thumbnail tag (Media RSS extension)
+                    if current_tag == "media:thumbnail" && in_item {
+                        if let Some(url) = current_attrs.get("url") {
+                            if !url.trim().is_empty() && self.is_valid_image_url(url) {
+                                episode_data.insert("media_thumbnail_url".to_string(), url.clone());
+                                println!("🖼️  Found media:thumbnail: {}", url);
                             }
                         }
                     }
@@ -4330,9 +4364,16 @@ impl DatabasePool {
             .collect::<Vec<_>>()
             .join(" ");
         
-        // Truncate if too long (reasonable limit)
-        if title.len() > 200 {
-            format!("{}...", &title[..197])
+        // Truncate if too long (reasonable limit) - use char_indices for Unicode safety
+        if title.chars().count() > 200 {
+            let mut truncated = String::new();
+            for (i, ch) in title.char_indices() {
+                if truncated.chars().count() >= 197 {
+                    break;
+                }
+                truncated.push(ch);
+            }
+            format!("{}...", truncated)
         } else {
             title
         }
@@ -4356,9 +4397,16 @@ impl DatabasePool {
         let description = self.strip_html_tags(&description);
         let description = self.normalize_whitespace(&description);
         
-        // Reasonable length limit for descriptions
-        if description.len() > 5000 {
-            format!("{}...", &description[..4997])
+        // Reasonable length limit for descriptions - use char_indices for Unicode safety
+        if description.chars().count() > 5000 {
+            let mut truncated = String::new();
+            for (i, ch) in description.char_indices() {
+                if truncated.chars().count() >= 4997 {
+                    break;
+                }
+                truncated.push(ch);
+            }
+            format!("{}...", truncated)
         } else {
             description
         }
@@ -4419,25 +4467,29 @@ impl DatabasePool {
         String::new()
     }
     
-    // Comprehensive artwork URL parsing
+    // Comprehensive artwork URL parsing - prioritizes episode-specific artwork
     fn parse_artwork_comprehensive(&self, data: &HashMap<String, String>, default_artwork: &str) -> String {
-        // Fallback chain like Python version with additional sources
+        // Priority order: episode-specific artwork first, then fallbacks
         let artwork_candidates = [
-            data.get("itunes:image"),
-            data.get("image"),
-            data.get("media:thumbnail"),
-            data.get("media:content_image"),
-            data.get("thumbnail"),
-            data.get("logo"),
+            data.get("episode_artwork_href"),    // <itunes:image href=""/> or <image href=""/> in episode
+            data.get("media_image_url"),         // <media:content type="image/jpeg" url=""/>
+            data.get("media_thumbnail_url"),     // <media:thumbnail url=""/>
+            data.get("itunes:image"),           // Text content of <itunes:image>
+            data.get("image"),                  // Text content of <image>
+            data.get("thumbnail"),              // Generic thumbnail
+            data.get("logo"),                   // Logo field
         ];
         
         for candidate in artwork_candidates.iter().flatten() {
             if !candidate.trim().is_empty() && self.is_valid_image_url(candidate) {
-                return self.validate_and_clean_url(candidate);
+                let cleaned_url = self.validate_and_clean_url(candidate);
+                println!("🎨 Using artwork: {}", cleaned_url);
+                return cleaned_url;
             }
         }
         
-        // Use default artwork
+        // Use default podcast artwork as fallback
+        println!("🎨 Using default podcast artwork: {}", default_artwork);
         default_artwork.to_string()
     }
     
@@ -4579,6 +4631,119 @@ impl DatabasePool {
             .replace("&lsquo;", "'")
             .replace("&rdquo;", "\"")
             .replace("&ldquo;", "\"")
+    }
+    
+    // // Check if URL is likely an audio file
+    // fn is_audio_url(&self, url: &str) -> bool {
+    //     let url_lower = url.to_lowercase();
+    //     url_lower.contains(".mp3") || 
+    //     url_lower.contains(".m4a") || 
+    //     url_lower.contains(".wav") || 
+    //     url_lower.contains(".ogg") || 
+    //     url_lower.contains(".aac") || 
+    //     url_lower.contains(".flac") || 
+    //     url_lower.contains(".wma") || 
+    //     url_lower.contains(".opus") ||
+    //     url_lower.contains("audio") ||
+    //     url_lower.contains("/podcast/") ||
+    //     url_lower.contains("/episode/") ||
+    //     url_lower.contains(".podtrac.com") ||
+    //     url_lower.contains("libsyn.com") ||
+    //     url_lower.contains("soundcloud.com") ||
+    //     url_lower.contains("spotify.com")
+    // }
+    
+    // Extract audio URLs from episode descriptions/content
+    fn extract_audio_url_from_description(&self, data: &HashMap<String, String>) -> Option<String> {
+        let content_fields = [
+            data.get("content:encoded"),
+            data.get("content"),
+            data.get("description"),
+            data.get("summary"),
+        ];
+        
+        for content in content_fields.iter().flatten() {
+            // Look for common audio file patterns in HTML content
+            let patterns = [
+                r#"src="([^"]*\.mp3[^"]*)""#,
+                r#"src="([^"]*\.m4a[^"]*)""#,
+                r#"href="([^"]*\.mp3[^"]*)""#,
+                r#"href="([^"]*\.m4a[^"]*)""#,
+                r#"url="([^"]*\.mp3[^"]*)""#,
+                r#"url="([^"]*\.m4a[^"]*)""#,
+            ];
+            
+            for pattern in &patterns {
+                // Simple regex-like matching (basic implementation)
+                if let Some(url) = self.extract_url_from_pattern(content, pattern) {
+                    if self.is_audio_url(&url) {
+                        return Some(url);
+                    }
+                }
+            }
+            
+            // Look for direct URLs in plain text
+            if let Some(url) = self.extract_direct_audio_url(content) {
+                return Some(url);
+            }
+        }
+        
+        None
+    }
+    
+    // Extract URL from pattern (simple implementation)
+    fn extract_url_from_pattern(&self, content: &str, pattern: &str) -> Option<String> {
+        // Very basic pattern matching - look for quoted URLs containing audio extensions
+        let content_lower = content.to_lowercase();
+        let audio_extensions = [".mp3", ".m4a", ".wav", ".ogg", ".aac"];
+        
+        for ext in &audio_extensions {
+            if let Some(ext_pos) = content_lower.find(ext) {
+                // Look backwards for quote or space
+                let mut start_pos = 0;
+                for (i, ch) in content[..ext_pos].char_indices().rev() {
+                    if ch == '"' || ch == '\'' || ch == ' ' || ch == '>' {
+                        start_pos = i + 1;
+                        break;
+                    }
+                }
+                
+                // Look forwards for quote or space after extension
+                let mut end_pos = content.len();
+                let search_start = ext_pos + ext.len();
+                if search_start < content.len() {
+                    for (i, ch) in content[search_start..].char_indices() {
+                        if ch == '"' || ch == '\'' || ch == ' ' || ch == '<' || ch == '?' {
+                            end_pos = search_start + i;
+                            break;
+                        }
+                    }
+                }
+                
+                if start_pos < end_pos {
+                    let potential_url = &content[start_pos..end_pos];
+                    if potential_url.starts_with("http") && self.is_audio_url(potential_url) {
+                        return Some(potential_url.to_string());
+                    }
+                }
+            }
+        }
+        
+        None
+    }
+    
+    // Extract direct audio URLs from plain text
+    fn extract_direct_audio_url(&self, content: &str) -> Option<String> {
+        // Split by whitespace and look for URLs
+        for word in content.split_whitespace() {
+            if word.starts_with("http") && self.is_audio_url(word) {
+                // Clean up the URL (remove trailing punctuation)
+                let cleaned = word.trim_end_matches(&['.', ',', '!', '?', ')', ']', '}']);
+                return Some(cleaned.to_string());
+            }
+        }
+        
+        None
     }
 
     
@@ -4903,7 +5068,7 @@ impl DatabasePool {
                     .await?;
                 
                 if let Some(row) = row {
-                    Ok(Some(row.try_get("PodcastID")?))
+                    Ok(Some(row.try_get("podcastid")?))
                 } else {
                     Ok(None)
                 }
@@ -5364,62 +5529,36 @@ impl DatabasePool {
     }
 
     // Get podcast ID from episode name and URL - matches Python get_podcast_id_from_episode_name function
-    pub async fn get_podcast_id_from_episode_name(&self, user_id: i32, episode_name: &str, episode_url: &str) -> AppResult<Option<i32>> {
+    pub async fn get_podcast_id_from_episode_name(&self, episode_name: &str, episode_url: &str, user_id: i32) -> AppResult<Option<i32>> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let row = if episode_url.is_empty() {
-                    // If episode_url is empty, search by title only
-                    sqlx::query(
-                        r#"SELECT podcast_id FROM (
-                            SELECT "Episodes".podcastid as podcast_id
-                            FROM "Episodes"
-                            INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
-                            WHERE "Episodes".episodetitle = $1
-                            AND "Podcasts".userid = $2
+                // Use UNION query exactly like Python version
+                let row = sqlx::query(
+                    r#"SELECT podcast_id FROM (
+                        SELECT "Episodes".podcastid as podcast_id
+                        FROM "Episodes"
+                        INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        WHERE "Episodes".episodetitle = $1
+                        AND "Episodes".episodeurl = $2
+                        AND "Podcasts".userid = $3
 
-                            UNION
+                        UNION
 
-                            SELECT "YouTubeVideos".podcastid as podcast_id
-                            FROM "YouTubeVideos"
-                            INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
-                            WHERE "YouTubeVideos".videotitle = $3
-                            AND "Podcasts".userid = $4
-                        ) combined_results
-                        LIMIT 1"#
-                    )
-                    .bind(episode_name)
-                    .bind(user_id)
-                    .bind(episode_name)
-                    .bind(user_id)
-                } else {
-                    // If episode_url is provided, search by both title and URL
-                    sqlx::query(
-                        r#"SELECT podcast_id FROM (
-                            SELECT "Episodes".podcastid as podcast_id
-                            FROM "Episodes"
-                            INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
-                            WHERE "Episodes".episodetitle = $1
-                            AND "Episodes".episodeurl = $2
-                            AND "Podcasts".userid = $3
-
-                            UNION
-
-                            SELECT "YouTubeVideos".podcastid as podcast_id
-                            FROM "YouTubeVideos"
-                            INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
-                            WHERE "YouTubeVideos".videotitle = $4
-                            AND "YouTubeVideos".videourl = $5
-                            AND "Podcasts".userid = $6
-                        ) combined_results
-                        LIMIT 1"#
-                    )
-                    .bind(episode_name)
-                    .bind(episode_url)
-                    .bind(user_id)
-                    .bind(episode_name)
-                    .bind(episode_url)
-                    .bind(user_id)
-                }
+                        SELECT "YouTubeVideos".podcastid as podcast_id
+                        FROM "YouTubeVideos"
+                        INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        WHERE "YouTubeVideos".videotitle = $4
+                        AND "YouTubeVideos".videourl = $5
+                        AND "Podcasts".userid = $6
+                    ) combined_results
+                    LIMIT 1"#
+                )
+                .bind(episode_name)
+                .bind(episode_url)
+                .bind(user_id)
+                .bind(episode_name)
+                .bind(episode_url)
+                .bind(user_id)
                 .fetch_optional(pool)
                 .await?;
                 
@@ -5430,6 +5569,7 @@ impl DatabasePool {
                 }
             }
             DatabasePool::MySQL(pool) => {
+                // Use UNION query exactly like Python version
                 let row = sqlx::query(
                     "SELECT podcast_id FROM (
                         SELECT Episodes.PodcastID as podcast_id
@@ -5644,8 +5784,7 @@ impl DatabasePool {
         let podcast_id = episode_metadata["podcastid"].as_i64()
             .ok_or_else(|| AppError::internal("Podcast ID not found"))? as i32;
         
-        let podcast_details = self.get_podcast_details(user_id, podcast_id).await?
-            .ok_or_else(|| AppError::internal("Podcast details not found"))?;
+        let podcast_details = self.get_podcast_details(user_id, podcast_id).await?;
         
         let feed_url = podcast_details["feedurl"].as_str()
             .ok_or_else(|| AppError::internal("Feed URL not found"))?;
@@ -5657,10 +5796,13 @@ impl DatabasePool {
         // Fetch the RSS feed with authentication if needed
         let feed_content = self.try_fetch_feed(feed_url, username, password).await?;
         
+        // Get podcast index ID for PodPeople API fallback
+        let podcast_index_id = self.get_podcast_index_id(podcast_id).await.ok().flatten();
+        
         // Parse podcasting 2.0 features
         let chapters_url = self.parse_chapters(&feed_content, episode_url)?;
         let transcripts = self.parse_transcripts(&feed_content, episode_url)?;
-        let people = self.parse_people(&feed_content, Some(episode_url)).await?;
+        let people = self.parse_people(&feed_content, Some(episode_url), podcast_index_id).await?;
         
         // Fetch chapters data if URL is available
         let mut chapters_data = serde_json::Value::Array(vec![]);
@@ -5787,7 +5929,7 @@ impl DatabasePool {
     }
 
     // Parse people from RSS feed content - matches Python parse_people function
-    async fn parse_people(&self, feed_content: &str, episode_url: Option<&str>) -> AppResult<serde_json::Value> {
+    async fn parse_people(&self, feed_content: &str, episode_url: Option<&str>, _podcast_index_id: Option<i32>) -> AppResult<serde_json::Value> {
         use std::collections::HashSet;
         
         // Simple string-based parsing to match the Python implementation exactly
@@ -5950,13 +6092,441 @@ impl DatabasePool {
 
     // Fetch podcasting 2.0 podcast data
     pub async fn fetch_podcasting_2_pod_data(&self, podcast_id: i32, user_id: i32) -> AppResult<serde_json::Value> {
-        // For now, return empty data as podcasting 2.0 features may not be fully implemented
+        // Get podcast details to fetch the feed URL and authentication
+        let podcast_details = self.get_podcast_details(user_id, podcast_id).await?;
+        
+        let feed_url = podcast_details["feedurl"].as_str()
+            .ok_or_else(|| AppError::internal("Feed URL not found"))?;
+        
+        // Get authentication if available
+        let username = podcast_details.get("username").and_then(|v| v.as_str());
+        let password = podcast_details.get("password").and_then(|v| v.as_str());
+        
+        // Fetch the RSS feed with authentication if needed
+        let feed_content = self.try_fetch_feed(feed_url, username, password).await?;
+        
+        // Get podcast index ID for PodPeople API fallback
+        let podcast_index_id = self.get_podcast_index_id(podcast_id).await.ok().flatten();
+        
+        // Parse podcasting 2.0 features at the podcast level
+        let people = self.parse_podcast_people(&feed_content, podcast_index_id).await?;
+        let podroll = self.parse_podroll(&feed_content)?;
+        let funding = self.parse_funding(&feed_content)?;
+        let value = self.parse_value(&feed_content)?;
+        
         Ok(serde_json::json!({
-            "funding": [],
-            "value": null,
-            "locked": false,
-            "guid": null
+            "people": people,
+            "podroll": podroll,
+            "funding": funding,
+            "value": value
         }))
+    }
+
+    // Parse podcast people/hosts from RSS feed content - matches Python get_podcast_hosts function
+    async fn parse_podcast_people(&self, feed_content: &str, podcast_index_id: Option<i32>) -> AppResult<serde_json::Value> {
+        use std::collections::HashSet;
+        
+        // Simple string-based parsing to match the Python implementation exactly
+        let lines: Vec<&str> = feed_content.lines().collect();
+        let mut in_channel = false;
+        let mut people = Vec::new();
+        let mut seen_people = HashSet::new();
+        
+        for line in lines {
+            let trimmed = line.trim();
+            
+            if trimmed.starts_with("<channel>") || trimmed.starts_with("<channel ") {
+                in_channel = true;
+            } else if trimmed.starts_with("</channel>") {
+                in_channel = false;
+            } else if in_channel && (trimmed.contains("podcast:person") || trimmed.contains(":person")) {
+                // Extract person data from the line
+                let mut name = String::new();
+                let mut role = None;
+                let mut group = None;
+                let mut img = None;
+                let mut href = None;
+                
+                // Extract name (text between tags)
+                if let Some(start) = trimmed.find(">") {
+                    if let Some(end) = trimmed.rfind("</") {
+                        if start < end {
+                            name = trimmed[start + 1..end].trim().to_string();
+                        }
+                    }
+                }
+                
+                // Extract attributes
+                if let Some(start) = trimmed.find("role=\"") {
+                    let start_idx = start + 6;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        role = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                if let Some(start) = trimmed.find("group=\"") {
+                    let start_idx = start + 7;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        group = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                if let Some(start) = trimmed.find("img=\"") {
+                    let start_idx = start + 5;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        img = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                if let Some(start) = trimmed.find("href=\"") {
+                    let start_idx = start + 6;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        href = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                if !name.is_empty() {
+                    // Create a unique key for deduplication
+                    let unique_key = format!("{}|{}|{}|{}", 
+                        name, 
+                        role.as_deref().unwrap_or(""), 
+                        group.as_deref().unwrap_or(""),
+                        img.as_deref().unwrap_or("")
+                    );
+                    
+                    if !seen_people.contains(&unique_key) {
+                        seen_people.insert(unique_key);
+                        people.push(serde_json::json!({
+                            "name": name,
+                            "role": role,
+                            "group": group,
+                            "img": img,
+                            "href": href
+                        }));
+                    }
+                }
+            }
+        }
+        
+        // If no hosts found, try to get them from PodPeople API (like Python does)
+        if people.is_empty() {
+            if let Some(index_id) = podcast_index_id {
+                if let Ok(podpeople_hosts) = self.get_podpeople_hosts(index_id).await {
+                    people = podpeople_hosts;
+                }
+            }
+            
+            // Final fallback if PodPeople API also fails
+            if people.is_empty() {
+                people.push(serde_json::json!({
+                    "name": "Unknown Host",
+                    "role": "Host",
+                    "group": null,
+                    "img": null,
+                    "href": null,
+                    "description": "No host information available."
+                }));
+            }
+        }
+        
+        Ok(serde_json::Value::Array(people))
+    }
+
+    // Get podcast index ID - matches Python get_podcast_index_id function
+    pub async fn get_podcast_index_id(&self, podcast_id: i32) -> AppResult<Option<i32>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT podcastindexid FROM "Podcasts" WHERE podcastid = $1"#)
+                    .bind(podcast_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.try_get("podcastindexid").ok())
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT PodcastIndexID FROM Podcasts WHERE PodcastID = ?")
+                    .bind(podcast_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.try_get("PodcastIndexID").ok())
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Get hosts from PodPeople API - matches Python get_podpeople_hosts function
+    async fn get_podpeople_hosts(&self, podcast_index_id: i32) -> AppResult<Vec<serde_json::Value>> {
+        use reqwest;
+        
+        // Get PodPeople API URL from environment, default to pinepods.online
+        let people_url = std::env::var("PEOPLE_API_URL")
+            .unwrap_or_else(|_| "https://people.pinepods.online".to_string());
+        
+        let client = reqwest::Client::new();
+        let url = format!("{}/api/hosts/{}", people_url, podcast_index_id);
+        
+        // Make request with 5 second timeout (matches Python)
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            client.get(&url).send()
+        ).await;
+        
+        match response {
+            Ok(Ok(resp)) => {
+                if resp.status().is_success() {
+                    if let Ok(hosts_data) = resp.json::<serde_json::Value>().await {
+                        if let Some(hosts_array) = hosts_data.as_array() {
+                            let mut people = Vec::new();
+                            
+                            for host in hosts_array {
+                                let name = host.get("name")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("Unknown Host")
+                                    .to_string();
+                                
+                                let role = host.get("role")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("Host")
+                                    .to_string();
+                                
+                                let img = host.get("img")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string());
+                                
+                                let href = host.get("link")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string());
+                                
+                                let description = host.get("description")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string());
+                                
+                                people.push(serde_json::json!({
+                                    "name": name,
+                                    "role": role,
+                                    "group": null,
+                                    "img": img,
+                                    "href": href,
+                                    "description": description
+                                }));
+                            }
+                            
+                            return Ok(people);
+                        }
+                    }
+                }
+            }
+            Ok(Err(e)) => {
+                tracing::error!("HTTP error fetching PodPeople hosts: {}", e);
+            }
+            Err(_) => {
+                tracing::error!("Timeout fetching PodPeople hosts for podcast {}", podcast_index_id);
+            }
+        }
+        
+        // Return empty vector on any error (matches Python behavior)
+        Ok(vec![])
+    }
+
+    // Parse podroll from RSS feed content - matches Python parse_podroll function
+    fn parse_podroll(&self, feed_content: &str) -> AppResult<serde_json::Value> {
+        let lines: Vec<&str> = feed_content.lines().collect();
+        let mut in_channel = false;
+        let mut in_podroll = false;
+        let mut podroll = Vec::new();
+        
+        for line in lines {
+            let trimmed = line.trim();
+            
+            if trimmed.starts_with("<channel>") || trimmed.starts_with("<channel ") {
+                in_channel = true;
+            } else if trimmed.starts_with("</channel>") {
+                in_channel = false;
+                in_podroll = false;
+            } else if in_channel && (trimmed.contains("podcast:podroll") || trimmed.contains(":podroll")) {
+                if trimmed.starts_with("<") && !trimmed.contains("</") {
+                    in_podroll = true;
+                }
+            } else if in_podroll && (trimmed.contains("</podcast:podroll") || trimmed.contains("</podroll")) {
+                in_podroll = false;
+            } else if in_podroll && (trimmed.contains("podcast:remoteItem") || trimmed.contains(":remoteItem")) {
+                // Extract feedGuid from remoteItem
+                if let Some(start) = trimmed.find("feedGuid=\"") {
+                    let start_idx = start + 10;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        let feed_guid = &trimmed[start_idx..start_idx + end];
+                        podroll.push(serde_json::json!({
+                            "feed_guid": feed_guid
+                        }));
+                    }
+                }
+            }
+        }
+        
+        Ok(serde_json::Value::Array(podroll))
+    }
+
+    // Parse funding from RSS feed content - matches Python parse_funding function
+    fn parse_funding(&self, feed_content: &str) -> AppResult<serde_json::Value> {
+        let lines: Vec<&str> = feed_content.lines().collect();
+        let mut in_channel = false;
+        let mut funding = Vec::new();
+        
+        for line in lines {
+            let trimmed = line.trim();
+            
+            if trimmed.starts_with("<channel>") || trimmed.starts_with("<channel ") {
+                in_channel = true;
+            } else if trimmed.starts_with("</channel>") {
+                in_channel = false;
+            } else if in_channel && (trimmed.contains("podcast:funding") || trimmed.contains(":funding")) {
+                let mut url = None;
+                let mut description = String::new();
+                
+                // Extract URL attribute
+                if let Some(start) = trimmed.find("url=\"") {
+                    let start_idx = start + 5;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        url = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                // Extract description (text between tags)
+                if let Some(start) = trimmed.find(">") {
+                    if let Some(end) = trimmed.rfind("</") {
+                        if start < end {
+                            description = trimmed[start + 1..end].trim().to_string();
+                        }
+                    }
+                }
+                
+                if let Some(url) = url {
+                    funding.push(serde_json::json!({
+                        "url": url,
+                        "description": description
+                    }));
+                }
+            }
+        }
+        
+        Ok(serde_json::Value::Array(funding))
+    }
+
+    // Parse value blocks from RSS feed content - matches Python parse_value function
+    fn parse_value(&self, feed_content: &str) -> AppResult<serde_json::Value> {
+        let lines: Vec<&str> = feed_content.lines().collect();
+        let mut in_channel = false;
+        let mut in_value = false;
+        let mut value_blocks = Vec::new();
+        let mut current_value_block = None;
+        let mut recipients = Vec::new();
+        
+        for line in lines {
+            let trimmed = line.trim();
+            
+            if trimmed.starts_with("<channel>") || trimmed.starts_with("<channel ") {
+                in_channel = true;
+            } else if trimmed.starts_with("</channel>") {
+                in_channel = false;
+                in_value = false;
+            } else if in_channel && (trimmed.contains("podcast:value") || trimmed.contains(":value")) {
+                if trimmed.starts_with("<") && !trimmed.contains("</") && !trimmed.contains("Recipient") {
+                    // Start of value block
+                    in_value = true;
+                    let mut value_type = None;
+                    let mut method = None;
+                    let mut suggested = None;
+                    
+                    // Extract attributes
+                    if let Some(start) = trimmed.find("type=\"") {
+                        let start_idx = start + 6;
+                        if let Some(end) = trimmed[start_idx..].find("\"") {
+                            value_type = Some(trimmed[start_idx..start_idx + end].to_string());
+                        }
+                    }
+                    
+                    if let Some(start) = trimmed.find("method=\"") {
+                        let start_idx = start + 8;
+                        if let Some(end) = trimmed[start_idx..].find("\"") {
+                            method = Some(trimmed[start_idx..start_idx + end].to_string());
+                        }
+                    }
+                    
+                    if let Some(start) = trimmed.find("suggested=\"") {
+                        let start_idx = start + 11;
+                        if let Some(end) = trimmed[start_idx..].find("\"") {
+                            suggested = Some(trimmed[start_idx..start_idx + end].to_string());
+                        }
+                    }
+                    
+                    current_value_block = Some(serde_json::json!({
+                        "type": value_type,
+                        "method": method,
+                        "suggested": suggested
+                    }));
+                    recipients = Vec::new();
+                }
+            } else if in_value && (trimmed.contains("</podcast:value") || trimmed.contains("</value")) {
+                // End of value block
+                in_value = false;
+                if let Some(mut block) = current_value_block.take() {
+                    block["recipients"] = serde_json::Value::Array(recipients.clone());
+                    value_blocks.push(block);
+                }
+                recipients.clear();
+            } else if in_value && (trimmed.contains("podcast:valueRecipient") || trimmed.contains(":valueRecipient")) {
+                // Parse value recipient
+                let mut name = None;
+                let mut recipient_type = None;
+                let mut address = None;
+                let mut split = None;
+                
+                if let Some(start) = trimmed.find("name=\"") {
+                    let start_idx = start + 6;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        name = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                if let Some(start) = trimmed.find("type=\"") {
+                    let start_idx = start + 6;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        recipient_type = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                if let Some(start) = trimmed.find("address=\"") {
+                    let start_idx = start + 9;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        address = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                if let Some(start) = trimmed.find("split=\"") {
+                    let start_idx = start + 7;
+                    if let Some(end) = trimmed[start_idx..].find("\"") {
+                        split = Some(trimmed[start_idx..start_idx + end].to_string());
+                    }
+                }
+                
+                recipients.push(serde_json::json!({
+                    "name": name,
+                    "type": recipient_type,
+                    "address": address,
+                    "split": split
+                }));
+            }
+        }
+        
+        Ok(serde_json::Value::Array(value_blocks))
     }
 
     // Check if API key is web key - matches Python is_web_key check
@@ -5964,6 +6534,278 @@ impl DatabasePool {
         // This would need to be implemented based on your web key configuration
         // For now, return false - implement according to your Python logic
         Ok(false)
+    }
+
+    // Set podcast playback speed - matches Python set_podcast_playback_speed function
+    pub async fn set_podcast_playback_speed(&self, user_id: i32, podcast_id: i32, playback_speed: f64) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET playbackspeed = $1, playbackspeedcustomized = TRUE WHERE podcastid = $2 AND userid = $3"#)
+                    .bind(playback_speed)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET PlaybackSpeed = ?, PlaybackSpeedCustomized = TRUE WHERE PodcastID = ? AND UserID = ?")
+                    .bind(playback_speed)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Enable/disable auto download for podcast - matches Python enable_auto_download function
+    pub async fn enable_auto_download(&self, podcast_id: i32, auto_download: bool, user_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET autodownload = $1 WHERE podcastid = $2 AND userid = $3"#)
+                    .bind(auto_download)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET AutoDownload = ? WHERE PodcastID = ? AND UserID = ?")
+                    .bind(auto_download)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Toggle podcast notifications - matches Python toggle_podcast_notifications function
+    pub async fn toggle_podcast_notifications(&self, user_id: i32, podcast_id: i32, enabled: bool) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // First verify user owns the podcast
+                let row = sqlx::query(r#"SELECT 1 FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if row.is_none() {
+                    return Ok(false);
+                }
+                
+                // Update notifications setting
+                let result = sqlx::query(r#"UPDATE "Podcasts" SET notificationsenabled = $1 WHERE podcastid = $2 AND userid = $3"#)
+                    .bind(enabled)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                // First verify user owns the podcast
+                let row = sqlx::query("SELECT 1 FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if row.is_none() {
+                    return Ok(false);
+                }
+                
+                // Update notifications setting
+                let result = sqlx::query("UPDATE Podcasts SET NotificationsEnabled = ? WHERE PodcastID = ? AND UserID = ?")
+                    .bind(enabled)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
+    // Adjust skip times for podcast - matches Python adjust_skip_times function
+    pub async fn adjust_skip_times(&self, podcast_id: i32, start_skip: i32, end_skip: i32, user_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET startskip = $1, endskip = $2 WHERE podcastid = $3 AND userid = $4"#)
+                    .bind(start_skip)
+                    .bind(end_skip)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET StartSkip = ?, EndSkip = ? WHERE PodcastID = ? AND UserID = ?")
+                    .bind(start_skip)
+                    .bind(end_skip)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Remove category from podcast - matches Python remove_category function
+    pub async fn remove_category(&self, podcast_id: i32, user_id: i32, category: &str) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Fetch current categories
+                let row = sqlx::query(r#"SELECT categories FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    let current_categories: String = row.try_get("categories").unwrap_or_default();
+                    
+                    // Split categories, remove the specified one, and rejoin
+                    let categories: Vec<&str> = current_categories.split(',')
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty() && *s != category)
+                        .collect();
+                    
+                    let new_categories = categories.join(", ");
+                    
+                    // Update with new categories
+                    sqlx::query(r#"UPDATE "Podcasts" SET categories = $1 WHERE podcastid = $2 AND userid = $3"#)
+                        .bind(&new_categories)
+                        .bind(podcast_id)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                // Fetch current categories
+                let row = sqlx::query("SELECT Categories FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    let current_categories: String = row.try_get("Categories").unwrap_or_default();
+                    
+                    // Split categories, remove the specified one, and rejoin
+                    let categories: Vec<&str> = current_categories.split(',')
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty() && *s != category)
+                        .collect();
+                    
+                    let new_categories = categories.join(", ");
+                    
+                    // Update with new categories
+                    sqlx::query("UPDATE Podcasts SET Categories = ? WHERE PodcastID = ? AND UserID = ?")
+                        .bind(&new_categories)
+                        .bind(podcast_id)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    // Add category to podcast - matches Python add_category function  
+    pub async fn add_category(&self, podcast_id: i32, user_id: i32, category: &str) -> AppResult<String> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Fetch current categories
+                let row = sqlx::query(r#"SELECT categories FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    let current_categories: String = row.try_get("categories").unwrap_or_default();
+                    
+                    // Check if category already exists
+                    let existing_categories: Vec<&str> = current_categories.split(',')
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    
+                    if existing_categories.contains(&category) {
+                        return Ok("Category already exists.".to_string());
+                    }
+                    
+                    // Add new category
+                    let new_categories = if current_categories.trim().is_empty() {
+                        category.to_string()
+                    } else {
+                        format!("{}, {}", current_categories, category)
+                    };
+                    
+                    // Update with new categories
+                    sqlx::query(r#"UPDATE "Podcasts" SET categories = $1 WHERE podcastid = $2 AND userid = $3"#)
+                        .bind(&new_categories)
+                        .bind(podcast_id)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    Ok("Category added!".to_string())
+                } else {
+                    Err(AppError::not_found("Podcast not found"))
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                // Fetch current categories
+                let row = sqlx::query("SELECT Categories FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    let current_categories: String = row.try_get("Categories").unwrap_or_default();
+                    
+                    // Check if category already exists
+                    let existing_categories: Vec<&str> = current_categories.split(',')
+                        .map(|s| s.trim())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    
+                    if existing_categories.contains(&category) {
+                        return Ok("Category already exists.".to_string());
+                    }
+                    
+                    // Add new category
+                    let new_categories = if current_categories.trim().is_empty() {
+                        category.to_string()
+                    } else {
+                        format!("{}, {}", current_categories, category)
+                    };
+                    
+                    // Update with new categories
+                    sqlx::query("UPDATE Podcasts SET Categories = ? WHERE PodcastID = ? AND UserID = ?")
+                        .bind(&new_categories)
+                        .bind(podcast_id)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    Ok("Category added!".to_string())
+                } else {
+                    Err(AppError::not_found("Podcast not found"))
+                }
+            }
+        }
     }
 
     // Call get auto download status - matches Python call_get_auto_download_status function exactly
@@ -6029,40 +6871,6 @@ impl DatabasePool {
                     Ok(result.or(Some(365))) // Default to 365 if null
                 } else {
                     Ok(None)
-                }
-            }
-        }
-    }
-
-    // Get podcast notification status - matches Python get_podcast_notification_status function exactly
-    pub async fn get_podcast_notification_status(&self, podcast_id: i32, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT notificationsenabled FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
-                    .bind(podcast_id)
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
-                    
-                if let Some(row) = row {
-                    let result: Option<bool> = row.try_get("notificationsenabled")?;
-                    Ok(result.unwrap_or(false))
-                } else {
-                    Ok(false)
-                }
-            }
-            DatabasePool::MySQL(pool) => {
-                let row = sqlx::query("SELECT NotificationsEnabled FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
-                    .bind(podcast_id)
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
-                    
-                if let Some(row) = row {
-                    let result: Option<bool> = row.try_get("NotificationsEnabled")?;
-                    Ok(result.unwrap_or(false))
-                } else {
-                    Ok(false)
                 }
             }
         }
@@ -6471,17 +7279,17 @@ impl DatabasePool {
     }
 
     // Extract audio URL from description/content HTML - matches Python logic
-    fn extract_audio_url_from_description(&self, data: &std::collections::HashMap<String, String>) -> Option<String> {
-        // Check various description fields for audio URLs
-        for field in ["content:encoded", "description", "summary", "itunes:summary"] {
-            if let Some(content) = data.get(field) {
-                if let Some(url) = self.find_audio_url_in_text(content) {
-                    return Some(url.to_string());
-                }
-            }
-        }
-        None
-    }
+    // fn extract_audio_url_from_description(&self, data: &std::collections::HashMap<String, String>) -> Option<String> {
+    //     // Check various description fields for audio URLs
+    //     for field in ["content:encoded", "description", "summary", "itunes:summary"] {
+    //         if let Some(content) = data.get(field) {
+    //             if let Some(url) = self.find_audio_url_in_text(content) {
+    //                 return Some(url.to_string());
+    //             }
+    //         }
+    //     }
+    //     None
+    // }
 
     fn find_audio_url_in_text<'a>(&self, text: &'a str) -> Option<&'a str> {
         // Look for href= or src= attributes
@@ -6980,26 +7788,6 @@ impl DatabasePool {
         }
     }
 
-    // Get RSS feed status - matches Python get_rss_feed_status function exactly
-    pub async fn get_rss_feed_status(&self, user_id: i32) -> AppResult<bool> {
-        match self {
-            DatabasePool::Postgres(pool) => {
-                let result: Option<bool> = sqlx::query_scalar(r#"SELECT enablerssfeeds FROM "Users" WHERE userid = $1"#)
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
-                Ok(result.unwrap_or(false))
-            }
-            DatabasePool::MySQL(pool) => {
-                let result: Option<i32> = sqlx::query_scalar("SELECT EnableRSSFeeds FROM Users WHERE UserID = ?")
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
-                Ok(result.unwrap_or(0) == 1)
-            }
-        }
-    }
-
     // Toggle RSS feeds - matches Python toggle_rss_feeds function exactly
     pub async fn toggle_rss_feeds(&self, user_id: i32) -> AppResult<bool> {
         match self {
@@ -7397,6 +8185,28 @@ impl DatabasePool {
         Ok(rss_key)
     }
 
+    // Count user API keys excluding a specific one - safety check for final API key
+    pub async fn count_user_api_keys_excluding(&self, user_id: i32, exclude_api_id: i32) -> AppResult<i32> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT COUNT(*) as count FROM "APIKeys" WHERE userid = $1 AND apikeyid != $2"#)
+                    .bind(user_id)
+                    .bind(exclude_api_id)
+                    .fetch_one(pool)
+                    .await?;
+                Ok(row.try_get::<i64, _>("count")? as i32)
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT COUNT(*) as count FROM APIKeys WHERE UserID = ? AND APIKeyID != ?")
+                    .bind(user_id)
+                    .bind(exclude_api_id)
+                    .fetch_one(pool)
+                    .await?;
+                Ok(row.try_get::<i64, _>("count")? as i32)
+            }
+        }
+    }
+
     // Delete API key - matches Python delete_api function exactly
     pub async fn delete_api_key(&self, api_id: i32) -> AppResult<()> {
         match self {
@@ -7743,10 +8553,10 @@ impl DatabasePool {
         Ok((secret, qr_code_svg))
     }
     
-    // Store temporary MFA secret in Redis
+    // Store temporary MFA secret in memory (matches Python temp_mfa_secrets)
     async fn store_temp_mfa_secret(&self, key: &str, secret: &str) -> AppResult<()> {
-        // This would use Redis in production, for now we'll implement a simple in-memory store
-        // TODO: Implement proper Redis storage
+        let mut secrets = TEMP_MFA_SECRETS.lock().map_err(|e| AppError::internal(&format!("Failed to lock temp MFA secrets: {}", e)))?;
+        secrets.insert(key.to_string(), secret.to_string());
         Ok(())
     }
     
@@ -7784,15 +8594,16 @@ impl DatabasePool {
         Ok(verified)
     }
     
-    // Get temporary MFA secret (placeholder for Redis implementation)
-    async fn get_temp_mfa_secret(&self, _key: &str) -> AppResult<Option<String>> {
-        // TODO: Implement Redis lookup
-        Ok(None)
+    // Get temporary MFA secret from memory (matches Python temp_mfa_secrets lookup)
+    async fn get_temp_mfa_secret(&self, key: &str) -> AppResult<Option<String>> {
+        let secrets = TEMP_MFA_SECRETS.lock().map_err(|e| AppError::internal(&format!("Failed to lock temp MFA secrets: {}", e)))?;
+        Ok(secrets.get(key).cloned())
     }
     
-    // Remove temporary MFA secret (placeholder for Redis implementation)  
-    async fn remove_temp_mfa_secret(&self, _key: &str) -> AppResult<()> {
-        // TODO: Implement Redis removal
+    // Remove temporary MFA secret from memory (matches Python temp_mfa_secrets cleanup)
+    async fn remove_temp_mfa_secret(&self, key: &str) -> AppResult<()> {
+        let mut secrets = TEMP_MFA_SECRETS.lock().map_err(|e| AppError::internal(&format!("Failed to lock temp MFA secrets: {}", e)))?;
+        secrets.remove(key);
         Ok(())
     }
     
@@ -9514,129 +10325,129 @@ impl DatabasePool {
         self.add_podcast(&podcast_data, podcast_index_id, None, None).await
     }
     
-    // Get podcast details - matches Python get_podcast_details function exactly
-    pub async fn get_podcast_details(&self, user_id: i32, podcast_id: i32) -> AppResult<Option<serde_json::Value>> {
-        println!("Getting podcast details for podcast {} and user {}", podcast_id, user_id);
+    // // Get podcast details - matches Python get_podcast_details function exactly
+    // pub async fn get_podcast_details(&self, user_id: i32, podcast_id: i32) -> AppResult<Option<serde_json::Value>> {
+    //     println!("Getting podcast details for podcast {} and user {}", podcast_id, user_id);
         
-        let details = match self {
-            DatabasePool::Postgres(pool) => {
-                // Try to get podcast for user first, then fall back to UserID=1
-                let mut row = sqlx::query(r#"SELECT * FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
-                    .bind(podcast_id)
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
+    //     let details = match self {
+    //         DatabasePool::Postgres(pool) => {
+    //             // Try to get podcast for user first, then fall back to UserID=1
+    //             let mut row = sqlx::query(r#"SELECT * FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+    //                 .bind(podcast_id)
+    //                 .bind(user_id)
+    //                 .fetch_optional(pool)
+    //                 .await?;
                 
-                if row.is_none() {
-                    row = sqlx::query(r#"SELECT * FROM "Podcasts" WHERE podcastid = $1 AND userid = 1"#)
-                        .bind(podcast_id)
-                        .fetch_optional(pool)
-                        .await?;
-                }
+    //             if row.is_none() {
+    //                 row = sqlx::query(r#"SELECT * FROM "Podcasts" WHERE podcastid = $1 AND userid = 1"#)
+    //                     .bind(podcast_id)
+    //                     .fetch_optional(pool)
+    //                     .await?;
+    //             }
                 
-                if let Some(row) = row {
-                    // Get episode count from YouTubeVideos table if this is a YouTube channel
-                    let mut episode_count = row.try_get::<i32, _>("episodecount")?;
-                    let is_youtube_channel = row.try_get::<bool, _>("isyoutubechannel").unwrap_or(false);
+    //             if let Some(row) = row {
+    //                 // Get episode count from YouTubeVideos table if this is a YouTube channel
+    //                 let mut episode_count = row.try_get::<i32, _>("episodecount")?;
+    //                 let is_youtube_channel = row.try_get::<bool, _>("isyoutubechannel").unwrap_or(false);
                     
-                    if is_youtube_channel {
-                        let count_result = sqlx::query(r#"SELECT COUNT(*) as count FROM "YouTubeVideos" WHERE podcastid = $1"#)
-                            .bind(podcast_id)
-                            .fetch_one(pool)
-                            .await?;
-                        episode_count = count_result.try_get::<i64, _>("count")? as i32;
-                    }
+    //                 if is_youtube_channel {
+    //                     let count_result = sqlx::query(r#"SELECT COUNT(*) as count FROM "YouTubeVideos" WHERE podcastid = $1"#)
+    //                         .bind(podcast_id)
+    //                         .fetch_one(pool)
+    //                         .await?;
+    //                     episode_count = count_result.try_get::<i64, _>("count")? as i32;
+    //                 }
 
-                    Some(serde_json::json!({
-                        "podcastid": row.try_get::<i32, _>("podcastid")?,
-                        "podcastindexid": row.try_get::<Option<i32>, _>("podcastindexid")?,
-                        "podcastname": row.try_get::<String, _>("podcastname")?,
-                        "artworkurl": row.try_get::<String, _>("artworkurl")?,
-                        "author": row.try_get::<String, _>("author")?,
-                        "categories": row.try_get::<Option<String>, _>("categories")?,
-                        "description": row.try_get::<String, _>("description")?,
-                        "episodecount": episode_count,
-                        "feedurl": row.try_get::<String, _>("feedurl")?,
-                        "websiteurl": row.try_get::<String, _>("websiteurl")?,
-                        "explicit": row.try_get::<bool, _>("explicit")?,
-                        "userid": row.try_get::<i32, _>("userid")?,
-                        "autodownload": row.try_get::<bool, _>("autodownload").unwrap_or(false),
-                        "startskip": row.try_get::<i32, _>("startskip").unwrap_or(0),
-                        "endskip": row.try_get::<i32, _>("endskip").unwrap_or(0),
-                        "username": row.try_get::<Option<String>, _>("username")?,
-                        "password": row.try_get::<Option<String>, _>("password")?,
-                        "isyoutubechannel": is_youtube_channel,
-                        "notificationsenabled": row.try_get::<bool, _>("notificationsenabled").unwrap_or(false),
-                        "feedcutoffdays": row.try_get::<i32, _>("feedcutoffdays").unwrap_or(0),
-                    }))
-                } else {
-                    None
-                }
-            }
-            DatabasePool::MySQL(pool) => {
-                // Try to get podcast for user first, then fall back to UserID=1
-                let mut row = sqlx::query("SELECT * FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
-                    .bind(podcast_id)
-                    .bind(user_id)
-                    .fetch_optional(pool)
-                    .await?;
+    //                 Some(serde_json::json!({
+    //                     "podcastid": row.try_get::<i32, _>("podcastid")?,
+    //                     "podcastindexid": row.try_get::<Option<i32>, _>("podcastindexid")?,
+    //                     "podcastname": row.try_get::<String, _>("podcastname")?,
+    //                     "artworkurl": row.try_get::<String, _>("artworkurl")?,
+    //                     "author": row.try_get::<String, _>("author")?,
+    //                     "categories": row.try_get::<Option<String>, _>("categories")?,
+    //                     "description": row.try_get::<String, _>("description")?,
+    //                     "episodecount": episode_count,
+    //                     "feedurl": row.try_get::<String, _>("feedurl")?,
+    //                     "websiteurl": row.try_get::<String, _>("websiteurl")?,
+    //                     "explicit": row.try_get::<bool, _>("explicit")?,
+    //                     "userid": row.try_get::<i32, _>("userid")?,
+    //                     "autodownload": row.try_get::<bool, _>("autodownload").unwrap_or(false),
+    //                     "startskip": row.try_get::<i32, _>("startskip").unwrap_or(0),
+    //                     "endskip": row.try_get::<i32, _>("endskip").unwrap_or(0),
+    //                     "username": row.try_get::<Option<String>, _>("username")?,
+    //                     "password": row.try_get::<Option<String>, _>("password")?,
+    //                     "isyoutubechannel": is_youtube_channel,
+    //                     "notificationsenabled": row.try_get::<bool, _>("notificationsenabled").unwrap_or(false),
+    //                     "feedcutoffdays": row.try_get::<i32, _>("feedcutoffdays").unwrap_or(0),
+    //                 }))
+    //             } else {
+    //                 None
+    //             }
+    //         }
+    //         DatabasePool::MySQL(pool) => {
+    //             // Try to get podcast for user first, then fall back to UserID=1
+    //             let mut row = sqlx::query("SELECT * FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+    //                 .bind(podcast_id)
+    //                 .bind(user_id)
+    //                 .fetch_optional(pool)
+    //                 .await?;
                 
-                if row.is_none() {
-                    row = sqlx::query("SELECT * FROM Podcasts WHERE PodcastID = ? AND UserID = 1")
-                        .bind(podcast_id)
-                        .fetch_optional(pool)
-                        .await?;
-                }
+    //             if row.is_none() {
+    //                 row = sqlx::query("SELECT * FROM Podcasts WHERE PodcastID = ? AND UserID = 1")
+    //                     .bind(podcast_id)
+    //                     .fetch_optional(pool)
+    //                     .await?;
+    //             }
                 
-                if let Some(row) = row {
-                    // Get episode count from YouTubeVideos table if this is a YouTube channel
-                    let mut episode_count = row.try_get::<i32, _>("EpisodeCount")?;
-                    let is_youtube_channel = row.try_get::<i8, _>("IsYouTubeChannel").unwrap_or(0) != 0;
+    //             if let Some(row) = row {
+    //                 // Get episode count from YouTubeVideos table if this is a YouTube channel
+    //                 let mut episode_count = row.try_get::<i32, _>("EpisodeCount")?;
+    //                 let is_youtube_channel = row.try_get::<i8, _>("IsYouTubeChannel").unwrap_or(0) != 0;
                     
-                    if is_youtube_channel {
-                        let count_result = sqlx::query("SELECT COUNT(*) as count FROM YouTubeVideos WHERE PodcastID = ?")
-                            .bind(podcast_id)
-                            .fetch_one(pool)
-                            .await?;
-                        episode_count = count_result.try_get::<i64, _>("count")? as i32;
-                    }
+    //                 if is_youtube_channel {
+    //                     let count_result = sqlx::query("SELECT COUNT(*) as count FROM YouTubeVideos WHERE PodcastID = ?")
+    //                         .bind(podcast_id)
+    //                         .fetch_one(pool)
+    //                         .await?;
+    //                     episode_count = count_result.try_get::<i64, _>("count")? as i32;
+    //                 }
 
-                    Some(serde_json::json!({
-                        "podcastid": row.try_get::<i32, _>("PodcastID")?,
-                        "podcastindexid": row.try_get::<Option<i32>, _>("PodcastIndexID")?,
-                        "podcastname": row.try_get::<String, _>("PodcastName")?,
-                        "artworkurl": row.try_get::<String, _>("ArtworkURL")?,
-                        "author": row.try_get::<String, _>("Author")?,
-                        "categories": row.try_get::<Option<String>, _>("Categories")?,
-                        "description": row.try_get::<String, _>("Description")?,
-                        "episodecount": episode_count,
-                        "feedurl": row.try_get::<String, _>("FeedURL")?,
-                        "websiteurl": row.try_get::<String, _>("WebsiteURL")?,
-                        "explicit": row.try_get::<i8, _>("Explicit").unwrap_or(0) != 0,
-                        "userid": row.try_get::<i32, _>("UserID")?,
-                        "autodownload": row.try_get::<i8, _>("AutoDownload").unwrap_or(0) != 0,
-                        "startskip": row.try_get::<i32, _>("StartSkip").unwrap_or(0),
-                        "endskip": row.try_get::<i32, _>("EndSkip").unwrap_or(0),
-                        "username": row.try_get::<Option<String>, _>("Username")?,
-                        "password": row.try_get::<Option<String>, _>("Password")?,
-                        "isyoutubechannel": is_youtube_channel,
-                        "notificationsenabled": row.try_get::<i8, _>("NotificationsEnabled").unwrap_or(0) != 0,
-                        "feedcutoffdays": row.try_get::<i32, _>("FeedCutoffDays").unwrap_or(0),
-                    }))
-                } else {
-                    None
-                }
-            }
-        };
+    //                 Some(serde_json::json!({
+    //                     "podcastid": row.try_get::<i32, _>("PodcastID")?,
+    //                     "podcastindexid": row.try_get::<Option<i32>, _>("PodcastIndexID")?,
+    //                     "podcastname": row.try_get::<String, _>("PodcastName")?,
+    //                     "artworkurl": row.try_get::<String, _>("ArtworkURL")?,
+    //                     "author": row.try_get::<String, _>("Author")?,
+    //                     "categories": row.try_get::<Option<String>, _>("Categories")?,
+    //                     "description": row.try_get::<String, _>("Description")?,
+    //                     "episodecount": episode_count,
+    //                     "feedurl": row.try_get::<String, _>("FeedURL")?,
+    //                     "websiteurl": row.try_get::<String, _>("WebsiteURL")?,
+    //                     "explicit": row.try_get::<i8, _>("Explicit").unwrap_or(0) != 0,
+    //                     "userid": row.try_get::<i32, _>("UserID")?,
+    //                     "autodownload": row.try_get::<i8, _>("AutoDownload").unwrap_or(0) != 0,
+    //                     "startskip": row.try_get::<i32, _>("StartSkip").unwrap_or(0),
+    //                     "endskip": row.try_get::<i32, _>("EndSkip").unwrap_or(0),
+    //                     "username": row.try_get::<Option<String>, _>("Username")?,
+    //                     "password": row.try_get::<Option<String>, _>("Password")?,
+    //                     "isyoutubechannel": is_youtube_channel,
+    //                     "notificationsenabled": row.try_get::<i8, _>("NotificationsEnabled").unwrap_or(0) != 0,
+    //                     "feedcutoffdays": row.try_get::<i32, _>("FeedCutoffDays").unwrap_or(0),
+    //                 }))
+    //             } else {
+    //                 None
+    //             }
+    //         }
+    //     };
         
-        if let Some(ref result) = details {
-            println!("Found podcast details for: {}", result["podcast_name"]);
-        } else {
-            println!("No podcast found with ID {} for user {}", podcast_id, user_id);
-        }
+    //     if let Some(ref result) = details {
+    //         println!("Found podcast details for: {}", result["podcast_name"]);
+    //     } else {
+    //         println!("No podcast found with ID {} for user {}", podcast_id, user_id);
+    //     }
         
-        Ok(details)
-    }
+    //     Ok(details)
+    // }
     
     // Get notification settings - matches Python get_notification_settings function exactly
     pub async fn get_notification_settings(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
@@ -10492,7 +11303,7 @@ impl DatabasePool {
                     .await?;
                 
                 if let Some(row) = row {
-                    let podcast_id: i32 = row.try_get("PodcastID")?;
+                    let podcast_id: i32 = row.try_get("podcastid")?;
                     println!("Found existing subscription with ID: {}", podcast_id);
                     Ok(Some(podcast_id))
                 } else {
@@ -12402,14 +13213,593 @@ impl DatabasePool {
         Ok(result.rows_affected() as i32)
     }
 
+    // Get podcast details - matches Python get_podcast_details function exactly
+    pub async fn get_podcast_details(&self, user_id: i32, podcast_id: i32) -> AppResult<serde_json::Value> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // First try to get podcast for specific user
+                let mut podcast_row = sqlx::query(r#"
+                    SELECT podcastid, podcastname, feedurl, description, author, artworkurl, 
+                           explicit, episodecount, categories, websiteurl, podcastindexid, isyoutubechannel
+                    FROM "Podcasts" 
+                    WHERE podcastid = $1 AND userid = $2
+                "#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                // Fallback to admin/public podcasts (userid = 1) if not found for user
+                if podcast_row.is_none() {
+                    podcast_row = sqlx::query(r#"
+                        SELECT podcastid, podcastname, feedurl, description, author, artworkurl, 
+                               explicit, episodecount, categories, websiteurl, podcastindexid, isyoutubechannel
+                        FROM "Podcasts" 
+                        WHERE podcastid = $1 AND userid = 1
+                    "#)
+                        .bind(podcast_id)
+                        .fetch_optional(pool)
+                        .await?;
+                }
+
+                let row = podcast_row.ok_or_else(|| AppError::not_found("Podcast not found"))?;
+
+                // Get episode count (special handling for YouTube channels)
+                let is_youtube: bool = row.try_get("isyoutubechannel").unwrap_or(false);
+                let episode_count = if is_youtube {
+                    // Get count from YouTubeVideos table for YouTube channels
+                    let count_row = sqlx::query(r#"SELECT COUNT(*) as count FROM "YouTubeVideos" WHERE podcastid = $1"#)
+                        .bind(podcast_id)
+                        .fetch_one(pool)
+                        .await?;
+                    count_row.try_get::<i64, _>("count")? as i32
+                } else {
+                    row.try_get("episodecount").unwrap_or(0)
+                };
+
+                // Parse categories (can be JSON or comma-separated string)
+                let categories_str: Option<String> = row.try_get("categories").ok();
+                let categories = if let Some(cat_str) = categories_str {
+                    if cat_str.trim().starts_with('{') {
+                        // JSON format
+                        serde_json::from_str::<std::collections::HashMap<String, String>>(&cat_str).ok()
+                    } else if !cat_str.trim().is_empty() {
+                        // Comma-separated format
+                        let mut map = std::collections::HashMap::new();
+                        for (i, category) in cat_str.split(',').enumerate() {
+                            map.insert(i.to_string(), category.trim().to_string());
+                        }
+                        Some(map)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                Ok(serde_json::json!({
+                    "podcastid": row.try_get::<i32, _>("podcastid")?,
+                    "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_else(|_| "Unknown Podcast".to_string()),
+                    "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_else(|_| String::new()),
+                    "description": row.try_get::<String, _>("description").unwrap_or_else(|_| String::new()),
+                    "author": row.try_get::<String, _>("author").unwrap_or_else(|_| "Unknown Author".to_string()),
+                    "artworkurl": row.try_get::<String, _>("artworkurl").unwrap_or_else(|_| String::new()),
+                    "explicit": row.try_get::<bool, _>("explicit").unwrap_or(false),
+                    "episodecount": episode_count,
+                    "categories": categories,
+                    "websiteurl": row.try_get::<String, _>("websiteurl").unwrap_or_else(|_| String::new()),
+                    "podcastindexid": row.try_get::<i32, _>("podcastindexid").unwrap_or(0),
+                    "is_youtube": is_youtube,
+                    "userid": row.try_get::<i32, _>("userid")?,
+                    "autodownload": row.try_get::<bool, _>("autodownload").unwrap_or(false),
+                    "startskip": row.try_get::<i32, _>("startskip").unwrap_or(0),
+                    "endskip": row.try_get::<i32, _>("endskip").unwrap_or(0),
+                    "username": row.try_get::<Option<String>, _>("username")?,
+                    "password": row.try_get::<Option<String>, _>("password")?,
+                    "notificationsenabled": row.try_get::<bool, _>("notificationsenabled").unwrap_or(false),
+                    "feedcutoffdays": row.try_get::<i32, _>("feedcutoffdays").unwrap_or(0),
+                }))
+            }
+            DatabasePool::MySQL(pool) => {
+                // First try to get podcast for specific user
+                let mut podcast_row = sqlx::query(r#"
+                    SELECT PodcastID, PodcastName, FeedURL, Description, Author, ArtworkURL, 
+                           Explicit, EpisodeCount, Categories, WebsiteURL, PodcastIndexID, IsYouTubeChannel
+                    FROM Podcasts 
+                    WHERE PodcastID = ? AND UserID = ?
+                "#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                // Fallback to admin/public podcasts (UserID = 1) if not found for user
+                if podcast_row.is_none() {
+                    podcast_row = sqlx::query(r#"
+                        SELECT PodcastID, PodcastName, FeedURL, Description, Author, ArtworkURL, 
+                               Explicit, EpisodeCount, Categories, WebsiteURL, PodcastIndexID, IsYouTubeChannel
+                        FROM Podcasts 
+                        WHERE PodcastID = ? AND UserID = 1
+                    "#)
+                        .bind(podcast_id)
+                        .fetch_optional(pool)
+                        .await?;
+                }
+
+                let row = podcast_row.ok_or_else(|| AppError::not_found("Podcast not found"))?;
+
+                // Get episode count (special handling for YouTube channels)
+                let is_youtube: bool = row.try_get("IsYouTubeChannel").unwrap_or(false);
+                let episode_count = if is_youtube {
+                    // Get count from YouTubeVideos table for YouTube channels
+                    let count_row = sqlx::query("SELECT COUNT(*) as count FROM YouTubeVideos WHERE PodcastID = ?")
+                        .bind(podcast_id)
+                        .fetch_one(pool)
+                        .await?;
+                    count_row.try_get::<i64, _>("count")? as i32
+                } else {
+                    row.try_get("EpisodeCount").unwrap_or(0)
+                };
+
+                // Parse categories (can be JSON or comma-separated string)
+                let categories_str: Option<String> = row.try_get("Categories").ok();
+                let categories = if let Some(cat_str) = categories_str {
+                    if cat_str.trim().starts_with('{') {
+                        // JSON format
+                        serde_json::from_str::<std::collections::HashMap<String, String>>(&cat_str).ok()
+                    } else if !cat_str.trim().is_empty() {
+                        // Comma-separated format
+                        let mut map = std::collections::HashMap::new();
+                        for (i, category) in cat_str.split(',').enumerate() {
+                            map.insert(i.to_string(), category.trim().to_string());
+                        }
+                        Some(map)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                Ok(serde_json::json!({
+                    "podcastid": row.try_get::<i32, _>("PodcastID")?,
+                    "podcastname": row.try_get::<String, _>("PodcastName").unwrap_or_else(|_| "Unknown Podcast".to_string()),
+                    "feedurl": row.try_get::<String, _>("FeedURL").unwrap_or_else(|_| String::new()),
+                    "description": row.try_get::<String, _>("Description").unwrap_or_else(|_| String::new()),
+                    "author": row.try_get::<String, _>("Author").unwrap_or_else(|_| "Unknown Author".to_string()),
+                    "artworkurl": row.try_get::<String, _>("ArtworkURL").unwrap_or_else(|_| String::new()),
+                    "explicit": row.try_get::<i8, _>("Explicit").unwrap_or(0) != 0,
+                    "episodecount": episode_count,
+                    "categories": categories,
+                    "websiteurl": row.try_get::<String, _>("WebsiteURL").unwrap_or_else(|_| String::new()),
+                    "podcastindexid": row.try_get::<i32, _>("PodcastIndexID").unwrap_or(0),
+                    "is_youtube": is_youtube,
+                    "userid": row.try_get::<i32, _>("UserID")?,
+                    "autodownload": row.try_get::<i8, _>("AutoDownload").unwrap_or(0) != 0,
+                    "startskip": row.try_get::<i32, _>("StartSkip").unwrap_or(0),
+                    "endskip": row.try_get::<i32, _>("EndSkip").unwrap_or(0),
+                    "username": row.try_get::<Option<String>, _>("Username")?,
+                    "password": row.try_get::<Option<String>, _>("Password")?,
+                    "notificationsenabled": row.try_get::<i8, _>("NotificationsEnabled").unwrap_or(0) != 0,
+                    "feedcutoffdays": row.try_get::<i32, _>("FeedCutoffDays").unwrap_or(0),
+                }))
+            }
+        }
+    }
+
+    // OIDC Provider Management - matches Python OIDC functions
+
+    // Get OIDC provider by client ID - for callback processing
+    pub async fn get_oidc_provider_by_client_id(&self, client_id: &str) -> AppResult<Option<serde_json::Value>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT providerid, providername, clientid, clientsecret, authorizationurl, 
+                           tokenurl, userinfourl, scope, buttoncolor, buttontext, buttontextcolor, 
+                           iconsvg, enabled, nameclaim, emailclaim, usernameclaim, rolesclaim, 
+                           userrole, adminrole
+                    FROM "OIDCProviders" 
+                    WHERE clientid = $1 AND enabled = true
+                "#)
+                    .bind(client_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = row {
+                    Ok(Some(serde_json::json!({
+                        "provider_id": row.try_get::<i32, _>("providerid")?,
+                        "provider_name": row.try_get::<String, _>("providername")?,
+                        "client_id": row.try_get::<String, _>("clientid")?,
+                        "client_secret": row.try_get::<String, _>("clientsecret")?,
+                        "authorization_url": row.try_get::<String, _>("authorizationurl")?,
+                        "token_url": row.try_get::<String, _>("tokenurl")?,
+                        "userinfo_url": row.try_get::<String, _>("userinfourl")?,
+                        "scope": row.try_get::<String, _>("scope")?,
+                        "button_color": row.try_get::<String, _>("buttoncolor")?,
+                        "button_text": row.try_get::<String, _>("buttontext")?,
+                        "button_text_color": row.try_get::<String, _>("buttontextcolor")?,
+                        "icon_svg": row.try_get::<Option<String>, _>("iconsvg")?,
+                        "enabled": row.try_get::<bool, _>("enabled")?,
+                        "name_claim": row.try_get::<Option<String>, _>("nameclaim")?,
+                        "email_claim": row.try_get::<Option<String>, _>("emailclaim")?,
+                        "username_claim": row.try_get::<Option<String>, _>("usernameclaim")?,
+                        "roles_claim": row.try_get::<Option<String>, _>("rolesclaim")?,
+                        "user_role": row.try_get::<Option<String>, _>("userrole")?,
+                        "admin_role": row.try_get::<Option<String>, _>("adminrole")?
+                    })))
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT ProviderID, ProviderName, ClientID, ClientSecret, AuthorizationURL, 
+                           TokenURL, UserInfoURL, Scope, ButtonColor, ButtonText, ButtonTextColor, 
+                           IconSVG, Enabled, NameClaim, EmailClaim, UsernameClaim, RolesClaim, 
+                           UserRole, AdminRole
+                    FROM OIDCProviders 
+                    WHERE ClientID = ? AND Enabled = true
+                "#)
+                    .bind(client_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = row {
+                    Ok(Some(serde_json::json!({
+                        "provider_id": row.try_get::<i32, _>("ProviderID")?,
+                        "provider_name": row.try_get::<String, _>("ProviderName")?,
+                        "client_id": row.try_get::<String, _>("ClientID")?,
+                        "client_secret": row.try_get::<String, _>("ClientSecret")?,
+                        "authorization_url": row.try_get::<String, _>("AuthorizationURL")?,
+                        "token_url": row.try_get::<String, _>("TokenURL")?,
+                        "userinfo_url": row.try_get::<String, _>("UserInfoURL")?,
+                        "scope": row.try_get::<String, _>("Scope")?,
+                        "button_color": row.try_get::<String, _>("ButtonColor")?,
+                        "button_text": row.try_get::<String, _>("ButtonText")?,
+                        "button_text_color": row.try_get::<String, _>("ButtonTextColor")?,
+                        "icon_svg": row.try_get::<Option<String>, _>("IconSVG")?,
+                        "enabled": row.try_get::<i8, _>("Enabled")? != 0,
+                        "name_claim": row.try_get::<Option<String>, _>("NameClaim")?,
+                        "email_claim": row.try_get::<Option<String>, _>("EmailClaim")?,
+                        "username_claim": row.try_get::<Option<String>, _>("UsernameClaim")?,
+                        "roles_claim": row.try_get::<Option<String>, _>("RolesClaim")?,
+                        "user_role": row.try_get::<Option<String>, _>("UserRole")?,
+                        "admin_role": row.try_get::<Option<String>, _>("AdminRole")?
+                    })))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Get OIDC provider - matches Python get_oidc_provider function EXACTLY
+    pub async fn get_oidc_provider(&self, client_id: &str) -> AppResult<Option<(i32, String, String, String, String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"
+                    SELECT providerid, clientid, clientsecret, tokenurl, userinfourl, nameclaim, emailclaim, usernameclaim, rolesclaim, userrole, adminrole
+                    FROM "OIDCProviders"
+                    WHERE clientid = $1 AND enabled = true
+                "#)
+                    .bind(client_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = result {
+                    Ok(Some((
+                        row.try_get("providerid")?,
+                        row.try_get("clientid")?,
+                        row.try_get("clientsecret")?,
+                        row.try_get("tokenurl")?,
+                        row.try_get("userinfourl")?,
+                        row.try_get("nameclaim")?,
+                        row.try_get("emailclaim")?,
+                        row.try_get("usernameclaim")?,
+                        row.try_get("rolesclaim")?,
+                        row.try_get("userrole")?,
+                        row.try_get("adminrole")?,
+                    )))
+                } else {
+                    Ok(None)
+                }
+            },
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(r#"
+                    SELECT ProviderID, ClientID, ClientSecret, TokenURL, UserInfoURL, NameClaim, EmailClaim, UsernameClaim, RolesClaim, UserRole, AdminRole
+                    FROM OIDCProviders
+                    WHERE ClientID = ? AND Enabled = true
+                "#)
+                    .bind(client_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = result {
+                    Ok(Some((
+                        row.try_get("ProviderID")?,
+                        row.try_get("ClientID")?,
+                        row.try_get("ClientSecret")?,
+                        row.try_get("TokenURL")?,
+                        row.try_get("UserInfoURL")?,
+                        row.try_get("NameClaim")?,
+                        row.try_get("EmailClaim")?,
+                        row.try_get("UsernameClaim")?,
+                        row.try_get("RolesClaim")?,
+                        row.try_get("UserRole")?,
+                        row.try_get("AdminRole")?,
+                    )))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Get user by email - matches Python get_user_by_email function EXACTLY  
+    pub async fn get_user_by_email(&self, email: &str) -> AppResult<Option<(i32, String, Option<String>, Option<String>, bool)>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"
+                    SELECT userid, email, username, fullname, isadmin
+                    FROM "Users"
+                    WHERE email = $1
+                "#)
+                    .bind(email)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = result {
+                    Ok(Some((
+                        row.try_get("userid")?,
+                        row.try_get("email")?,
+                        row.try_get("username")?,
+                        row.try_get("fullname")?,
+                        row.try_get("isadmin")?,
+                    )))
+                } else {
+                    Ok(None)
+                }
+            },
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(r#"
+                    SELECT UserID, Email, Username, Fullname, IsAdmin
+                    FROM Users
+                    WHERE Email = ?
+                "#)
+                    .bind(email)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = result {
+                    let is_admin: i32 = row.try_get("IsAdmin")?;
+                    Ok(Some((
+                        row.try_get("UserID")?,
+                        row.try_get("Email")?,
+                        row.try_get("Username")?,
+                        row.try_get("Fullname")?,
+                        is_admin != 0,
+                    )))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Check if username exists - matches Python check_usernames function EXACTLY
+    pub async fn check_usernames(&self, username: &str) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"SELECT COUNT(*) as count FROM "Users" WHERE username = $1"#)
+                    .bind(username)
+                    .fetch_one(pool)
+                    .await?;
+                let count: i64 = result.try_get("count")?;
+                Ok(count > 0)
+            },
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(r#"SELECT COUNT(*) as count FROM Users WHERE Username = ?"#)
+                    .bind(username)
+                    .fetch_one(pool)
+                    .await?;
+                let count: i64 = result.try_get("count")?;
+                Ok(count > 0)
+            }
+        }
+    }
+
+    // Get user API key - matches Python get_user_api_key function EXACTLY
+    pub async fn get_user_api_key(&self, user_id: i32) -> AppResult<Option<String>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"
+                    SELECT api_key FROM "APIKeys" 
+                    WHERE userid = $1 
+                    ORDER BY created DESC 
+                    LIMIT 1
+                "#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = result {
+                    Ok(Some(row.try_get("api_key")?))
+                } else {
+                    Ok(None)
+                }
+            },
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(r#"
+                    SELECT APIKey FROM APIKeys 
+                    WHERE UserID = ? 
+                    ORDER BY Created DESC 
+                    LIMIT 1
+                "#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = result {
+                    Ok(Some(row.try_get("APIKey")?))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Create OIDC user - matches Python create_oidc_user function EXACTLY
+    pub async fn create_oidc_user(&self, email: &str, fullname: &str, username: &str) -> AppResult<i32> {
+        use base64::{Engine as _, engine::general_purpose::STANDARD};
+        use rand::Rng;
+        
+        // Create salt exactly like Python version
+        let salt_bytes: [u8; 16] = rand::thread_rng().gen();
+        let salt = STANDARD.encode(salt_bytes);
+        let hashed_password = format!("$argon2id$v=19$m=65536,t=3,p=4${}${}_OIDC_ACCOUNT_NO_PASSWORD", 
+                                    salt, "X".repeat(43));
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"
+                    INSERT INTO "Users" (fullname, username, email, hashed_pw, isadmin)
+                    VALUES ($1, $2, $3, $4, false)
+                    RETURNING userid
+                "#)
+                    .bind(fullname)
+                    .bind(username)
+                    .bind(email)
+                    .bind(&hashed_password)
+                    .fetch_one(pool)
+                    .await?;
+
+                let user_id: i32 = result.try_get("userid")?;
+
+                // Add default user settings
+                sqlx::query(r#"INSERT INTO "UserSettings" (userid, theme) VALUES ($1, $2)"#)
+                    .bind(user_id)
+                    .bind("Nordic")
+                    .execute(pool)
+                    .await?;
+
+                // Add default user stats
+                sqlx::query(r#"INSERT INTO "UserStats" (userid) VALUES ($1)"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+
+                Ok(user_id)
+            },
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(r#"
+                    INSERT INTO Users (Fullname, Username, Email, Hashed_PW, IsAdmin)
+                    VALUES (?, ?, ?, ?, 0)
+                "#)
+                    .bind(fullname)
+                    .bind(username)
+                    .bind(email)
+                    .bind(&hashed_password)
+                    .execute(pool)
+                    .await?;
+
+                let user_id = result.last_insert_id() as i32;
+
+                // Add default user settings
+                sqlx::query(r#"INSERT INTO UserSettings (UserID, Theme) VALUES (?, ?)"#)
+                    .bind(user_id)
+                    .bind("Nordic")
+                    .execute(pool)
+                    .await?;
+
+                // Add default user stats
+                sqlx::query(r#"INSERT INTO UserStats (UserID) VALUES (?)"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+
+                Ok(user_id)
+            }
+        }
+    }
+
+
+
+    // Check if username exists - helper for OIDC user creation
+    pub async fn username_exists(&self, username: &str) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"SELECT 1 FROM "Users" WHERE username = $1 LIMIT 1"#)
+                    .bind(username)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(result.is_some())
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("SELECT 1 FROM Users WHERE Username = ? LIMIT 1")
+                    .bind(username)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(result.is_some())
+            }
+        }
+    }
+
+    // Create or get API key for user - for OIDC login completion
+    pub async fn create_or_get_api_key(&self, user_id: i32) -> AppResult<String> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Check for existing API key
+                let existing_key = sqlx::query(r#"SELECT apikey FROM "APIKeys" WHERE userid = $1 LIMIT 1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = existing_key {
+                    return Ok(row.try_get("apikey")?);
+                }
+
+                // Generate new API key
+                let api_key = format!("pk_{}", uuid::Uuid::new_v4().simple());
+                
+                sqlx::query(r#"INSERT INTO "APIKeys" (userid, apikey) VALUES ($1, $2)"#)
+                    .bind(user_id)
+                    .bind(&api_key)
+                    .execute(pool)
+                    .await?;
+
+                Ok(api_key)
+            }
+            DatabasePool::MySQL(pool) => {
+                let existing_key = sqlx::query("SELECT APIKey FROM APIKeys WHERE UserID = ? LIMIT 1")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = existing_key {
+                    return Ok(row.try_get("APIKey")?);
+                }
+
+                let api_key = format!("pk_{}", uuid::Uuid::new_v4().simple());
+                
+                sqlx::query("INSERT INTO APIKeys (UserID, APIKey) VALUES (?, ?)")
+                    .bind(user_id)
+                    .bind(&api_key)
+                    .execute(pool)
+                    .await?;
+
+                Ok(api_key)
+            }
+        }
+    }
+
     // Get playlist episodes - matches Python get_playlist_episodes function exactly
     pub async fn get_playlist_episodes(&self, user_id: i32, playlist_id: i32) -> AppResult<serde_json::Value> {
         match self {
             DatabasePool::Postgres(pool) => {
-                // Get playlist info first
+                // Get playlist info first - allow access to user playlists OR system playlists (like Python)
                 let playlist_row = sqlx::query(r#"
-                    SELECT name FROM "Playlists" 
-                    WHERE playlistid = $1 AND userid = $2
+                    SELECT name, issystemplaylist FROM "Playlists" 
+                    WHERE playlistid = $1 AND (userid = $2 OR issystemplaylist = TRUE)
                 "#)
                     .bind(playlist_id)
                     .bind(user_id)
@@ -12834,6 +14224,356 @@ impl PlaylistConfig {
             self.time_filter_hours
         }
     }
+}
+
+impl DatabasePool {
+    // RSS key validation - matches Python get_rss_key_if_valid function
+    pub async fn get_rss_key_if_valid(&self, api_key: &str, podcast_ids: Option<&Vec<i32>>) -> AppResult<Option<crate::handlers::feed::RssKeyInfo>> {
+        use crate::handlers::feed::RssKeyInfo;
+        
+        let filter_podcast_ids = podcast_ids.map_or(false, |ids| !ids.is_empty() && !ids.contains(&-1));
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT fk.userid, STRING_AGG(CAST(fkm.podcastid AS TEXT), ',') as podcastids
+                    FROM "RssKeys" fk
+                    LEFT JOIN "RssKeyMap" fkm ON fk.rsskeyid = fkm.rsskeyid
+                    WHERE fk.rsskey = $1
+                    GROUP BY fk.userid
+                "#)
+                    .bind(api_key)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    let user_id: i32 = row.try_get("userid")?;
+                    let podcast_ids_str: Option<String> = row.try_get("podcastids").ok();
+                    
+                    let key_podcast_ids = if let Some(ids_str) = podcast_ids_str {
+                        ids_str.split(',')
+                            .filter_map(|s| s.parse::<i32>().ok())
+                            .collect::<Vec<i32>>()
+                    } else {
+                        vec![-1] // Universal access if no specific podcasts
+                    };
+                    
+                    // Check if access is allowed
+                    if filter_podcast_ids {
+                        if let Some(requested_ids) = podcast_ids {
+                            let has_universal = key_podcast_ids.contains(&-1);
+                            let has_specific_access = requested_ids.iter()
+                                .all(|id| key_podcast_ids.contains(id));
+                            
+                            if !has_universal && !has_specific_access {
+                                return Ok(None);
+                            }
+                        }
+                    }
+                    
+                    Ok(Some(RssKeyInfo {
+                        podcast_ids: key_podcast_ids,
+                        user_id,
+                        key: api_key.to_string(),
+                    }))
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT fk.UserID, GROUP_CONCAT(fkm.PodcastID) as podcastids
+                    FROM RssKeys fk
+                    LEFT JOIN RssKeyMap fkm ON fk.RssKeyID = fkm.RssKeyID
+                    WHERE fk.RssKey = ?
+                    GROUP BY fk.UserID
+                "#)
+                    .bind(api_key)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    let user_id: i32 = row.try_get("UserID")?;
+                    let podcast_ids_str: Option<String> = row.try_get("podcastids").ok();
+                    
+                    let key_podcast_ids = if let Some(ids_str) = podcast_ids_str {
+                        ids_str.split(',')
+                            .filter_map(|s| s.parse::<i32>().ok())
+                            .collect::<Vec<i32>>()
+                    } else {
+                        vec![-1] // Universal access if no specific podcasts
+                    };
+                    
+                    // Check if access is allowed
+                    if filter_podcast_ids {
+                        if let Some(requested_ids) = podcast_ids {
+                            let has_universal = key_podcast_ids.contains(&-1);
+                            let has_specific_access = requested_ids.iter()
+                                .all(|id| key_podcast_ids.contains(id));
+                            
+                            if !has_universal && !has_specific_access {
+                                return Ok(None);
+                            }
+                        }
+                    }
+                    
+                    Ok(Some(RssKeyInfo {
+                        podcast_ids: key_podcast_ids,
+                        user_id,
+                        key: api_key.to_string(),
+                    }))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Get RSS feed status - matches Python get_rss_feed_status function
+    pub async fn get_rss_feed_status(&self, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT enablerssfeeds FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    let enabled: Option<bool> = row.try_get("enablerssfeeds").ok();
+                    Ok(enabled.unwrap_or(false))
+                } else {
+                    Ok(false)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT EnableRSSFeeds FROM Users WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    let enabled: Option<bool> = row.try_get("EnableRSSFeeds").ok();
+                    Ok(enabled.unwrap_or(false))
+                } else {
+                    Ok(false)
+                }
+            }
+        }
+    }
+
+    // Generate podcast RSS feed - matches Python generate_podcast_rss function
+    pub async fn generate_podcast_rss(
+        &self,
+        rss_key: crate::handlers::feed::RssKeyInfo,
+        limit: i32,
+        source_type: Option<&str>,
+        domain: &str,
+        podcast_ids: Option<&Vec<i32>>,
+    ) -> AppResult<String> {
+        use chrono::{DateTime, Utc};
+        
+        let user_id = rss_key.user_id;
+        let mut effective_podcast_ids = rss_key.podcast_ids.clone();
+        
+        // If podcast_id parameter is provided, use it; otherwise use RSS key podcast_ids
+        let explicit_podcast_filter = podcast_ids.is_some();
+        if let Some(ids) = podcast_ids {
+            if !ids.is_empty() {
+                effective_podcast_ids = ids.clone();
+            }
+        }
+        
+        let podcast_filter = explicit_podcast_filter || (!effective_podcast_ids.is_empty() && !effective_podcast_ids.contains(&-1));
+        
+        // Check if RSS feeds are enabled for user
+        if !self.get_rss_feed_status(user_id).await? {
+            return Err(AppError::forbidden("RSS feeds not enabled for this user"));
+        }
+        
+        // Get user info for feed metadata
+        let username = match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT username FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    row.try_get::<String, _>("username").unwrap_or_else(|_| "Unknown User".to_string())
+                } else {
+                    return Err(AppError::not_found("User not found"));
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT Username FROM Users WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    row.try_get::<String, _>("Username").unwrap_or_else(|_| "Unknown User".to_string())
+                } else {
+                    return Err(AppError::not_found("User not found"));
+                }
+            }
+        };
+        
+        // Build RSS feed content
+        let mut rss_content = String::new();
+        rss_content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        rss_content.push_str("<rss version=\"2.0\">\n");
+        rss_content.push_str("<channel>\n");
+        rss_content.push_str(&format!("  <title>{}'s PinePods Feed</title>\n", username));
+        rss_content.push_str(&format!("  <link>{}</link>\n", domain));
+        rss_content.push_str(&format!("  <description>Personal podcast feed for {}</description>\n", username));
+        rss_content.push_str("  <language>en-us</language>\n");
+        
+        // Get episodes
+        let episodes = self.get_rss_episodes(user_id, limit, source_type, &effective_podcast_ids, podcast_filter, domain).await?;
+        
+        for episode in episodes {
+            rss_content.push_str("  <item>\n");
+            rss_content.push_str(&format!("    <title><![CDATA[{}]]></title>\n", episode.title));
+            rss_content.push_str(&format!("    <description><![CDATA[{}]]></description>\n", episode.description));
+            rss_content.push_str(&format!("    <link>{}</link>\n", episode.url));
+            rss_content.push_str(&format!("    <guid>{}</guid>\n", episode.url));
+            rss_content.push_str(&format!("    <pubDate>{}</pubDate>\n", episode.pub_date));
+            if let Some(duration) = episode.duration {
+                rss_content.push_str(&format!("    <itunes:duration>{}</itunes:duration>\n", duration));
+            }
+            rss_content.push_str("  </item>\n");
+        }
+        
+        rss_content.push_str("</channel>\n");
+        rss_content.push_str("</rss>\n");
+        
+        Ok(rss_content)
+    }
+    
+    // Get user RSS key - matches Python get_user_rss_key function
+    pub async fn get_user_rss_key(&self, user_id: i32) -> AppResult<Option<String>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT rsskey FROM "RssKeys" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.try_get("rsskey").ok())
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT RssKey FROM RssKeys WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.try_get("RssKey").ok())
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+    
+    // Helper function to get RSS episodes
+    async fn get_rss_episodes(
+        &self,
+        user_id: i32,
+        limit: i32,
+        source_type: Option<&str>,
+        podcast_ids: &[i32],
+        podcast_filter: bool,
+        domain: &str,
+    ) -> AppResult<Vec<RssEpisode>> {
+        // TODO: Implement full RSS episode fetching with proper SQL queries
+        // This is a placeholder implementation
+        Ok(vec![])
+    }
+
+    // Get podcast notification status - matches Python get_podcast_notification_status function
+    pub async fn get_podcast_notification_status(&self, podcast_id: i32, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT notificationsenabled
+                    FROM "Podcasts"
+                    WHERE podcastid = $1 AND userid = $2
+                "#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.try_get("notificationsenabled").unwrap_or(false))
+                } else {
+                    Ok(false)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("
+                    SELECT NotificationsEnabled
+                    FROM Podcasts
+                    WHERE PodcastID = ? AND UserID = ?
+                ")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    let enabled: i8 = row.try_get("NotificationsEnabled").unwrap_or(0);
+                    Ok(enabled != 0)
+                } else {
+                    Ok(false)
+                }
+            }
+        }
+    }
+
+    // Get MFA secret - matches Python get_mfa_secret function
+    pub async fn get_mfa_secret(&self, user_id: i32) -> AppResult<Option<String>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT mfa_secret FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.try_get("mfa_secret").ok())
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT MFA_Secret FROM Users WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.try_get("MFA_Secret").ok())
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct RssEpisode {
+    title: String,
+    description: String,
+    url: String,
+    pub_date: String,
+    duration: Option<i32>,
 }
 
 use std::collections::HashSet;

@@ -667,16 +667,12 @@ For a podcast sync app I recommend Opodsync, but nextcloud sync works great too!
 
 ARM devices are also supported including raspberry pis. The app is shockingly performant on a raspberry pi as well. The only limitation is that a 64bit OS is required on an arm device. Setup is exactly the same, just use the latest tag and docker will auto pull the arm version.
 
-## ToDo
-
-For a list of ToDo's check out the [Road to 1.0](https://github.com/madeofpendletonwool/PinePods/issues/397) issue. Updates and progress can be seen there:
 
 ### Clients to support
 
 - [x] Flatpak Package
 - [ ] Nix Package
 - [x] Aur Package
-- [x] Snap package
 - [x] Helm Chart and repo for kubernetes deployment
 - [ ] Mobile Apps
   - [x] Android App - Beta

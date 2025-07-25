@@ -132,6 +132,8 @@ fn create_app(state: AppState) -> Router {
         .nest("/api/async", create_async_routes())
         .nest("/api/proxy", create_proxy_routes())
         .nest("/api/gpodder", create_gpodder_routes())
+        .nest("/api/feed", create_feed_routes())
+        .nest("/api/auth", create_auth_routes())
         .nest("/ws", create_websocket_routes())
         
         // Middleware stack
@@ -215,6 +217,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/home_overview", get(handlers::podcasts::home_overview))
         .route("/get_playlists", get(handlers::podcasts::get_playlists))
         .route("/get_playlist_episodes", get(handlers::podcasts::get_playlist_episodes))
+        .route("/get_podcast_details", get(handlers::podcasts::get_podcast_details))
         .route("/mark_episode_uncompleted", post(handlers::podcasts::mark_episode_uncompleted))
         .route("/user/set_theme", put(handlers::settings::set_theme))
         .route("/get_user_info", get(handlers::settings::get_user_info))
@@ -279,6 +282,15 @@ fn create_data_routes() -> Router<AppState> {
         .route("/person/subscriptions/{user_id}", get(handlers::settings::get_person_subscriptions))
         .route("/person/episodes/{user_id}/{person_id}", get(handlers::settings::get_person_episodes))
         .route("/youtube/subscribe", post(handlers::youtube::subscribe_to_youtube_channel))
+        .route("/enable_auto_download", post(handlers::settings::enable_auto_download))
+        .route("/adjust_skip_times", post(handlers::settings::adjust_skip_times))
+        .route("/remove_category", post(handlers::settings::remove_category))
+        .route("/add_category", post(handlers::settings::add_category))
+        .route("/podcast/set_playback_speed", post(handlers::settings::set_podcast_playback_speed))
+        .route("/podcast/toggle_notifications", put(handlers::settings::toggle_podcast_notifications))
+        .route("/podcast/notification_status", post(handlers::podcasts::get_notification_status))
+        .route("/rss_key", get(handlers::settings::get_user_rss_key))
+        .route("/verify_mfa", post(handlers::settings::verify_mfa))
         // Add more data routes as needed
 }
 
@@ -334,10 +346,21 @@ fn create_init_routes() -> Router<AppState> {
         .route("/startup_tasks", post(handlers::tasks::startup_tasks))
 }
 
+fn create_feed_routes() -> Router<AppState> {
+    Router::new()
+        .route("/{user_id}", get(handlers::feed::get_user_feed))
+}
+
 fn create_websocket_routes() -> Router<AppState> {
     Router::new()
         .route("/api/tasks/{user_id}", get(handlers::websocket::task_progress_websocket))
         .route("/api/data/episodes/{user_id}", get(handlers::refresh::websocket_refresh_episodes))
+}
+
+fn create_auth_routes() -> Router<AppState> {
+    Router::new()
+        .route("/store_state", post(handlers::auth::store_oidc_state))
+        .route("/callback", get(handlers::auth::oidc_callback))
 }
 
 async fn shutdown_signal() {

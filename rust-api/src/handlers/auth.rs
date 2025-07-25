@@ -9,7 +9,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use crate::{
     error::{AppError, AppResult},
-    handlers::{extract_api_key, validate_api_key},
+    handlers::{extract_api_key, validate_api_key, check_user_or_admin_access},
     services::auth::{hash_password, verify_password},
     database::{SelfServiceStatus, PublicOidcProvider},
     AppState,
@@ -202,12 +202,8 @@ pub async fn get_user_details_by_id(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Get user ID from API key for authorization check
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // Basic authorization: users can only get their own details (unless admin)
-    // TODO: Add admin check
-    if requesting_user_id != user_id {
+    // Check authorization: users can only get their own details, have web key access, or be admin
+    if !check_user_or_admin_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("Access denied to user details"));
     }
 
@@ -633,21 +629,21 @@ async fn process_opml_import(
             Some(format!("Processing podcast {}/{}: {}", index + 1, total_podcasts, podcast_url)),
         ).await;
         
-        // Try to get podcast values and add podcast
+        // Try to get podcast values and add podcast with robust error handling
         match get_podcast_values_from_url(podcast_url).await {
             Ok(mut podcast_values) => {
                 podcast_values.user_id = import_request.user_id;
                 match db_pool.add_podcast(&podcast_values, 0, None, None).await {
                     Ok(_) => {
-                        tracing::info!("Successfully imported podcast: {}", podcast_url);
+                        tracing::info!("✅ Successfully imported podcast: {}", podcast_url);
                     }
                     Err(e) => {
-                        tracing::error!("Error importing podcast {}: {}", podcast_url, e);
+                        tracing::error!("❌ Database error importing podcast {}: {} - Continuing with next podcast", podcast_url, e);
                     }
                 }
             }
             Err(e) => {
-                tracing::error!("Error getting podcast values for {}: {}", podcast_url, e);
+                tracing::error!("❌ Feed parsing error for {}: {} - Continuing with next podcast", podcast_url, e);
             }
         }
         
@@ -679,69 +675,104 @@ async fn get_podcast_values_from_url(url: &str) -> Result<crate::handlers::podca
     
     let content = response.text().await.map_err(|e| AppError::Http(e))?;
     
-    // Parse RSS feed to extract podcast information
+    // Parse RSS feed to extract podcast information with Python-style comprehensive fallbacks
     use quick_xml::Reader;
     use quick_xml::events::Event;
     
     let mut reader = Reader::from_str(&content);
     reader.config_mut().trim_text(true);
     
-    let mut podcast_title = "Unknown Podcast".to_string();
-    let mut podcast_description = "No description available".to_string();
-    let mut podcast_author = "Unknown Author".to_string();
-    let mut podcast_artwork = "".to_string();
-    let mut podcast_website = "".to_string();
-    let mut podcast_explicit = false;
-    
+    let mut metadata: HashMap<String, String> = HashMap::new();
     let mut current_tag = String::new();
     let mut current_text = String::new();
+    let mut current_attrs: HashMap<String, String> = HashMap::new();
+    let mut in_channel = false;
+    let mut categories: HashMap<String, String> = HashMap::new();
+    let mut category_counter = 0;
     
     loop {
         match reader.read_event() {
             Ok(Event::Start(ref e)) => {
                 current_tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
                 current_text.clear();
+                current_attrs.clear();
                 
-                // Handle image tag for artwork
-                if current_tag == "image" {
-                    // Look for href attribute
-                    for attr in e.attributes() {
-                        if let Ok(attr) = attr {
-                            if attr.key.as_ref() == b"href" {
-                                podcast_artwork = String::from_utf8_lossy(&attr.value).to_string();
-                            }
+                // Track when we're in the channel section (not in items)
+                if current_tag == "channel" {
+                    in_channel = true;
+                } else if current_tag == "item" {
+                    in_channel = false;
+                }
+                
+                // Store attributes
+                for attr in e.attributes() {
+                    if let Ok(attr) = attr {
+                        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+                        let value = String::from_utf8_lossy(&attr.value).to_string();
+                        current_attrs.insert(key, value);
+                    }
+                }
+                
+                // Handle iTunes image with href attribute (priority for artwork)
+                if (current_tag == "itunes:image" || current_tag == "image") && in_channel {
+                    if let Some(href) = current_attrs.get("href") {
+                        if !href.trim().is_empty() {
+                            metadata.insert("itunes_image_href".to_string(), href.clone());
                         }
+                    }
+                }
+                
+                // Handle iTunes category attributes  
+                if current_tag == "itunes:category" && in_channel {
+                    if let Some(text) = current_attrs.get("text") {
+                        categories.insert(category_counter.to_string(), text.clone());
+                        category_counter += 1;
+                    }
+                }
+            }
+            Ok(Event::Empty(ref e)) => {
+                // Handle self-closing tags
+                current_tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
+                current_attrs.clear();
+                
+                // Store attributes from self-closing tag
+                for attr in e.attributes() {
+                    if let Ok(attr) = attr {
+                        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
+                        let value = String::from_utf8_lossy(&attr.value).to_string();
+                        current_attrs.insert(key, value);
+                    }
+                }
+                
+                // Handle iTunes image with href attribute
+                if (current_tag == "itunes:image" || current_tag == "image") && in_channel {
+                    if let Some(href) = current_attrs.get("href") {
+                        if !href.trim().is_empty() {
+                            metadata.insert("itunes_image_href".to_string(), href.clone());
+                        }
+                    }
+                }
+                
+                // Handle iTunes category attributes
+                if current_tag == "itunes:category" && in_channel {
+                    if let Some(text) = current_attrs.get("text") {
+                        categories.insert(category_counter.to_string(), text.clone());
+                        category_counter += 1;
                     }
                 }
             }
             Ok(Event::Text(e)) => {
                 current_text = e.decode().unwrap_or_default().into_owned();
             }
+            Ok(Event::CData(e)) => {
+                current_text = e.decode().unwrap_or_default().into_owned();
+            }
             Ok(Event::End(ref e)) => {
                 let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
                 
-                match tag.as_str() {
-                    "title" => {
-                        if podcast_title == "Unknown Podcast" {
-                            podcast_title = current_text.clone();
-                        }
-                    }
-                    "description" => podcast_description = current_text.clone(),
-                    "author" | "managingEditor" | "itunes:author" => podcast_author = current_text.clone(),
-                    "link" => {
-                        if podcast_website.is_empty() {
-                            podcast_website = current_text.clone();
-                        }
-                    }
-                    "itunes:explicit" => {
-                        podcast_explicit = current_text.to_lowercase() == "yes" || current_text.to_lowercase() == "true";
-                    }
-                    "url" => {
-                        if podcast_artwork.is_empty() {
-                            podcast_artwork = current_text.clone();
-                        }
-                    }
-                    _ => {}
+                // Only store channel-level metadata, not item-level
+                if in_channel && !current_text.trim().is_empty() {
+                    metadata.insert(tag.clone(), current_text.clone());
                 }
             }
             Ok(Event::Eof) => break,
@@ -750,11 +781,63 @@ async fn get_podcast_values_from_url(url: &str) -> Result<crate::handlers::podca
         }
     }
     
+    // Apply Python-style comprehensive fallback logic for each field
+    
+    // Title - required field with robust fallbacks
+    let podcast_title = metadata.get("title")
+        .filter(|s| !s.trim().is_empty())
+        .cloned()
+        .unwrap_or_else(|| "Unknown Podcast".to_string());
+    
+    // Author - multiple fallback sources like Python version
+    let podcast_author = metadata.get("itunes:author")
+        .or_else(|| metadata.get("author"))
+        .or_else(|| metadata.get("managingEditor"))
+        .or_else(|| metadata.get("dc:creator"))
+        .filter(|s| !s.trim().is_empty())
+        .cloned()
+        .unwrap_or_else(|| "Unknown Author".to_string());
+    
+    // Artwork - comprehensive fallback chain like Python version
+    let podcast_artwork = metadata.get("itunes_image_href")
+        .or_else(|| metadata.get("image_href"))
+        .or_else(|| metadata.get("url"))  // From <image><url> tags
+        .or_else(|| metadata.get("href")) // From <image href=""> attributes
+        .filter(|s| !s.trim().is_empty() && s.starts_with("http"))
+        .cloned()
+        .unwrap_or_else(|| String::new());
+    
+    // Description - multiple fallback sources like Python version
+    let podcast_description = metadata.get("itunes:summary")
+        .or_else(|| metadata.get("description"))
+        .or_else(|| metadata.get("subtitle"))
+        .or_else(|| metadata.get("itunes:subtitle"))
+        .filter(|s| !s.trim().is_empty())
+        .cloned()
+        .unwrap_or_else(|| "No description available".to_string());
+    
+    // Website - link field
+    let podcast_website = metadata.get("link")
+        .filter(|s| !s.trim().is_empty() && s.starts_with("http"))
+        .cloned()
+        .unwrap_or_else(|| String::new());
+    
+    // Explicit - handle both string and boolean values like Python
+    let podcast_explicit = metadata.get("itunes:explicit")
+        .map(|s| {
+            let lower = s.to_lowercase();
+            lower == "yes" || lower == "true" || lower == "explicit" || lower == "1"
+        })
+        .unwrap_or(false);
+    
+    println!("🎙️  Parsed podcast: title='{}', author='{}', artwork='{}', description_len={}, website='{}', explicit={}, categories_count={}", 
+        podcast_title, podcast_author, podcast_artwork, podcast_description.len(), podcast_website, podcast_explicit, categories.len());
+    
     Ok(crate::handlers::podcasts::PodcastValues {
         pod_title: podcast_title,
         pod_artwork: podcast_artwork,
         pod_author: podcast_author,
-        categories: HashMap::new(),
+        categories: categories,
         pod_description: podcast_description,
         pod_episode_count: 0,
         pod_feed_url: url.to_string(),
@@ -762,4 +845,307 @@ async fn get_podcast_values_from_url(url: &str) -> Result<crate::handlers::podca
         pod_explicit: podcast_explicit,
         user_id: 0, // Will be set by the caller
     })
+}
+
+// OIDC Authentication Flow Endpoints
+
+// Store OIDC state - matches Python /api/auth/store_state endpoint
+#[derive(Deserialize)]
+pub struct StoreStateRequest {
+    pub state: String,
+    pub client_id: String,
+}
+
+pub async fn store_oidc_state(
+    State(state): State<crate::AppState>,
+    Json(request): Json<StoreStateRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    // Store state in Redis with 10-minute expiration (matches Python implementation)
+    let state_key = format!("oidc_state:{}", request.state);
+    
+    state.redis_client.set_ex(&state_key, &request.client_id, 600).await
+        .map_err(|e| AppError::internal(&format!("Failed to store OIDC state: {}", e)))?;
+    
+    Ok(Json(serde_json::json!({ "status": "success" })))
+}
+
+// OIDC callback handler - matches Python /api/auth/callback endpoint
+#[derive(Deserialize)]
+pub struct OIDCCallbackQuery {
+    pub code: Option<String>,
+    pub state: Option<String>,
+    pub error: Option<String>,
+    pub error_description: Option<String>,
+}
+
+pub async fn oidc_callback(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Query(query): Query<OIDCCallbackQuery>,
+) -> Result<axum::response::Redirect, AppError> {
+    // Construct base URL from request like Python version - EXACT match
+    let base_url = construct_base_url_from_request(&headers)?;
+    let frontend_base = base_url.replace("/api", "");
+    
+    // Handle OAuth errors first - EXACT match to Python
+    if let Some(error) = query.error {
+        let error_desc = query.error_description.unwrap_or_else(|| "Unknown error".to_string());
+        tracing::error!("OIDC provider error: {} - {}", error, error_desc);
+        return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=provider_error&description={}", 
+            frontend_base, urlencoding::encode(&error_desc))));
+    }
+
+    // Validate required parameters - EXACT match to Python
+    let auth_code = query.code.ok_or_else(|| AppError::bad_request("Missing authorization code"))?;
+    let state_param = query.state.ok_or_else(|| AppError::bad_request("Missing state parameter"))?;
+
+    // Get client_id from state - EXACT match to Python oidc_state_manager.get_client_id
+    let client_id = match state.redis_client.get_del(&format!("oidc_state:{}", state_param)).await {
+        Ok(Some(client_id)) => client_id,
+        Ok(None) => {
+            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=invalid_state", frontend_base)));
+        }
+        Err(_) => {
+            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=internal_error", frontend_base)));
+        }
+    };
+
+    let registered_redirect_uri = format!("{}/api/auth/callback", base_url);
+
+    // Get OIDC provider details - EXACT match to Python get_oidc_provider returning tuple
+    let provider_tuple = match state.db_pool.get_oidc_provider(&client_id).await {
+        Ok(Some(provider)) => provider,
+        Ok(None) => {
+            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=invalid_provider", frontend_base)));
+        }
+        Err(_) => {
+            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=internal_error", frontend_base)));
+        }
+    };
+
+    // Unpack provider details - EXACT match to Python unpacking
+    let (provider_id, _client_id, client_secret, token_url, userinfo_url, name_claim, email_claim, username_claim, roles_claim, user_role, admin_role) = provider_tuple;
+
+    // Exchange authorization code for access token - EXACT match to Python
+    let client = reqwest::Client::new();
+    let token_response = match client.post(&token_url)
+        .form(&[
+            ("grant_type", "authorization_code"),
+            ("code", &auth_code),
+            ("redirect_uri", &registered_redirect_uri),
+            ("client_id", &client_id),
+            ("client_secret", &client_secret),
+        ])
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => {
+            match response.json::<serde_json::Value>().await {
+                Ok(token_data) => token_data,
+                Err(_) => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=token_exchange_failed", frontend_base))),
+            }
+        }
+        _ => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=token_exchange_failed", frontend_base))),
+    };
+
+    let access_token = match token_response.get("access_token").and_then(|v| v.as_str()) {
+        Some(token) => token,
+        None => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=token_exchange_failed", frontend_base))),
+    };
+
+    // Get user info from OIDC provider - EXACT match to Python
+    let userinfo_response = match client.get(&userinfo_url)
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("User-Agent", "PinePods/1.0")
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => {
+            match response.json::<serde_json::Value>().await {
+                Ok(user_info) => user_info,
+                Err(_) => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=userinfo_failed", frontend_base))),
+            }
+        }
+        _ => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=userinfo_failed", frontend_base))),
+    };
+
+    // Extract email with GitHub special handling - EXACT match to Python
+    let mut email = userinfo_response.get(email_claim.as_deref().unwrap_or("email")).and_then(|v| v.as_str()).map(|s| s.to_string());
+    
+    // GitHub email handling - EXACT match to Python
+    if email.is_none() && userinfo_url.contains("api.github.com") {
+        if let Ok(emails_response) = client.get("https://api.github.com/user/emails")
+            .header("Authorization", format!("Bearer {}", access_token))
+            .header("User-Agent", "PinePods/1.0")
+            .header("Accept", "application/json")
+            .send()
+            .await
+        {
+            if emails_response.status().is_success() {
+                if let Ok(emails) = emails_response.json::<Vec<serde_json::Value>>().await {
+                    // Find primary email
+                    for email_obj in &emails {
+                        if email_obj.get("primary").and_then(|v| v.as_bool()).unwrap_or(false) && 
+                           email_obj.get("verified").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            email = email_obj.get("email").and_then(|v| v.as_str()).map(|s| s.to_string());
+                            break;
+                        }
+                    }
+                    // If no primary, take first verified
+                    if email.is_none() {
+                        for email_obj in &emails {
+                            if email_obj.get("verified").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                email = email_obj.get("email").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let email = match email {
+        Some(e) => e,
+        None => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=email_required", frontend_base))),
+    };
+
+    // Role verification - EXACT match to Python
+    if let (Some(roles_claim), Some(user_role)) = (roles_claim.as_ref(), user_role.as_ref()) {
+        if let Some(roles) = userinfo_response.get(roles_claim).and_then(|v| v.as_array()) {
+            let has_user_role = roles.iter().any(|r| r.as_str() == Some(user_role));
+            let has_admin_role = admin_role.as_ref().map_or(false, |admin_role| {
+                roles.iter().any(|r| r.as_str() == Some(admin_role))
+            });
+            
+            if !has_user_role && !has_admin_role {
+                return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=no_access", frontend_base)));
+            }
+        } else {
+            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=no_access&details=invalid_roles", frontend_base)));
+        }
+    }
+
+    // Check if user exists - EXACT match to Python
+    let existing_user = state.db_pool.get_user_by_email(&email).await?;
+    
+    let fullname = userinfo_response.get(name_claim.as_deref().unwrap_or("name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Username claim validation - EXACT match to Python
+    if let Some(username_claim) = username_claim.as_ref() {
+        if !userinfo_response.get(username_claim).is_some() {
+            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=user_creation_failed&details=username_claim_missing", frontend_base)));
+        }
+    }
+
+    let username = userinfo_response.get(username_claim.as_deref().unwrap_or("preferred_username"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let user_id = if let Some((user_id, _email, current_username, _fullname, _is_admin)) = existing_user {
+        // Existing user - EXACT match to Python
+        let api_key = match state.db_pool.get_user_api_key(user_id).await? {
+            Some(key) => key,
+            None => state.db_pool.create_api_key(user_id).await?,
+        };
+
+        // Update user info - EXACT match to Python
+        state.db_pool.set_fullname(user_id, &fullname).await?;
+
+        // Update username if changed - EXACT match to Python
+        if let (Some(username_claim), Some(new_username)) = (username_claim.as_ref(), username.as_ref()) {
+            if Some(new_username) != current_username.as_ref() {
+                if !state.db_pool.check_usernames(new_username).await? {
+                    state.db_pool.set_username(user_id, new_username).await?;
+                }
+            }
+        }
+
+        // Update admin role - EXACT match to Python
+        if let (Some(roles_claim), Some(admin_role)) = (roles_claim.as_ref(), admin_role.as_ref()) {
+            if let Some(roles) = userinfo_response.get(roles_claim).and_then(|v| v.as_array()) {
+                let is_admin = roles.iter().any(|r| r.as_str() == Some(admin_role));
+                state.db_pool.set_isadmin(user_id, is_admin).await?;
+            }
+        }
+
+        return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?api_key={}", frontend_base, api_key)));
+    } else {
+        // Create new user - EXACT match to Python
+        let mut final_username = username.unwrap_or_else(|| email.split('@').next().unwrap_or(&email).to_lowercase());
+        
+        // Username conflict resolution - EXACT match to Python
+        if state.db_pool.check_usernames(&final_username).await? {
+            let base_username = final_username.clone();
+            let mut counter = 1;
+            const MAX_ATTEMPTS: i32 = 10;
+            
+            while counter <= MAX_ATTEMPTS {
+                final_username = format!("{}_{}", base_username, counter);
+                if !state.db_pool.check_usernames(&final_username).await? {
+                    break;
+                }
+                counter += 1;
+                if counter > MAX_ATTEMPTS {
+                    return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=username_conflict", frontend_base)));
+                }
+            }
+        }
+
+        // Create user - EXACT match to Python
+        match state.db_pool.create_oidc_user(&email, &fullname, &final_username).await {
+            Ok(user_id) => {
+                let api_key = state.db_pool.create_api_key(user_id).await?;
+                
+                // Set admin role for new user - EXACT match to Python
+                if let (Some(roles_claim), Some(admin_role)) = (roles_claim.as_ref(), admin_role.as_ref()) {
+                    if let Some(roles) = userinfo_response.get(roles_claim).and_then(|v| v.as_array()) {
+                        let is_admin = roles.iter().any(|r| r.as_str() == Some(admin_role));
+                        state.db_pool.set_isadmin(user_id, is_admin).await?;
+                    }
+                }
+                
+                user_id
+            }
+            Err(_) => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=user_creation_failed", frontend_base))),
+        }
+    };
+
+    let api_key = match state.db_pool.get_user_api_key(user_id).await? {
+        Some(key) => key,
+        None => state.db_pool.create_api_key(user_id).await?,
+    };
+
+    // Success - EXACT match to Python
+    Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?api_key={}", frontend_base, api_key)))
+}
+
+// Construct base URL from request headers (matches Python request.base_url)
+fn construct_base_url_from_request(headers: &HeaderMap) -> Result<String, AppError> {
+    // Get Host header (required)
+    let host = headers
+        .get("host")
+        .ok_or_else(|| AppError::bad_request("Missing Host header"))?
+        .to_str()
+        .map_err(|_| AppError::bad_request("Invalid Host header"))?;
+
+    // Check for X-Forwarded-Proto header to determine scheme
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("http");
+
+    let mut base_url = format!("{}://{}", scheme, host);
+
+    // Force HTTPS if running in production (not localhost)
+    if !base_url.starts_with("http://localhost") && base_url.starts_with("http:") {
+        base_url = format!("https:{}", &base_url[5..]);
+    }
+
+    Ok(base_url)
 }

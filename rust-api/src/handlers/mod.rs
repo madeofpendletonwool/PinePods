@@ -12,6 +12,7 @@ pub mod settings;
 pub mod sync;
 pub mod youtube;
 pub mod tasks;
+pub mod feed;
 
 // Common handler utilities
 use axum::{
@@ -51,6 +52,39 @@ pub async fn validate_api_key(state: &AppState, api_key: &str) -> AppResult<bool
     }
 
     Ok(is_valid)
+}
+
+// Check if user has permission (either owns the resource or has web key/admin access)
+pub async fn check_user_access(state: &AppState, api_key: &str, target_user_id: i32) -> AppResult<bool> {
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(api_key).await?;
+    
+    // Allow if user is accessing their own data or if they are user ID 1 (admin/web key)
+    Ok(requesting_user_id == target_user_id || requesting_user_id == 1)
+}
+
+// Check if user has elevated access (web key - user ID 1)
+pub async fn check_web_key_access(state: &AppState, api_key: &str) -> AppResult<bool> {
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(api_key).await?;
+    Ok(requesting_user_id == 1)
+}
+
+// Check if user has admin privileges
+pub async fn check_admin_access(state: &AppState, api_key: &str) -> AppResult<bool> {
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(api_key).await?;
+    state.db_pool.user_admin_check(requesting_user_id).await
+}
+
+// Check if user has permission (either owns the resource, has web key access, or is admin)
+pub async fn check_user_or_admin_access(state: &AppState, api_key: &str, target_user_id: i32) -> AppResult<bool> {
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(api_key).await?;
+    
+    // Allow if user is accessing their own data, has web key access, or is admin
+    if requesting_user_id == target_user_id || requesting_user_id == 1 {
+        Ok(true)
+    } else {
+        // Check if user is admin
+        state.db_pool.user_admin_check(requesting_user_id).await
+    }
 }
 
 // Extract and validate pagination parameters

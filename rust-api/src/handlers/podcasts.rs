@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     error::AppError,
-    handlers::{extract_api_key, validate_api_key},
+    handlers::{extract_api_key, validate_api_key, check_user_access},
     AppState,
 };
 
@@ -141,6 +141,31 @@ pub struct RemovePodcastResponse {
     pub success: bool,
 }
 
+// Query struct for get_podcast_details - matches Python endpoint
+#[derive(Deserialize)]
+pub struct GetPodcastDetailsQuery {
+    pub user_id: i32,
+    pub podcast_id: i32,
+}
+
+// Response struct for get_podcast_details - matches Python ClickedFeedURL model
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[allow(non_snake_case)]
+pub struct PodcastDetails {
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub feedurl: String,
+    pub description: String,
+    pub author: String,
+    pub artworkurl: String,
+    pub explicit: bool,
+    pub episodecount: i32,
+    pub categories: Option<HashMap<String, String>>,
+    pub websiteurl: String,
+    pub podcastindexid: i32,
+    pub is_youtube: Option<bool>,
+}
+
 // Get episodes for a user - matches Python return_episodes endpoint
 pub async fn return_episodes(
     Path(user_id): Path<i32>,
@@ -155,11 +180,8 @@ pub async fn return_episodes(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get their own episodes
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only return episodes of your own!"));
     }
 
@@ -186,8 +208,8 @@ pub async fn add_podcast(
     // Check authorization - users can only add podcasts for themselves
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != request.podcast_values.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, requesting_user_id).await? {
         return Err(AppError::forbidden("You can only add podcasts for yourself!"));
     }
 
@@ -223,8 +245,8 @@ pub async fn remove_podcast(
     // Check authorization - users can only remove their own podcasts
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != request.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, requesting_user_id).await? {
         return Err(AppError::forbidden("You can only remove your own podcasts!"));
     }
 
@@ -255,8 +277,8 @@ pub async fn remove_podcast_by_name(
     // Check authorization - users can only remove their own podcasts
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != request.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, requesting_user_id).await? {
         return Err(AppError::forbidden("You can only remove your own podcasts!"));
     }
 
@@ -284,11 +306,8 @@ pub async fn return_pods(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get their own podcasts
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only return podcasts of your own!"));
     }
 
@@ -312,11 +331,8 @@ pub async fn return_pods_extra(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get their own podcasts
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only return podcasts of your own!"));
     }
 
@@ -359,11 +375,8 @@ pub async fn get_time_info(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get their own time info
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != query.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, query.user_id).await? {
         return Err(AppError::forbidden("You can only get your own time info!"));
     }
 
@@ -387,11 +400,8 @@ pub async fn check_podcast(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only check their own podcasts
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != query.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, query.user_id).await? {
         return Err(AppError::forbidden("You can only check your own podcasts!"));
     }
 
@@ -416,11 +426,8 @@ pub async fn check_episode_in_db(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only check episodes in their own podcasts
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only check episodes in your own podcasts!"));
     }
 
@@ -444,11 +451,8 @@ pub async fn queue_episode(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only queue episodes for themselves
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != request.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only queue episodes for yourself!"));
     }
 
@@ -480,11 +484,8 @@ pub async fn remove_queued_episode(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only remove their own queued episodes
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != request.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only remove your own queued episodes!"));
     }
 
@@ -513,8 +514,8 @@ pub async fn get_queued_episodes(
     // Check authorization - users can only get their own queued episodes
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != query.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, query.user_id).await? {
         return Err(AppError::forbidden("You can only get your own queued episodes!"));
     }
 
@@ -539,11 +540,8 @@ pub async fn reorder_queue(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only reorder their own queue
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != query.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, query.user_id).await? {
         return Err(AppError::forbidden("You can only reorder your own queue!"));
     }
 
@@ -569,11 +567,8 @@ pub async fn save_episode(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only save episodes for themselves
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != request.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only save episodes for yourself!"));
     }
 
@@ -605,11 +600,8 @@ pub async fn remove_saved_episode(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only remove their own saved episodes
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != request.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only remove your own saved episodes!"));
     }
 
@@ -641,11 +633,8 @@ pub async fn get_saved_episodes(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get their own saved episodes
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only get your own saved episodes!"));
     }
 
@@ -669,11 +658,8 @@ pub async fn add_history(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only add history for themselves
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != request.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only add history for yourself!"));
     }
 
@@ -704,11 +690,8 @@ pub async fn get_user_history(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get their own history
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only get your own history!"));
     }
 
@@ -740,11 +723,8 @@ pub async fn get_podcast_id(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get their own podcast IDs
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != query.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, query.user_id).await? {
         return Err(AppError::forbidden("You can only return pocast ids of your own podcasts!"));
     }
 
@@ -777,11 +757,8 @@ pub async fn download_episode_list(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get their own downloaded episodes
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != query.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, query.user_id).await? {
         return Err(AppError::forbidden("You can only return downloaded episodes for yourself!"));
     }
 
@@ -827,11 +804,8 @@ pub async fn download_podcast(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only download for themselves
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != request.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only download content for yourself!"));
     }
 
@@ -872,11 +846,8 @@ pub async fn delete_episode(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only delete their own downloads
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != request.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only delete your own downloads!"));
     }
 
@@ -906,11 +877,8 @@ pub async fn download_all_podcast(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only download for themselves
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != request.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, request.user_id).await? {
         return Err(AppError::forbidden("You can only download content for yourself!"));
     }
 
@@ -945,11 +913,8 @@ pub async fn download_status(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get their own download status
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only get your own download status!"));
     }
 
@@ -980,11 +945,8 @@ pub async fn podcast_episodes(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get their own podcast episodes
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != query.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, query.user_id).await? {
         return Err(AppError::forbidden("You can only return episodes of your own!"));
     }
 
@@ -1016,16 +978,13 @@ pub async fn get_podcast_id_from_ep_name(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization - users can only get podcast IDs for their own episodes
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != query.user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, query.user_id).await? {
         return Err(AppError::forbidden("You can only return podcast ids of your own episodes!"));
     }
 
     // Get podcast ID from episode name and URL
-    let podcast_id = state.db_pool.get_podcast_id_from_episode_name(query.user_id, &query.episode_url, &query.episode_name).await?;
+    let podcast_id = state.db_pool.get_podcast_id_from_episode_name(&query.episode_name, &query.episode_url, query.user_id).await?;
     
     Ok(Json(serde_json::json!({ "podcast_id": podcast_id })))
 }
@@ -1306,13 +1265,8 @@ pub async fn fetch_podcasting_2_pod_data(
         return Err(AppError::unauthorized("Invalid API key or insufficient permissions"));
     }
 
-    // For now, return placeholder data like the Python version does
-    // This would need actual implementation to fetch podcasting 2.0 data from feeds
-    let data = serde_json::json!({
-        "funding": [],
-        "locked": false,
-        "guid": null
-    });
+    // Fetch podcasting 2.0 podcast data
+    let data = state.db_pool.fetch_podcasting_2_pod_data(query.podcast_id, query.user_id).await?;
     
     Ok(Json(data))
 }
@@ -1724,4 +1678,25 @@ pub async fn get_playlist_episodes(
     let playlist_episodes = state.db_pool.get_playlist_episodes(query.user_id, query.playlist_id).await?;
     
     Ok(Json(playlist_episodes))
+}
+
+// Get podcast details - matches Python get_podcast_details endpoint
+pub async fn get_podcast_details(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Query(query): Query<GetPodcastDetailsQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+    
+    // Check authorization - user can only access their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    if key_id != query.user_id {
+        return Err(AppError::forbidden("You can only view your own podcast details!"));
+    }
+    
+    let podcast_details = state.db_pool.get_podcast_details(query.user_id, query.podcast_id).await?;
+    
+    Ok(Json(podcast_details))
 }

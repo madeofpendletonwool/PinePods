@@ -11,7 +11,7 @@ use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     error::{AppError, AppResult},
-    handlers::{extract_api_key, validate_api_key},
+    handlers::{extract_api_key, validate_api_key, check_user_access},
     services::task_manager::TaskManager,
     AppState,
 };
@@ -279,10 +279,8 @@ pub async fn websocket_refresh_episodes(
         return Err(AppError::unauthorized("Invalid API key"));
     }
 
-    // Check authorization
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    // TODO: Add web key check for elevated access
-    if requesting_user_id != user_id {
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, user_id).await? {
         return Err(AppError::forbidden("You can only refresh your own podcasts"));
     }
 

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::AppError,
-    handlers::{extract_api_key, validate_api_key},
+    handlers::{extract_api_key, validate_api_key, check_user_access},
     AppState,
 };
 use std::collections::HashMap;
@@ -933,6 +933,10 @@ pub async fn delete_api_key(
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
+    // For debugging - log the values
+    println!("🔐 delete_api_key: user_id={}, user_id_from_api_key={}, is_web_key={}, api_id={}", 
+        user_id, user_id_from_api_key, is_web_key, api_id);
+
     if !is_web_key && user_id != user_id_from_api_key {
         return Err(AppError::forbidden("You are not authorized to access or remove other users api-keys."));
     }
@@ -942,9 +946,15 @@ pub async fn delete_api_key(
         return Err(AppError::forbidden("You cannot delete the API key that is currently in use."));
     }
 
-    // Check if the API key belongs to the guest user (user_id 1)
+    // Check if the API key belongs to the background task user (user_id 1) 
     if state.db_pool.belongs_to_guest_user(api_id).await? {
-        return Err(AppError::forbidden("Cannot delete guest user api."));
+        return Err(AppError::forbidden("Cannot delete background task API key - would break refreshing."));
+    }
+
+    // CRITICAL SAFETY CHECK: Ensure user has at least one other API key (would prevent logins)
+    let remaining_keys_count = state.db_pool.count_user_api_keys_excluding(user_id, api_id).await?;
+    if remaining_keys_count == 0 {
+        return Err(AppError::forbidden("Cannot delete your final API key - you must have at least one key to maintain access."));
     }
 
     // Proceed with deletion if the checks pass
@@ -2100,5 +2110,253 @@ pub async fn get_person_episodes(
 
     let episodes = state.db_pool.get_person_episodes(user_id, person_id).await?;
     Ok(Json(episodes))
+}
+
+// Request struct for set_podcast_playback_speed - matches Python SetPlaybackSpeedPodcast model
+#[derive(Deserialize)]
+pub struct SetPlaybackSpeedPodcast {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub playback_speed: f64,
+}
+
+// Set podcast playback speed - matches Python api_set_podcast_playback_speed endpoint
+pub async fn set_podcast_playback_speed(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SetPlaybackSpeedPodcast>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only modify their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    state.db_pool.set_podcast_playback_speed(request.user_id, request.podcast_id, request.playback_speed).await?;
+
+    Ok(Json(serde_json::json!({ "detail": "Default podcast playback speed updated." })))
+}
+
+// Request struct for enable_auto_download - matches Python AutoDownloadRequest model
+#[derive(Deserialize)]
+pub struct AutoDownloadRequest {
+    pub podcast_id: i32,
+    pub auto_download: bool,
+    pub user_id: i32,
+}
+
+// Enable/disable auto download for podcast - matches Python api_enable_auto_download endpoint
+pub async fn enable_auto_download(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AutoDownloadRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - user can only modify their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    state.db_pool.enable_auto_download(request.podcast_id, request.auto_download, request.user_id).await?;
+
+    Ok(Json(serde_json::json!({ "detail": "Auto-download status updated." })))
+}
+
+// Request struct for toggle_podcast_notifications - matches Python TogglePodcastNotificationData model
+#[derive(Deserialize)]
+pub struct TogglePodcastNotificationData {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub enabled: bool,
+}
+
+// Toggle podcast notifications - matches Python api_toggle_podcast_notifications endpoint
+pub async fn toggle_podcast_notifications(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<TogglePodcastNotificationData>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only modify their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("Invalid API key"));
+    }
+
+    let success = state.db_pool.toggle_podcast_notifications(request.user_id, request.podcast_id, request.enabled).await?;
+
+    Ok(Json(serde_json::json!(success)))
+}
+
+// Request struct for adjust_skip_times - matches Python SkipTimesRequest model
+#[derive(Deserialize)]
+pub struct SkipTimesRequest {
+    pub podcast_id: i32,
+    #[serde(default)]
+    pub start_skip: i32,
+    #[serde(default)]
+    pub end_skip: i32,
+    pub user_id: i32,
+}
+
+// Adjust skip times for podcast - matches Python api_adjust_skip_times endpoint
+pub async fn adjust_skip_times(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SkipTimesRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only modify their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    state.db_pool.adjust_skip_times(request.podcast_id, request.start_skip, request.end_skip, request.user_id).await?;
+
+    Ok(Json(serde_json::json!({ "detail": "Skip times updated." })))
+}
+
+// Request struct for remove_category - matches Python RemoveCategoryData model
+#[derive(Deserialize)]
+pub struct RemoveCategoryData {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub category: String,
+}
+
+// Remove category from podcast - matches Python api_remove_category endpoint
+pub async fn remove_category(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<RemoveCategoryData>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - user can only modify their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You can only modify categories of your own podcasts!"));
+    }
+
+    state.db_pool.remove_category(request.podcast_id, request.user_id, &request.category).await?;
+
+    Ok(Json(serde_json::json!({ "detail": "Category removed." })))
+}
+
+// Request struct for add_category - matches Python AddCategoryData model
+#[derive(Deserialize)]
+pub struct AddCategoryData {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub category: String,
+}
+
+// Add category to podcast - matches Python api_add_category endpoint
+pub async fn add_category(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<AddCategoryData>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only modify their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify categories of your own podcasts!"));
+    }
+
+    let result = state.db_pool.add_category(request.podcast_id, request.user_id, &request.category).await?;
+
+    Ok(Json(serde_json::json!({ "detail": result })))
+}
+
+// Get user RSS key - matches Python get_user_rss_key endpoint
+pub async fn get_user_rss_key(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id == 0 {
+        return Err(AppError::forbidden("Invalid API key"));
+    }
+
+    let rss_key = state.db_pool.get_user_rss_key(key_id).await?;
+    if let Some(key) = rss_key {
+        Ok(Json(serde_json::json!({ "rss_key": key })))
+    } else {
+        Err(AppError::not_found("No RSS key found. Please enable RSS feeds first."))
+    }
+}
+
+#[derive(Deserialize)]
+pub struct VerifyMfaRequest {
+    pub user_id: i32,
+    pub mfa_code: String,
+}
+
+// Verify MFA code - matches Python verify_mfa endpoint
+pub async fn verify_mfa(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<VerifyMfaRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization
+    if !check_user_access(&state, &api_key, request.user_id).await? {
+        return Err(AppError::forbidden("You can only verify your own login code!"));
+    }
+
+    // Get the stored MFA secret
+    let secret = state.db_pool.get_mfa_secret(request.user_id).await?;
+    
+    if let Some(secret_str) = secret {
+        // Verify the TOTP code
+        use totp_rs::{Algorithm, TOTP, Secret};
+        
+        let totp = TOTP::new(
+            Algorithm::SHA1,
+            6,
+            1,
+            30,
+            Secret::Encoded(secret_str.clone()).to_bytes().unwrap(),
+            Some("Pinepods".to_string()),
+            "login".to_string(),
+        ).map_err(|e| AppError::internal(&format!("Failed to create TOTP: {}", e)))?;
+        
+        let is_valid = totp.check_current(&request.mfa_code)
+            .map_err(|e| AppError::internal(&format!("Failed to verify TOTP: {}", e)))?;
+        
+        Ok(Json(serde_json::json!({ "verified": is_valid })))
+    } else {
+        Ok(Json(serde_json::json!({ "verified": false })))
+    }
 }
 

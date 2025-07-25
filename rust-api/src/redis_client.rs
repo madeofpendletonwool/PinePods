@@ -156,6 +156,13 @@ impl RedisClient {
         self.delete(&refresh_key).await
     }
 
+    // Atomic get and delete operation - critical for OIDC state management
+    pub async fn get_del(&self, key: &str) -> AppResult<Option<String>> {
+        let mut conn = self.connection.clone();
+        let result: Option<String> = redis::cmd("GETDEL").arg(key).query_async(&mut conn).await?;
+        Ok(result)
+    }
+
     // Get a connection for direct Redis operations
     pub async fn get_connection(&self) -> AppResult<MultiplexedConnection> {
         Ok(self.connection.clone())
