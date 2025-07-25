@@ -13812,7 +13812,7 @@ impl DatabasePool {
 
                 let playlist_name: String = playlist_row.unwrap().try_get("name")?;
 
-                // Get episodes in playlist - query PlaylistEpisodes table joined with Episodes and Podcasts
+                // Get episodes in playlist - query PlaylistContents table joined with Episodes and Podcasts (matches Python)
                 let episodes_rows = sqlx::query(r#"
                     SELECT DISTINCT
                         "Episodes".episodeid,
@@ -13830,9 +13830,9 @@ impl DatabasePool {
                         CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                         CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                         CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                        "PlaylistEpisodes".addeddate
-                    FROM "PlaylistEpisodes"
-                    JOIN "Episodes" ON "PlaylistEpisodes".episodeid = "Episodes".episodeid
+                        "PlaylistContents".dateadded
+                    FROM "PlaylistContents"
+                    JOIN "Episodes" ON "PlaylistContents".episodeid = "Episodes".episodeid
                     JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
                     LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid
                         AND "UserEpisodeHistory".userid = $1
@@ -13843,8 +13843,8 @@ impl DatabasePool {
                         AND "EpisodeQueue".is_youtube = FALSE
                     LEFT JOIN "DownloadedEpisodes" ON "Episodes".episodeid = "DownloadedEpisodes".episodeid
                         AND "DownloadedEpisodes".userid = $1
-                    WHERE "PlaylistEpisodes".playlistid = $2
-                    ORDER BY "PlaylistEpisodes".addeddate DESC
+                    WHERE "PlaylistContents".playlistid = $2
+                    ORDER BY "PlaylistContents".dateadded DESC
                 "#)
                     .bind(user_id)
                     .bind(playlist_id)
@@ -13869,6 +13869,8 @@ impl DatabasePool {
                     let saved: bool = row.try_get("saved")?;
                     let queued: bool = row.try_get("queued")?;
                     let downloaded: bool = row.try_get("downloaded")?;
+                    let dateadded_naive = row.try_get::<chrono::NaiveDateTime, _>("dateadded")?;
+                    let dateadded = dateadded_naive.format("%Y-%m-%dT%H:%M:%S").to_string();
 
                     episodes.push(serde_json::json!({
                         "episodeid": episodeid,
@@ -13885,7 +13887,8 @@ impl DatabasePool {
                         "listenduration": listenduration,
                         "saved": saved,
                         "queued": queued,
-                        "downloaded": downloaded
+                        "downloaded": downloaded,
+                        "dateadded": dateadded
                     }));
                 }
 
@@ -13929,16 +13932,16 @@ impl DatabasePool {
                         CASE WHEN se.EpisodeID IS NOT NULL THEN 1 ELSE 0 END AS saved,
                         CASE WHEN eq.EpisodeID IS NOT NULL THEN 1 ELSE 0 END AS queued,
                         CASE WHEN de.EpisodeID IS NOT NULL THEN 1 ELSE 0 END AS downloaded,
-                        pe.AddedDate as addeddate
-                     FROM PlaylistEpisodes pe
-                     JOIN Episodes e ON pe.EpisodeID = e.EpisodeID
+                        pc.DateAdded as addeddate
+                     FROM PlaylistContents pc
+                     JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
                      JOIN Podcasts p ON e.PodcastID = p.PodcastID
                      LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
                      LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
                      LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ? AND eq.is_youtube = 0
                      LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
-                     WHERE pe.PlaylistID = ?
-                     ORDER BY pe.AddedDate DESC"
+                     WHERE pc.PlaylistID = ?
+                     ORDER BY pc.DateAdded DESC"
                 )
                     .bind(user_id)
                     .bind(user_id)
@@ -13966,6 +13969,8 @@ impl DatabasePool {
                     let saved: bool = row.try_get::<i8, _>("saved")? != 0;
                     let queued: bool = row.try_get::<i8, _>("queued")? != 0;
                     let downloaded: bool = row.try_get::<i8, _>("downloaded")? != 0;
+                    let addeddate_naive = row.try_get::<chrono::NaiveDateTime, _>("addeddate")?;
+                    let addeddate = addeddate_naive.format("%Y-%m-%dT%H:%M:%S").to_string();
 
                     episodes.push(serde_json::json!({
                         "episodeid": episodeid,
@@ -13982,7 +13987,8 @@ impl DatabasePool {
                         "listenduration": listenduration,
                         "saved": saved,
                         "queued": queued,
-                        "downloaded": downloaded
+                        "downloaded": downloaded,
+                        "dateadded": addeddate
                     }));
                 }
 

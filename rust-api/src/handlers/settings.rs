@@ -1034,18 +1034,13 @@ async fn backup_server_streaming(
     // This approach handles large databases by processing data in chunks
     
     let state_clone = state.clone();
-    let backup_stream = stream::unfold(Some(0), move |chunk_id_opt| {
+    let backup_stream = stream::unfold(0usize, move |chunk_id| {
         let state_clone = state_clone.clone();
         async move {
-            match chunk_id_opt {
-                Some(chunk_id) => {
-                    match generate_backup_chunk(&state_clone, chunk_id).await {
-                        Ok(Some(chunk)) => Some((Ok(chunk), Some(chunk_id + 1))),
-                        Ok(None) => None, // End of stream
-                        Err(e) => Some((Err(e), None)), // End on error
-                    }
-                },
-                None => None, // Already ended
+            match generate_backup_chunk(&state_clone, chunk_id).await {
+                Ok(Some(chunk)) => Some((Ok(chunk), chunk_id + 1)),
+                Ok(None) => None, // End of stream - don't continue polling
+                Err(e) => Some((Err(e), chunk_id + 1)), // End on error but allow stream to terminate naturally
             }
         }
     });
