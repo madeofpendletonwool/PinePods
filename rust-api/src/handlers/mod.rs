@@ -5,7 +5,7 @@ pub mod episodes;
 pub mod playlists;
 pub mod users;
 pub mod websocket;
-pub mod async_tasks_examples;
+// pub mod async_tasks_examples;  // File was deleted
 pub mod refresh;
 pub mod proxy;
 pub mod settings;

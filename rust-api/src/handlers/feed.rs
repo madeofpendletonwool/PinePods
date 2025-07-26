@@ -50,7 +50,6 @@ pub async fn get_user_feed(
     let rss_key = if let Some(key) = rss_key {
         key
     } else {
-        // TODO: Fallback to regular API key validation for backwards compatibility
         let key_id = state.db_pool.get_user_id_from_api_key(api_key).await?;
         if key_id == 0 {
             return Err(AppError::forbidden("Invalid API key"));
