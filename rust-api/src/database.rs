@@ -13504,7 +13504,8 @@ impl DatabasePool {
                 let mut podcast_row = sqlx::query(r#"
                     SELECT podcastid, podcastname, feedurl, description, author, artworkurl, 
                            explicit, episodecount, categories, websiteurl, podcastindexid, isyoutubechannel,
-                           userid, autodownload, startskip, endskip, username, password, notificationsenabled, feedcutoffdays
+                           userid, autodownload, startskip, endskip, username, password, notificationsenabled, feedcutoffdays,
+                           playbackspeed, playbackspeedcustomized
                     FROM "Podcasts" 
                     WHERE podcastid = $1 AND userid = $2
                 "#)
@@ -13518,7 +13519,8 @@ impl DatabasePool {
                     podcast_row = sqlx::query(r#"
                         SELECT podcastid, podcastname, feedurl, description, author, artworkurl, 
                                explicit, episodecount, categories, websiteurl, podcastindexid, isyoutubechannel,
-                               userid, autodownload, startskip, endskip, username, password, notificationsenabled, feedcutoffdays
+                               userid, autodownload, startskip, endskip, username, password, notificationsenabled, feedcutoffdays,
+                               playbackspeed, playbackspeedcustomized
                         FROM "Podcasts" 
                         WHERE podcastid = $1 AND userid = 1
                     "#)
@@ -13547,25 +13549,27 @@ impl DatabasePool {
 
                 Ok(serde_json::json!({
                     "podcastid": row.try_get::<i32, _>("podcastid")?,
-                    "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_else(|_| "Unknown Podcast".to_string()),
-                    "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_else(|_| String::new()),
-                    "description": row.try_get::<String, _>("description").unwrap_or_else(|_| String::new()),
-                    "author": row.try_get::<String, _>("author").unwrap_or_else(|_| "Unknown Author".to_string()),
-                    "artworkurl": row.try_get::<String, _>("artworkurl").unwrap_or_else(|_| String::new()),
-                    "explicit": row.try_get::<bool, _>("explicit").unwrap_or(false),
-                    "episodecount": episode_count,
-                    "categories": categories,
-                    "websiteurl": row.try_get::<String, _>("websiteurl").unwrap_or_else(|_| String::new()),
                     "podcastindexid": row.try_get::<i32, _>("podcastindexid").unwrap_or(0),
-                    "is_youtube": is_youtube,
+                    "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_else(|_| "Unknown Podcast".to_string()),
+                    "artworkurl": row.try_get::<String, _>("artworkurl").unwrap_or_else(|_| String::new()),
+                    "author": row.try_get::<String, _>("author").unwrap_or_else(|_| "Unknown Author".to_string()),
+                    "categories": categories,
+                    "description": row.try_get::<String, _>("description").unwrap_or_else(|_| String::new()),
+                    "episodecount": episode_count,
+                    "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_else(|_| String::new()),
+                    "websiteurl": row.try_get::<String, _>("websiteurl").unwrap_or_else(|_| String::new()),
+                    "explicit": row.try_get::<bool, _>("explicit").unwrap_or(false),
                     "userid": row.try_get::<i32, _>("userid")?,
                     "autodownload": row.try_get::<bool, _>("autodownload").unwrap_or(false),
                     "startskip": row.try_get::<i32, _>("startskip").unwrap_or(0),
                     "endskip": row.try_get::<i32, _>("endskip").unwrap_or(0),
                     "username": row.try_get::<Option<String>, _>("username")?,
                     "password": row.try_get::<Option<String>, _>("password")?,
+                    "isyoutubechannel": is_youtube,
                     "notificationsenabled": row.try_get::<bool, _>("notificationsenabled").unwrap_or(false),
                     "feedcutoffdays": row.try_get::<i32, _>("feedcutoffdays").unwrap_or(0),
+                    "playbackspeedcustomized": row.try_get::<bool, _>("playbackspeedcustomized").unwrap_or(false),
+                    "playbackspeed": row.try_get::<f64, _>("playbackspeed").unwrap_or(1.0)
                 }))
             }
             DatabasePool::MySQL(pool) => {
@@ -13573,7 +13577,8 @@ impl DatabasePool {
                 let mut podcast_row = sqlx::query(r#"
                     SELECT PodcastID, PodcastName, FeedURL, Description, Author, ArtworkURL, 
                            Explicit, EpisodeCount, Categories, WebsiteURL, PodcastIndexID, IsYouTubeChannel,
-                           UserID, AutoDownload, StartSkip, EndSkip, Username, Password, NotificationsEnabled, FeedCutoffDays
+                           UserID, AutoDownload, StartSkip, EndSkip, Username, Password, NotificationsEnabled, FeedCutoffDays,
+                           PlaybackSpeed, PlaybackSpeedCustomized
                     FROM Podcasts 
                     WHERE PodcastID = ? AND UserID = ?
                 "#)
@@ -13587,7 +13592,8 @@ impl DatabasePool {
                     podcast_row = sqlx::query(r#"
                         SELECT PodcastID, PodcastName, FeedURL, Description, Author, ArtworkURL, 
                                Explicit, EpisodeCount, Categories, WebsiteURL, PodcastIndexID, IsYouTubeChannel,
-                               UserID, AutoDownload, StartSkip, EndSkip, Username, Password, NotificationsEnabled, FeedCutoffDays
+                               UserID, AutoDownload, StartSkip, EndSkip, Username, Password, NotificationsEnabled, FeedCutoffDays,
+                               PlaybackSpeed, PlaybackSpeedCustomized
                         FROM Podcasts 
                         WHERE PodcastID = ? AND UserID = 1
                     "#)
@@ -13616,25 +13622,27 @@ impl DatabasePool {
 
                 Ok(serde_json::json!({
                     "podcastid": row.try_get::<i32, _>("PodcastID")?,
-                    "podcastname": row.try_get::<String, _>("PodcastName").unwrap_or_else(|_| "Unknown Podcast".to_string()),
-                    "feedurl": row.try_get::<String, _>("FeedURL").unwrap_or_else(|_| String::new()),
-                    "description": row.try_get::<String, _>("Description").unwrap_or_else(|_| String::new()),
-                    "author": row.try_get::<String, _>("Author").unwrap_or_else(|_| "Unknown Author".to_string()),
-                    "artworkurl": row.try_get::<String, _>("ArtworkURL").unwrap_or_else(|_| String::new()),
-                    "explicit": row.try_get::<i8, _>("Explicit").unwrap_or(0) != 0,
-                    "episodecount": episode_count,
-                    "categories": categories,
-                    "websiteurl": row.try_get::<String, _>("WebsiteURL").unwrap_or_else(|_| String::new()),
                     "podcastindexid": row.try_get::<i32, _>("PodcastIndexID").unwrap_or(0),
-                    "is_youtube": is_youtube,
+                    "podcastname": row.try_get::<String, _>("PodcastName").unwrap_or_else(|_| "Unknown Podcast".to_string()),
+                    "artworkurl": row.try_get::<String, _>("ArtworkURL").unwrap_or_else(|_| String::new()),
+                    "author": row.try_get::<String, _>("Author").unwrap_or_else(|_| "Unknown Author".to_string()),
+                    "categories": categories,
+                    "description": row.try_get::<String, _>("Description").unwrap_or_else(|_| String::new()),
+                    "episodecount": episode_count,
+                    "feedurl": row.try_get::<String, _>("FeedURL").unwrap_or_else(|_| String::new()),
+                    "websiteurl": row.try_get::<String, _>("WebsiteURL").unwrap_or_else(|_| String::new()),
+                    "explicit": row.try_get::<i8, _>("Explicit").unwrap_or(0) != 0,
                     "userid": row.try_get::<i32, _>("UserID")?,
                     "autodownload": row.try_get::<i8, _>("AutoDownload").unwrap_or(0) != 0,
                     "startskip": row.try_get::<i32, _>("StartSkip").unwrap_or(0),
                     "endskip": row.try_get::<i32, _>("EndSkip").unwrap_or(0),
                     "username": row.try_get::<Option<String>, _>("Username")?,
                     "password": row.try_get::<Option<String>, _>("Password")?,
+                    "isyoutubechannel": is_youtube,
                     "notificationsenabled": row.try_get::<i8, _>("NotificationsEnabled").unwrap_or(0) != 0,
                     "feedcutoffdays": row.try_get::<i32, _>("FeedCutoffDays").unwrap_or(0),
+                    "playbackspeedcustomized": row.try_get::<i8, _>("PlaybackSpeedCustomized").unwrap_or(0) != 0,
+                    "playbackspeed": row.try_get::<f64, _>("PlaybackSpeed").unwrap_or(1.0)
                 }))
             }
         }
