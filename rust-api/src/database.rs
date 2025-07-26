@@ -201,6 +201,34 @@ impl DatabasePool {
         }
     }
 
+    // Get user ID from username - for login and key creation
+    pub async fn get_user_id_from_username(&self, username: &str) -> AppResult<i32> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT userid FROM "Users" WHERE username = $1"#)
+                    .bind(username)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                match row {
+                    Some(row) => Ok(row.try_get("userid")?),
+                    None => Err(AppError::not_found("User not found")),
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT UserID FROM Users WHERE Username = ?")
+                    .bind(username)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                match row {
+                    Some(row) => Ok(row.try_get("UserID")?),
+                    None => Err(AppError::not_found("User not found")),
+                }
+            }
+        }
+    }
+
     // Get user details by ID - matches Python get_user_details_id function
     pub async fn get_user_details_by_id(&self, user_id: i32) -> AppResult<crate::handlers::auth::UserDetails> {
         match self {
@@ -745,27 +773,249 @@ impl DatabasePool {
     ) -> AppResult<()> {
         match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(
-                    r#"DELETE FROM "Podcasts" 
+                // First get the podcast ID to cascade delete properly
+                let podcast_row = sqlx::query(
+                    r#"SELECT podcastid FROM "Podcasts" 
                        WHERE podcastname = $1 AND feedurl = $2 AND userid = $3"#
                 )
                 .bind(podcast_name)
                 .bind(podcast_url)
                 .bind(user_id)
-                .execute(pool)
+                .fetch_optional(pool)
                 .await?;
+                
+                if let Some(row) = podcast_row {
+                    let podcast_id: i32 = row.try_get("podcastid")?;
+                    
+                    // Delete in the proper order to handle foreign key constraints
+                    // 1. PlaylistContents first
+                    sqlx::query(r#"DELETE FROM "PlaylistContents" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // 2. UserEpisodeHistory
+                    sqlx::query(r#"DELETE FROM "UserEpisodeHistory" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // 3. DownloadedEpisodes
+                    sqlx::query(r#"DELETE FROM "DownloadedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // 4. SavedEpisodes
+                    sqlx::query(r#"DELETE FROM "SavedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // 5. EpisodeQueue
+                    sqlx::query(r#"DELETE FROM "EpisodeQueue" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // 6. Episodes
+                    sqlx::query(r#"DELETE FROM "Episodes" WHERE podcastid = $1"#)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // 7. Finally delete the podcast itself
+                    sqlx::query(r#"DELETE FROM "Podcasts" WHERE podcastid = $1"#)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // Update user stats
+                    sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = $1"#)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                }
                 Ok(())
             }
             DatabasePool::MySQL(pool) => {
-                sqlx::query(
-                    "DELETE FROM Podcasts 
+                // First get the podcast ID to cascade delete properly
+                let podcast_row = sqlx::query(
+                    "SELECT PodcastID FROM Podcasts 
                      WHERE PodcastName = ? AND FeedURL = ? AND UserID = ?"
                 )
                 .bind(podcast_name)
                 .bind(podcast_url)
                 .bind(user_id)
-                .execute(pool)
+                .fetch_optional(pool)
                 .await?;
+                
+                if let Some(row) = podcast_row {
+                    let podcast_id: i32 = row.try_get("PodcastID")?;
+                    
+                    // Delete in the proper order to handle foreign key constraints
+                    // 1. PlaylistContents first
+                    sqlx::query("DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // 2. UserEpisodeHistory
+                    sqlx::query("DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // 3. DownloadedEpisodes
+                    sqlx::query("DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // 4. SavedEpisodes
+                    sqlx::query("DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // 5. EpisodeQueue
+                    sqlx::query("DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // 6. Episodes
+                    sqlx::query("DELETE FROM Episodes WHERE PodcastID = ?")
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // 7. Finally delete the podcast itself
+                    sqlx::query("DELETE FROM Podcasts WHERE PodcastID = ?")
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                    
+                    // Update user stats
+                    sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = ?")
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    // Remove podcast by ID - matches Python remove_podcast_id function
+    pub async fn remove_podcast_id(&self, podcast_id: i32, user_id: i32) -> AppResult<()> {
+        if podcast_id == 0 {
+            return Err(AppError::bad_request("Invalid podcast ID"));
+        }
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Delete in the proper order to handle foreign key constraints
+                // 1. PlaylistContents first
+                sqlx::query(r#"DELETE FROM "PlaylistContents" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // 2. UserEpisodeHistory
+                sqlx::query(r#"DELETE FROM "UserEpisodeHistory" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // 3. DownloadedEpisodes
+                sqlx::query(r#"DELETE FROM "DownloadedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // 4. SavedEpisodes
+                sqlx::query(r#"DELETE FROM "SavedEpisodes" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // 5. EpisodeQueue
+                sqlx::query(r#"DELETE FROM "EpisodeQueue" WHERE episodeid IN (SELECT episodeid FROM "Episodes" WHERE podcastid = $1)"#)
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // 6. Episodes
+                sqlx::query(r#"DELETE FROM "Episodes" WHERE podcastid = $1"#)
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // 7. Finally delete the podcast itself
+                sqlx::query(r#"DELETE FROM "Podcasts" WHERE podcastid = $1"#)
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // Update user stats
+                sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(())
+            }
+            DatabasePool::MySQL(pool) => {
+                // Delete in the proper order to handle foreign key constraints
+                // 1. PlaylistContents first
+                sqlx::query("DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // 2. UserEpisodeHistory
+                sqlx::query("DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // 3. DownloadedEpisodes
+                sqlx::query("DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // 4. SavedEpisodes
+                sqlx::query("DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // 5. EpisodeQueue
+                sqlx::query("DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT EpisodeID FROM Episodes WHERE PodcastID = ?)")
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // 6. Episodes
+                sqlx::query("DELETE FROM Episodes WHERE PodcastID = ?")
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // 7. Finally delete the podcast itself
+                sqlx::query("DELETE FROM Podcasts WHERE PodcastID = ?")
+                    .bind(podcast_id)
+                    .execute(pool)
+                    .await?;
+                
+                // Update user stats
+                sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
                 Ok(())
             }
         }
@@ -1791,6 +2041,12 @@ impl DatabasePool {
                         .bind(user_id)
                         .execute(pool)
                         .await?;
+
+                        // Update UserStats table - increment EpisodesSaved count
+                        sqlx::query(r#"UPDATE "UserStats" SET episodessaved = episodessaved + 1 WHERE userid = $1"#)
+                            .bind(user_id)
+                            .execute(pool)
+                            .await?;
                     }
                 } else {
                     // Check if already saved
@@ -1810,6 +2066,12 @@ impl DatabasePool {
                         .bind(user_id)
                         .execute(pool)
                         .await?;
+
+                        // Update UserStats table - increment EpisodesSaved count
+                        sqlx::query(r#"UPDATE "UserStats" SET episodessaved = episodessaved + 1 WHERE userid = $1"#)
+                            .bind(user_id)
+                            .execute(pool)
+                            .await?;
                     }
                 }
                 Ok(())
@@ -1833,6 +2095,12 @@ impl DatabasePool {
                         .bind(user_id)
                         .execute(pool)
                         .await?;
+
+                        // Update UserStats table - increment EpisodesSaved count
+                        sqlx::query("UPDATE UserStats SET EpisodesSaved = EpisodesSaved + 1 WHERE UserID = ?")
+                            .bind(user_id)
+                            .execute(pool)
+                            .await?;
                     }
                 } else {
                     // Check if already saved
@@ -1852,6 +2120,12 @@ impl DatabasePool {
                         .bind(user_id)
                         .execute(pool)
                         .await?;
+
+                        // Update UserStats table - increment EpisodesSaved count
+                        sqlx::query("UPDATE UserStats SET EpisodesSaved = EpisodesSaved + 1 WHERE UserID = ?")
+                            .bind(user_id)
+                            .execute(pool)
+                            .await?;
                     }
                 }
                 Ok(())
@@ -1864,41 +2138,73 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 if is_youtube {
-                    sqlx::query(
+                    let result = sqlx::query(
                         r#"DELETE FROM "SavedVideos" WHERE "VideoID" = $1 AND "UserID" = $2"#
                     )
                     .bind(episode_id)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
+
+                    // Only update UserStats if a row was actually deleted
+                    if result.rows_affected() > 0 {
+                        sqlx::query(r#"UPDATE "UserStats" SET episodessaved = episodessaved - 1 WHERE userid = $1"#)
+                            .bind(user_id)
+                            .execute(pool)
+                            .await?;
+                    }
                 } else {
-                    sqlx::query(
+                    let result = sqlx::query(
                         r#"DELETE FROM "SavedEpisodes" WHERE episodeid = $1 AND userid = $2"#
                     )
                     .bind(episode_id)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
+
+                    // Only update UserStats if a row was actually deleted
+                    if result.rows_affected() > 0 {
+                        sqlx::query(r#"UPDATE "UserStats" SET episodessaved = episodessaved - 1 WHERE userid = $1"#)
+                            .bind(user_id)
+                            .execute(pool)
+                            .await?;
+                    }
                 }
                 Ok(())
             }
             DatabasePool::MySQL(pool) => {
                 if is_youtube {
-                    sqlx::query(
+                    let result = sqlx::query(
                         "DELETE FROM SavedVideos WHERE VideoID = ? AND UserID = ?"
                     )
                     .bind(episode_id)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
+
+                    // Only update UserStats if a row was actually deleted
+                    if result.rows_affected() > 0 {
+                        sqlx::query("UPDATE UserStats SET EpisodesSaved = EpisodesSaved - 1 WHERE UserID = ?")
+                            .bind(user_id)
+                            .execute(pool)
+                            .await?;
+                    }
                 } else {
-                    sqlx::query(
+                    let result = sqlx::query(
                         "DELETE FROM SavedEpisodes WHERE EpisodeID = ? AND UserID = ?"
                     )
                     .bind(episode_id)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
+
+                    // Only update UserStats if a row was actually deleted
+                    if result.rows_affected() > 0 {
+                        sqlx::query("UPDATE UserStats SET EpisodesSaved = EpisodesSaved - 1 WHERE UserID = ?")
+                            .bind(user_id)
+                            .execute(pool)
+                            .await?;
+                    }
                 }
                 Ok(())
             }
@@ -5349,33 +5655,65 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 if is_youtube {
-                    sqlx::query(r#"DELETE FROM "DownloadedVideos" WHERE userid = $1 AND videoid = $2"#)
+                    let result = sqlx::query(r#"DELETE FROM "DownloadedVideos" WHERE userid = $1 AND videoid = $2"#)
                         .bind(user_id)
                         .bind(episode_id)
                         .execute(pool)
                         .await?;
+
+                    // Only update UserStats if a row was actually deleted
+                    if result.rows_affected() > 0 {
+                        sqlx::query(r#"UPDATE "UserStats" SET episodesdownloaded = episodesdownloaded - 1 WHERE userid = $1"#)
+                            .bind(user_id)
+                            .execute(pool)
+                            .await?;
+                    }
                 } else {
-                    sqlx::query(r#"DELETE FROM "DownloadedEpisodes" WHERE userid = $1 AND episodeid = $2"#)
+                    let result = sqlx::query(r#"DELETE FROM "DownloadedEpisodes" WHERE userid = $1 AND episodeid = $2"#)
                         .bind(user_id)
                         .bind(episode_id)
                         .execute(pool)
                         .await?;
+
+                    // Only update UserStats if a row was actually deleted
+                    if result.rows_affected() > 0 {
+                        sqlx::query(r#"UPDATE "UserStats" SET episodesdownloaded = episodesdownloaded - 1 WHERE userid = $1"#)
+                            .bind(user_id)
+                            .execute(pool)
+                            .await?;
+                    }
                 }
                 Ok(())
             }
             DatabasePool::MySQL(pool) => {
                 if is_youtube {
-                    sqlx::query("DELETE FROM DownloadedVideos WHERE UserID = ? AND VideoID = ?")
+                    let result = sqlx::query("DELETE FROM DownloadedVideos WHERE UserID = ? AND VideoID = ?")
                         .bind(user_id)
                         .bind(episode_id)
                         .execute(pool)
                         .await?;
+
+                    // Only update UserStats if a row was actually deleted
+                    if result.rows_affected() > 0 {
+                        sqlx::query("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 WHERE UserID = ?")
+                            .bind(user_id)
+                            .execute(pool)
+                            .await?;
+                    }
                 } else {
-                    sqlx::query("DELETE FROM DownloadedEpisodes WHERE UserID = ? AND EpisodeID = ?")
+                    let result = sqlx::query("DELETE FROM DownloadedEpisodes WHERE UserID = ? AND EpisodeID = ?")
                         .bind(user_id)
                         .bind(episode_id)
                         .execute(pool)
                         .await?;
+
+                    // Only update UserStats if a row was actually deleted
+                    if result.rows_affected() > 0 {
+                        sqlx::query("UPDATE UserStats SET EpisodesDownloaded = EpisodesDownloaded - 1 WHERE UserID = ?")
+                            .bind(user_id)
+                            .execute(pool)
+                            .await?;
+                    }
                 }
                 Ok(())
             }
@@ -8266,6 +8604,28 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.map(|user_id| user_id == 1).unwrap_or(false))
+            }
+        }
+    }
+
+    // Get the owner user ID of an API key by API key ID - for authorization checks
+    pub async fn get_api_key_owner(&self, api_id: i32) -> AppResult<Option<i32>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result: Option<i32> = sqlx::query_scalar(r#"SELECT userid FROM "APIKeys" WHERE apikeyid = $1"#)
+                    .bind(api_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                Ok(result)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result: Option<i32> = sqlx::query_scalar("SELECT UserID FROM APIKeys WHERE APIKeyID = ?")
+                    .bind(api_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                Ok(result)
             }
         }
     }
@@ -11804,83 +12164,6 @@ impl DatabasePool {
     }
 
     // Add news feed if not already added - matches Python add_news_feed_if_not_added function exactly
-    pub async fn add_news_feed_if_not_added(&self) -> AppResult<()> {
-        let feed_url = "https://news.pinepods.online/feed.xml";
-        
-        match self {
-            DatabasePool::Postgres(pool) => {
-                // Get all admin users
-                let admin_users = sqlx::query(r#"SELECT userid FROM "Users" WHERE isadmin = TRUE"#)
-                    .fetch_all(pool)
-                    .await?;
-
-                for user in admin_users {
-                    let user_id: i32 = user.try_get("userid")?;
-                    
-                    // Check if the news feed already exists for this user
-                    let existing = sqlx::query(r#"SELECT COUNT(*) as count FROM "Podcasts" WHERE feedurl = $1 AND userid = $2"#)
-                        .bind(feed_url)
-                        .bind(user_id)
-                        .fetch_one(pool)
-                        .await?;
-                    
-                    let count: i64 = existing.try_get("count")?;
-                    if count == 0 {
-                        // Add the news feed
-                        sqlx::query(r#"
-                            INSERT INTO "Podcasts" (podcastname, feedurl, artworkurl, description, userid, autodownload, isyoutubechannel)
-                            VALUES ($1, $2, $3, $4, $5, FALSE, FALSE)
-                        "#)
-                            .bind("PinePods News")
-                            .bind(feed_url)
-                            .bind("https://news.pinepods.online/favicon.png")
-                            .bind("Official news and updates from PinePods")
-                            .bind(user_id)
-                            .execute(pool)
-                            .await?;
-                        
-                        tracing::info!("Added PinePods News feed for admin user {}", user_id);
-                    }
-                }
-            }
-            DatabasePool::MySQL(pool) => {
-                // Get all admin users
-                let admin_users = sqlx::query("SELECT UserID FROM Users WHERE IsAdmin = 1")
-                    .fetch_all(pool)
-                    .await?;
-
-                for user in admin_users {
-                    let user_id: i32 = user.try_get("UserID")?;
-                    
-                    // Check if the news feed already exists for this user
-                    let existing = sqlx::query("SELECT COUNT(*) as count FROM Podcasts WHERE FeedURL = ? AND UserID = ?")
-                        .bind(feed_url)
-                        .bind(user_id)
-                        .fetch_one(pool)
-                        .await?;
-                    
-                    let count: i64 = existing.try_get("count")?;
-                    if count == 0 {
-                        // Add the news feed
-                        sqlx::query("
-                            INSERT INTO Podcasts (PodcastName, FeedURL, ArtworkURL, Description, UserID, AutoDownload, IsYouTubeChannel)
-                            VALUES (?, ?, ?, ?, ?, 0, 0)
-                        ")
-                            .bind("PinePods News")
-                            .bind(feed_url)
-                            .bind("https://news.pinepods.online/favicon.png")
-                            .bind("Official news and updates from PinePods")
-                            .bind(user_id)
-                            .execute(pool)
-                            .await?;
-                        
-                        tracing::info!("Added PinePods News feed for admin user {}", user_id);
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
 
     // Cleanup old episodes - matches Python cleanup_old_episodes function exactly
     pub async fn cleanup_old_episodes(&self) -> AppResult<()> {
@@ -13220,7 +13503,8 @@ impl DatabasePool {
                 // First try to get podcast for specific user
                 let mut podcast_row = sqlx::query(r#"
                     SELECT podcastid, podcastname, feedurl, description, author, artworkurl, 
-                           explicit, episodecount, categories, websiteurl, podcastindexid, isyoutubechannel
+                           explicit, episodecount, categories, websiteurl, podcastindexid, isyoutubechannel,
+                           userid, autodownload, startskip, endskip, username, password, notificationsenabled, feedcutoffdays
                     FROM "Podcasts" 
                     WHERE podcastid = $1 AND userid = $2
                 "#)
@@ -13233,7 +13517,8 @@ impl DatabasePool {
                 if podcast_row.is_none() {
                     podcast_row = sqlx::query(r#"
                         SELECT podcastid, podcastname, feedurl, description, author, artworkurl, 
-                               explicit, episodecount, categories, websiteurl, podcastindexid, isyoutubechannel
+                               explicit, episodecount, categories, websiteurl, podcastindexid, isyoutubechannel,
+                               userid, autodownload, startskip, endskip, username, password, notificationsenabled, feedcutoffdays
                         FROM "Podcasts" 
                         WHERE podcastid = $1 AND userid = 1
                     "#)
@@ -13257,25 +13542,8 @@ impl DatabasePool {
                     row.try_get("episodecount").unwrap_or(0)
                 };
 
-                // Parse categories (can be JSON or comma-separated string)
-                let categories_str: Option<String> = row.try_get("categories").ok();
-                let categories = if let Some(cat_str) = categories_str {
-                    if cat_str.trim().starts_with('{') {
-                        // JSON format
-                        serde_json::from_str::<std::collections::HashMap<String, String>>(&cat_str).ok()
-                    } else if !cat_str.trim().is_empty() {
-                        // Comma-separated format
-                        let mut map = std::collections::HashMap::new();
-                        for (i, category) in cat_str.split(',').enumerate() {
-                            map.insert(i.to_string(), category.trim().to_string());
-                        }
-                        Some(map)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
+                // Get categories as string - matches Python version exactly
+                let categories = row.try_get::<String, _>("categories").unwrap_or_else(|_| String::new());
 
                 Ok(serde_json::json!({
                     "podcastid": row.try_get::<i32, _>("podcastid")?,
@@ -13304,7 +13572,8 @@ impl DatabasePool {
                 // First try to get podcast for specific user
                 let mut podcast_row = sqlx::query(r#"
                     SELECT PodcastID, PodcastName, FeedURL, Description, Author, ArtworkURL, 
-                           Explicit, EpisodeCount, Categories, WebsiteURL, PodcastIndexID, IsYouTubeChannel
+                           Explicit, EpisodeCount, Categories, WebsiteURL, PodcastIndexID, IsYouTubeChannel,
+                           UserID, AutoDownload, StartSkip, EndSkip, Username, Password, NotificationsEnabled, FeedCutoffDays
                     FROM Podcasts 
                     WHERE PodcastID = ? AND UserID = ?
                 "#)
@@ -13317,7 +13586,8 @@ impl DatabasePool {
                 if podcast_row.is_none() {
                     podcast_row = sqlx::query(r#"
                         SELECT PodcastID, PodcastName, FeedURL, Description, Author, ArtworkURL, 
-                               Explicit, EpisodeCount, Categories, WebsiteURL, PodcastIndexID, IsYouTubeChannel
+                               Explicit, EpisodeCount, Categories, WebsiteURL, PodcastIndexID, IsYouTubeChannel,
+                               UserID, AutoDownload, StartSkip, EndSkip, Username, Password, NotificationsEnabled, FeedCutoffDays
                         FROM Podcasts 
                         WHERE PodcastID = ? AND UserID = 1
                     "#)
@@ -13341,25 +13611,8 @@ impl DatabasePool {
                     row.try_get("EpisodeCount").unwrap_or(0)
                 };
 
-                // Parse categories (can be JSON or comma-separated string)
-                let categories_str: Option<String> = row.try_get("Categories").ok();
-                let categories = if let Some(cat_str) = categories_str {
-                    if cat_str.trim().starts_with('{') {
-                        // JSON format
-                        serde_json::from_str::<std::collections::HashMap<String, String>>(&cat_str).ok()
-                    } else if !cat_str.trim().is_empty() {
-                        // Comma-separated format
-                        let mut map = std::collections::HashMap::new();
-                        for (i, category) in cat_str.split(',').enumerate() {
-                            map.insert(i.to_string(), category.trim().to_string());
-                        }
-                        Some(map)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
+                // Get categories as string - matches Python version exactly
+                let categories = row.try_get::<String, _>("Categories").unwrap_or_else(|_| String::new());
 
                 Ok(serde_json::json!({
                     "podcastid": row.try_get::<i32, _>("PodcastID")?,
@@ -13796,11 +14049,28 @@ impl DatabasePool {
     pub async fn get_playlist_episodes(&self, user_id: i32, playlist_id: i32) -> AppResult<serde_json::Value> {
         match self {
             DatabasePool::Postgres(pool) => {
-                // Get playlist info first - allow access to user playlists OR system playlists (like Python)
+                // Get playlist info with episode count - matches Python exactly
                 let playlist_row = sqlx::query(r#"
-                    SELECT name, issystemplaylist FROM "Playlists" 
-                    WHERE playlistid = $1 AND (userid = $2 OR issystemplaylist = TRUE)
+                    SELECT
+                        p.name,
+                        p.description,
+                        (SELECT COUNT(*)
+                            FROM "PlaylistContents" pc
+                            JOIN "Episodes" e ON pc.episodeid = e.episodeid
+                            JOIN "Podcasts" pod ON e.podcastid = pod.podcastid
+                            LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $1
+                            WHERE pc.playlistid = p.playlistid
+                            AND (p.issystemplaylist = FALSE OR
+                                (p.issystemplaylist = TRUE AND
+                                (h.episodeid IS NOT NULL OR pod.userid = $2)))
+                        ) as episode_count,
+                        p.iconname,
+                        p.issystemplaylist
+                    FROM "Playlists" p
+                    WHERE p.playlistid = $3 AND (p.userid = $4 OR p.issystemplaylist = TRUE)
                 "#)
+                    .bind(user_id)
+                    .bind(user_id)
                     .bind(playlist_id)
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -13810,7 +14080,11 @@ impl DatabasePool {
                     return Err(AppError::not_found("Playlist not found"));
                 }
 
-                let playlist_name: String = playlist_row.unwrap().try_get("name")?;
+                let row = playlist_row.unwrap();
+                let playlist_name: String = row.try_get("name")?;
+                let playlist_description: String = row.try_get("description").unwrap_or_default();
+                let episode_count: i64 = row.try_get("episode_count")?;
+                let icon_name: String = row.try_get("iconname").unwrap_or_default();
 
                 // Get episodes in playlist - query PlaylistContents table joined with Episodes and Podcasts (matches Python)
                 let episodes_rows = sqlx::query(r#"
@@ -13892,17 +14166,42 @@ impl DatabasePool {
                     }));
                 }
 
+                // Build playlist_info structure matching Python exactly
+                let playlist_info = serde_json::json!({
+                    "name": playlist_name,
+                    "description": playlist_description,
+                    "episode_count": episode_count,
+                    "icon_name": icon_name
+                });
+
                 Ok(serde_json::json!({
-                    "playlist_name": playlist_name,
+                    "playlist_info": playlist_info,
                     "episodes": episodes
                 }))
             }
             DatabasePool::MySQL(pool) => {
-                // Get playlist info first
+                // Get playlist info with episode count - matches Python exactly
                 let playlist_row = sqlx::query(
-                    "SELECT PlaylistName FROM Playlists 
-                     WHERE PlaylistID = ? AND UserID = ?"
+                    "SELECT
+                        p.Name,
+                        p.Description,
+                        (SELECT COUNT(*)
+                            FROM PlaylistContents pc
+                            JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
+                            JOIN Podcasts pod ON e.PodcastID = pod.PodcastID
+                            LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = ?
+                            WHERE pc.PlaylistID = p.PlaylistID
+                            AND (p.IsSystemPlaylist = 0 OR
+                                (p.IsSystemPlaylist = 1 AND
+                                (h.EpisodeID IS NOT NULL OR pod.UserID = ?)))
+                        ) as episode_count,
+                        p.IconName,
+                        p.IsSystemPlaylist
+                    FROM Playlists p
+                    WHERE p.PlaylistID = ? AND (p.UserID = ? OR p.IsSystemPlaylist = 1)"
                 )
+                    .bind(user_id)
+                    .bind(user_id)
                     .bind(playlist_id)
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -13912,7 +14211,11 @@ impl DatabasePool {
                     return Err(AppError::not_found("Playlist not found"));
                 }
 
-                let playlist_name: String = playlist_row.unwrap().try_get("PlaylistName")?;
+                let row = playlist_row.unwrap();
+                let playlist_name: String = row.try_get("Name")?;
+                let playlist_description: String = row.try_get("Description").unwrap_or_default();
+                let episode_count: i64 = row.try_get("episode_count")?;
+                let icon_name: String = row.try_get("IconName").unwrap_or_default();
 
                 // Get episodes in playlist - query PlaylistEpisodes table joined with Episodes and Podcasts
                 let episodes_rows = sqlx::query(
@@ -13992,8 +14295,16 @@ impl DatabasePool {
                     }));
                 }
 
+                // Build playlist_info structure matching Python exactly
+                let playlist_info = serde_json::json!({
+                    "name": playlist_name,
+                    "description": playlist_description,
+                    "episode_count": episode_count,
+                    "icon_name": icon_name
+                });
+
                 Ok(serde_json::json!({
-                    "playlist_name": playlist_name,
+                    "playlist_info": playlist_info,
                     "episodes": episodes
                 }))
             }
@@ -14018,6 +14329,86 @@ impl DatabasePool {
                     .await?;
             }
         }
+        Ok(())
+    }
+
+    // Get all admin user IDs - matches Python add_news_feed_if_not_added logic
+    pub async fn get_all_admin_user_ids(&self) -> AppResult<Vec<i32>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"SELECT userid FROM "Users" WHERE isadmin = TRUE"#)
+                    .fetch_all(pool)
+                    .await?;
+                
+                let user_ids: Vec<i32> = rows.into_iter()
+                    .map(|row| row.try_get("userid"))
+                    .collect::<Result<Vec<_>, _>>()?;
+                
+                Ok(user_ids)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query("SELECT UserID FROM Users WHERE IsAdmin = 1")
+                    .fetch_all(pool)
+                    .await?;
+                
+                let user_ids: Vec<i32> = rows.into_iter()
+                    .map(|row| row.try_get("UserID"))
+                    .collect::<Result<Vec<_>, _>>()?;
+                
+                Ok(user_ids)
+            }
+        }
+    }
+
+    // Check if user already has a specific podcast feed - matches Python logic
+    pub async fn user_has_podcast_feed(&self, user_id: i32, feed_url: &str) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT podcastid FROM "Podcasts" WHERE userid = $1 AND feedurl = $2"#)
+                    .bind(user_id)
+                    .bind(feed_url)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                Ok(row.is_some())
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT PodcastID FROM Podcasts WHERE UserID = ? AND FeedURL = ?")
+                    .bind(user_id)
+                    .bind(feed_url)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                Ok(row.is_some())
+            }
+        }
+    }
+
+    // Add PinePods news feed to admin users - matches Python add_news_feed_if_not_added function
+    pub async fn add_news_feed_if_not_added(&self) -> AppResult<()> {
+        let admin_user_ids = self.get_all_admin_user_ids().await?;
+        let feed_url = "https://news.pinepods.online/feed.xml";
+
+        for user_id in admin_user_ids {
+            // Check if this user already has the news feed
+            if !self.user_has_podcast_feed(user_id, feed_url).await? {
+                // Add the PinePods news feed using existing functions - matches Python add_custom_podcast
+                match self.get_podcast_values(feed_url, user_id, None, None).await {
+                    Ok(podcast_values) => {
+                        let feed_cutoff = 30; // Default cutoff like Python
+                        if let Err(e) = self.add_podcast_from_values(&podcast_values, user_id, feed_cutoff).await {
+                            eprintln!("Failed to add PinePods news feed for user {}: {}", user_id, e);
+                            // Continue with other users even if one fails
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("Failed to get podcast values for PinePods news feed for user {}: {}", user_id, e);
+                        // Continue with other users even if one fails
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 }

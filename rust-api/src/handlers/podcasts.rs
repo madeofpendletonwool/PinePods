@@ -136,6 +136,13 @@ pub struct RemovePodcastRequest {
     pub podcast_url: String,
 }
 
+#[derive(Deserialize)]
+pub struct RemovePodcastIdRequest {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub is_youtube: Option<bool>,
+}
+
 #[derive(Serialize)]
 pub struct RemovePodcastResponse {
     pub success: bool,
@@ -256,6 +263,34 @@ pub async fn remove_podcast(
         &request.podcast_url,
         request.user_id,
     ).await?;
+    
+    Ok(Json(RemovePodcastResponse { success: true }))
+}
+
+// Remove podcast by ID - matches Python remove_podcast_id endpoint
+pub async fn remove_podcast_id(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<RemovePodcastIdRequest>,
+) -> Result<Json<RemovePodcastResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check authorization - users can only remove their own podcasts or have elevated access
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    
+    if requesting_user_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only remove your own podcasts!"));
+    }
+
+    // Remove podcast from database
+    state.db_pool.remove_podcast_id(request.podcast_id, request.user_id).await?;
     
     Ok(Json(RemovePodcastResponse { success: true }))
 }
@@ -1698,5 +1733,5 @@ pub async fn get_podcast_details(
     
     let podcast_details = state.db_pool.get_podcast_details(query.user_id, query.podcast_id).await?;
     
-    Ok(Json(podcast_details))
+    Ok(Json(serde_json::json!({ "details": podcast_details })))
 }

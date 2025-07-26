@@ -147,8 +147,11 @@ pub async fn get_key(
         return Err(AppError::unauthorized("Invalid username or password"));
     }
 
-    // Get API key for user
-    let api_key = state.db_pool.get_api_key(&username).await?;
+    // Get user ID from username first
+    let user_id = state.db_pool.get_user_id_from_username(&username).await?;
+    
+    // Get or create API key for user
+    let api_key = state.db_pool.create_or_get_api_key(user_id).await?;
     
     Ok(Json(LoginResponse {
         status: "success".to_string(),
@@ -269,7 +272,11 @@ pub async fn create_first_admin(
         &request.password, // Password should already be hashed by frontend
     ).await?;
     
-    // TODO: Add background task for startup tasks
+    // Add PinePods news feed to admin users (matches Python startup tasks)
+    if let Err(e) = state.db_pool.add_news_feed_if_not_added().await {
+        eprintln!("Failed to add PinePods news feed during first admin creation: {}", e);
+        // Don't fail the admin creation if news feed addition fails
+    }
     
     Ok(Json(CreateFirstAdminResponse {
         message: "Admin user created successfully".to_string(),

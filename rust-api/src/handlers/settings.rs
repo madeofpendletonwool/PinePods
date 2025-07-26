@@ -923,21 +923,31 @@ pub async fn delete_api_key(
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
-    // Parse user_id and api_id from strings
-    let user_id: i32 = request.user_id.parse()
-        .map_err(|_| AppError::bad_request("Invalid user_id format"))?;
+    // Parse api_id from string (user_id not used for authorization)
     let api_id: i32 = request.api_id.parse()
         .map_err(|_| AppError::bad_request("Invalid api_id format"))?;
 
-    // Check authorization (elevated access or own user)
-    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    // Check authorization - admins can delete any key (except user ID 1), users can only delete their own keys
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_requesting_user_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
+    
+    // Get the owner of the API key being deleted
+    let api_key_owner = state.db_pool.get_api_key_owner(api_id).await?;
+    
+    if api_key_owner.is_none() {
+        return Err(AppError::not_found("API key not found"));
+    }
+    
+    let api_key_owner = api_key_owner.unwrap();
 
     // For debugging - log the values
-    println!("🔐 delete_api_key: user_id={}, user_id_from_api_key={}, is_web_key={}, api_id={}", 
-        user_id, user_id_from_api_key, is_web_key, api_id);
+    println!("🔐 delete_api_key: requesting_user={}, api_key_owner={}, is_admin={}, api_id={}", 
+        requesting_user_id, api_key_owner, is_requesting_user_admin, api_id);
 
-    if !is_web_key && user_id != user_id_from_api_key {
+    // Authorization logic:
+    // - Admin users can delete any key EXCEPT keys belonging to user ID 1 (background tasks)
+    // - Regular users can only delete their own keys
+    if !is_requesting_user_admin && requesting_user_id != api_key_owner {
         return Err(AppError::forbidden("You are not authorized to access or remove other users api-keys."));
     }
 
@@ -946,15 +956,19 @@ pub async fn delete_api_key(
         return Err(AppError::forbidden("You cannot delete the API key that is currently in use."));
     }
 
-    // Check if the API key belongs to the background task user (user_id 1) 
-    if state.db_pool.belongs_to_guest_user(api_id).await? {
+    // Check if the API key belongs to the background task user (user_id 1) - no one can delete these
+    if api_key_owner == 1 {
         return Err(AppError::forbidden("Cannot delete background task API key - would break refreshing."));
     }
 
-    // CRITICAL SAFETY CHECK: Ensure user has at least one other API key (would prevent logins)
-    let remaining_keys_count = state.db_pool.count_user_api_keys_excluding(user_id, api_id).await?;
+    // CRITICAL SAFETY CHECK: Ensure the API key owner has at least one other API key (would prevent logins)
+    let remaining_keys_count = state.db_pool.count_user_api_keys_excluding(api_key_owner, api_id).await?;
     if remaining_keys_count == 0 {
-        return Err(AppError::forbidden("Cannot delete your final API key - you must have at least one key to maintain access."));
+        if requesting_user_id == api_key_owner {
+            return Err(AppError::forbidden("Cannot delete your final API key - you must have at least one key to maintain access."));
+        } else {
+            return Err(AppError::forbidden("Cannot delete the user's final API key - they must have at least one key to maintain access."));
+        }
     }
 
     // Proceed with deletion if the checks pass
@@ -1034,13 +1048,25 @@ async fn backup_server_streaming(
     // This approach handles large databases by processing data in chunks
     
     let state_clone = state.clone();
-    let backup_stream = stream::unfold(0usize, move |chunk_id| {
+    let backup_stream = stream::unfold(Some(0usize), move |state_opt| {
         let state_clone = state_clone.clone();
         async move {
+            // If state is None, we're done - prevent further polling
+            let chunk_id = match state_opt {
+                Some(id) => id,
+                None => return None,
+            };
+            
             match generate_backup_chunk(&state_clone, chunk_id).await {
-                Ok(Some(chunk)) => Some((Ok(chunk), chunk_id + 1)),
-                Ok(None) => None, // End of stream - don't continue polling
-                Err(e) => Some((Err(e), chunk_id + 1)), // End on error but allow stream to terminate naturally
+                Ok(Some(chunk)) => Some((Ok(chunk), Some(chunk_id + 1))),
+                Ok(None) => {
+                    // End of stream - set state to None to prevent future polling
+                    None
+                },
+                Err(e) => {
+                    // End on error and set state to None to prevent future polling
+                    Some((Err(e), None))
+                }
             }
         }
     });

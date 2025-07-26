@@ -179,6 +179,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/get_playback_speed", post(handlers::podcasts::get_playback_speed))
         .route("/add_podcast", post(handlers::podcasts::add_podcast))
         .route("/remove_podcast", post(handlers::podcasts::remove_podcast))
+        .route("/remove_podcast_id", post(handlers::podcasts::remove_podcast_id))
         .route("/remove_podcast_name", post(handlers::podcasts::remove_podcast_by_name))
         .route("/return_pods/{user_id}", get(handlers::podcasts::return_pods))
         .route("/return_pods_extra/{user_id}", get(handlers::podcasts::return_pods_extra))
