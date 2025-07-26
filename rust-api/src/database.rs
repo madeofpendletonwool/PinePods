@@ -14815,29 +14815,102 @@ impl DatabasePool {
             }
         };
         
-        // Build RSS feed content
+        // Get podcast details for feed metadata - exact Python logic
+        let (podcast_name, feed_image, feed_description) = if podcast_filter {
+            match self {
+                DatabasePool::Postgres(pool) => {
+                    let row = sqlx::query(r#"SELECT podcastname, artworkurl, description FROM "Podcasts" WHERE podcastid = ANY($1)"#)
+                        .bind(&effective_podcast_ids)
+                        .fetch_optional(pool)
+                        .await?;
+                    
+                    if let Some(row) = row {
+                        (
+                            row.try_get::<String, _>("podcastname").unwrap_or_else(|_| "Unknown Podcast".to_string()),
+                            row.try_get::<String, _>("artworkurl").unwrap_or_else(|_| "/var/www/html/static/assets/favicon.png".to_string()),
+                            row.try_get::<String, _>("description").unwrap_or_else(|_| "No description available".to_string()),
+                        )
+                    } else {
+                        ("Unknown Podcast".to_string(), "/var/www/html/static/assets/favicon.png".to_string(), "No description available".to_string())
+                    }
+                }
+                DatabasePool::MySQL(pool) => {
+                    if effective_podcast_ids.len() == 1 {
+                        let row = sqlx::query("SELECT PodcastName, ArtworkURL, Description FROM Podcasts WHERE PodcastID = ?")
+                            .bind(effective_podcast_ids[0])
+                            .fetch_optional(pool)
+                            .await?;
+                        
+                        if let Some(row) = row {
+                            (
+                                row.try_get::<String, _>("PodcastName").unwrap_or_else(|_| "Unknown Podcast".to_string()),
+                                row.try_get::<String, _>("ArtworkURL").unwrap_or_else(|_| "/var/www/html/static/assets/favicon.png".to_string()),
+                                row.try_get::<String, _>("Description").unwrap_or_else(|_| "No description available".to_string()),
+                            )
+                        } else {
+                            ("Unknown Podcast".to_string(), "/var/www/html/static/assets/favicon.png".to_string(), "No description available".to_string())
+                        }
+                    } else {
+                        let placeholders = vec!["?"; effective_podcast_ids.len()].join(",");
+                        let query_str = format!("SELECT PodcastName, ArtworkURL, Description FROM Podcasts WHERE PodcastID IN ({})", placeholders);
+                        let mut query = sqlx::query(&query_str);
+                        for &id in &effective_podcast_ids {
+                            query = query.bind(id);
+                        }
+                        let row = query.fetch_optional(pool).await?;
+                        
+                        if let Some(row) = row {
+                            (
+                                row.try_get::<String, _>("PodcastName").unwrap_or_else(|_| "Unknown Podcast".to_string()),
+                                row.try_get::<String, _>("ArtworkURL").unwrap_or_else(|_| "/var/www/html/static/assets/favicon.png".to_string()),
+                                row.try_get::<String, _>("Description").unwrap_or_else(|_| "No description available".to_string()),
+                            )
+                        } else {
+                            ("Unknown Podcast".to_string(), "/var/www/html/static/assets/favicon.png".to_string(), "No description available".to_string())
+                        }
+                    }
+                }
+            }
+        } else {
+            ("All Podcasts".to_string(), "/var/www/html/static/assets/favicon.png".to_string(), "RSS feed for all podcasts from Pinepods".to_string())
+        };
+
+        // Build RSS feed content with proper iTunes namespace - exact Python format
         let mut rss_content = String::new();
         rss_content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        rss_content.push_str("<rss version=\"2.0\">\n");
+        rss_content.push_str("<rss version=\"2.0\" xmlns:itunes=\"http://www.itunes.com/dtds/podcast-1.0.dtd\">\n");
         rss_content.push_str("<channel>\n");
-        rss_content.push_str(&format!("  <title>{}'s PinePods Feed</title>\n", username));
-        rss_content.push_str(&format!("  <link>{}</link>\n", domain));
-        rss_content.push_str(&format!("  <description>Personal podcast feed for {}</description>\n", username));
-        rss_content.push_str("  <language>en-us</language>\n");
+        rss_content.push_str(&format!("  <title>Pinepods - {}</title>\n", podcast_name));
+        rss_content.push_str("  <link>https://github.com/madeofpendletonwool/pinepods</link>\n");
+        rss_content.push_str(&format!("  <description>{}</description>\n", feed_description));
+        rss_content.push_str("  <language>en</language>\n");
+        rss_content.push_str(&format!("  <itunes:author>{}</itunes:author>\n", username));
+        rss_content.push_str(&format!("  <itunes:image href=\"{}\" />\n", feed_image));
+        rss_content.push_str("  <image>\n");
+        rss_content.push_str(&format!("    <url>{}</url>\n", feed_image));
+        rss_content.push_str(&format!("    <title>{}</title>\n", podcast_name));
+        rss_content.push_str("    <link>https://github.com/madeofpendletonwool/pinepods</link>\n");
+        rss_content.push_str("  </image>\n");
+        rss_content.push_str("  <ttl>60</ttl>\n");
         
         // Get episodes
-        let episodes = self.get_rss_episodes(user_id, limit, source_type, &effective_podcast_ids, podcast_filter, domain).await?;
+        let episodes = self.get_rss_episodes(user_id, limit, source_type, &effective_podcast_ids, podcast_filter, domain, &rss_key.key).await?;
         
         for episode in episodes {
             rss_content.push_str("  <item>\n");
             rss_content.push_str(&format!("    <title><![CDATA[{}]]></title>\n", episode.title));
-            rss_content.push_str(&format!("    <description><![CDATA[{}]]></description>\n", episode.description));
             rss_content.push_str(&format!("    <link>{}</link>\n", episode.url));
+            rss_content.push_str(&format!("    <description><![CDATA[{}]]></description>\n", episode.description));
             rss_content.push_str(&format!("    <guid>{}</guid>\n", episode.url));
             rss_content.push_str(&format!("    <pubDate>{}</pubDate>\n", episode.pub_date));
-            if let Some(duration) = episode.duration {
-                rss_content.push_str(&format!("    <itunes:duration>{}</itunes:duration>\n", duration));
+            if let Some(ref author) = episode.author {
+                rss_content.push_str(&format!("    <itunes:author>{}</itunes:author>\n", author));
             }
+            if let Some(ref artwork_url) = episode.artwork_url {
+                rss_content.push_str(&format!("    <itunes:image href=\"{}\" />\n", artwork_url));
+            }
+            rss_content.push_str(&format!("    <enclosure url=\"{}\" length=\"{}\" type=\"audio/mpeg\" />\n", 
+                episode.url, episode.duration.unwrap_or(0)));
             rss_content.push_str("  </item>\n");
         }
         
@@ -14886,10 +14959,229 @@ impl DatabasePool {
         podcast_ids: &[i32],
         podcast_filter: bool,
         domain: &str,
+        api_key: &str,
     ) -> AppResult<Vec<RssEpisode>> {
-        // TODO: Implement full RSS episode fetching with proper SQL queries
-        // This is a placeholder implementation
-        Ok(vec![])
+        use chrono::{DateTime, Utc};
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut base_query = r#"
+                    SELECT
+                        e.episodeid,
+                        e.podcastid,
+                        e.episodetitle,
+                        e.episodedescription,
+                        CASE WHEN de.episodeid IS NULL
+                                THEN e.episodeurl
+                                ELSE CONCAT(CAST($1 AS TEXT), '/api/data/stream/', e.episodeid, '?api_key=', CAST($2 AS TEXT), '&user_id=', pp.userid)
+                        END as episodeurl,
+                        e.episodeartwork,
+                        e.episodepubdate,
+                        e.episodeduration,
+                        pp.podcastname,
+                        pp.author,
+                        pp.artworkurl,
+                        pp.description as podcastdescription
+                    FROM "Episodes" e
+                    JOIN "Podcasts" pp ON e.podcastid = pp.podcastid
+                    LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid
+                    WHERE pp.userid = $3
+                "#.to_string();
+
+                let mut param_count = 3;
+                if podcast_filter && !podcast_ids.is_empty() {
+                    param_count += 1;
+                    base_query.push_str(&format!(" AND pp.podcastid = ANY(${})", param_count));
+                }
+
+                // Add YouTube union if needed (exact Python logic)
+                let add_youtube_union = source_type.is_none() || source_type == Some("youtube");
+                if add_youtube_union {
+                    base_query.push_str(r#"
+                        UNION ALL
+                        SELECT
+                            y.videoid as episodeid,
+                            y.podcastid,
+                            y.videotitle as episodetitle,
+                            y.videodescription as episodedescription,
+                            CONCAT(CAST($1 AS TEXT), '/api/data/stream/', CAST(y.videoid AS TEXT), '?api_key=', CAST($2 AS TEXT), '&type=youtube&user_id=', pv.userid) as episodeurl,
+                            y.thumbnailurl as episodeartwork,
+                            y.publishedat as episodepubdate,
+                            y.duration as episodeduration,
+                            pv.podcastname,
+                            pv.author,
+                            pv.artworkurl,
+                            pv.description as podcastdescription
+                        FROM "YouTubeVideos" y
+                        JOIN "Podcasts" pv on y.podcastid = pv.podcastid
+                        WHERE pv.userid = $3
+                    "#);
+
+                    if podcast_filter && !podcast_ids.is_empty() {
+                        base_query.push_str(&format!(" AND pv.podcastid = ANY(${})", param_count));
+                    }
+                }
+
+                base_query.push_str(" ORDER BY episodepubdate DESC");
+                if limit > 0 {
+                    base_query.push_str(&format!(" LIMIT {}", limit));
+                }
+
+                // Execute query
+                let mut query = sqlx::query(&base_query)
+                    .bind(domain)
+                    .bind(api_key)
+                    .bind(user_id);
+
+                if podcast_filter && !podcast_ids.is_empty() {
+                    query = query.bind(podcast_ids);
+                }
+
+                let rows = query.fetch_all(pool).await?;
+                
+                let mut episodes = Vec::new();
+                for row in rows {
+                    let title: String = row.try_get("episodetitle").unwrap_or_else(|_| "Untitled Episode".to_string());
+                    let description: String = row.try_get("episodedescription").unwrap_or_else(|_| String::new());
+                    let url: String = row.try_get("episodeurl").unwrap_or_else(|_| String::new());
+                    let duration: Option<i32> = row.try_get("episodeduration").ok();
+                    let author: Option<String> = row.try_get("author").ok();
+                    let artwork_url: Option<String> = row.try_get("episodeartwork").ok();
+                    
+                    let pub_date = if let Ok(dt) = row.try_get::<DateTime<Utc>, _>("episodepubdate") {
+                        dt.format("%a, %d %b %Y %H:%M:%S %z").to_string()
+                    } else {
+                        Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string()
+                    };
+
+                    episodes.push(RssEpisode {
+                        title,
+                        description,
+                        url,
+                        pub_date,
+                        duration,
+                        author,
+                        artwork_url,
+                    });
+                }
+                
+                Ok(episodes)
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut base_query = r#"
+                    SELECT
+                        e.EpisodeID,
+                        e.PodcastID,
+                        e.EpisodeTitle COLLATE utf8mb4_unicode_ci as EpisodeTitle,
+                        e.EpisodeDescription COLLATE utf8mb4_unicode_ci as EpisodeDescription,
+                        CASE WHEN de.EpisodeID IS NULL
+                                THEN e.EpisodeURL COLLATE utf8mb4_unicode_ci
+                                ELSE CONCAT(CAST(? AS CHAR), '/api/data/stream/', CAST(e.EpisodeID AS CHAR), '?api_key=', CAST(? AS CHAR), '&user_id=', pp.UserID)
+                        END COLLATE utf8mb4_unicode_ci as EpisodeURL,
+                        e.EpisodeArtwork COLLATE utf8mb4_unicode_ci as EpisodeArtwork,
+                        e.EpisodePubDate,
+                        e.EpisodeDuration,
+                        pp.PodcastName COLLATE utf8mb4_unicode_ci as PodcastName,
+                        pp.Author COLLATE utf8mb4_unicode_ci as Author,
+                        pp.ArtworkURL COLLATE utf8mb4_unicode_ci as ArtworkURL,
+                        pp.Description COLLATE utf8mb4_unicode_ci as PodcastDescription
+                    FROM Episodes e
+                    JOIN Podcasts pp ON e.PodcastID = pp.PodcastID
+                    LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID
+                    WHERE pp.UserID = ?
+                "#.to_string();
+
+                if podcast_filter && !podcast_ids.is_empty() {
+                    let placeholders = vec!["?"; podcast_ids.len()].join(",");
+                    base_query.push_str(&format!(" AND pp.PodcastID IN ({})", placeholders));
+                }
+
+                // Add YouTube union if needed
+                let add_youtube_union = source_type.is_none() || source_type == Some("youtube");
+                if add_youtube_union {
+                    base_query.push_str(r#"
+                        UNION ALL
+                        SELECT
+                            y.VideoID as EpisodeID,
+                            y.PodcastID as PodcastID,
+                            y.VideoTitle COLLATE utf8mb4_unicode_ci as EpisodeTitle,
+                            y.VideoDescription COLLATE utf8mb4_unicode_ci as EpisodeDescription,
+                            CONCAT(CAST(? AS CHAR), '/api/data/stream/', CAST(y.VideoID AS CHAR), '?api_key=', CAST(? AS CHAR), '&type=youtube&user_id=', pv.UserID) COLLATE utf8mb4_unicode_ci as EpisodeURL,
+                            y.ThumbnailURL COLLATE utf8mb4_unicode_ci as EpisodeArtwork,
+                            y.PublishedAt as EpisodePubDate,
+                            y.Duration as EpisodeDuration,
+                            pv.PodcastName COLLATE utf8mb4_unicode_ci as PodcastName,
+                            pv.Author COLLATE utf8mb4_unicode_ci as Author,
+                            pv.ArtworkURL COLLATE utf8mb4_unicode_ci as ArtworkURL,
+                            pv.Description COLLATE utf8mb4_unicode_ci as PodcastDescription
+                        FROM YouTubeVideos y
+                        JOIN Podcasts pv on y.PodcastID = pv.PodcastID
+                        WHERE pv.UserID = ?
+                    "#);
+
+                    if podcast_filter && !podcast_ids.is_empty() {
+                        let placeholders = vec!["?"; podcast_ids.len()].join(",");
+                        base_query.push_str(&format!(" AND pv.PodcastID IN ({})", placeholders));
+                    }
+                }
+
+                base_query.push_str(" ORDER BY EpisodePubDate DESC");
+                if limit > 0 {
+                    base_query.push_str(&format!(" LIMIT {}", limit));
+                }
+
+                // Build query with parameters
+                let mut query = sqlx::query(&base_query)
+                    .bind(domain)
+                    .bind(api_key)
+                    .bind(user_id);
+
+                if podcast_filter && !podcast_ids.is_empty() {
+                    for &id in podcast_ids {
+                        query = query.bind(id);
+                    }
+                }
+
+                if add_youtube_union {
+                    query = query.bind(domain).bind(api_key).bind(user_id);
+                    if podcast_filter && !podcast_ids.is_empty() {
+                        for &id in podcast_ids {
+                            query = query.bind(id);
+                        }
+                    }
+                }
+
+                let rows = query.fetch_all(pool).await?;
+                
+                let mut episodes = Vec::new();
+                for row in rows {
+                    let title: String = row.try_get("EpisodeTitle").unwrap_or_else(|_| "Untitled Episode".to_string());
+                    let description: String = row.try_get("EpisodeDescription").unwrap_or_else(|_| String::new());
+                    let url: String = row.try_get("EpisodeURL").unwrap_or_else(|_| String::new());
+                    let duration: Option<i32> = row.try_get("EpisodeDuration").ok();
+                    let author: Option<String> = row.try_get("Author").ok();
+                    let artwork_url: Option<String> = row.try_get("EpisodeArtwork").ok();
+                    
+                    let pub_date = if let Ok(dt) = row.try_get::<DateTime<Utc>, _>("EpisodePubDate") {
+                        dt.format("%a, %d %b %Y %H:%M:%S %z").to_string()
+                    } else {
+                        Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string()
+                    };
+
+                    episodes.push(RssEpisode {
+                        title,
+                        description,
+                        url,
+                        pub_date,
+                        duration,
+                        author,
+                        artwork_url,
+                    });
+                }
+                
+                Ok(episodes)
+            }
+        }
     }
 
     // Get podcast notification status - matches Python get_podcast_notification_status function
@@ -14971,6 +15263,8 @@ struct RssEpisode {
     url: String,
     pub_date: String,
     duration: Option<i32>,
+    author: Option<String>,
+    artwork_url: Option<String>,
 }
 
 use std::collections::HashSet;
