@@ -1864,3 +1864,257 @@ pub async fn stream_episode(
         Err(AppError::not_found("Episode not found or not downloaded"))
     }
 }
+
+// Query struct for get_podcast_details_dynamic
+#[derive(Deserialize)]
+pub struct PodcastDetailsQuery {
+    pub user_id: i32,
+    pub podcast_title: String,
+    pub podcast_url: String,
+    pub podcast_index_id: i32,
+    pub added: bool,
+    pub display_only: Option<bool>,
+}
+
+// Response struct for get_podcast_details_dynamic (matches ClickedFeedURL)
+#[derive(Serialize)]
+pub struct ClickedFeedURLResponse {
+    pub podcastid: i32,
+    pub podcastname: String,
+    pub feedurl: String,
+    pub description: String,
+    pub author: String,
+    pub artworkurl: String,
+    pub explicit: bool,
+    pub episodecount: i32,
+    pub categories: serde_json::Value,
+    pub websiteurl: String,
+    pub podcastindexid: i32,
+    pub is_youtube: Option<bool>,
+}
+
+// Get podcast details dynamic endpoint
+pub async fn get_podcast_details_dynamic(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Query(query): Query<PodcastDetailsQuery>,
+) -> Result<Json<ClickedFeedURLResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    if query.added {
+        // Get podcast from database if already added
+        let podcast_id = state.db_pool.get_podcast_id_by_feed(query.user_id, &query.podcast_url, &query.podcast_title).await?;
+        let details = state.db_pool.get_podcast_details_raw(query.user_id, podcast_id).await?;
+        
+        if let Some(details) = details {
+            // Parse categories
+            let categories = if let Some(cats_str) = details.get("categories").and_then(|v| v.as_str()) {
+                if cats_str.starts_with('{') {
+                    serde_json::from_str(cats_str).unwrap_or_else(|_| serde_json::json!({}))
+                } else {
+                    let categories_dict: serde_json::Map<String, serde_json::Value> = cats_str
+                        .split(',')
+                        .enumerate()
+                        .map(|(i, cat)| (i.to_string(), serde_json::Value::String(cat.trim().to_string())))
+                        .collect();
+                    serde_json::Value::Object(categories_dict)
+                }
+            } else {
+                serde_json::json!({})
+            };
+
+            Ok(Json(ClickedFeedURLResponse {
+                podcastid: 0,
+                podcastname: details.get("podcastname").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                feedurl: details.get("feedurl").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                description: details.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                author: details.get("author").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                artworkurl: details.get("artworkurl").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                explicit: details.get("explicit").and_then(|v| v.as_bool()).unwrap_or(false),
+                episodecount: details.get("episodecount").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                categories,
+                websiteurl: details.get("websiteurl").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                podcastindexid: details.get("podcastindexid").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                is_youtube: details.get("isyoutubechannel").and_then(|v| v.as_bool()),
+            }))
+        } else {
+            return Err(AppError::not_found("Podcast not found"));
+        }
+    } else {
+        // Get podcast values from feed if not added
+        let podcast_values = state.db_pool.get_podcast_values_from_feed(&query.podcast_url, query.user_id, query.display_only.unwrap_or(false)).await?;
+        
+        let categories = if let Some(cats_str) = podcast_values.get("categories").and_then(|v| v.as_str()) {
+            if cats_str.starts_with('{') {
+                serde_json::from_str(cats_str).unwrap_or_else(|_| serde_json::json!({}))
+            } else {
+                let categories_dict: serde_json::Map<String, serde_json::Value> = cats_str
+                    .split(',')
+                    .enumerate()
+                    .map(|(i, cat)| (i.to_string(), serde_json::Value::String(cat.trim().to_string())))
+                    .collect();
+                serde_json::Value::Object(categories_dict)
+            }
+        } else {
+            serde_json::json!({})
+        };
+
+        Ok(Json(ClickedFeedURLResponse {
+            podcastid: 0,
+            podcastname: podcast_values.get("pod_title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            feedurl: podcast_values.get("pod_feed_url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            description: podcast_values.get("pod_description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            author: podcast_values.get("pod_author").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            artworkurl: podcast_values.get("pod_artwork").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            explicit: podcast_values.get("pod_explicit").and_then(|v| v.as_bool()).unwrap_or(false),
+            episodecount: podcast_values.get("pod_episode_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+            categories,
+            websiteurl: podcast_values.get("pod_website").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            podcastindexid: query.podcast_index_id,
+            is_youtube: Some(false),
+        }))
+    }
+}
+
+// Query struct for podpeople host podcasts
+#[derive(Deserialize)]
+pub struct HostPodcastsQuery {
+    pub hostname: String,
+}
+
+// Response struct for podpeople host podcasts
+#[derive(Serialize)]
+pub struct PodPeopleResponse {
+    pub success: bool,
+    pub podcasts: Vec<serde_json::Value>,
+}
+
+// Get host podcasts from podpeople endpoint
+pub async fn get_host_podcasts(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Query(query): Query<HostPodcastsQuery>,
+) -> Result<Json<PodPeopleResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Get people URL from config
+    let people_url = std::env::var("PEOPLE_API_URL").unwrap_or_else(|_| "https://people.pinepods.online".to_string());
+
+    // Make request to podpeople database
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&format!("{}/api/hostsearch", people_url))
+        .query(&[("name", &query.hostname)])
+        .send()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to fetch from podpeople: {}", e)))?;
+
+    if response.status().is_success() {
+        let podpeople_data: Vec<serde_json::Value> = response
+            .json()
+            .await
+            .map_err(|e| AppError::external_error(&format!("Failed to parse podpeople response: {}", e)))?;
+
+        Ok(Json(PodPeopleResponse {
+            success: true,
+            podcasts: podpeople_data,
+        }))
+    } else {
+        Ok(Json(PodPeopleResponse {
+            success: false,
+            podcasts: vec![],
+        }))
+    }
+}
+
+// Request struct for update_feed_cutoff_days
+#[derive(Deserialize)]
+pub struct UpdateFeedCutoffDaysData {
+    pub podcast_id: i32,
+    pub user_id: i32,
+    pub feed_cutoff_days: i32,
+}
+
+// Update feed cutoff days endpoint
+pub async fn update_feed_cutoff_days(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Json(data): Json<UpdateFeedCutoffDaysData>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if the provided API key is the web key
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    // Allow the action if the API key belongs to the user or it's the web API key
+    if key_id == data.user_id || is_web_key {
+        let success = state.db_pool.update_feed_cutoff_days(data.podcast_id, data.user_id, data.feed_cutoff_days).await?;
+        if success {
+            Ok(Json(serde_json::json!({"detail": "Feed cutoff days updated successfully!"})))
+        } else {
+            Err(AppError::bad_request("Error updating feed cutoff days"))
+        }
+    } else {
+        Err(AppError::forbidden("You can only modify settings of your own podcasts!"))
+    }
+}
+
+// Query struct for fetch_podcast_feed
+#[derive(Deserialize)]
+pub struct FetchPodcastFeedQuery {
+    pub podcast_feed: String,
+}
+
+// Fetch podcast feed endpoint - returns raw XML feed data
+pub async fn fetch_podcast_feed(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Query(query): Query<FetchPodcastFeedQuery>,
+) -> Result<axum::response::Response, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Define headers that mimic a standard web browser - matches Python implementation exactly
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&query.podcast_feed)
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
+        .header("Accept-Language", "en-US,en;q=0.5")
+        .header("Connection", "keep-alive")
+        .header("Upgrade-Insecure-Requests", "1")
+        .header("Cache-Control", "max-age=0")
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Request error fetching podcast feed: {}", e)))?;
+
+    if !response.status().is_success() {
+        return Err(AppError::external_error(&format!(
+            "HTTP error fetching podcast feed: {} {}",
+            response.status().as_u16(),
+            response.status().canonical_reason().unwrap_or("Unknown error")
+        )));
+    }
+
+    // Get the response body as bytes
+    let content = response
+        .bytes()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to read response body: {}", e)))?;
+
+    // Return the XML content with proper content-type
+    use axum::response::Response;
+    use axum::body::Body;
+    
+    let response = Response::builder()
+        .header("content-type", "application/xml")
+        .body(Body::from(content))
+        .map_err(|e| AppError::external_error(&format!("Failed to create response: {}", e)))?;
+        
+    Ok(response)
+}

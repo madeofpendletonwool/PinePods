@@ -2495,7 +2495,7 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 let row = sqlx::query(
-                    r#"SELECT usercreated, podcastsplayed, timelistened, podcastsadded, episodessaved, episodesdownloaded 
+                    r#"SELECT usercreated, podcastsplayed, timelistened, podcastsadded 
                        FROM "UserStats" WHERE userid = $1"#
                 )
                 .bind(user_id)
@@ -2513,15 +2513,33 @@ impl DatabasePool {
                     .fetch_one(pool)
                     .await?;
 
+                    // Count saved episodes directly from SavedEpisodes table
+                    let saved_count_row = sqlx::query(
+                        r#"SELECT COUNT(*) as saved_count FROM "SavedEpisodes" WHERE userid = $1"#
+                    )
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+
+                    // Count downloaded episodes directly from DownloadedEpisodes table  
+                    let downloaded_count_row = sqlx::query(
+                        r#"SELECT COUNT(*) as downloaded_count FROM "DownloadedEpisodes" WHERE userid = $1"#
+                    )
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+
                     let total_episodes: i64 = episode_count_row.try_get("total_episodes")?;
+                    let saved_count: i64 = saved_count_row.try_get("saved_count")?;
+                    let downloaded_count: i64 = downloaded_count_row.try_get("downloaded_count")?;
 
                     let stats = serde_json::json!({
                         "UserCreated": row.try_get::<chrono::NaiveDateTime, _>("usercreated")?.format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
                         "PodcastsPlayed": row.try_get::<i32, _>("podcastsplayed")?,
                         "TimeListened": row.try_get::<i32, _>("timelistened")?,
                         "PodcastsAdded": row.try_get::<i32, _>("podcastsadded")?,
-                        "EpisodesSaved": row.try_get::<i32, _>("episodessaved")?,
-                        "EpisodesDownloaded": row.try_get::<i32, _>("episodesdownloaded")?,
+                        "EpisodesSaved": saved_count as i32,
+                        "EpisodesDownloaded": downloaded_count as i32,
                         "GpodderUrl": "http://localhost:8042",
                         "Pod_Sync_Type": "gpodder"
                     });
@@ -2533,7 +2551,7 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let row = sqlx::query(
-                    "SELECT UserCreated, PodcastsPlayed, TimeListened, PodcastsAdded, EpisodesSaved, EpisodesDownloaded 
+                    "SELECT UserCreated, PodcastsPlayed, TimeListened, PodcastsAdded 
                      FROM UserStats WHERE UserID = ?"
                 )
                 .bind(user_id)
@@ -2551,15 +2569,33 @@ impl DatabasePool {
                     .fetch_one(pool)
                     .await?;
 
+                    // Count saved episodes directly from SavedEpisodes table
+                    let saved_count_row = sqlx::query(
+                        "SELECT COUNT(*) as saved_count FROM SavedEpisodes WHERE UserID = ?"
+                    )
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+
+                    // Count downloaded episodes directly from DownloadedEpisodes table
+                    let downloaded_count_row = sqlx::query(
+                        "SELECT COUNT(*) as downloaded_count FROM DownloadedEpisodes WHERE UserID = ?"
+                    )
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+
                     let total_episodes: i64 = episode_count_row.try_get("total_episodes")?;
+                    let saved_count: i64 = saved_count_row.try_get("saved_count")?;
+                    let downloaded_count: i64 = downloaded_count_row.try_get("downloaded_count")?;
 
                     let stats = serde_json::json!({
                         "UserCreated": row.try_get::<chrono::NaiveDateTime, _>("UserCreated")?.format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
                         "PodcastsPlayed": row.try_get::<i32, _>("PodcastsPlayed")?,
                         "TimeListened": row.try_get::<i32, _>("TimeListened")?,
                         "PodcastsAdded": row.try_get::<i32, _>("PodcastsAdded")?,
-                        "EpisodesSaved": row.try_get::<i32, _>("EpisodesSaved")?,
-                        "EpisodesDownloaded": row.try_get::<i32, _>("EpisodesDownloaded")?,
+                        "EpisodesSaved": saved_count as i32,
+                        "EpisodesDownloaded": downloaded_count as i32,
                         "GpodderUrl": "http://localhost:8042",
                         "Pod_Sync_Type": "gpodder"
                     });
@@ -15747,6 +15783,177 @@ impl DatabasePool {
         }
 
         Ok(())
+    }
+
+    // Get podcast ID by feed URL and title - for get_podcast_details_dynamic
+    pub async fn get_podcast_id_by_feed(&self, user_id: i32, feed_url: &str, podcast_title: &str) -> AppResult<i32> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(
+                    r#"SELECT podcastid FROM "Podcasts" WHERE feedurl = $1 AND userid = $2"#
+                )
+                .bind(feed_url)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    Ok(row.try_get("podcastid")?)
+                } else {
+                    Err(AppError::not_found("Podcast not found"))
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(
+                    "SELECT PodcastID FROM Podcasts WHERE FeedURL = ? AND UserID = ?"
+                )
+                .bind(feed_url)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    Ok(row.try_get("PodcastID")?)
+                } else {
+                    Err(AppError::not_found("Podcast not found"))
+                }
+            }
+        }
+    }
+
+    // Get raw podcast details - returns all fields as JSON for get_podcast_details_dynamic
+    pub async fn get_podcast_details_raw(&self, user_id: i32, podcast_id: i32) -> AppResult<Option<serde_json::Value>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(
+                    r#"SELECT * FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#
+                )
+                .bind(podcast_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    let mut details = serde_json::Map::new();
+                    
+                    details.insert("podcastname".to_string(), serde_json::Value::String(row.try_get::<String, _>("podcastname").unwrap_or_default()));
+                    details.insert("feedurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("feedurl").unwrap_or_default()));
+                    details.insert("description".to_string(), serde_json::Value::String(row.try_get::<String, _>("description").unwrap_or_default()));
+                    details.insert("author".to_string(), serde_json::Value::String(row.try_get::<String, _>("author").unwrap_or_default()));
+                    details.insert("artworkurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("artworkurl").unwrap_or_default()));
+                    details.insert("explicit".to_string(), serde_json::Value::Bool(row.try_get::<bool, _>("explicit").unwrap_or(false)));
+                    details.insert("episodecount".to_string(), serde_json::Value::Number(serde_json::Number::from(row.try_get::<i32, _>("episodecount").unwrap_or(0))));
+                    details.insert("categories".to_string(), serde_json::Value::String(row.try_get::<String, _>("categories").unwrap_or_default()));
+                    details.insert("websiteurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("websiteurl").unwrap_or_default()));
+                    details.insert("podcastindexid".to_string(), serde_json::Value::Number(serde_json::Number::from(row.try_get::<i32, _>("podcastindexid").unwrap_or(0))));
+                    details.insert("isyoutubechannel".to_string(), serde_json::Value::Bool(row.try_get::<bool, _>("isyoutubechannel").unwrap_or(false)));
+
+                    Ok(Some(serde_json::Value::Object(details)))
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(
+                    "SELECT * FROM Podcasts WHERE PodcastID = ? AND UserID = ?"
+                )
+                .bind(podcast_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    let mut details = serde_json::Map::new();
+                    
+                    details.insert("podcastname".to_string(), serde_json::Value::String(row.try_get::<String, _>("PodcastName").unwrap_or_default()));
+                    details.insert("feedurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("FeedURL").unwrap_or_default()));
+                    details.insert("description".to_string(), serde_json::Value::String(row.try_get::<String, _>("Description").unwrap_or_default()));
+                    details.insert("author".to_string(), serde_json::Value::String(row.try_get::<String, _>("Author").unwrap_or_default()));
+                    details.insert("artworkurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("ArtworkURL").unwrap_or_default()));
+                    details.insert("explicit".to_string(), serde_json::Value::Bool(row.try_get::<bool, _>("Explicit").unwrap_or(false)));
+                    details.insert("episodecount".to_string(), serde_json::Value::Number(serde_json::Number::from(row.try_get::<i32, _>("EpisodeCount").unwrap_or(0))));
+                    details.insert("categories".to_string(), serde_json::Value::String(row.try_get::<String, _>("Categories").unwrap_or_default()));
+                    details.insert("websiteurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("WebsiteURL").unwrap_or_default()));
+                    details.insert("podcastindexid".to_string(), serde_json::Value::Number(serde_json::Number::from(row.try_get::<i32, _>("PodcastIndexID").unwrap_or(0))));
+                    details.insert("isyoutubechannel".to_string(), serde_json::Value::Bool(row.try_get::<bool, _>("IsYouTubeChannel").unwrap_or(false)));
+
+                    Ok(Some(serde_json::Value::Object(details)))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Get podcast values from feed - for get_podcast_details_dynamic when podcast is not added
+    pub async fn get_podcast_values_from_feed(&self, feed_url: &str, user_id: i32, display_only: bool) -> AppResult<serde_json::Value> {
+        // Use the real get_podcast_values function that exists in the codebase
+        let podcast_values = self.get_podcast_values(feed_url, user_id, None, None).await?;
+        
+        // Convert HashMap to the expected JSON format for get_podcast_details_dynamic
+        let response = serde_json::json!({
+            "pod_title": podcast_values.get("podcastname").unwrap_or(&"Unknown Podcast".to_string()),
+            "pod_feed_url": feed_url,
+            "pod_description": podcast_values.get("description").unwrap_or(&"".to_string()),
+            "pod_author": podcast_values.get("author").unwrap_or(&"Unknown Author".to_string()),
+            "pod_artwork": podcast_values.get("artworkurl").unwrap_or(&"/static/assets/default-podcast.png".to_string()),
+            "pod_explicit": podcast_values.get("explicit").unwrap_or(&"False".to_string()) == "True",
+            "pod_episode_count": podcast_values.get("episodecount").unwrap_or(&"0".to_string()).parse::<i32>().unwrap_or(0),
+            "categories": podcast_values.get("categories").unwrap_or(&"{}".to_string()),
+            "pod_website": podcast_values.get("websiteurl").unwrap_or(&"".to_string()),
+        });
+
+        Ok(response)
+    }
+
+    // Update feed cutoff days - for update_feed_cutoff_days endpoint
+    pub async fn update_feed_cutoff_days(&self, podcast_id: i32, user_id: i32, feed_cutoff_days: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // First verify podcast exists and belongs to user
+                let existing = sqlx::query(r#"SELECT podcastid FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if existing.is_none() {
+                    return Ok(false);
+                }
+
+                // Update the feed cutoff days
+                let result = sqlx::query(r#"UPDATE "Podcasts" SET feedcutoffdays = $1 WHERE podcastid = $2 AND userid = $3"#)
+                    .bind(feed_cutoff_days)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                // First verify podcast exists and belongs to user
+                let existing = sqlx::query("SELECT PodcastID FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if existing.is_none() {
+                    return Ok(false);
+                }
+
+                // Update the feed cutoff days
+                let result = sqlx::query("UPDATE Podcasts SET FeedCutoffDays = ? WHERE PodcastID = ? AND UserID = ?")
+                    .bind(feed_cutoff_days)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+
+                Ok(result.rows_affected() > 0)
+            }
+        }
     }
 }
 
