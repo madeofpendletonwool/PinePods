@@ -195,8 +195,22 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                         &feed_url
                     };
                     
-                    // TODO: Call YouTube processing function
-                    println!("Would process YouTube videos for channel: {}", channel_id);
+                    // Call YouTube processing function
+                    println!("Processing YouTube videos for channel: {}", channel_id);
+                    match crate::handlers::youtube::process_youtube_channel(
+                        podcast_id, 
+                        channel_id, 
+                        feed_cutoff.unwrap_or(30), 
+                        &state
+                    ).await {
+                        Ok(_) => {
+                            println!("Successfully refreshed YouTube channel {}", podcast_id);
+                        }
+                        Err(e) => {
+                            println!("Error refreshing YouTube channel {}: {}", podcast_id, e);
+                            // Continue with other podcasts - matches Python behavior
+                        }
+                    }
                 } else {
                     // Use the existing add_episodes function
                     match state.db_pool.add_episodes(
@@ -249,8 +263,22 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                         &feed_url
                     };
                     
-                    // TODO: Call YouTube processing function
-                    println!("Would process YouTube videos for channel: {}", channel_id);
+                    // Call YouTube processing function
+                    println!("Processing YouTube videos for channel: {}", channel_id);
+                    match crate::handlers::youtube::process_youtube_channel(
+                        podcast_id, 
+                        channel_id, 
+                        feed_cutoff.unwrap_or(30), 
+                        &state
+                    ).await {
+                        Ok(_) => {
+                            println!("Successfully refreshed YouTube channel {}", podcast_id);
+                        }
+                        Err(e) => {
+                            println!("Error refreshing YouTube channel {}: {}", podcast_id, e);
+                            // Continue with other podcasts - matches Python behavior
+                        }
+                    }
                 } else {
                     // Use the existing add_episodes function
                     match state.db_pool.add_episodes(
@@ -666,13 +694,33 @@ async fn refresh_youtube_channel(
     podcast: &PodcastForRefresh,
     user_id: i32,
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
-    // TODO: Implement YouTube channel refresh
-    // This would use YouTube Data API to get new videos
-    
     tracing::info!("Refreshing YouTube channel: {}", podcast.name);
     
-    // Placeholder implementation
-    Ok(Vec::new())
+    // Extract channel ID from feed URL
+    let channel_id = if podcast.feed_url.contains("channel/") {
+        podcast.feed_url.split("channel/").nth(1).unwrap_or(&podcast.feed_url).split('/').next().unwrap_or(&podcast.feed_url).split('?').next().unwrap_or(&podcast.feed_url)
+    } else {
+        &podcast.feed_url
+    };
+    
+    // Call YouTube processing function
+    match crate::handlers::youtube::process_youtube_channel(
+        podcast.id, 
+        channel_id, 
+        podcast.feed_cutoff_days.unwrap_or(30), 
+        state
+    ).await {
+        Ok(_) => {
+            tracing::info!("Successfully refreshed YouTube channel: {}", podcast.name);
+            // For now, return empty vector since we're not tracking individual episodes
+            // In a full implementation, we'd query for recently added episodes
+            Ok(Vec::new())
+        }
+        Err(e) => {
+            tracing::error!("Error refreshing YouTube channel {}: {}", podcast.name, e);
+            Err(e)
+        }
+    }
 }
 
 // Define sync result structure to match our database return type

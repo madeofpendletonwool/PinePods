@@ -1735,3 +1735,132 @@ pub async fn get_podcast_details(
     
     Ok(Json(serde_json::json!({ "details": podcast_details })))
 }
+
+// Query struct for YouTube episodes endpoint
+#[derive(Deserialize)]
+pub struct YouTubeEpisodesQuery {
+    pub user_id: i32,
+    pub podcast_id: i32,
+}
+
+// Get YouTube episodes - matches Python api_youtube_episodes function exactly
+pub async fn youtube_episodes(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Query(query): Query<YouTubeEpisodesQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only return episodes of their own
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only return episodes of your own!"));
+    }
+
+    let episodes = state.db_pool.return_youtube_episodes(query.user_id, query.podcast_id).await?;
+    
+    let episodes_result = episodes.unwrap_or_else(|| vec![]);
+    
+    Ok(Json(serde_json::json!({ "episodes": episodes_result })))
+}
+
+// Request struct for removing YouTube channel
+#[derive(Deserialize)]
+pub struct RemoveYouTubeChannelRequest {
+    pub user_id: i32,
+    pub channel_name: String,
+    pub channel_url: String,
+}
+
+// Remove YouTube channel - matches Python api_remove_youtube_channel_route function exactly
+pub async fn remove_youtube_channel(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Json(data): Json<RemoveYouTubeChannelRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if the provided API key is the web key (elevated access)
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    
+    if !is_web_key {
+        // Get user ID from API key and check authorization
+        let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+        if data.user_id != user_id_from_api_key {
+            return Err(AppError::forbidden("You are not authorized to remove channels for other users"));
+        }
+    }
+
+    // Remove the YouTube channel
+    state.db_pool.remove_youtube_channel_by_url(
+        &data.channel_name,
+        &data.channel_url,
+        data.user_id,
+    ).await?;
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+// Query struct for stream endpoint
+#[derive(Deserialize)]
+pub struct StreamQuery {
+    pub api_key: String,
+    pub user_id: i32,
+    #[serde(rename = "type")]
+    pub source_type: Option<String>,
+}
+
+// Stream episode - matches Python stream_episode function exactly
+pub async fn stream_episode(
+    State(state): State<crate::AppState>,
+    Path(episode_id): Path<i32>,
+    Query(query): Query<StreamQuery>,
+) -> Result<axum::response::Response, AppError> {
+    let api_key = &query.api_key;
+    validate_api_key(&state, api_key).await?;
+
+    // Check if the provided API key is the web key
+    let is_web_key = state.db_pool.is_web_key(api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(api_key).await?;
+
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You do not have permission to access this episode"));
+    }
+
+    // Choose which lookup to use based on source_type
+    let file_path = if query.source_type.as_deref() == Some("youtube") {
+        println!("Looking up YouTube video file path");
+        state.db_pool.get_youtube_video_location(episode_id, query.user_id).await?
+    } else {
+        println!("Looking up regular episode file path");
+        state.db_pool.get_download_location(episode_id, query.user_id).await?
+    };
+
+    if let Some(path) = file_path {
+        println!("Found file at: {}", path);
+        // Create a file response for streaming
+        use axum::response::Response;
+        use axum::body::Body;
+        use std::convert::TryFrom;
+        
+        let file = tokio::fs::File::open(&path).await.map_err(|e| {
+            AppError::external_error(&format!("Failed to open file: {}", e))
+        })?;
+        
+        let stream = tokio_util::io::ReaderStream::new(file);
+        let body = Body::from_stream(stream);
+        
+        let response = Response::builder()
+            .header("content-type", "audio/mpeg")
+            .body(body)
+            .map_err(|e| AppError::external_error(&format!("Failed to create response: {}", e)))?;
+            
+        Ok(response)
+    } else {
+        Err(AppError::not_found("Episode not found or not downloaded"))
+    }
+}

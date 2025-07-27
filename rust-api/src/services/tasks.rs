@@ -26,15 +26,16 @@ impl TaskSpawner {
         task_fn: F,
     ) -> AppResult<String>
     where
-        F: FnOnce(String, Arc<TaskManager>) -> Fut + Send + 'static,
+        F: FnOnce(String, Arc<TaskManager>, DatabasePool) -> Fut + Send + 'static,
         Fut: Future<Output = AppResult<Value>> + Send + 'static,
     {
         let task_id = self.task_manager.create_task(task_type, user_id).await?;
         let task_manager = self.task_manager.clone();
+        let db_pool = self.db_pool.clone();
         let task_id_clone = task_id.clone();
 
         tokio::spawn(async move {
-            match task_fn(task_id_clone.clone(), task_manager.clone()).await {
+            match task_fn(task_id_clone.clone(), task_manager.clone(), db_pool).await {
                 Ok(result) => {
                     if let Err(e) = task_manager
                         .complete_task(&task_id_clone, Some(result), None)
@@ -67,7 +68,7 @@ impl TaskSpawner {
         F: FnOnce() -> Fut + Send + 'static,
         Fut: Future<Output = AppResult<Value>> + Send + 'static,
     {
-        self.spawn_task(task_type, user_id, move |_task_id, _task_manager| {
+        self.spawn_task(task_type, user_id, move |_task_id, _task_manager, _db_pool| {
             task_fn()
         })
         .await
@@ -83,7 +84,7 @@ impl TaskSpawner {
         F: FnOnce(Arc<dyn ProgressReporter>) -> Fut + Send + 'static,
         Fut: Future<Output = AppResult<Value>> + Send + 'static,
     {
-        self.spawn_task(task_type, user_id, move |task_id, task_manager| {
+        self.spawn_task(task_type, user_id, move |task_id, task_manager, _db_pool| {
             let reporter = Arc::new(TaskProgressReporter {
                 task_id,
                 task_manager,
@@ -475,22 +476,82 @@ impl TaskSpawner {
         self.spawn_task(
             "download_video".to_string(),
             user_id,
-            move |task_id, task_manager| async move {
-                // TODO: Implement actual YouTube download logic
+            move |task_id, task_manager, db_pool| async move {
                 tracing::info!("Downloading YouTube video {} for user {}", video_id, user_id);
                 
-                // Placeholder - in real implementation this would:
-                // 1. Get video metadata from database
-                // 2. Download the video file using youtube-dl or similar
-                // 3. Save to filesystem
-                // 4. Update database with download location
-                // 5. Update progress via task_manager.update_progress()
+                // Get the video from database using the video ID
+                let (youtube_video_id, video_title) = match &db_pool {
+                    crate::database::DatabasePool::Postgres(pool) => {
+                        let row = sqlx::query(r#"SELECT youtubevideoid, videotitle FROM "YouTubeVideos" WHERE videoid = $1"#)
+                            .bind(video_id)
+                            .fetch_one(pool)
+                            .await
+                            .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video: {}", e)))?;
+                        
+                        let youtube_video_id: String = row.try_get("youtubevideoid")
+                            .map_err(|e| crate::error::AppError::internal(&format!("Failed to get YouTube video ID: {}", e)))?;
+                        let video_title: String = row.try_get("videotitle")
+                            .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video title: {}", e)))?;
+                        
+                        (youtube_video_id, video_title)
+                    }
+                    crate::database::DatabasePool::MySQL(pool) => {
+                        let row = sqlx::query("SELECT YouTubeVideoID, VideoTitle FROM YouTubeVideos WHERE VideoID = ?")
+                            .bind(video_id)
+                            .fetch_one(pool)
+                            .await
+                            .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video: {}", e)))?;
+                        
+                        let youtube_video_id: String = row.try_get("YouTubeVideoID")
+                            .map_err(|e| crate::error::AppError::internal(&format!("Failed to get YouTube video ID: {}", e)))?;
+                        let video_title: String = row.try_get("VideoTitle")
+                            .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video title: {}", e)))?;
+                        
+                        (youtube_video_id, video_title)
+                    }
+                };
                 
-                Ok(serde_json::json!({
-                    "video_id": video_id,
-                    "user_id": user_id,
-                    "status": "downloaded"
-                }))
+                let output_path = format!("/opt/pinepods/downloads/youtube/{}.mp3", youtube_video_id);
+                
+                // Check if file already exists
+                if tokio::fs::metadata(&output_path).await.is_ok() {
+                    tracing::info!("Video {} already downloaded", video_title);
+                    return Ok(serde_json::json!({
+                        "video_id": video_id,
+                        "status": "already_downloaded",
+                        "path": output_path
+                    }));
+                }
+                
+                // Download the video using the YouTube handler function
+                match crate::handlers::youtube::download_youtube_audio(&youtube_video_id, &output_path).await {
+                    Ok(_) => {
+                        tracing::info!("Successfully downloaded YouTube video: {}", video_title);
+                        
+                        // Get duration from the downloaded MP3 file and update database
+                        if let Some(duration) = crate::handlers::youtube::get_mp3_duration(&output_path) {
+                            if let Err(e) = db_pool.update_youtube_video_duration(&youtube_video_id, duration).await {
+                                tracing::error!("Failed to update duration for video {}: {}", youtube_video_id, e);
+                            } else {
+                                tracing::info!("Updated duration for video {} to {} seconds", youtube_video_id, duration);
+                            }
+                        } else {
+                            tracing::warn!("Could not read duration from MP3 file: {}", output_path);
+                        }
+                        
+                        Ok(serde_json::json!({
+                            "video_id": video_id,
+                            "user_id": user_id,
+                            "status": "downloaded",
+                            "path": output_path,
+                            "title": video_title
+                        }))
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to download YouTube video {}: {}", video_title, e);
+                        Err(e)
+                    }
+                }
             },
         ).await
     }
@@ -499,7 +560,7 @@ impl TaskSpawner {
         self.spawn_task(
             "download_all_episodes".to_string(),
             user_id,
-            move |task_id, task_manager| async move {
+            move |task_id, task_manager, db_pool| async move {
                 // TODO: Implement actual bulk download logic
                 tracing::info!("Downloading all episodes for podcast {} for user {}", podcast_id, user_id);
                 
@@ -522,20 +583,99 @@ impl TaskSpawner {
         self.spawn_task(
             "download_all_videos".to_string(),
             user_id,
-            move |task_id, task_manager| async move {
-                // TODO: Implement actual bulk YouTube download logic
+            move |task_id, task_manager, db_pool| async move {
                 tracing::info!("Downloading all videos for channel {} for user {}", channel_id, user_id);
                 
-                // Placeholder - in real implementation this would:
-                // 1. Get all videos for the channel from database
-                // 2. Queue individual download tasks for each video
-                // 3. Monitor progress of all downloads
-                // 4. Update overall progress via task_manager.update_progress()
+                // Get all videos for the channel from database
+                let videos_data = match &db_pool {
+                    crate::database::DatabasePool::Postgres(pool) => {
+                        let rows = sqlx::query(r#"SELECT videoid, youtubevideoid, videotitle FROM "YouTubeVideos" WHERE podcastid = $1"#)
+                            .bind(channel_id)
+                            .fetch_all(pool)
+                            .await
+                            .map_err(|e| crate::error::AppError::internal(&format!("Failed to get videos: {}", e)))?;
+                        
+                        rows.into_iter().map(|row| {
+                            let youtube_video_id: String = row.try_get("youtubevideoid")
+                                .map_err(|e| crate::error::AppError::internal(&format!("Failed to get YouTube video ID: {}", e)))?;
+                            let video_title: String = row.try_get("videotitle")
+                                .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video title: {}", e)))?;
+                            Ok((youtube_video_id, video_title))
+                        }).collect::<Result<Vec<(String, String)>, crate::error::AppError>>()?
+                    }
+                    crate::database::DatabasePool::MySQL(pool) => {
+                        let rows = sqlx::query("SELECT VideoID, YouTubeVideoID, VideoTitle FROM YouTubeVideos WHERE PodcastID = ?")
+                            .bind(channel_id)
+                            .fetch_all(pool)
+                            .await
+                            .map_err(|e| crate::error::AppError::internal(&format!("Failed to get videos: {}", e)))?;
+                        
+                        rows.into_iter().map(|row| {
+                            let youtube_video_id: String = row.try_get("YouTubeVideoID")
+                                .map_err(|e| crate::error::AppError::internal(&format!("Failed to get YouTube video ID: {}", e)))?;
+                            let video_title: String = row.try_get("VideoTitle")
+                                .map_err(|e| crate::error::AppError::internal(&format!("Failed to get video title: {}", e)))?;
+                            Ok((youtube_video_id, video_title))
+                        }).collect::<Result<Vec<(String, String)>, crate::error::AppError>>()?
+                    }
+                };
+                
+                let total_videos = videos_data.len();
+                let mut downloaded = 0;
+                let mut already_downloaded = 0;
+                let mut failed = 0;
+                
+                for (index, (youtube_video_id, video_title)) in videos_data.iter().enumerate() {
+                    
+                    let output_path = format!("/opt/pinepods/downloads/youtube/{}.mp3", youtube_video_id);
+                    
+                    // Update progress
+                    let progress = (index as f64 / total_videos as f64) * 100.0;
+                    task_manager.update_task_progress(&task_id, progress, Some(format!("Downloading: {}", video_title))).await?;
+                    
+                    // Check if file already exists
+                    if tokio::fs::metadata(&output_path).await.is_ok() {
+                        tracing::info!("Video {} already downloaded", video_title);
+                        already_downloaded += 1;
+                        continue;
+                    }
+                    
+                    // Download the video
+                    match crate::handlers::youtube::download_youtube_audio(youtube_video_id, &output_path).await {
+                        Ok(_) => {
+                            tracing::info!("Successfully downloaded: {}", video_title);
+                            downloaded += 1;
+                            
+                            // Get duration from the downloaded MP3 file and update database
+                            if let Some(duration) = crate::handlers::youtube::get_mp3_duration(&output_path) {
+                                if let Err(e) = db_pool.update_youtube_video_duration(youtube_video_id, duration).await {
+                                    tracing::error!("Failed to update duration for video {}: {}", youtube_video_id, e);
+                                } else {
+                                    tracing::info!("Updated duration for video {} to {} seconds", youtube_video_id, duration);
+                                }
+                            } else {
+                                tracing::warn!("Could not read duration from MP3 file: {}", output_path);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to download {}: {}", video_title, e);
+                            failed += 1;
+                            // Continue with next video instead of failing entire batch
+                        }
+                    }
+                }
+                
+                // Final progress update
+                task_manager.update_task_progress(&task_id, 100.0, Some("Download batch completed".to_string())).await?;
                 
                 Ok(serde_json::json!({
                     "channel_id": channel_id,
                     "user_id": user_id,
-                    "status": "all_videos_queued"
+                    "status": "completed",
+                    "total_videos": total_videos,
+                    "downloaded": downloaded,
+                    "already_downloaded": already_downloaded,
+                    "failed": failed
                 }))
             },
         ).await

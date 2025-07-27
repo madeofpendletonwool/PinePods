@@ -5,13 +5,43 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     error::AppError,
     handlers::{extract_api_key, validate_api_key},
     AppState,
 };
+
+// Query struct for YouTube channel search
+#[derive(Deserialize)]
+pub struct YouTubeSearchQuery {
+    pub query: String,
+    pub max_results: Option<i32>,
+    pub user_id: i32,
+}
+
+// YouTube channel struct for search results - matches Python response exactly
+#[derive(Serialize, Debug)]
+pub struct YouTubeChannel {
+    pub channel_id: String,
+    pub name: String,
+    pub description: String,
+    pub subscriber_count: Option<i64>,
+    pub url: String,
+    pub video_count: Option<i64>,
+    pub thumbnail_url: String,
+    pub recent_videos: Vec<YouTubeVideo>,
+}
+
+// YouTube video struct for recent videos in channel - matches Python response exactly
+#[derive(Serialize, Debug, Clone)]
+pub struct YouTubeVideo {
+    pub id: String,
+    pub title: String,
+    pub duration: Option<f64>,  // Note: Python uses float, not i64
+    pub url: String,
+}
 
 // Request struct for YouTube channel subscription
 #[derive(Deserialize)]
@@ -28,6 +58,153 @@ pub struct YouTubeSubscribeQuery {
     pub user_id: i32,
     pub feed_cutoff: Option<i32>,
 }
+
+// Query struct for check YouTube channel endpoint
+#[derive(Deserialize)]
+pub struct CheckYouTubeChannelQuery {
+    pub user_id: i32,
+    pub channel_name: String,
+    pub channel_url: String,
+}
+
+// Search YouTube channels - matches Python search_youtube_channels function exactly
+pub async fn search_youtube_channels(
+    State(state): State<AppState>,
+    Query(query): Query<YouTubeSearchQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only search for themselves  
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only search with your own account."));
+    }
+
+    let max_results = query.max_results.unwrap_or(5);
+    
+    // First get channel ID using a search - matches Python exactly  
+    let search_url = format!("ytsearch{}:{}", max_results * 4, query.query);
+    
+    println!("Searching YouTube with query: {}", query.query);
+    
+    // Use yt-dlp binary to search
+    let output = Command::new("yt-dlp")
+        .args(&[
+            "--quiet",
+            "--no-warnings",
+            "--flat-playlist", 
+            "--skip-download",
+            "--dump-json",
+            &search_url
+        ])
+        .output()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to execute yt-dlp: {}", e)))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AppError::external_error(&format!("yt-dlp search failed: {}", stderr)));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    
+    // Parse each line as a separate JSON object (yt-dlp outputs one JSON per line for search results)
+    let mut entries = Vec::new();
+    for line in stdout.lines() {
+        if let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) {
+            entries.push(entry);
+        }
+    }
+
+    if entries.is_empty() {
+        return Ok(Json(serde_json::json!({"results": []})));
+    }
+
+    let mut processed_results = Vec::new();
+    let mut seen_channels = HashSet::new();
+    let mut channel_videos: HashMap<String, Vec<YouTubeVideo>> = HashMap::new();
+
+    // Process entries to collect videos by channel - matches Python logic exactly
+    for entry in &entries {
+        if let Some(channel_id) = entry.get("channel_id").and_then(|v| v.as_str())
+            .or_else(|| entry.get("uploader_id").and_then(|v| v.as_str())) {
+            
+            // First collect the video regardless of whether we've seen the channel
+            if !channel_videos.contains_key(channel_id) {
+                channel_videos.insert(channel_id.to_string(), Vec::new());
+            }
+            
+            if let Some(videos) = channel_videos.get_mut(channel_id) {
+                if videos.len() < 3 {  // Limit to 3 videos like Python
+                    if let Some(video_id) = entry.get("id").and_then(|v| v.as_str()) {
+                        let video = YouTubeVideo {
+                            id: video_id.to_string(),
+                            title: entry.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            duration: entry.get("duration").and_then(|v| v.as_f64()),
+                            url: format!("https://www.youtube.com/watch?v={}", video_id),
+                        };
+                        videos.push(video);
+                        println!("Added video to channel {}, now has {} videos", channel_id, videos.len());
+                    }
+                }
+            }
+        }
+    }
+
+    // Now process channels - matches Python logic exactly
+    for entry in &entries {
+        if let Some(channel_id) = entry.get("channel_id").and_then(|v| v.as_str())
+            .or_else(|| entry.get("uploader_id").and_then(|v| v.as_str())) {
+            
+            // Check if we've already processed this channel
+            if seen_channels.contains(channel_id) {
+                continue;
+            }
+            seen_channels.insert(channel_id.to_string());
+
+            // Get minimal channel info
+            let channel_url = format!("https://www.youtube.com/channel/{}", channel_id);
+            
+            // Get thumbnail from search result - much faster than individual channel lookups
+            let thumbnail_url = entry.get("channel_thumbnail").and_then(|v| v.as_str())
+                .or_else(|| entry.get("thumbnail").and_then(|v| v.as_str()))
+                .unwrap_or("").to_string();
+
+            let channel_name = entry.get("channel").and_then(|v| v.as_str())
+                .or_else(|| entry.get("uploader").and_then(|v| v.as_str()))
+                .unwrap_or("").to_string();
+
+            println!("Creating channel {} with {} videos", channel_id, 
+                channel_videos.get(channel_id).map(|v| v.len()).unwrap_or(0));
+
+            let channel = YouTubeChannel {
+                channel_id: channel_id.to_string(),
+                name: channel_name,
+                description: entry.get("description").and_then(|v| v.as_str())
+                    .unwrap_or("").chars().take(500).collect::<String>(),
+                subscriber_count: None,  // Always null like Python
+                url: channel_url,
+                video_count: None,       // Always null like Python
+                thumbnail_url,
+                recent_videos: channel_videos.get(channel_id).cloned().unwrap_or_default(),
+            };
+
+            if processed_results.len() < max_results as usize {
+                processed_results.push(channel);
+            } else {
+                break;
+            }
+        }
+    }
+
+    println!("Found {} channels", processed_results.len());
+    Ok(Json(serde_json::json!({"results": processed_results})))
+}
+
 
 // Subscribe to YouTube channel - matches Python subscribe_to_youtube_channel function exactly
 pub async fn subscribe_to_youtube_channel(
@@ -91,45 +268,37 @@ pub async fn subscribe_to_youtube_channel(
     })))
 }
 
-// Helper function to get YouTube channel info using yt-dlp binary
+// Helper function to get YouTube channel info using Backend service
 async fn get_youtube_channel_info(channel_id: &str) -> Result<HashMap<String, String>, AppError> {
-    println!("Getting channel info for {}", channel_id);
+    println!("Getting channel info for {} from Backend service", channel_id);
     
-    let channel_url = format!("https://www.youtube.com/channel/{}", channel_id);
+    // Get Backend URL from environment variable
+    let search_api_url = std::env::var("SEARCH_API_URL")
+        .map_err(|_| AppError::external_error("SEARCH_API_URL environment variable not set"))?;
     
-    // Use yt-dlp binary to get channel info
-    let output = Command::new("yt-dlp")
-        .args(&[
-            "--quiet",
-            "--no-warnings", 
-            "--extract-flat",
-            "--playlist-items", "0", // Just get channel info, not videos
-            "--socket-timeout", "30",
-            "--timeout", "60",
-            "--dump-json",
-            &channel_url
-        ])
-        .output()
+    // Replace /api/search with /api/youtube/channel for the channel details endpoint
+    let backend_url = search_api_url.replace("/api/search", &format!("/api/youtube/channel?id={}", channel_id));
+    
+    let client = reqwest::Client::new();
+    let response = client.get(&backend_url)
+        .send()
         .await
-        .map_err(|e| AppError::external_error(&format!("Failed to execute yt-dlp: {}", e)))?;
+        .map_err(|e| AppError::external_error(&format!("Failed to call Backend service: {}", e)))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::external_error(&format!("yt-dlp failed: {}", stderr)));
+    if !response.status().is_success() {
+        return Err(AppError::external_error(&format!("Backend service error: {}", response.status())));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let channel_data: serde_json::Value = serde_json::from_str(&stdout)
-        .map_err(|e| AppError::external_error(&format!("Failed to parse yt-dlp output: {}", e)))?;
+    let channel_data: serde_json::Value = response.json()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to parse Backend response: {}", e)))?;
 
-    // Extract channel info exactly like Python implementation
+    // Extract channel info from Backend service response
     let mut channel_info = HashMap::new();
     
     channel_info.insert("channel_id".to_string(), channel_id.to_string());
     channel_info.insert("name".to_string(), 
-        channel_data.get("channel").and_then(|v| v.as_str())
-            .or_else(|| channel_data.get("title").and_then(|v| v.as_str()))
-            .unwrap_or("").to_string());
+        channel_data.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string());
     
     let description = channel_data.get("description")
         .and_then(|v| v.as_str())
@@ -139,56 +308,62 @@ async fn get_youtube_channel_info(channel_id: &str) -> Result<HashMap<String, St
         .collect::<String>();
     channel_info.insert("description".to_string(), description);
 
-    // Extract avatar/thumbnail URL
-    let thumbnail_url = if let Some(thumbnails) = channel_data.get("thumbnails").and_then(|v| v.as_array()) {
-        // Look for avatar thumbnails first
-        let avatar_thumbs: Vec<_> = thumbnails.iter()
-            .filter(|t| t.get("id").and_then(|id| id.as_str()).unwrap_or("").starts_with("avatar"))
-            .collect();
-        
-        if !avatar_thumbs.is_empty() {
-            avatar_thumbs.last()
-                .and_then(|t| t.get("url"))
-                .and_then(|u| u.as_str())
-                .unwrap_or("")
-        } else {
-            // Look for thumbnails with "avatar" in URL
-            let avatar_url_thumbs: Vec<_> = thumbnails.iter()
-                .filter(|t| t.get("url").and_then(|url| url.as_str()).unwrap_or("").to_lowercase().contains("avatar"))
-                .collect();
-            
-            if !avatar_url_thumbs.is_empty() {
-                avatar_url_thumbs.last()
-                    .and_then(|t| t.get("url"))
-                    .and_then(|u| u.as_str())
-                    .unwrap_or("")
-            } else {
-                // Fall back to first thumbnail
-                thumbnails.first()
-                    .and_then(|t| t.get("url"))
-                    .and_then(|u| u.as_str())
-                    .unwrap_or("")
-            }
-        }
-    } else {
-        ""
-    };
-    
-    channel_info.insert("thumbnail_url".to_string(), thumbnail_url.to_string());
+    channel_info.insert("thumbnail_url".to_string(), 
+        channel_data.get("thumbnailUrl").and_then(|v| v.as_str()).unwrap_or("").to_string());
 
     println!("Successfully extracted channel info for: {}", channel_info.get("name").unwrap_or(&"Unknown".to_string()));
     Ok(channel_info)
 }
 
-// Process YouTube channel videos - matches Python process_youtube_videos function exactly
-async fn process_youtube_channel(
+// Helper function to get MP3 duration from file
+pub fn get_mp3_duration(file_path: &str) -> Option<i32> {
+    match mp3_metadata::read_from_file(file_path) {
+        Ok(metadata) => Some(metadata.duration.as_secs() as i32),
+        Err(e) => {
+            println!("Failed to read MP3 metadata from {}: {}", file_path, e);
+            None
+        }
+    }
+}
+
+// Helper function to parse YouTube duration format (PT4M13S) to seconds
+pub fn parse_youtube_duration(duration_str: &str) -> Option<i64> {
+    if !duration_str.starts_with("PT") {
+        return None;
+    }
+    
+    let duration_part = &duration_str[2..]; // Remove "PT"
+    let mut total_seconds = 0i64;
+    let mut current_number = String::new();
+    
+    for ch in duration_part.chars() {
+        if ch.is_ascii_digit() {
+            current_number.push(ch);
+        } else {
+            if let Ok(num) = current_number.parse::<i64>() {
+                match ch {
+                    'H' => total_seconds += num * 3600,
+                    'M' => total_seconds += num * 60,
+                    'S' => total_seconds += num,
+                    _ => {}
+                }
+            }
+            current_number.clear();
+        }
+    }
+    
+    Some(total_seconds)
+}
+
+// Process YouTube channel videos using Backend service
+pub async fn process_youtube_channel(
     podcast_id: i32,
     channel_id: &str,
     feed_cutoff: i32,
     state: &AppState,
 ) -> Result<(), AppError> {
     println!("{}", "=".repeat(50));
-    println!("Starting YouTube channel processing");
+    println!("Starting YouTube channel processing with Backend service");
     println!("Podcast ID: {}", podcast_id);
     println!("Channel ID: {}", channel_id);
     println!("{}", "=".repeat(50));
@@ -200,57 +375,57 @@ async fn process_youtube_channel(
     println!("Cleaning up videos older than cutoff date...");
     state.db_pool.remove_old_youtube_videos(podcast_id, cutoff_date).await?;
 
-    let channel_url = format!("https://www.youtube.com/channel/{}/videos", channel_id);
-    println!("Fetching channel data from: {}", channel_url);
+    // Get Backend URL from environment variable
+    let search_api_url = std::env::var("SEARCH_API_URL")
+        .map_err(|_| AppError::external_error("SEARCH_API_URL environment variable not set"))?;
+    
+    // Replace /api/search with /api/youtube/channel for the channel details endpoint
+    let backend_url = search_api_url.replace("/api/search", &format!("/api/youtube/channel?id={}", channel_id));
+    println!("Fetching channel data from Backend service: {}", backend_url);
 
-    // Get video list using yt-dlp
-    let output = Command::new("yt-dlp")
-        .args(&[
-            "--quiet",
-            "--no-warnings",
-            "--extract-flat",
-            "--ignore-errors",
-            "--socket-timeout", "30",
-            "--timeout", "60",
-            "--dump-json",
-            &channel_url
-        ])
-        .output()
+    // Get video list using Backend service
+    let client = reqwest::Client::new();
+    let response = client.get(&backend_url)
+        .send()
         .await
-        .map_err(|e| AppError::external_error(&format!("Failed to execute yt-dlp: {}", e)))?;
+        .map_err(|e| AppError::external_error(&format!("Failed to call Backend service: {}", e)))?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AppError::external_error(&format!("yt-dlp failed: {}", stderr)));
+    if !response.status().is_success() {
+        return Err(AppError::external_error(&format!("Backend service error: {}", response.status())));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let results: serde_json::Value = serde_json::from_str(&stdout)
-        .map_err(|e| AppError::external_error(&format!("Failed to parse yt-dlp output: {}", e)))?;
-
-    if !results.is_object() || !results.get("entries").is_some() {
-        println!("No video list found in results");
-        return Ok(());
-    }
+    let channel_data: serde_json::Value = response.json()
+        .await
+        .map_err(|e| AppError::external_error(&format!("Failed to parse Backend response: {}", e)))?;
 
     let empty_vec = vec![];
-    let entries = results.get("entries").and_then(|e| e.as_array()).unwrap_or(&empty_vec);
-    println!("Found {} total videos", entries.len());
+    let recent_videos_data = channel_data.get("recentVideos")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&empty_vec);
+    
+    println!("Found {} total videos from Backend service", recent_videos_data.len());
 
     let mut recent_videos = Vec::new();
 
-    // Process each video
-    for entry in entries {
-        if !entry.is_object() || !entry.get("id").is_some() {
-            println!("Skipping invalid entry");
+    // Process each video from Backend service response
+    for video_entry in recent_videos_data {
+        let video_id = video_entry.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        if video_id.is_empty() {
+            println!("Skipping video with missing ID");
             continue;
         }
 
-        let video_id = entry.get("id").and_then(|v| v.as_str()).unwrap();
         println!("Processing video ID: {}", video_id);
 
-        // Get video date using the same method as Python
-        let published = get_video_date(video_id).await?;
+        // Parse the publishedAt date from Backend service
+        let published_str = video_entry.get("publishedAt").and_then(|v| v.as_str()).unwrap_or("");
+        let published = chrono::DateTime::parse_from_rfc3339(published_str)
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(|_| {
+                println!("Failed to parse date {}, using current time", published_str);
+                chrono::Utc::now()
+            });
+
         println!("Video publish date: {}", published);
 
         if published <= cutoff_date {
@@ -258,19 +433,25 @@ async fn process_youtube_channel(
             break;
         }
 
+        // Debug: print what we got from Backend for this video
+        println!("Backend video data for {}: {:?}", video_id, video_entry);
+        let duration_str = video_entry.get("duration").and_then(|v| v.as_str()).unwrap_or("");
+        println!("Duration string from Backend: '{}'", duration_str);
+        let parsed_duration = if !duration_str.is_empty() {
+            parse_youtube_duration(duration_str).unwrap_or(0)
+        } else {
+            0
+        };
+        println!("Parsed duration: {}", parsed_duration);
+
         let video_data = serde_json::json!({
             "id": video_id,
-            "title": entry.get("title").and_then(|v| v.as_str()).unwrap_or(""),
-            "description": entry.get("description").and_then(|v| v.as_str()).unwrap_or(""),
+            "title": video_entry.get("title").and_then(|v| v.as_str()).unwrap_or(""),
+            "description": video_entry.get("description").and_then(|v| v.as_str()).unwrap_or(""),
             "url": format!("https://www.youtube.com/watch?v={}", video_id),
-            "thumbnail": entry.get("thumbnails")
-                .and_then(|t| t.as_array())
-                .and_then(|arr| arr.first())
-                .and_then(|thumb| thumb.get("url"))
-                .and_then(|url| url.as_str())
-                .unwrap_or(""),
+            "thumbnail": video_entry.get("thumbnail").and_then(|v| v.as_str()).unwrap_or(""),
             "publish_date": published.to_rfc3339(),
-            "duration": entry.get("duration").and_then(|v| v.as_i64()).unwrap_or(0)
+            "duration": duration_str  // Store as string for proper parsing in database
         });
 
         println!("Successfully added video {} to processing queue", video_id);
@@ -333,6 +514,17 @@ async fn process_youtube_channel(
                 Ok(_) => {
                     println!("Download completed successfully");
                     successful_downloads += 1;
+                    
+                    // Get duration from the downloaded MP3 file and update database
+                    if let Some(duration) = get_mp3_duration(&output_path) {
+                        if let Err(e) = state.db_pool.update_youtube_video_duration(video_id, duration).await {
+                            println!("Failed to update duration for video {}: {}", video_id, e);
+                        } else {
+                            println!("Updated duration for video {} to {} seconds", video_id, duration);
+                        }
+                    } else {
+                        println!("Could not read duration from MP3 file: {}", output_path);
+                    }
                 }
                 Err(e) => {
                     failed_downloads += 1;
@@ -366,39 +558,9 @@ async fn process_youtube_channel(
     Ok(())
 }
 
-// Get video date using web scraping (matches Python get_video_date function)
-async fn get_video_date(video_id: &str) -> Result<chrono::DateTime<chrono::Utc>, AppError> {
-    use chrono::TimeZone;
-    
-    let client = reqwest::Client::new();
-    let url = format!("https://www.youtube.com/watch?v={}", video_id);
-    
-    let response = client.get(&url)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        .send()
-        .await
-        .map_err(|e| AppError::external_error(&format!("Failed to fetch video page: {}", e)))?;
-
-    let html = response.text().await
-        .map_err(|e| AppError::external_error(&format!("Failed to read response: {}", e)))?;
-
-    // Parse HTML to find upload date (simplified version of Python's BeautifulSoup approach)
-    if let Some(start) = html.find("\"uploadDate\":\"") {
-        let date_start = start + "\"uploadDate\":\"".len();
-        if let Some(end) = html[date_start..].find("\"") {
-            let date_str = &html[date_start..date_start + end];
-            if let Ok(parsed_date) = chrono::DateTime::parse_from_rfc3339(date_str) {
-                return Ok(parsed_date.with_timezone(&chrono::Utc));
-            }
-        }
-    }
-
-    // Fallback to current time minus some hours if date not found
-    Ok(chrono::Utc::now() - chrono::Duration::hours(1))
-}
 
 // Download YouTube audio using yt-dlp binary
-async fn download_youtube_audio(video_id: &str, output_path: &str) -> Result<(), AppError> {
+pub async fn download_youtube_audio(video_id: &str, output_path: &str) -> Result<(), AppError> {
     // Remove .mp3 extension if present to prevent double extension
     let base_path = if output_path.ends_with(".mp3") {
         &output_path[..output_path.len() - 4]
@@ -416,7 +578,6 @@ async fn download_youtube_audio(video_id: &str, output_path: &str) -> Result<(),
             "--output", base_path,
             "--ignore-errors",
             "--socket-timeout", "30",
-            "--timeout", "60",
             &video_url
         ])
         .output()
@@ -429,4 +590,30 @@ async fn download_youtube_audio(video_id: &str, output_path: &str) -> Result<(),
     }
 
     Ok(())
+}
+
+// Check if YouTube channel exists - matches Python api_check_youtube_channel function exactly
+pub async fn check_youtube_channel(
+    State(state): State<AppState>,
+    Query(query): Query<CheckYouTubeChannelQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only check for themselves
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only check channels for yourself!"));
+    }
+
+    let exists = state.db_pool.check_youtube_channel(
+        query.user_id,
+        &query.channel_name,
+        &query.channel_url,
+    ).await?;
+
+    Ok(Json(serde_json::json!({ "exists": exists })))
 }

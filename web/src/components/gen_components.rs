@@ -254,12 +254,8 @@ pub fn search_bar() -> Html {
                                 .unwrap();
 
                             match call_youtube_search(
-                                &server_name,
-                                &api_key,
-                                user_id,
                                 &search_value,
-                                "channel",
-                                10,
+                                &api_url.unwrap(),
                             )
                             .await
                             {

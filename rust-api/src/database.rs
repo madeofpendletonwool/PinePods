@@ -6524,6 +6524,15 @@ impl DatabasePool {
                 }
                 
                 if !name.is_empty() {
+                    // Only include hosts, not guests (filter by role)
+                    if let Some(ref person_role) = role {
+                        if person_role.to_lowercase() != "host" {
+                            continue; // Skip non-hosts
+                        }
+                    } else {
+                        // If no role specified, assume it's a host (default behavior)
+                    }
+                    
                     // Create a unique key for deduplication
                     let unique_key = format!("{}|{}|{}|{}", 
                         name, 
@@ -11691,8 +11700,8 @@ impl DatabasePool {
                 let row = sqlx::query(r#"
                     INSERT INTO "Podcasts" (
                         userid, podcastname, artworkurl, description, episodecount,
-                        websiteurl, feedurl, author, categories, explicit, podcastindexid, feedcutoff
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                        websiteurl, feedurl, author, categories, explicit, podcastindexid, feedcutoffdays, isyoutubechannel
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                     RETURNING podcastid
                 "#)
                     .bind(user_id)
@@ -11707,6 +11716,7 @@ impl DatabasePool {
                     .bind(false) // Not explicit by default
                     .bind(0) // No podcast index ID for YouTube
                     .bind(feed_cutoff)
+                    .bind(true) // Is YouTube channel
                     .fetch_one(pool)
                     .await?;
                 
@@ -11716,8 +11726,8 @@ impl DatabasePool {
                 let result = sqlx::query(r#"
                     INSERT INTO Podcasts (
                         UserID, PodcastName, ArtworkURL, Description, EpisodeCount,
-                        WebsiteURL, FeedURL, Author, Categories, Explicit, PodcastIndexID, FeedCutoff
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        WebsiteURL, FeedURL, Author, Categories, Explicit, PodcastIndexID, FeedCutoffDays, IsYouTubeChannel
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 "#)
                     .bind(user_id)
                     .bind(name)
@@ -11731,6 +11741,7 @@ impl DatabasePool {
                     .bind(false) // Not explicit by default
                     .bind(0) // No podcast index ID for YouTube
                     .bind(feed_cutoff)
+                    .bind(true) // Is YouTube channel
                     .execute(pool)
                     .await?;
                 
@@ -11760,6 +11771,38 @@ impl DatabasePool {
         
         println!("Successfully added YouTube channel with ID: {}", podcast_id);
         Ok(podcast_id)
+    }
+
+    // Check if YouTube channel already exists - matches Python check_youtube_channel function exactly
+    pub async fn check_youtube_channel(&self, user_id: i32, channel_name: &str, channel_url: &str) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT podcastid FROM "Podcasts"
+                    WHERE userid = $1 AND podcastname = $2 AND feedurl = $3 AND isyoutubechannel = TRUE
+                "#)
+                    .bind(user_id)
+                    .bind(channel_name)
+                    .bind(channel_url)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                Ok(row.is_some())
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT PodcastID FROM Podcasts
+                    WHERE UserID = ? AND PodcastName = ? AND FeedURL = ? AND IsYouTubeChannel = TRUE
+                "#)
+                    .bind(user_id)
+                    .bind(channel_name)
+                    .bind(channel_url)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                Ok(row.is_some())
+            }
+        }
     }
     
     // Remove old YouTube videos - matches Python remove_old_youtube_videos function exactly
@@ -11836,7 +11879,20 @@ impl DatabasePool {
             let description = video.get("description").and_then(|v| v.as_str()).unwrap_or("");
             let url = video.get("url").and_then(|v| v.as_str()).unwrap_or("");
             let thumbnail = video.get("thumbnail").and_then(|v| v.as_str()).unwrap_or("");
-            let duration = video.get("duration").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            
+            println!("Processing video {} for database insertion", video_id);
+            println!("Video data: {:?}", video);
+            
+            let duration = if let Some(duration_str) = video.get("duration").and_then(|v| v.as_str()) {
+                println!("Duration as string: '{}'", duration_str);
+                let parsed = crate::handlers::youtube::parse_youtube_duration(duration_str).unwrap_or(0) as i32;
+                println!("Parsed duration: {}", parsed);
+                parsed
+            } else {
+                let int_duration = video.get("duration").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                println!("Duration as integer: {}", int_duration);
+                int_duration
+            };
             
             // Parse publish date
             let publish_date = if let Some(date_str) = video.get("publish_date").and_then(|v| v.as_str()) {
@@ -11851,10 +11907,9 @@ impl DatabasePool {
                 DatabasePool::Postgres(pool) => {
                     let _ = sqlx::query(r#"
                         INSERT INTO "YouTubeVideos" (
-                            podcastid, videoid, videotitle, videodescription, videourl,
+                            podcastid, youtubevideoid, videotitle, videodescription, videourl,
                             thumbnailurl, publishedat, duration, completed, listenposition
                         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                        ON CONFLICT (videoid, podcastid) DO NOTHING
                     "#)
                         .bind(podcast_id)
                         .bind(video_id)
@@ -11872,7 +11927,7 @@ impl DatabasePool {
                 DatabasePool::MySQL(pool) => {
                     let _ = sqlx::query(r#"
                         INSERT IGNORE INTO YouTubeVideos (
-                            PodcastID, VideoID, VideoTitle, VideoDescription, VideoURL,
+                            PodcastID, YouTubeVideoID, VideoTitle, VideoDescription, VideoURL,
                             ThumbnailURL, PublishedAt, Duration, Completed, ListenPosition
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     "#)
@@ -11896,6 +11951,35 @@ impl DatabasePool {
         Ok(())
     }
     
+    // Get video date using web scraping - matches Python get_video_date function exactly
+    pub async fn get_video_date(&self, video_id: &str) -> AppResult<chrono::DateTime<chrono::Utc>> {
+        let client = reqwest::Client::new();
+        let url = format!("https://www.youtube.com/watch?v={}", video_id);
+        
+        let response = client.get(&url)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            .send()
+            .await
+            .map_err(|e| AppError::external_error(&format!("Failed to fetch video page: {}", e)))?;
+
+        let html = response.text().await
+            .map_err(|e| AppError::external_error(&format!("Failed to read response: {}", e)))?;
+
+        // Parse HTML to find upload date (simplified version of Python's BeautifulSoup approach)
+        if let Some(start) = html.find("\"uploadDate\":\"") {
+            let date_start = start + "\"uploadDate\":\"".len();
+            if let Some(end) = html[date_start..].find("\"") {
+                let date_str = &html[date_start..date_start + end];
+                if let Ok(parsed_date) = chrono::DateTime::parse_from_rfc3339(date_str) {
+                    return Ok(parsed_date.with_timezone(&chrono::Utc));
+                }
+            }
+        }
+
+        // Fallback to current time minus some hours if date not found
+        Ok(chrono::Utc::now() - chrono::Duration::hours(1))
+    }
+
     // Update episode count for podcast - matches Python update_episode_count function exactly
     pub async fn update_episode_count(&self, podcast_id: i32) -> AppResult<()> {
         println!("Updating episode count for podcast {}", podcast_id);
@@ -14419,6 +14503,141 @@ impl DatabasePool {
 
         Ok(())
     }
+
+    // Get YouTube video location - matches Python get_youtube_video_location function exactly
+    pub async fn get_youtube_video_location(
+        &self,
+        episode_id: i32,
+        user_id: i32,
+    ) -> AppResult<Option<String>> {
+        println!("Looking up YouTube video location for episode_id: {}, user_id: {}", episode_id, user_id);
+        
+        let youtube_id = match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT "YouTubeVideos".youtubevideoid
+                    FROM "YouTubeVideos"
+                    INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                    WHERE "YouTubeVideos".videoid = $1 AND "Podcasts".userid = $2
+                "#)
+                .bind(episode_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    row.try_get::<String, _>("youtubevideoid")?
+                } else {
+                    return Ok(None);
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT YouTubeVideos.YouTubeVideoID
+                    FROM YouTubeVideos
+                    INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                    WHERE YouTubeVideos.VideoID = ? AND Podcasts.UserID = ?
+                "#)
+                .bind(episode_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    row.try_get::<String, _>("YouTubeVideoID")?
+                } else {
+                    return Ok(None);
+                }
+            }
+        };
+
+        println!("Found YouTube ID: {}", youtube_id);
+
+        let file_path = format!("/opt/pinepods/downloads/youtube/{}.mp3", youtube_id);
+        let file_path_double = format!("/opt/pinepods/downloads/youtube/{}.mp3.mp3", youtube_id);
+
+        println!("Checking paths: {} and {}", file_path, file_path_double);
+
+        if tokio::fs::metadata(&file_path).await.is_ok() {
+            println!("Found file at {}", file_path);
+            Ok(Some(file_path))
+        } else if tokio::fs::metadata(&file_path_double).await.is_ok() {
+            println!("Found file at {}", file_path_double);
+            Ok(Some(file_path_double))
+        } else {
+            println!("No file found for YouTube ID: {}", youtube_id);
+            Ok(None)
+        }
+    }
+
+    // Get download location - matches Python get_download_location function exactly
+    pub async fn get_download_location(
+        &self,
+        episode_id: i32,
+        user_id: i32,
+    ) -> AppResult<Option<String>> {
+        println!("Looking up download location for episode_id: {}, user_id: {}", episode_id, user_id);
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT downloadedlocation FROM "DownloadedEpisodes" WHERE episodeid = $1 AND userid = $2"#)
+                    .bind(episode_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    let location: String = row.try_get("downloadedlocation")?;
+                    println!("DownloadedLocation found: {}", location);
+                    Ok(Some(location))
+                } else {
+                    println!("No DownloadedLocation found for the given EpisodeID and UserID");
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT DownloadedLocation FROM DownloadedEpisodes WHERE EpisodeID = ? AND UserID = ?")
+                    .bind(episode_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    let location: String = row.try_get("DownloadedLocation")?;
+                    println!("DownloadedLocation found: {}", location);
+                    Ok(Some(location))
+                } else {
+                    println!("No DownloadedLocation found for the given EpisodeID and UserID");
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Update YouTube video duration after download - updates duration from MP3 file
+    pub async fn update_youtube_video_duration(&self, video_id: &str, duration_seconds: i32) -> AppResult<()> {
+        println!("Updating duration for YouTube video {} to {} seconds", video_id, duration_seconds);
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "YouTubeVideos" SET duration = $1 WHERE youtubevideoid = $2"#)
+                    .bind(duration_seconds)
+                    .bind(video_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE YouTubeVideos SET Duration = ? WHERE YouTubeVideoID = ?")
+                    .bind(duration_seconds)
+                    .bind(video_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        
+        println!("Successfully updated duration for YouTube video {}", video_id);
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -15261,6 +15480,273 @@ impl DatabasePool {
                 }
             }
         }
+    }
+
+    // Return YouTube episodes - matches Python return_youtube_episodes function exactly
+    pub async fn return_youtube_episodes(
+        &self,
+        user_id: i32,
+        podcast_id: i32,
+    ) -> AppResult<Option<Vec<serde_json::Value>>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT "Podcasts".podcastid, "Podcasts".podcastname, "YouTubeVideos".videoid AS episodeid,
+                    "YouTubeVideos".videotitle AS episodetitle, "YouTubeVideos".publishedat AS episodepubdate,
+                    "YouTubeVideos".videodescription AS episodedescription,
+                    "YouTubeVideos".thumbnailurl AS episodeartwork, "YouTubeVideos".videourl AS episodeurl,
+                    "YouTubeVideos".duration AS episodeduration,
+                    "YouTubeVideos".listenposition AS listenduration,
+                    "YouTubeVideos".youtubevideoid AS guid
+                    FROM "YouTubeVideos"
+                    INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                    WHERE "Podcasts".podcastid = $1 AND "Podcasts".userid = $2
+                    ORDER BY "YouTubeVideos".publishedat DESC
+                "#)
+                .bind(podcast_id)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                if rows.is_empty() {
+                    return Ok(None);
+                }
+
+                let mut episodes = Vec::new();
+                for row in rows {
+                    let episode = serde_json::json!({
+                        "Podcastid": row.try_get::<i32, _>("podcastid").unwrap_or(0),
+                        "Podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default(),
+                        "Episodeid": row.try_get::<i32, _>("episodeid").unwrap_or(0),
+                        "Episodetitle": row.try_get::<String, _>("episodetitle").unwrap_or_default(),
+                        "Episodepubdate": row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")
+                            .map(|dt| dt.and_utc().to_rfc3339())
+                            .unwrap_or_default(),
+                        "Episodedescription": row.try_get::<String, _>("episodedescription").unwrap_or_default(),
+                        "Episodeartwork": row.try_get::<String, _>("episodeartwork").unwrap_or_default(),
+                        "Episodeurl": row.try_get::<String, _>("episodeurl").unwrap_or_default(),
+                        "Episodeduration": row.try_get::<i32, _>("episodeduration").unwrap_or(0),
+                        "Listenduration": row.try_get::<i32, _>("listenduration").unwrap_or(0),
+                        "Guid": row.try_get::<String, _>("guid").unwrap_or_default()
+                    });
+                    episodes.push(episode);
+                }
+
+                Ok(Some(episodes))
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT Podcasts.PodcastID, Podcasts.PodcastName, YouTubeVideos.VideoID AS EpisodeID,
+                    YouTubeVideos.VideoTitle AS EpisodeTitle, YouTubeVideos.PublishedAt AS EpisodePubDate,
+                    YouTubeVideos.VideoDescription AS EpisodeDescription,
+                    YouTubeVideos.ThumbnailURL AS EpisodeArtwork, YouTubeVideos.VideoURL AS EpisodeURL,
+                    YouTubeVideos.Duration AS EpisodeDuration,
+                    YouTubeVideos.ListenPosition AS ListenDuration,
+                    YouTubeVideos.YouTubeVideoID AS guid
+                    FROM YouTubeVideos
+                    INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                    WHERE Podcasts.PodcastID = ? AND Podcasts.UserID = ?
+                    ORDER BY YouTubeVideos.PublishedAt DESC
+                "#)
+                .bind(podcast_id)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                if rows.is_empty() {
+                    return Ok(None);
+                }
+
+                let mut episodes = Vec::new();
+                for row in rows {
+                    let episode = serde_json::json!({
+                        "Podcastid": row.try_get::<i32, _>("PodcastID").unwrap_or(0),
+                        "Podcastname": row.try_get::<String, _>("PodcastName").unwrap_or_default(),
+                        "Episodeid": row.try_get::<i32, _>("EpisodeID").unwrap_or(0),
+                        "Episodetitle": row.try_get::<String, _>("EpisodeTitle").unwrap_or_default(),
+                        "Episodepubdate": row.try_get::<chrono::NaiveDateTime, _>("EpisodePubDate")
+                            .map(|dt| dt.and_utc().to_rfc3339())
+                            .unwrap_or_default(),
+                        "Episodedescription": row.try_get::<String, _>("EpisodeDescription").unwrap_or_default(),
+                        "Episodeartwork": row.try_get::<String, _>("EpisodeArtwork").unwrap_or_default(),
+                        "Episodeurl": row.try_get::<String, _>("EpisodeURL").unwrap_or_default(),
+                        "Episodeduration": row.try_get::<i32, _>("EpisodeDuration").unwrap_or(0),
+                        "Listenduration": row.try_get::<i32, _>("ListenDuration").unwrap_or(0),
+                        "Guid": row.try_get::<String, _>("guid").unwrap_or_default()
+                    });
+                    episodes.push(episode);
+                }
+
+                Ok(Some(episodes))
+            }
+        }
+    }
+
+    // Remove YouTube channel by URL - matches Python remove_youtube_channel_by_url function exactly
+    pub async fn remove_youtube_channel_by_url(
+        &self,
+        channel_name: &str,
+        channel_url: &str,
+        user_id: i32,
+    ) -> AppResult<()> {
+        println!("got to remove youtube channel");
+        
+        // Get the PodcastID first
+        let podcast_id = match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT podcastid
+                    FROM "Podcasts"
+                    WHERE podcastname = $1
+                    AND feedurl = $2
+                    AND userid = $3
+                    AND isyoutubechannel = TRUE
+                "#)
+                .bind(channel_name)
+                .bind(channel_url)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    row.try_get::<i32, _>("podcastid")?
+                } else {
+                    return Err(AppError::external_error(&format!("No YouTube channel found with name {}", channel_name)));
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT PodcastID
+                    FROM Podcasts
+                    WHERE PodcastName = ?
+                    AND FeedURL = ?
+                    AND UserID = ?
+                    AND IsYouTubeChannel = TRUE
+                "#)
+                .bind(channel_name)
+                .bind(channel_url)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    row.try_get::<i32, _>("PodcastID")?
+                } else {
+                    return Err(AppError::external_error(&format!("No YouTube channel found with name {}", channel_name)));
+                }
+            }
+        };
+
+        // Remove the channel by ID
+        self.remove_youtube_channel_by_id(podcast_id, user_id).await
+    }
+
+    // Remove YouTube channel by ID - matches Python remove_youtube_channel function exactly
+    pub async fn remove_youtube_channel_by_id(
+        &self,
+        podcast_id: i32,
+        user_id: i32,
+    ) -> AppResult<()> {
+        // First, get all video IDs for the podcast so we can delete the files
+        let video_ids: Vec<String> = match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"SELECT youtubevideoid FROM "YouTubeVideos" WHERE podcastid = $1"#)
+                    .bind(podcast_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                rows.into_iter()
+                    .map(|row| row.try_get::<String, _>("youtubevideoid").unwrap_or_default())
+                    .collect()
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query("SELECT YouTubeVideoID FROM YouTubeVideos WHERE PodcastID = ?")
+                    .bind(podcast_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                rows.into_iter()
+                    .map(|row| row.try_get::<String, _>("YouTubeVideoID").unwrap_or_default())
+                    .collect()
+            }
+        };
+
+        // Delete the MP3 files for each video
+        for video_id in &video_ids {
+            let file_paths = vec![
+                format!("/opt/pinepods/downloads/youtube/{}.mp3", video_id),
+                format!("/opt/pinepods/downloads/youtube/{}.mp3.mp3", video_id), // In case of double extension
+            ];
+
+            for file_path in file_paths {
+                if tokio::fs::metadata(&file_path).await.is_ok() {
+                    match tokio::fs::remove_file(&file_path).await {
+                        Ok(_) => println!("Deleted file: {}", file_path),
+                        Err(e) => println!("Failed to delete file {}: {}", file_path, e),
+                    }
+                }
+            }
+        }
+
+        // Delete from the related tables in the correct order
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let delete_queries = vec![
+                    r#"DELETE FROM "PlaylistContents" WHERE episodeid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#,
+                    r#"DELETE FROM "UserEpisodeHistory" WHERE episodeid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#,
+                    r#"DELETE FROM "UserVideoHistory" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#,
+                    r#"DELETE FROM "DownloadedEpisodes" WHERE episodeid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#,
+                    r#"DELETE FROM "DownloadedVideos" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#,
+                    r#"DELETE FROM "SavedVideos" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#,
+                    r#"DELETE FROM "SavedEpisodes" WHERE episodeid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#,
+                    r#"DELETE FROM "EpisodeQueue" WHERE episodeid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1)"#,
+                    r#"DELETE FROM "YouTubeVideos" WHERE podcastid = $1"#,
+                    r#"DELETE FROM "Podcasts" WHERE podcastid = $1 AND isyoutubechannel = TRUE"#,
+                ];
+
+                for query in delete_queries {
+                    sqlx::query(query)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                }
+
+                // Update user stats
+                sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded - 1 WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let delete_queries = vec![
+                    "DELETE FROM PlaylistContents WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)",
+                    "DELETE FROM UserEpisodeHistory WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)",
+                    "DELETE FROM UserVideoHistory WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)",
+                    "DELETE FROM DownloadedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)",
+                    "DELETE FROM DownloadedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)",
+                    "DELETE FROM SavedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)",
+                    "DELETE FROM SavedEpisodes WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)",
+                    "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ?)",
+                    "DELETE FROM YouTubeVideos WHERE PodcastID = ?",
+                    "DELETE FROM Podcasts WHERE PodcastID = ? AND IsYouTubeChannel = TRUE",
+                ];
+
+                for query in delete_queries {
+                    sqlx::query(query)
+                        .bind(podcast_id)
+                        .execute(pool)
+                        .await?;
+                }
+
+                // Update user stats
+                sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded - 1 WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+
+        Ok(())
     }
 }
 
