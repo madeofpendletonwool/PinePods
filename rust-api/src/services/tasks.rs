@@ -298,23 +298,35 @@ impl TaskSpawner {
                 let status_message = format!("Preparing {}", episode_title);
                 task_manager.update_task_progress_with_details(&task_id_clone, 10.0, Some(status_message.clone()), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
                 
-                // Create download directory
-                let download_dir = std::path::Path::new("/pinepods/downloads");
+                // Create download directory structure like Python version
+                let safe_podcast_name = podcast_name.chars()
+                    .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' })
+                    .collect::<String>()
+                    .trim()
+                    .to_string();
+                
+                let safe_episode_title = episode_title.chars()
+                    .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' })
+                    .collect::<String>()
+                    .trim()
+                    .to_string();
+                
+                // Create podcast-specific directory (like Python version)
+                let download_dir = std::path::Path::new("/opt/pinepods/downloads").join(&safe_podcast_name);
                 if !download_dir.exists() {
-                    std::fs::create_dir_all(download_dir)
+                    std::fs::create_dir_all(&download_dir)
                         .map_err(|e| crate::error::AppError::internal(&format!("Failed to create download directory: {}", e)))?;
                 }
                 
-                // Sanitize filename
-                let safe_podcast_name = podcast_name.chars()
-                    .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' })
-                    .collect::<String>();
-                let safe_episode_title = episode_title.chars()
-                    .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' })
-                    .collect::<String>();
+                // Format date for filename (like Python version)
+                let pub_date_str = if let Some(date) = pub_date {
+                    date.format("%Y-%m-%d").to_string()
+                } else {
+                    chrono::Utc::now().format("%Y-%m-%d").to_string()
+                };
                 
-                let file_extension = if episode_url.contains(".mp3") { "mp3" } else { "m4a" };
-                let filename = format!("{}_{}.{}", safe_podcast_name, safe_episode_title, file_extension);
+                // Create filename with date, title, and IDs (like Python version)
+                let filename = format!("{}_{}_{}_{}.mp3", pub_date_str, safe_episode_title, user_id, episode_id);
                 let file_path = download_dir.join(&filename);
                 
                 let status_message = format!("Connecting to {}", episode_title);
@@ -397,7 +409,7 @@ impl TaskSpawner {
                 match &db_pool {
                     crate::database::DatabasePool::Postgres(pool) => {
                         sqlx::query(r#"
-                            INSERT INTO "DownloadedEpisodes" ("userid", "episodeid", "downloadedsize", "downloadedlocation")
+                            INSERT INTO "DownloadedEpisodes" (userid, episodeid, downloadedsize, downloadedlocation)
                             VALUES ($1, $2, $3, $4)
                         "#)
                         .bind(user_id)
@@ -409,7 +421,7 @@ impl TaskSpawner {
 
                         // Update UserStats table to increment EpisodesDownloaded count
                         sqlx::query(r#"
-                            UPDATE "UserStats" SET "EpisodesDownloaded" = "EpisodesDownloaded" + 1 WHERE "UserID" = $1
+                            UPDATE "UserStats" SET episodesdownloaded = episodesdownloaded + 1 WHERE userid = $1
                         "#)
                         .bind(user_id)
                         .execute(pool)

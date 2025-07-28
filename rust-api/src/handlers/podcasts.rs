@@ -1842,22 +1842,25 @@ pub async fn stream_episode(
 
     if let Some(path) = file_path {
         println!("Found file at: {}", path);
-        // Create a file response for streaming
-        use axum::response::Response;
-        use axum::body::Body;
-        use std::convert::TryFrom;
         
-        let file = tokio::fs::File::open(&path).await.map_err(|e| {
-            AppError::external_error(&format!("Failed to open file: {}", e))
-        })?;
+        // Use tower_http's ServeFile for proper file serving with range support
+        use tower_http::services::ServeFile;
+        use tower::ServiceExt;
         
-        let stream = tokio_util::io::ReaderStream::new(file);
-        let body = Body::from_stream(stream);
-        
-        let response = Response::builder()
-            .header("content-type", "audio/mpeg")
-            .body(body)
-            .map_err(|e| AppError::external_error(&format!("Failed to create response: {}", e)))?;
+        let service = ServeFile::new(&path);
+        let request = axum::http::Request::builder()
+            .method("GET")
+            .uri("/")
+            .body(axum::body::Body::empty())
+            .map_err(|e| AppError::external_error(&format!("Failed to build request: {}", e)))?;
+            
+        let response = service.oneshot(request).await
+            .map_err(|e| AppError::external_error(&format!("Failed to serve file: {}", e)))?;
+            
+        // Convert the response body to the expected type
+        let (parts, body) = response.into_parts();
+        let body = axum::body::Body::new(body);
+        let response = axum::response::Response::from_parts(parts, body);
             
         Ok(response)
     } else {

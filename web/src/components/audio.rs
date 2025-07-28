@@ -1930,7 +1930,7 @@ pub fn on_play_click(
                     // Set up loadedmetadata event listener
                     let onloadedmetadata = Closure::wrap(Box::new(move |_event: web_sys::Event| {
                         let duration = big_audio.duration();
-                        if !duration.is_nan() && duration > 0.0 {
+                        if !duration.is_nan() && !duration.is_infinite() && duration > 0.0 {
                             resolve_clone
                                 .call1(&JsValue::UNDEFINED, &JsValue::from_f64(duration))
                                 .unwrap();
@@ -2188,7 +2188,7 @@ pub fn on_play_click_offline(
                             let onloadedmetadata =
                                 Closure::wrap(Box::new(move |_event: web_sys::Event| {
                                     let duration = src_audio.duration();
-                                    if !duration.is_nan() && duration > 0.0 {
+                                    if !duration.is_nan() && !duration.is_infinite() && duration > 0.0 {
                                         resolve_clone
                                             .call1(
                                                 &JsValue::UNDEFINED,
