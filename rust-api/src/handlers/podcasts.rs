@@ -1821,15 +1821,37 @@ pub async fn stream_episode(
     Query(query): Query<StreamQuery>,
 ) -> Result<axum::response::Response, AppError> {
     let api_key = &query.api_key;
-    validate_api_key(&state, api_key).await?;
-
-    // Check if the provided API key is the web key
-    let is_web_key = state.db_pool.is_web_key(api_key).await?;
-    let key_id = state.db_pool.get_user_id_from_api_key(api_key).await?;
-
-    if key_id != query.user_id && !is_web_key {
-        return Err(AppError::forbidden("You do not have permission to access this episode"));
+    
+    // Try API key validation first
+    let mut is_valid = false;
+    let mut is_web_key = false;
+    let mut key_user_id = None;
+    
+    if let Ok(_) = validate_api_key(&state, api_key).await {
+        is_valid = true;
+        is_web_key = state.db_pool.is_web_key(api_key).await?;
+        key_user_id = Some(state.db_pool.get_user_id_from_api_key(api_key).await?);
     }
+    
+    // If not a valid API key, try RSS key validation
+    if !is_valid {
+        if let Ok(Some(_rss_info)) = state.db_pool.get_rss_key_if_valid(api_key, None).await {
+            // RSS key is valid - allow access for any user (as per requirements)
+            is_valid = true;
+        }
+    }
+    
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key or RSS key"));
+    }
+    
+    // For regular API keys (not RSS keys), check user permissions
+    if let Some(user_id) = key_user_id {
+        if user_id != query.user_id && !is_web_key {
+            return Err(AppError::forbidden("You do not have permission to access this episode"));
+        }
+    }
+    // RSS keys don't need user permission checks - they can stream any episode
 
     // Choose which lookup to use based on source_type
     let file_path = if query.source_type.as_deref() == Some("youtube") {
@@ -1866,6 +1888,36 @@ pub async fn stream_episode(
     } else {
         Err(AppError::not_found("Episode not found or not downloaded"))
     }
+}
+
+// Get RSS key endpoint - get or create RSS key for user
+pub async fn get_rss_key(
+    State(state): State<crate::AppState>,
+    headers: HeaderMap,
+    Query(query): Query<UserIdQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - user can only get their own RSS key
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != query.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only get your own RSS key"));
+    }
+
+    // Get or create RSS key for the user
+    let rss_key = state.db_pool.get_or_create_user_rss_key(query.user_id).await?;
+
+    Ok(Json(serde_json::json!({
+        "rss_key": rss_key
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct UserIdQuery {
+    pub user_id: i32,
 }
 
 // Query struct for get_podcast_details_dynamic

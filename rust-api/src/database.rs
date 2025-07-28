@@ -2673,7 +2673,7 @@ impl DatabasePool {
                         "episodecount": row.try_get::<Option<i32>, _>("episodecount").ok().flatten(),
                         "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
                         "websiteurl": row.try_get::<String, _>("websiteurl").unwrap_or_default(),
-                        "explicit": row.try_get::<bool, _>("explicit").unwrap_or(false),
+                        "explicit": if row.try_get::<bool, _>("explicit").unwrap_or(false) { 1 } else { 0 },
                         "userid": row.try_get::<i32, _>("userid").unwrap_or(0),
                         "episodeid": row.try_get::<Option<i32>, _>("episodeid").ok().flatten(),
                         "episodetitle": row.try_get::<Option<String>, _>("episodetitle").ok().flatten(),
@@ -2683,11 +2683,11 @@ impl DatabasePool {
                         "episodepubdate": if pub_date.is_empty() { None } else { Some(pub_date) },
                         "episodeduration": row.try_get::<Option<i32>, _>("episodeduration").ok().flatten(),
                         "listenduration": row.try_get::<Option<i32>, _>("listenduration").ok().flatten(),
-                        "completed": row.try_get::<bool, _>("completed").unwrap_or(false),
-                        "saved": row.try_get::<bool, _>("saved").unwrap_or(false),
-                        "queued": row.try_get::<bool, _>("queued").unwrap_or(false),
-                        "downloaded": row.try_get::<bool, _>("downloaded").unwrap_or(false),
-                        "is_youtube": row.try_get::<bool, _>("is_youtube").unwrap_or(false)
+                        "completed": if row.try_get::<bool, _>("completed").unwrap_or(false) { 1 } else { 0 },
+                        "saved": if row.try_get::<bool, _>("saved").unwrap_or(false) { 1 } else { 0 },
+                        "queued": if row.try_get::<bool, _>("queued").unwrap_or(false) { 1 } else { 0 },
+                        "downloaded": if row.try_get::<bool, _>("downloaded").unwrap_or(false) { 1 } else { 0 },
+                        "is_youtube": if row.try_get::<bool, _>("is_youtube").unwrap_or(false) { 1 } else { 0 }
                     });
                     results.push(result);
                 }
@@ -2761,7 +2761,7 @@ impl DatabasePool {
                         "episodecount": row.try_get::<Option<i32>, _>("episodecount").ok().flatten(),
                         "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
                         "websiteurl": row.try_get::<String, _>("websiteurl").unwrap_or_default(),
-                        "explicit": row.try_get::<bool, _>("explicit").unwrap_or(false),
+                        "explicit": if row.try_get::<bool, _>("explicit").unwrap_or(false) { 1 } else { 0 },
                         "userid": row.try_get::<i32, _>("userid").unwrap_or(0),
                         "episodeid": row.try_get::<Option<i32>, _>("episodeid").ok().flatten(),
                         "episodetitle": row.try_get::<Option<String>, _>("episodetitle").ok().flatten(),
@@ -2771,11 +2771,11 @@ impl DatabasePool {
                         "episodepubdate": if pub_date.is_empty() { None } else { Some(pub_date) },
                         "episodeduration": row.try_get::<Option<i32>, _>("episodeduration").ok().flatten(),
                         "listenduration": row.try_get::<Option<i32>, _>("listenduration").ok().flatten(),
-                        "completed": row.try_get::<bool, _>("completed").unwrap_or(false),
-                        "saved": row.try_get::<bool, _>("saved").unwrap_or(false),
-                        "queued": row.try_get::<bool, _>("queued").unwrap_or(false),
-                        "downloaded": row.try_get::<bool, _>("downloaded").unwrap_or(false),
-                        "is_youtube": row.try_get::<bool, _>("is_youtube").unwrap_or(false)
+                        "completed": if row.try_get::<bool, _>("completed").unwrap_or(false) { 1 } else { 0 },
+                        "saved": if row.try_get::<bool, _>("saved").unwrap_or(false) { 1 } else { 0 },
+                        "queued": if row.try_get::<bool, _>("queued").unwrap_or(false) { 1 } else { 0 },
+                        "downloaded": if row.try_get::<bool, _>("downloaded").unwrap_or(false) { 1 } else { 0 },
+                        "is_youtube": if row.try_get::<bool, _>("is_youtube").unwrap_or(false) { 1 } else { 0 }
                     });
                     results.push(result);
                 }
@@ -8854,36 +8854,105 @@ pub struct GpodderSession {
 impl DatabasePool {
     // Execute SQL restore commands safely using transactions - matches Python api_restore_server function
     pub async fn restore_server_data(&self, sql_content: &str) -> AppResult<()> {
-        // Split SQL content into individual statements
-        let statements: Vec<&str> = sql_content
-            .split(';')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty() && !s.starts_with("--"))
-            .collect();
+        // Parse SQL content into individual statements more carefully
+        let statements = self.parse_sql_statements(sql_content)?;
         
         match self {
             DatabasePool::Postgres(pool) => {
-                let mut tx = pool.begin().await?;
+                // First, drop all tables in a separate transaction
+                {
+                    let mut tx = pool.begin().await?;
+                    
+                    // Dynamically get all tables and drop them
+                    let tables_result = sqlx::query(
+                        "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
+                    ).fetch_all(&mut *tx).await;
+                    
+                    if let Ok(tables) = tables_result {
+                        for table_row in tables {
+                            if let Ok(table_name) = table_row.try_get::<String, _>("tablename") {
+                                let drop_stmt = format!("DROP TABLE IF EXISTS \"{}\" CASCADE", table_name);
+                                sqlx::query(&drop_stmt).execute(&mut *tx).await.ok(); // Ignore errors for dependencies
+                            }
+                        }
+                    }
+                    
+                    tx.commit().await?;
+                }
                 
-                for statement in statements {
+                // Execute restore statements in batches to ensure CREATE statements are committed before INSERTs
+                let mut batch = Vec::new();
+                let batch_size = 50; // Process in smaller batches
+                
+                for (i, statement) in statements.iter().enumerate() {
                     if !statement.trim().is_empty() {
-                        if let Err(e) = sqlx::query(statement).execute(&mut *tx).await {
-                            tx.rollback().await.ok();
-                            return Err(AppError::database_error(&format!("SQL execution failed: {}", e)));
+                        batch.push((i, statement));
+                        
+                        // Commit batch when it reaches batch_size or when we hit a CREATE statement followed by INSERT
+                        let should_commit = batch.len() >= batch_size ||
+                            (statement.trim().to_lowercase().starts_with("create") && 
+                             i + 1 < statements.len() && 
+                             statements[i + 1].trim().to_lowercase().starts_with("insert"));
+                        
+                        if should_commit {
+                            let mut tx = pool.begin().await?;
+                            
+                            for (stmt_idx, stmt) in &batch {
+                                if let Err(e) = sqlx::query(stmt).execute(&mut *tx).await {
+                                    tx.rollback().await.ok();
+                                    return Err(AppError::database_error(&format!("SQL execution failed at statement {}: {} - Statement: {}", stmt_idx + 1, e, stmt.chars().take(200).collect::<String>())));
+                                }
+                            }
+                            
+                            tx.commit().await?;
+                            batch.clear();
                         }
                     }
                 }
                 
-                tx.commit().await?;
+                // Commit any remaining statements
+                if !batch.is_empty() {
+                    let mut tx = pool.begin().await?;
+                    
+                    for (stmt_idx, stmt) in &batch {
+                        if let Err(e) = sqlx::query(stmt).execute(&mut *tx).await {
+                            tx.rollback().await.ok();
+                            return Err(AppError::database_error(&format!("SQL execution failed at statement {}: {} - Statement: {}", stmt_idx + 1, e, stmt.chars().take(200).collect::<String>())));
+                        }
+                    }
+                    
+                    tx.commit().await?;
+                }
             }
             DatabasePool::MySQL(pool) => {
                 let mut tx = pool.begin().await?;
                 
-                for statement in statements {
+                // Dynamically get all tables and drop them
+                let tables_result = sqlx::query(
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"
+                ).fetch_all(&mut *tx).await;
+                
+                if let Ok(tables) = tables_result {
+                    // First disable foreign key checks to avoid dependency issues
+                    sqlx::query("SET FOREIGN_KEY_CHECKS = 0").execute(&mut *tx).await.ok();
+                    
+                    for table_row in tables {
+                        if let Ok(table_name) = table_row.try_get::<String, _>("table_name") {
+                            let drop_stmt = format!("DROP TABLE IF EXISTS {}", table_name);
+                            sqlx::query(&drop_stmt).execute(&mut *tx).await.ok(); // Ignore errors for dependencies
+                        }
+                    }
+                    
+                    // Re-enable foreign key checks
+                    sqlx::query("SET FOREIGN_KEY_CHECKS = 1").execute(&mut *tx).await.ok();
+                }
+                
+                // Execute restore statements
+                for (i, statement) in statements.iter().enumerate() {
                     if !statement.trim().is_empty() {
                         if let Err(e) = sqlx::query(statement).execute(&mut *tx).await {
                             tx.rollback().await.ok();
-                            return Err(AppError::database_error(&format!("SQL execution failed: {}", e)));
+                            return Err(AppError::database_error(&format!("SQL execution failed at statement {}: {} - Statement: {}", i + 1, e, statement.chars().take(200).collect::<String>())));
                         }
                     }
                 }
@@ -8893,6 +8962,83 @@ impl DatabasePool {
         }
         
         Ok(())
+    }
+
+    // Helper function to parse SQL statements more carefully
+    fn parse_sql_statements(&self, sql_content: &str) -> AppResult<Vec<String>> {
+        let mut statements = Vec::new();
+        let mut current_statement = String::new();
+        let mut in_string = false;
+        let mut string_delimiter = None;
+        let mut escape_next = false;
+        
+        let chars: Vec<char> = sql_content.chars().collect();
+        let mut i = 0;
+        
+        while i < chars.len() {
+            let ch = chars[i];
+            
+            if escape_next {
+                current_statement.push(ch);
+                escape_next = false;
+                i += 1;
+                continue;
+            }
+            
+            if ch == '\\' && in_string {
+                escape_next = true;
+                current_statement.push(ch);
+                i += 1;
+                continue;
+            }
+            
+            if !in_string {
+                // Check for start of string literals
+                if ch == '\'' || ch == '"' {
+                    in_string = true;
+                    string_delimiter = Some(ch);
+                    current_statement.push(ch);
+                } else if ch == ';' {
+                    // End of statement
+                    let trimmed = current_statement.trim();
+                    if !trimmed.is_empty() && 
+                       !trimmed.starts_with("--") && 
+                       !trimmed.to_lowercase().starts_with("/*!") {
+                        // Allow SET statements for PostgreSQL configuration
+                        statements.push(current_statement.clone());
+                    }
+                    current_statement.clear();
+                } else if ch == '-' && i + 1 < chars.len() && chars[i + 1] == '-' {
+                    // Skip single-line comments
+                    while i < chars.len() && chars[i] != '\n' {
+                        i += 1;
+                    }
+                    continue;
+                } else {
+                    current_statement.push(ch);
+                }
+            } else {
+                // Inside string literal
+                if ch == string_delimiter.unwrap() {
+                    in_string = false;
+                    string_delimiter = None;
+                }
+                current_statement.push(ch);
+            }
+            
+            i += 1;
+        }
+        
+        // Add final statement if any
+        let trimmed = current_statement.trim();
+        if !trimmed.is_empty() && 
+           !trimmed.starts_with("--") && 
+           !trimmed.to_lowercase().starts_with("/*!") {
+            // Allow SET statements for PostgreSQL configuration
+            statements.push(current_statement);
+        }
+        
+        Ok(statements)
     }
 
     // Generate MFA secret with QR code - matches Python generate_mfa_secret function exactly
@@ -15156,8 +15302,11 @@ impl DatabasePool {
         rss_content.push_str("  </image>\n");
         rss_content.push_str("  <ttl>60</ttl>\n");
         
-        // Get episodes
-        let episodes = self.get_rss_episodes(user_id, limit, source_type, &effective_podcast_ids, podcast_filter, domain, &rss_key.key).await?;
+        // Get or create RSS key for this user to use in stream URLs
+        let user_rss_key = self.get_or_create_user_rss_key(user_id).await?;
+        
+        // Get episodes (use the user's RSS key for stream URLs, not the requesting key)
+        let episodes = self.get_rss_episodes(user_id, limit, source_type, &effective_podcast_ids, podcast_filter, domain, &user_rss_key).await?;
         
         for episode in episodes {
             rss_content.push_str("  <item>\n");
@@ -15208,6 +15357,54 @@ impl DatabasePool {
                     Ok(row.try_get("RssKey").ok())
                 } else {
                     Ok(None)
+                }
+            }
+        }
+    }
+    
+    // Get or create RSS key for user - ensures user always has an RSS key for stream URLs
+    pub async fn get_or_create_user_rss_key(&self, user_id: i32) -> AppResult<String> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Try to get existing RSS key
+                let existing_key = sqlx::query(r#"SELECT rsskey FROM "RssKeys" WHERE userid = $1 LIMIT 1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = existing_key {
+                    let key: String = row.try_get("rsskey")?;
+                    Ok(key)
+                } else {
+                    // Create new RSS key
+                    let new_key = uuid::Uuid::new_v4().to_string();
+                    sqlx::query(r#"INSERT INTO "RssKeys" (userid, rsskey) VALUES ($1, $2)"#)
+                        .bind(user_id)
+                        .bind(&new_key)
+                        .execute(pool)
+                        .await?;
+                    Ok(new_key)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                // Try to get existing RSS key
+                let existing_key = sqlx::query("SELECT RssKey FROM RssKeys WHERE UserID = ? LIMIT 1")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = existing_key {
+                    let key: String = row.try_get("RssKey")?;
+                    Ok(key)
+                } else {
+                    // Create new RSS key
+                    let new_key = uuid::Uuid::new_v4().to_string();
+                    sqlx::query("INSERT INTO RssKeys (UserID, RssKey) VALUES (?, ?)")
+                        .bind(user_id)
+                        .bind(&new_key)
+                        .execute(pool)
+                        .await?;
+                    Ok(new_key)
                 }
             }
         }

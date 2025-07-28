@@ -3498,8 +3498,9 @@ pub struct RssKeyResponse {
 pub async fn call_get_rss_key(
     server_name: &str,
     api_key: &Option<String>,
+    user_id: i32,
 ) -> Result<String, anyhow::Error> {
-    let url = format!("{}/api/data/rss_key", server_name);
+    let url = format!("{}/api/data/get_rss_key?user_id={}", server_name, user_id);
     
     let api_key_ref = api_key
         .as_deref()

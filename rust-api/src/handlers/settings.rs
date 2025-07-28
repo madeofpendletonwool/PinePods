@@ -1301,13 +1301,14 @@ pub async fn restore_server(
         return Err(AppError::forbidden("Admin access required"));
     }
 
-    // Process the multipart form to get the uploaded file
+    // Process the multipart form to get the uploaded file and database password
     let mut sql_content = None;
+    let mut _database_password = None;
 
     while let Some(field) = multipart.next_field().await.map_err(|e| AppError::bad_request(&format!("Multipart error: {}", e)))? {
         let name = field.name().unwrap_or("").to_string();
 
-        if name == "file" {
+        if name == "backup_file" {
             let filename = field.file_name().unwrap_or("").to_string();
 
             // Validate file extension
@@ -1323,11 +1324,14 @@ pub async fn restore_server(
             }
 
             sql_content = Some(String::from_utf8(data.to_vec()).map_err(|_| AppError::bad_request("Invalid UTF-8 content"))?);
-            break;
+        } else if name == "database_pass" {
+            let password_data = field.bytes().await.map_err(|e| AppError::bad_request(&format!("Failed to read password: {}", e)))?;
+            _database_password = Some(String::from_utf8(password_data.to_vec()).map_err(|_| AppError::bad_request("Invalid UTF-8 password"))?);
         }
     }
 
     let sql_content = sql_content.ok_or_else(|| AppError::bad_request("No SQL file uploaded"))?;
+    let _database_password = _database_password.ok_or_else(|| AppError::bad_request("Database password is required"))?;
 
     // Process the restore in the background to prevent timeouts
     let db_pool = state.db_pool.clone();

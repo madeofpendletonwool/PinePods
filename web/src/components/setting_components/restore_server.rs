@@ -1,4 +1,5 @@
 use crate::components::context::AppState;
+use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::call_restore_server;
 use web_sys::{Event, File, FormData, HtmlInputElement};
 use yew::prelude::*;
@@ -10,24 +11,23 @@ pub fn restore_server() -> Html {
     let database_password = use_state(|| "".to_string());
     let selected_file = use_state(|| None::<File>);
     let is_loading = use_state(|| false);
-    let error_message = use_state(|| None::<String>);
-    let info_message = use_state(|| None::<String>);
 
-    let (state, _) = use_store::<AppState>();
+    let (state, dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
 
     let on_file_change = {
         let selected_file = selected_file.clone();
-        let error_message = error_message.clone();
+        let dispatch = dispatch.clone();
         Callback::from(move |e: Event| {
             let input: HtmlInputElement = e.target_unchecked_into();
             if let Some(files) = input.files() {
                 if let Some(file) = files.get(0) {
                     // Check file size (e.g., limit to 100MB)
                     if file.size() > 100.0 * 1024.0 * 1024.0 {
-                        error_message
-                            .set(Some("File size too large. Maximum size is 100MB.".into()));
+                        dispatch.reduce_mut(|state| {
+                            state.error_message = Some("File size too large. Maximum size is 100MB.".to_string());
+                        });
                         return;
                     }
                     selected_file.set(Some(file));
@@ -42,16 +42,25 @@ pub fn restore_server() -> Html {
         let server_name = server_name.unwrap_or_default();
         let database_password = (*database_password).clone();
         let selected_file = selected_file.clone();
-        let error_message = error_message.clone();
-        let info_message = info_message.clone();
+        let dispatch = dispatch.clone();
         let is_loading = is_loading.clone();
 
         Callback::from(move |_| {
             let selected_file = (*selected_file).clone();
-            let info_call = info_message.clone();
-            let error_call = error_message.clone();
+            let dispatch = dispatch.clone();
+            
+            // Validate inputs
             if selected_file.is_none() {
-                error_message.set(Some("Please select a backup file".into()));
+                dispatch.reduce_mut(|state| {
+                    state.error_message = Some("Please select a backup file".to_string());
+                });
+                return;
+            }
+            
+            if database_password.trim().is_empty() {
+                dispatch.reduce_mut(|state| {
+                    state.error_message = Some("Database password is required".to_string());
+                });
                 return;
             }
 
@@ -73,11 +82,16 @@ pub fn restore_server() -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 match call_restore_server(&server_name, form_data, &api_key.unwrap()).await {
                     Ok(message) => {
-                        info_call.set(Some(message));
+                        dispatch.reduce_mut(|state| {
+                            state.info_message = Some(format!("Server restore started successfully: {}", message));
+                        });
                         history.push("/sign_out");
                     }
                     Err(e) => {
-                        error_call.set(Some(e.to_string()));
+                        let formatted_error = format_error_message(&e.to_string());
+                        dispatch.reduce_mut(|state| {
+                            state.error_message = Some(format!("Failed to restore server: {}", formatted_error));
+                        });
                         is_loading.set(false);
                     }
                 }
@@ -110,7 +124,7 @@ pub fn restore_server() -> Html {
 
                 <div class="flex flex-col space-y-2">
                     <label for="db_pw" class="item_container-text">{"Database Password"}</label>
-                    <div class="flex space-x-4">
+                    <div class="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4">
                         <input
                             type="password"
                             id="db_pw"
@@ -135,6 +149,9 @@ pub fn restore_server() -> Html {
                                 "focus:shadow-outline",
                                 "inline-flex",
                                 "items-center",
+                                "justify-center",
+                                "min-w-[140px]",
+                                "whitespace-nowrap",
                                 if *is_loading { "opacity-50 cursor-not-allowed" } else { "" }
                             )}
                         >

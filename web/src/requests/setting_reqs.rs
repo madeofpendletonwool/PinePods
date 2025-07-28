@@ -2278,3 +2278,35 @@ pub async fn call_set_startpage(
         )))
     }
 }
+
+// RSS Key Requests
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct GetRssKeyResponse {
+    pub rss_key: String,
+}
+
+pub async fn call_get_rss_key(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/get_rss_key?user_id={}", server_name, user_id);
+
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: GetRssKeyResponse = response.json().await?;
+        Ok(response_data.rss_key)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting RSS key: {}",
+            response.status_text()
+        )))
+    }
+}

@@ -226,6 +226,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/youtube_episodes", get(handlers::podcasts::youtube_episodes))
         .route("/remove_youtube_channel", post(handlers::podcasts::remove_youtube_channel))
         .route("/stream/{episode_id}", get(handlers::podcasts::stream_episode))
+        .route("/get_rss_key", get(handlers::podcasts::get_rss_key))
         .route("/mark_episode_uncompleted", post(handlers::podcasts::mark_episode_uncompleted))
         .route("/user/set_theme", put(handlers::settings::set_theme))
         .route("/get_user_info", get(handlers::settings::get_user_info))

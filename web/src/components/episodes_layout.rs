@@ -1433,12 +1433,12 @@ pub fn episode_layout() -> Html {
             (page_state_clone.clone(), rss_key_state.is_none()),
             move |(current_page_state, rss_key_is_none)| {
                 if matches!(**current_page_state, PageState::RSSFeed) && *rss_key_is_none {
-                    if let (Some(server_name), Some(api_key)) =
-                        (server_name.clone(), api_key.clone())
+                    if let (Some(server_name), Some(api_key), Some(user_id)) =
+                        (server_name.clone(), api_key.clone(), user_id.clone())
                     {
                         let rss_key_state = rss_key_state.clone();
                         wasm_bindgen_futures::spawn_local(async move {
-                            match call_get_rss_key(&server_name, &Some(api_key)).await {
+                            match call_get_rss_key(&server_name, &Some(api_key), user_id).await {
                                 Ok(rss_key) => {
                                     rss_key_state.set(Some(rss_key));
                                 }
@@ -2060,8 +2060,6 @@ pub fn episode_layout() -> Html {
     let web_link = open_in_new_tab.clone();
     let pod_layout_data = clicked_podcast_info.clone();
 
-    let api_key_rss = api_key.clone();
-    let podcast_id_rss = podcast_id.clone();
 
     let (completed_icon, completed_text, completed_title) = match *completed_filter_state {
         CompletedFilter::ShowOnly => (
@@ -2170,18 +2168,13 @@ pub fn episode_layout() -> Html {
                                                         if search_state.podcast_added.unwrap() {
                                                             html! {
                                                                 <button
-                                                                    onclick={Callback::from(move |_| {
-                                                                        if let Some(api_key) = api_key_rss.clone().clone() {
-                                                                            let feed_url = format!(
-                                                                                "/rss/{}?api_key={}&podcast_id={}",
-                                                                                user_id.clone().unwrap(),
-                                                                                api_key.unwrap(),
-                                                                                *podcast_id_rss
-                                                                            );
-                                                                            open_in_new_tab.emit(feed_url);
-                                                                        }
-                                                                    })}
-                                                                    title="Subscribe to RSS Feed"
+                                                                    onclick={
+                                                                        let page_state = page_state.clone();
+                                                                        Callback::from(move |_| {
+                                                                            page_state.set(PageState::RSSFeed);
+                                                                        })
+                                                                    }
+                                                                    title="Get RSS Feed URL"
                                                                     class="item-container-button font-bold rounded-full self-center mr-4"
                                                                     style="width: 30px; height: 30px;"
                                                                 >
