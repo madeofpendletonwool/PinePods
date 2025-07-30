@@ -147,12 +147,6 @@ fn create_app(state: AppState) -> Router {
                             .level(tracing::Level::INFO))
                 )
                 .layer(CompressionLayer::new())
-                .layer(
-                    CorsLayer::new()
-                        .allow_origin(Any)
-                        .allow_methods(Any)
-                        .allow_headers(Any),
-                )
         )
         .with_state(state)
 }
@@ -160,6 +154,7 @@ fn create_app(state: AppState) -> Router {
 fn create_data_routes() -> Router<AppState> {
     Router::new()
         .route("/get_key", get(handlers::auth::get_key))
+        .route("/verify_mfa_and_get_key", post(handlers::auth::verify_mfa_and_get_key))
         .route("/verify_key", get(handlers::auth::verify_api_key_endpoint))
         .route("/get_user", get(handlers::auth::get_user))
         .route("/user_details_id/{user_id}", get(handlers::auth::get_user_details_by_id))
@@ -215,6 +210,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/get_stats", get(handlers::podcasts::get_stats))
         .route("/get_pinepods_version", get(handlers::podcasts::get_pinepods_version))
         .route("/search_data", post(handlers::podcasts::search_data))
+        .route("/fetch_transcript", post(handlers::podcasts::fetch_transcript))
         .route("/home_overview", get(handlers::podcasts::home_overview))
         .route("/get_playlists", get(handlers::podcasts::get_playlists))
         .route("/get_playlist_episodes", get(handlers::podcasts::get_playlist_episodes))

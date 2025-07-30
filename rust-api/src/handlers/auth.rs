@@ -14,11 +14,31 @@ use crate::{
     database::{SelfServiceStatus, PublicOidcProvider},
     AppState,
 };
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+// Global storage for password-verified sessions pending MFA
+// Key: session_token, Value: (user_id, timestamp)
+lazy_static::lazy_static! {
+    static ref PENDING_MFA_SESSIONS: Arc<Mutex<HashMap<String, (i32, u64)>>> = 
+        Arc::new(Mutex::new(HashMap::new()));
+}
 
 #[derive(Serialize)]
 pub struct LoginResponse {
     status: String,
-    retrieved_key: String,
+    retrieved_key: Option<String>,
+    mfa_required: Option<bool>,
+    user_id: Option<i32>,
+    mfa_session_token: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct MfaRequiredResponse {
+    status: String,
+    mfa_required: bool,
+    user_id: i32,
 }
 
 #[derive(Serialize)]
@@ -135,6 +155,7 @@ fn extract_basic_auth(headers: &HeaderMap) -> AppResult<(String, String)> {
 }
 
 // Get API key with basic authentication (username/password)
+// Now includes MFA security check - API key only returned after MFA verification if enabled
 pub async fn get_key(
     headers: HeaderMap,
     State(state): State<AppState>,
@@ -150,12 +171,53 @@ pub async fn get_key(
     // Get user ID from username first
     let user_id = state.db_pool.get_user_id_from_username(&username).await?;
     
-    // Get or create API key for user
+    // Check if MFA is enabled for this user - CRITICAL SECURITY CHECK
+    let mfa_enabled = state.db_pool.check_mfa_enabled(user_id).await?;
+    
+    if mfa_enabled {
+        // MFA is enabled - create secure session token and DO NOT return API key yet
+        // Generate cryptographically secure session token
+        use rand::Rng;
+        const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        let mut rng = rand::thread_rng();
+        let session_token: String = (0..32)
+            .map(|_| {
+                let idx = rng.gen_range(0..CHARSET.len());
+                CHARSET[idx] as char
+            })
+            .collect();
+        
+        // Store session with timestamp (expires in 5 minutes)
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        
+        {
+            let mut sessions = PENDING_MFA_SESSIONS.lock()
+                .map_err(|e| AppError::internal(&format!("Failed to lock MFA sessions: {}", e)))?;
+            sessions.insert(session_token.clone(), (user_id, timestamp));
+        }
+        
+        // User must complete MFA verification first using this session token
+        return Ok(Json(LoginResponse {
+            status: "mfa_required".to_string(),
+            retrieved_key: None,
+            mfa_required: Some(true),
+            user_id: Some(user_id),
+            mfa_session_token: Some(session_token),
+        }));
+    }
+    
+    // MFA not enabled - proceed with normal flow
     let api_key = state.db_pool.create_or_get_api_key(user_id).await?;
     
     Ok(Json(LoginResponse {
         status: "success".to_string(),
-        retrieved_key: api_key,
+        retrieved_key: Some(api_key),
+        mfa_required: Some(false),
+        user_id: Some(user_id),
+        mfa_session_token: None,
     }))
 }
 
@@ -376,6 +438,130 @@ pub async fn check_mfa_enabled(
     Ok(Json(json!({
         "mfa_enabled": is_enabled
     })))
+}
+
+// NEW SECURE MFA ENDPOINT: Verify MFA code and return API key during login
+// CRITICAL SECURITY: This is the second phase of secure MFA authentication flow
+// It REQUIRES a valid session token from successful password authentication
+#[derive(Deserialize)]
+pub struct VerifyMfaLoginRequest {
+    pub mfa_session_token: String,
+    pub mfa_code: String,
+}
+
+#[derive(Serialize)]
+pub struct VerifyMfaLoginResponse {
+    pub status: String,
+    pub retrieved_key: Option<String>,
+    pub verified: bool,
+}
+
+// Helper function to clean expired MFA sessions
+fn cleanup_expired_mfa_sessions() -> Result<(), AppError> {
+    let current_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    
+    let mut sessions = PENDING_MFA_SESSIONS.lock()
+        .map_err(|e| AppError::internal(&format!("Failed to lock MFA sessions: {}", e)))?;
+    
+    sessions.retain(|_, (_, timestamp)| {
+        current_time - *timestamp < 300 // Keep sessions newer than 5 minutes
+    });
+    
+    Ok(())
+}
+
+// Verify MFA code during login and return API key - SECURE TWO-FACTOR AUTHENTICATION
+// CRITICAL: This endpoint REQUIRES a valid session token proving password was verified first
+pub async fn verify_mfa_and_get_key(
+    State(state): State<AppState>,
+    Json(request): Json<VerifyMfaLoginRequest>,
+) -> Result<Json<VerifyMfaLoginResponse>, AppError> {
+    // Clean up expired sessions first
+    cleanup_expired_mfa_sessions()?;
+    
+    // CRITICAL SECURITY CHECK: Validate session token from password authentication
+    let user_id = {
+        let mut sessions = PENDING_MFA_SESSIONS.lock()
+            .map_err(|e| AppError::internal(&format!("Failed to lock MFA sessions: {}", e)))?;
+        
+        match sessions.remove(&request.mfa_session_token) {
+            Some((user_id, timestamp)) => {
+                // Check if session is still valid (5 minutes)
+                let current_time = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                
+                if current_time - timestamp > 300 {
+                    return Ok(Json(VerifyMfaLoginResponse {
+                        status: "session_expired".to_string(),
+                        retrieved_key: None,
+                        verified: false,
+                    }));
+                }
+                
+                user_id
+            }
+            None => {
+                return Ok(Json(VerifyMfaLoginResponse {
+                    status: "invalid_session".to_string(),
+                    retrieved_key: None,
+                    verified: false,
+                }));
+            }
+        }
+    };
+
+    // Get MFA secret for user - matches existing verify_mfa function exactly
+    let mfa_secret = match state.db_pool.get_mfa_secret(user_id).await? {
+        Some(secret) => secret,
+        None => {
+            return Ok(Json(VerifyMfaLoginResponse {
+                status: "no_mfa_secret".to_string(),
+                retrieved_key: None,
+                verified: false,
+            }));
+        }
+    };
+
+    // Verify MFA code - matches existing verify_mfa function EXACTLY
+    use totp_rs::{Algorithm, Secret, TOTP};
+    
+    let totp = TOTP::new(
+        Algorithm::SHA1,
+        6,
+        1, 
+        30,
+        Secret::Encoded(mfa_secret.clone()).to_bytes()
+            .map_err(|e| AppError::internal(&format!("Invalid MFA secret format: {}", e)))?,
+        Some("Pinepods".to_string()), // Matches existing function exactly
+        "login".to_string(),          // Matches existing function exactly
+    ).map_err(|e| AppError::internal(&format!("TOTP creation failed: {}", e)))?;
+
+    let verified = totp.check_current(&request.mfa_code)
+        .map_err(|e| AppError::internal(&format!("TOTP verification failed: {}", e)))?;
+
+    if verified {
+        // MFA verification successful - now safe to return API key
+        // Session token was consumed above, preventing replay attacks
+        let api_key = state.db_pool.create_or_get_api_key(user_id).await?;
+        
+        Ok(Json(VerifyMfaLoginResponse {
+            status: "success".to_string(),
+            retrieved_key: Some(api_key),
+            verified: true,
+        }))
+    } else {
+        // MFA verification failed
+        Ok(Json(VerifyMfaLoginResponse {
+            status: "invalid_code".to_string(),
+            retrieved_key: None,
+            verified: false,
+        }))
+    }
 }
 
 // Get theme - matches Python get_theme

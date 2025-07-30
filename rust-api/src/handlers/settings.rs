@@ -1034,50 +1034,88 @@ pub async fn backup_server(
     }
 }
 
-// Streaming backup implementation to handle large databases efficiently
+// Use actual pg_dump/mysqldump for reliable backups
 async fn backup_server_streaming(
     state: &AppState,
-    _database_pass: &str,
+    database_pass: &str,
 ) -> Result<axum::response::Response, String> {
     use axum::response::Response;
     use axum::body::Body;
-    use tokio_stream::StreamExt;
-    use futures::stream;
+    use tokio::process::Command;
+    use tokio_util::io::ReaderStream;
 
-    // Instead of using subprocess, we'll create a streaming SQL export
-    // This approach handles large databases by processing data in chunks
-    
-    let state_clone = state.clone();
-    let backup_stream = stream::unfold(Some(0usize), move |state_opt| {
-        let state_clone = state_clone.clone();
-        async move {
-            // If state is None, we're done - prevent further polling
-            let chunk_id = match state_opt {
-                Some(id) => id,
-                None => return None,
-            };
+    // Get database connection info from config
+    let mut cmd = match &state.db_pool {
+        crate::database::DatabasePool::Postgres(_) => {
+            // Extract connection details from DATABASE_URL or config
+            let host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
+            let port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
+            let database = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods".to_string());
+            let username = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
             
-            match generate_backup_chunk(&state_clone, chunk_id).await {
-                Ok(Some(chunk)) => Some((Ok(chunk), Some(chunk_id + 1))),
-                Ok(None) => {
-                    // End of stream - set state to None to prevent future polling
-                    None
-                },
-                Err(e) => {
-                    // End on error and set state to None to prevent future polling
-                    Some((Err(e), None))
-                }
+            // Use pg_dump with data-only options (no schema)
+            let mut cmd = Command::new("pg_dump");
+            cmd.arg("--host").arg(&host)
+               .arg("--port").arg(&port)
+               .arg("--username").arg(&username)
+               .arg("--no-password")
+               .arg("--verbose")
+               .arg("--data-only")
+               .arg("--disable-triggers")
+               .arg("--format=plain")
+               .arg(&database);
+            
+            // Set password via environment variable
+            cmd.env("PGPASSWORD", database_pass);
+            
+            cmd
+        }
+        crate::database::DatabasePool::MySQL(_) => {
+            let host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
+            let port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
+            let database = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods".to_string());
+            let username = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
+            
+            let mut cmd = Command::new("mysqldump");
+            cmd.arg("--host").arg(&host)
+               .arg("--port").arg(&port)
+               .arg("--user").arg(&username)
+               .arg(format!("--password={}", database_pass))
+               .arg("--single-transaction")
+               .arg("--no-create-info")
+               .arg("--disable-keys")
+               .arg(&database);
+            
+            cmd
+        }
+    };
+
+    let mut child = cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to start backup process: {}", e))?;
+
+    let stdout = child.stdout.take()
+        .ok_or("Failed to get stdout from backup process")?;
+
+    let stream = ReaderStream::new(stdout);
+    let body = Body::from_stream(stream);
+
+    // Spawn a task to wait for the process and handle errors
+    tokio::spawn(async move {
+        match child.wait().await {
+            Ok(status) if status.success() => {
+                println!("Backup process completed successfully");
+            }
+            Ok(status) => {
+                println!("Backup process failed with status: {}", status);
+            }
+            Err(e) => {
+                println!("Failed to wait for backup process: {}", e);
             }
         }
     });
 
-    // Convert stream to body
-    let stream = backup_stream.map(|result| {
-        result.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
-    });
-    
-    let body = Body::from_stream(stream);
-    
     Ok(Response::builder()
         .status(200)
         .header("content-type", "text/plain; charset=utf-8")
@@ -1139,8 +1177,22 @@ fn generate_backup_header() -> String {
 async fn export_table_data(state: &AppState, table_name: &str) -> Result<String, String> {
     const BATCH_SIZE: i64 = 1000; // Process 1000 rows at a time
     let mut sql_output = format!("\n-- Exporting table: {}\n", table_name);
+    
+    // First, export the CREATE TABLE statement
+    let create_statement = match &state.db_pool {
+        crate::database::DatabasePool::Postgres(pool) => {
+            export_postgres_table_schema(pool, table_name).await?
+        }
+        crate::database::DatabasePool::MySQL(pool) => {
+            export_mysql_table_schema(pool, table_name).await?
+        }
+    };
+    
+    sql_output.push_str(&create_statement);
+    sql_output.push('\n');
+    
+    // Then export the data
     let mut offset = 0;
-
     loop {
         let batch_data = match &state.db_pool {
             crate::database::DatabasePool::Postgres(pool) => {
@@ -1158,13 +1210,99 @@ async fn export_table_data(state: &AppState, table_name: &str) -> Result<String,
         sql_output.push_str(&batch_data);
         offset += BATCH_SIZE;
 
-        // Limit total output size per chunk to manage memory
-        if sql_output.len() > 1_000_000 { // 1MB per chunk
-            break;
-        }
+        // Don't artificially limit chunk size - complete the entire table
+        // Each table is processed as one complete chunk to ensure valid SQL
     }
 
     Ok(sql_output)
+}
+
+// Export PostgreSQL table schema using pg_dump-like approach
+async fn export_postgres_table_schema(
+    pool: &sqlx::PgPool,
+    table_name: &str,
+) -> Result<String, String> {
+    // Get table definition from PostgreSQL system catalogs with proper ARRAY handling
+    let query = r#"
+        SELECT 
+            'CREATE TABLE "' || schemaname || '"."' || tablename || '" (' AS create_start,
+            string_agg(
+                '"' || column_name || '" ' || 
+                CASE 
+                    WHEN data_type = 'ARRAY' THEN 
+                        CASE 
+                            WHEN udt_name = '_int4' THEN 'INTEGER[]'
+                            WHEN udt_name = '_text' THEN 'TEXT[]'
+                            WHEN udt_name = '_varchar' THEN 'VARCHAR[]'
+                            WHEN udt_name = '_int8' THEN 'BIGINT[]'
+                            WHEN udt_name = '_bool' THEN 'BOOLEAN[]'
+                            ELSE udt_name || '[]'
+                        END
+                    WHEN data_type = 'character varying' THEN 'VARCHAR(' || COALESCE(character_maximum_length::text, '255') || ')'
+                    WHEN data_type = 'character' THEN 'CHAR(' || character_maximum_length || ')'
+                    WHEN data_type = 'numeric' THEN 'NUMERIC(' || numeric_precision || ',' || numeric_scale || ')'
+                    WHEN data_type = 'integer' THEN 'INTEGER'
+                    WHEN data_type = 'bigint' THEN 'BIGINT'
+                    WHEN data_type = 'boolean' THEN 'BOOLEAN'
+                    WHEN data_type = 'timestamp without time zone' THEN 'TIMESTAMP'
+                    WHEN data_type = 'timestamp with time zone' THEN 'TIMESTAMPTZ'
+                    WHEN data_type = 'date' THEN 'DATE'
+                    WHEN data_type = 'text' THEN 'TEXT'
+                    WHEN data_type = 'double precision' THEN 'DOUBLE PRECISION'
+                    WHEN data_type = 'real' THEN 'REAL'
+                    WHEN data_type = 'smallint' THEN 'SMALLINT'
+                    WHEN data_type = 'uuid' THEN 'UUID'
+                    WHEN data_type = 'json' THEN 'JSON'
+                    WHEN data_type = 'jsonb' THEN 'JSONB'
+                    ELSE UPPER(data_type)
+                END ||
+                CASE WHEN is_nullable = 'NO' THEN ' NOT NULL' ELSE '' END,
+                ', '
+                ORDER BY ordinal_position
+            ) AS columns,
+            ');' AS create_end
+        FROM information_schema.columns c
+        JOIN pg_tables t ON t.tablename = c.table_name
+        WHERE c.table_name = $1 AND c.table_schema = 'public'
+        GROUP BY schemaname, tablename
+    "#;
+
+    let row = sqlx::query(query)
+        .bind(table_name)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Schema query failed: {}", e))?;
+
+    if let Some(row) = row {
+        let create_start: String = row.try_get("create_start").map_err(|e| format!("Column error: {}", e))?;
+        let columns: String = row.try_get("columns").map_err(|e| format!("Column error: {}", e))?;
+        let create_end: String = row.try_get("create_end").map_err(|e| format!("Column error: {}", e))?;
+        
+        Ok(format!("{}\n    {}\n{}\n", create_start, columns, create_end))
+    } else {
+        Err(format!("Table {} not found", table_name))
+    }
+}
+
+// Export MySQL table schema
+async fn export_mysql_table_schema(
+    pool: &sqlx::MySqlPool,
+    table_name: &str,
+) -> Result<String, String> {
+    // Use SHOW CREATE TABLE for MySQL
+    let query = format!("SHOW CREATE TABLE {}", table_name);
+    
+    let row = sqlx::query(&query)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Schema query failed: {}", e))?;
+
+    if let Some(row) = row {
+        let create_table: String = row.try_get(1).map_err(|e| format!("Column error: {}", e))?;
+        Ok(format!("{};\n", create_table))
+    } else {
+        Err(format!("Table {} not found", table_name))
+    }
 }
 
 // Export PostgreSQL table batch
@@ -1209,12 +1347,30 @@ async fn export_postgres_table_batch(
             match row.try_get_raw(i) {
                 Ok(value) if value.is_null() => output.push_str("NULL"),
                 Ok(_) => {
-                    // For simplicity, we'll convert all values to strings and quote them
-                    // In a production system, you'd want proper type handling
+                    // Try different data types in order of likelihood
                     if let Ok(val) = row.try_get::<String, _>(i) {
-                        output.push_str(&format!("'{}'", val.replace('\'', "''")));
+                        // Properly escape strings for PostgreSQL
+                        let escaped = val.replace('\'', "''").replace('\\', "\\\\");
+                        output.push_str(&format!("'{}'", escaped));
+                    } else if let Ok(val) = row.try_get::<i32, _>(i) {
+                        output.push_str(&val.to_string());
+                    } else if let Ok(val) = row.try_get::<i64, _>(i) {
+                        output.push_str(&val.to_string());
+                    } else if let Ok(val) = row.try_get::<bool, _>(i) {
+                        output.push_str(if val { "true" } else { "false" });
+                    } else if let Ok(val) = row.try_get::<f64, _>(i) {
+                        output.push_str(&val.to_string());
+                    } else if let Ok(val) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(i) {
+                        output.push_str(&format!("'{}'", val.format("%Y-%m-%d %H:%M:%S%.6f%z")));
                     } else {
-                        output.push_str("NULL");
+                        // Fallback: try to get as text
+                        match row.try_get::<String, _>(i) {
+                            Ok(val) => {
+                                let escaped = val.replace('\'', "''").replace('\\', "\\\\");
+                                output.push_str(&format!("'{}'", escaped));
+                            },
+                            Err(_) => output.push_str("NULL"),
+                        }
                     }
                 }
                 Err(_) => output.push_str("NULL"),
@@ -1268,11 +1424,30 @@ async fn export_mysql_table_batch(
             match row.try_get_raw(i) {
                 Ok(value) if value.is_null() => output.push_str("NULL"),
                 Ok(_) => {
-                    // For simplicity, we'll convert all values to strings and quote them
+                    // Try different data types in order of likelihood
                     if let Ok(val) = row.try_get::<String, _>(i) {
-                        output.push_str(&format!("'{}'", val.replace('\'', "''")));
+                        // Properly escape strings for MySQL
+                        let escaped = val.replace('\'', "''").replace('\\', "\\\\");
+                        output.push_str(&format!("'{}'", escaped));
+                    } else if let Ok(val) = row.try_get::<i32, _>(i) {
+                        output.push_str(&val.to_string());
+                    } else if let Ok(val) = row.try_get::<i64, _>(i) {
+                        output.push_str(&val.to_string());
+                    } else if let Ok(val) = row.try_get::<bool, _>(i) {
+                        output.push_str(&val.to_string());
+                    } else if let Ok(val) = row.try_get::<f64, _>(i) {
+                        output.push_str(&val.to_string());
+                    } else if let Ok(val) = row.try_get::<chrono::DateTime<chrono::Utc>, _>(i) {
+                        output.push_str(&format!("'{}'", val.format("%Y-%m-%d %H:%M:%S")));
                     } else {
-                        output.push_str("NULL");
+                        // Fallback: try to get as text
+                        match row.try_get::<String, _>(i) {
+                            Ok(val) => {
+                                let escaped = val.replace('\'', "''").replace('\\', "\\\\");
+                                output.push_str(&format!("'{}'", escaped));
+                            },
+                            Err(_) => output.push_str("NULL"),
+                        }
                     }
                 }
                 Err(_) => output.push_str("NULL"),

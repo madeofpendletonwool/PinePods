@@ -419,7 +419,8 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedEpisodes" ON
                             "Episodes".episodeid = "DownloadedEpisodes".episodeid
                             AND "DownloadedEpisodes".userid = $1
-                        WHERE "Podcasts".userid = $1
+                        WHERE "Episodes".episodepubdate >= NOW() - INTERVAL '30 days'
+                        AND "Podcasts".userid = $1
 
                         UNION ALL
 
@@ -450,7 +451,8 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedVideos" ON
                             "YouTubeVideos".videoid = "DownloadedVideos".videoid
                             AND "DownloadedVideos".userid = $4
-                        WHERE "Podcasts".userid = $5
+                        WHERE "YouTubeVideos".publishedat >= NOW() - INTERVAL '30 days'
+                        AND "Podcasts".userid = $5
                     ) combined
                     ORDER BY episodepubdate DESC"#
                 )
@@ -519,7 +521,8 @@ impl DatabasePool {
                         LEFT JOIN DownloadedEpisodes ON
                             Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
                             AND DownloadedEpisodes.UserID = ?
-                        WHERE Podcasts.UserID = ?
+                        WHERE Episodes.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                        AND Podcasts.UserID = ?
 
                         UNION ALL
 
@@ -550,7 +553,8 @@ impl DatabasePool {
                         LEFT JOIN DownloadedVideos ON
                             YouTubeVideos.VideoID = DownloadedVideos.VideoID
                             AND DownloadedVideos.UserID = ?
-                        WHERE Podcasts.UserID = ?
+                        WHERE YouTubeVideos.PublishedAt >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                        AND Podcasts.UserID = ?
                     ) combined
                     ORDER BY episodepubdate DESC"
                 )
@@ -1984,8 +1988,8 @@ impl DatabasePool {
                 for (index, episode_id) in episode_ids.iter().enumerate() {
                     let new_position = (index + 1) as i32;
                     sqlx::query(
-                        r#"UPDATE "EpisodeQueue" SET "QueuePosition" = $1 
-                           WHERE "EpisodeID" = $2 AND "UserID" = $3"#
+                        r#"UPDATE "EpisodeQueue" SET queueposition = $1 
+                           WHERE episodeid = $2 AND userid = $3"#
                     )
                     .bind(new_position)
                     .bind(episode_id)
@@ -2683,11 +2687,11 @@ impl DatabasePool {
                         "episodepubdate": if pub_date.is_empty() { None } else { Some(pub_date) },
                         "episodeduration": row.try_get::<Option<i32>, _>("episodeduration").ok().flatten(),
                         "listenduration": row.try_get::<Option<i32>, _>("listenduration").ok().flatten(),
-                        "completed": if row.try_get::<bool, _>("completed").unwrap_or(false) { 1 } else { 0 },
-                        "saved": if row.try_get::<bool, _>("saved").unwrap_or(false) { 1 } else { 0 },
-                        "queued": if row.try_get::<bool, _>("queued").unwrap_or(false) { 1 } else { 0 },
-                        "downloaded": if row.try_get::<bool, _>("downloaded").unwrap_or(false) { 1 } else { 0 },
-                        "is_youtube": if row.try_get::<bool, _>("is_youtube").unwrap_or(false) { 1 } else { 0 }
+                        "completed": row.try_get::<bool, _>("completed").unwrap_or(false),
+                        "saved": row.try_get::<bool, _>("saved").unwrap_or(false),
+                        "queued": row.try_get::<bool, _>("queued").unwrap_or(false),
+                        "downloaded": row.try_get::<bool, _>("downloaded").unwrap_or(false),
+                        "is_youtube": row.try_get::<bool, _>("is_youtube").unwrap_or(false)
                     });
                     results.push(result);
                 }
@@ -2771,11 +2775,11 @@ impl DatabasePool {
                         "episodepubdate": if pub_date.is_empty() { None } else { Some(pub_date) },
                         "episodeduration": row.try_get::<Option<i32>, _>("episodeduration").ok().flatten(),
                         "listenduration": row.try_get::<Option<i32>, _>("listenduration").ok().flatten(),
-                        "completed": if row.try_get::<bool, _>("completed").unwrap_or(false) { 1 } else { 0 },
-                        "saved": if row.try_get::<bool, _>("saved").unwrap_or(false) { 1 } else { 0 },
-                        "queued": if row.try_get::<bool, _>("queued").unwrap_or(false) { 1 } else { 0 },
-                        "downloaded": if row.try_get::<bool, _>("downloaded").unwrap_or(false) { 1 } else { 0 },
-                        "is_youtube": if row.try_get::<bool, _>("is_youtube").unwrap_or(false) { 1 } else { 0 }
+                        "completed": row.try_get::<bool, _>("completed").unwrap_or(false),
+                        "saved": row.try_get::<bool, _>("saved").unwrap_or(false),
+                        "queued": row.try_get::<bool, _>("queued").unwrap_or(false),
+                        "downloaded": row.try_get::<bool, _>("downloaded").unwrap_or(false),
+                        "is_youtube": row.try_get::<bool, _>("is_youtube").unwrap_or(false)
                     });
                     results.push(result);
                 }
@@ -4436,6 +4440,11 @@ impl DatabasePool {
                 }
             };
             
+            // Send notification for new episode - matches Python implementation exactly
+            if let Err(e) = self.check_and_send_notification(podcast_id, &episode.title).await {
+                tracing::warn!("Failed to send notification for episode '{}': {}", episode.title, e);
+            }
+            
             // Set first episode ID if not set
             if first_episode_id.is_none() {
                 first_episode_id = Some(episode_id);
@@ -4449,6 +4458,295 @@ impl DatabasePool {
         let first_id = self.get_first_episode_id(podcast_id, false).await?;
         
         Ok(first_id)
+    }
+
+    // New function to add episodes and return list of newly inserted episodes
+    // This matches the Python add_episodes websocket=True functionality
+    pub async fn add_episodes_with_new_list(
+        &self,
+        podcast_id: i32,
+        feed_url: &str,
+        artwork_url: &str,
+        username: Option<&str>,
+        password: Option<&str>,
+    ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
+        // Fetch the RSS feed
+        let content = self.try_fetch_feed(feed_url, username, password).await?;
+        
+        // Parse the RSS feed
+        let episodes = self.parse_rss_feed(&content, podcast_id, artwork_url).await?;
+        
+        let mut new_episodes = Vec::new();
+        
+        for episode in episodes {
+            // Check if episode already exists
+            let exists = match self {
+                DatabasePool::Postgres(pool) => {
+                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodetitle = $2"#)
+                        .bind(podcast_id)
+                        .bind(&episode.title)
+                        .fetch_optional(pool)
+                        .await?;
+                    row.is_some()
+                }
+                DatabasePool::MySQL(pool) => {
+                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeTitle = ?")
+                        .bind(podcast_id)
+                        .bind(&episode.title)
+                        .fetch_optional(pool)
+                        .await?;
+                    row.is_some()
+                }
+            };
+            
+            if exists {
+                continue; // Episode already exists, skip it
+            }
+            
+            // Insert new episode
+            let episode_id = match self {
+                DatabasePool::Postgres(pool) => {
+                    let row = sqlx::query(
+                        r#"INSERT INTO "Episodes" 
+                           (podcastid, episodetitle, episodedescription, episodeurl, episodeartwork, episodepubdate, episodeduration)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7)
+                           RETURNING episodeid"#
+                    )
+                    .bind(podcast_id)
+                    .bind(&episode.title)
+                    .bind(&episode.description)
+                    .bind(&episode.url)
+                    .bind(&episode.artwork_url)
+                    .bind(&episode.pub_date)
+                    .bind(episode.duration)
+                    .fetch_one(pool)
+                    .await?;
+                    
+                    row.try_get::<i32, _>("episodeid")?
+                }
+                DatabasePool::MySQL(pool) => {
+                    let result = sqlx::query(
+                        "INSERT INTO Episodes 
+                         (PodcastID, EpisodeTitle, EpisodeDescription, EpisodeURL, EpisodeArtwork, EpisodePubDate, EpisodeDuration)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)"
+                    )
+                    .bind(podcast_id)
+                    .bind(&episode.title)
+                    .bind(&episode.description)
+                    .bind(&episode.url)
+                    .bind(&episode.artwork_url)
+                    .bind(&episode.pub_date)
+                    .bind(episode.duration)
+                    .execute(pool)
+                    .await?;
+                    
+                    result.last_insert_id() as i32
+                }
+            };
+            
+            // Send notification for new episode - matches Python implementation exactly
+            if let Err(e) = self.check_and_send_notification(podcast_id, &episode.title).await {
+                tracing::warn!("Failed to send notification for episode '{}': {}", episode.title, e);
+            }
+            
+            // Add to new episodes list - this tracks EXACTLY which episodes were just inserted
+            new_episodes.push(crate::handlers::podcasts::Episode {
+                podcastname: "".to_string(), // Will be filled by the caller if needed
+                episodetitle: episode.title,
+                episodepubdate: episode.pub_date.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                episodedescription: episode.description,
+                episodeartwork: episode.artwork_url,
+                episodeurl: episode.url,
+                episodeduration: episode.duration,
+                listenduration: None,
+                episodeid: episode_id,
+                completed: false,
+                saved: false,
+                queued: false,
+                downloaded: false,
+                is_youtube: false,
+            });
+        }
+        
+        // Update episode count
+        self.update_episode_count(podcast_id).await?;
+        
+        Ok(new_episodes)
+    }
+
+    // Check and send notifications for new episodes - matches Python check_and_send_notification function
+    pub async fn check_and_send_notification(&self, podcast_id: i32, episode_title: &str) -> AppResult<bool> {
+        use std::time::Duration;
+        
+        let mut success = false;
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .map_err(|e| AppError::Http(e))?;
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(
+                    r#"SELECT p.notificationsenabled, p.userid, p.podcastname,
+                           uns.platform, uns.enabled, uns.ntfytopic, uns.ntfyserverurl,
+                           uns.gotifyurl, uns.gotifytoken
+                    FROM "Podcasts" p
+                    JOIN "UserNotificationSettings" uns ON p.userid = uns.userid
+                    WHERE p.podcastid = $1 AND p.notificationsenabled = true AND uns.enabled = true"#
+                )
+                .bind(podcast_id)
+                .fetch_all(pool)
+                .await?;
+                
+                for result in rows {
+                    let podcast_name: String = result.try_get("podcastname")?;
+                    let platform: String = result.try_get("platform")?;
+                    
+                    match platform.as_str() {
+                        "ntfy" => {
+                            let topic: String = result.try_get("ntfytopic")?;
+                            let server_url: String = result.try_get("ntfyserverurl")?;
+                            
+                            if let Ok(sent) = Self::send_ntfy_notification(&client, &topic, &server_url, &podcast_name, episode_title).await {
+                                if sent {
+                                    success = true;
+                                }
+                            }
+                        }
+                        "gotify" => {
+                            let url: String = result.try_get("gotifyurl")?;
+                            let token: String = result.try_get("gotifytoken")?;
+                            
+                            if let Ok(sent) = Self::send_gotify_notification(&client, &url, &token, &podcast_name, episode_title).await {
+                                if sent {
+                                    success = true;
+                                }
+                            }
+                        }
+                        _ => {
+                            tracing::warn!("Unknown notification platform: {}", platform);
+                        }
+                    }
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    "SELECT p.NotificationsEnabled, p.UserID, p.PodcastName,
+                            uns.Platform, uns.Enabled, uns.NtfyTopic, uns.NtfyServerUrl,
+                            uns.GotifyUrl, uns.GotifyToken
+                     FROM Podcasts p
+                     JOIN UserNotificationSettings uns ON p.UserID = uns.UserID
+                     WHERE p.PodcastID = ? AND p.NotificationsEnabled = true AND uns.Enabled = true"
+                )
+                .bind(podcast_id)
+                .fetch_all(pool)
+                .await?;
+                
+                for result in rows {
+                    let podcast_name: String = result.try_get("PodcastName")?;
+                    let platform: String = result.try_get("Platform")?;
+                    
+                    match platform.as_str() {
+                        "ntfy" => {
+                            let topic: String = result.try_get("NtfyTopic")?;
+                            let server_url: String = result.try_get("NtfyServerUrl")?;
+                            
+                            if let Ok(sent) = Self::send_ntfy_notification(&client, &topic, &server_url, &podcast_name, episode_title).await {
+                                if sent {
+                                    success = true;
+                                }
+                            }
+                        }
+                        "gotify" => {
+                            let url: String = result.try_get("GotifyUrl")?;
+                            let token: String = result.try_get("GotifyToken")?;
+                            
+                            if let Ok(sent) = Self::send_gotify_notification(&client, &url, &token, &podcast_name, episode_title).await {
+                                if sent {
+                                    success = true;
+                                }
+                            }
+                        }
+                        _ => {
+                            tracing::warn!("Unknown notification platform: {}", platform);
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(success)
+    }
+
+    // Helper function to send NTFY notification - matches Python send_ntfy_notification function
+    async fn send_ntfy_notification(
+        client: &reqwest::Client,
+        topic: &str,
+        server_url: &str,
+        podcast_name: &str,
+        episode_title: &str,
+    ) -> AppResult<bool> {
+        let url = format!("{}/{}", server_url.trim_end_matches('/'), topic);
+        let message = format!("New episode available for {}: {}", podcast_name, episode_title);
+        
+        match client
+            .post(&url)
+            .header("Content-Type", "text/plain")
+            .body(message)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    tracing::info!("Successfully sent NTFY notification to {}", url);
+                    Ok(true)
+                } else {
+                    tracing::warn!("NTFY notification failed with status: {}", response.status());
+                    Ok(false)
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to send NTFY notification: {}", e);
+                Ok(false)
+            }
+        }
+    }
+
+    // Helper function to send Gotify notification - matches Python send_gotify_notification function
+    async fn send_gotify_notification(
+        client: &reqwest::Client,
+        server_url: &str,
+        token: &str,
+        podcast_name: &str,
+        episode_title: &str,
+    ) -> AppResult<bool> {
+        let url = format!("{}/message?token={}", server_url.trim_end_matches('/'), token);
+        let message = format!("New episode available for {}: {}", podcast_name, episode_title);
+        
+        match client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({
+                "message": message,
+                "title": "New Podcast Episode"
+            }))
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if response.status().is_success() {
+                    tracing::info!("Successfully sent Gotify notification to {}", url);
+                    Ok(true)
+                } else {
+                    tracing::warn!("Gotify notification failed with status: {}", response.status());
+                    Ok(false)
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to send Gotify notification: {}", e);
+                Ok(false)
+            }
+        }
     }
 
     // Try to fetch RSS feed - matches Python try_fetch_feed function
@@ -4493,6 +4791,26 @@ impl DatabasePool {
         Ok(response.text().await.map_err(|e| AppError::Http(e))?)
     }
 
+    // Custom function to extract raw iTunes durations before feed_rs processes them
+    fn extract_raw_itunes_durations(content: &str) -> std::collections::HashMap<String, String> {
+        use regex::Regex;
+        let mut raw_durations = std::collections::HashMap::new();
+        
+        // Regex to find iTunes duration elements with their context (title for matching)
+        let duration_regex = Regex::new(r"<item[^>]*>.*?<title[^>]*>([^<]*)</title>.*?<itunes:duration[^>]*>([^<]*)</itunes:duration>.*?</item>").unwrap();
+        
+        for caps in duration_regex.captures_iter(content) {
+            if let (Some(title), Some(duration)) = (caps.get(1), caps.get(2)) {
+                let title_str = title.as_str().trim();
+                let duration_str = duration.as_str().trim();
+                println!("🕐 Raw iTunes duration found: title='{}' duration='{}'", title_str, duration_str);
+                raw_durations.insert(title_str.to_string(), duration_str.to_string());
+            }
+        }
+        
+        raw_durations
+    }
+
     // Parse RSS feed - matches Python RSS parsing logic
     async fn parse_rss_feed(
         &self,
@@ -4500,155 +4818,131 @@ impl DatabasePool {
         podcast_id: i32,
         artwork_url: &str,
     ) -> AppResult<Vec<EpisodeData>> {
-        use quick_xml::Reader;
-        use quick_xml::events::Event;
         use chrono::{DateTime, Utc};
+        use feed_rs::parser;
         use std::collections::HashMap;
         
-        let mut reader = Reader::from_str(content);
-        reader.config_mut().trim_text(true);
+        // Extract raw iTunes durations before feed_rs processes them
+        let raw_durations = Self::extract_raw_itunes_durations(content);
+        
+        let feed = parser::parse(content.as_bytes())
+            .map_err(|e| AppError::Internal(format!("RSS parsing error: {}", e)))?;
         
         let mut episodes = Vec::new();
-        let mut current_episode: Option<EpisodeData> = None;
-        let mut current_tag = String::new();
-        let mut current_text = String::new();
-        let mut in_item = false;
-        let mut in_content = false;
-        let mut current_attrs: HashMap<String, String> = HashMap::new();
-        let mut episode_data: HashMap<String, String> = HashMap::new();
         
-        loop {
-            match reader.read_event() {
-                Ok(Event::Start(ref e)) => {
-                    current_tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    current_text.clear();
-                    current_attrs.clear();
-                    
-                    // Store attributes
-                    for attr in e.attributes() {
-                        if let Ok(attr) = attr {
-                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
-                            let value = String::from_utf8_lossy(&attr.value).to_string();
-                            current_attrs.insert(key, value);
+        println!("🔍 Feed parsed successfully, found {} entries", feed.entries.len());
+        
+        for (i, entry) in feed.entries.iter().enumerate() {
+            println!("🔍 Entry {}: title={:?}", i, entry.title.as_ref().map(|t| &t.content));
+            println!("🔍 Entry {}: links count={}", i, entry.links.len());
+            for (j, link) in entry.links.iter().enumerate() {
+                println!("🔍 Entry {} Link {}: href={}, media_type={:?}, rel={:?}", i, j, link.href, link.media_type, link.rel);
+            }
+            println!("🔍 Entry {}: media count={}", i, entry.media.len());
+            for (j, media) in entry.media.iter().enumerate() {
+                println!("🔍 Entry {} Media {}: content count={}", i, j, media.content.len());
+                for (k, content) in media.content.iter().enumerate() {
+                    println!("🔍 Entry {} Media {} Content {}: url={:?}, content_type={:?}", i, j, k, content.url, content.content_type);
+                }
+            }
+        }
+        
+        for entry in feed.entries {
+            // EXACT Python replication: if not all(hasattr(entry, attr) for attr in ["title", "summary", "enclosures"]): continue
+            if entry.title.is_none() {
+                continue;
+            }
+            
+            let mut episode = EpisodeData {
+                title: String::new(),
+                description: String::new(),
+                url: String::new(),
+                artwork_url: artwork_url.to_string(),
+                pub_date: Utc::now(),
+                duration: 0,
+            };
+            
+            // Create data map to pass to Python-style parsing functions
+            let mut episode_data = HashMap::new();
+            
+            // Extract all data from feed_rs entry
+            if let Some(title) = &entry.title {
+                episode_data.insert("title".to_string(), title.content.clone());
+            }
+            
+            if let Some(content) = &entry.content {
+                if let Some(body) = &content.body {
+                    episode_data.insert("content:encoded".to_string(), body.clone());
+                }
+            }
+            
+            if let Some(summary) = &entry.summary {
+                episode_data.insert("summary".to_string(), summary.content.clone());
+            }
+            
+            // Links for audio/enclosures
+            for link in &entry.links {
+                if let Some(media_type) = &link.media_type {
+                    if media_type.starts_with("audio/") {
+                        episode_data.insert("enclosure_url".to_string(), link.href.clone());
+                        if let Some(length) = &link.length {
+                            episode_data.insert("enclosure_length".to_string(), length.to_string());
                         }
-                    }
-                    
-                    if current_tag == "item" {
-                        in_item = true;
-                        episode_data.clear();
-                        current_episode = Some(EpisodeData {
-                            title: String::new(),
-                            description: String::new(),
-                            url: String::new(),
-                            artwork_url: artwork_url.to_string(),
-                            pub_date: Utc::now(),
-                            duration: 0,
-                        });
-                    }
-                    
-                    // Handle content:encoded differently
-                    if current_tag == "content:encoded" && in_item {
-                        in_content = true;
                     }
                 }
-                Ok(Event::Empty(ref e)) => {
-                    // Handle self-closing tags like <enclosure/>, <media:content/>
-                    current_tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    current_attrs.clear();
-                    
-                    // Store attributes from self-closing tag
-                    for attr in e.attributes() {
-                        if let Ok(attr) = attr {
-                            let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
-                            let value = String::from_utf8_lossy(&attr.value).to_string();
-                            current_attrs.insert(key, value);
-                        }
-                    }
-                    
-                    // Handle enclosure tag for audio URL and file size
-                    if current_tag == "enclosure" && in_item {
-                        if let Some(url) = current_attrs.get("url") {
-                            episode_data.insert("enclosure_url".to_string(), url.clone());
-                        }
-                        if let Some(length) = current_attrs.get("length") {
-                            episode_data.insert("enclosure_length".to_string(), length.clone());
-                        }
-                    }
-                    
-                    // Handle episode-specific artwork - CRITICAL for episode artwork
-                    if (current_tag == "itunes:image" || current_tag == "image") && in_item {
-                        if let Some(href) = current_attrs.get("href") {
-                            if !href.trim().is_empty() && self.is_valid_image_url(href) {
-                                episode_data.insert("episode_artwork_href".to_string(), href.clone());
-                                println!("🖼️  Found episode artwork: {}", href);
-                            }
-                        }
-                    }
-                    
-                    // Handle media:content tag (Media RSS extension)
-                    if current_tag == "media:content" && in_item {
-                        if let Some(url) = current_attrs.get("url") {
-                            // Check if it's an audio file by MIME type or extension
-                            if let Some(type_attr) = current_attrs.get("type") {
-                                if type_attr.starts_with("audio/") {
-                                    episode_data.insert("media_audio_url".to_string(), url.clone());
-                                } else if type_attr.starts_with("image/") {
-                                    // Media RSS image content
-                                    episode_data.insert("media_image_url".to_string(), url.clone());
-                                    println!("🖼️  Found media:content image: {}", url);
+            }
+            
+            // Also check for RSS <enclosure> tags that might not be in links
+            // feed_rs should put enclosures in the links, but as fallback check media
+            
+            // Published date
+            if let Some(published) = &entry.published {
+                episode_data.insert("published".to_string(), published.to_rfc3339());
+            }
+            
+            // Media extensions
+            for media in &entry.media {
+                if let Some(duration) = &media.duration {
+                    println!("🕐 Found media duration: {} seconds", duration.as_secs());
+                    episode_data.insert("duration".to_string(), duration.as_secs().to_string());
+                    episode_data.insert("itunes:duration".to_string(), duration.as_secs().to_string());
+                }
+                
+                for thumbnail in &media.thumbnails {
+                    episode_data.insert("media_thumbnail_url".to_string(), thumbnail.image.uri.clone());
+                }
+                
+                for content in &media.content {
+                    if let Some(content_type) = &content.content_type {
+                        let type_str = content_type.to_string();
+                        if type_str.starts_with("audio/") {
+                            if let Some(url) = &content.url {
+                                // Store as enclosure_url to match Python parsing logic
+                                episode_data.insert("enclosure_url".to_string(), url.to_string());
+                                if let Some(size) = &content.size {
+                                    episode_data.insert("enclosure_length".to_string(), size.to_string());
                                 }
-                            } else if self.is_audio_url(url) {
-                                episode_data.insert("media_audio_url".to_string(), url.clone());
-                            } else if self.is_valid_image_url(url) {
-                                episode_data.insert("media_image_url".to_string(), url.clone());
-                                println!("🖼️  Found media:content image: {}", url);
                             }
-                        }
-                    }
-                    
-                    // Handle media:thumbnail tag (Media RSS extension)
-                    if current_tag == "media:thumbnail" && in_item {
-                        if let Some(url) = current_attrs.get("url") {
-                            if !url.trim().is_empty() && self.is_valid_image_url(url) {
-                                episode_data.insert("media_thumbnail_url".to_string(), url.clone());
-                                println!("🖼️  Found media:thumbnail: {}", url);
+                        } else if type_str.starts_with("image/") {
+                            if let Some(url) = &content.url {
+                                episode_data.insert("media_image_url".to_string(), url.to_string());
                             }
                         }
                     }
                 }
-                Ok(Event::Text(e)) => {
-                    current_text = e.decode().unwrap_or_default().into_owned();
-                }
-                Ok(Event::CData(e)) => {
-                    current_text = e.decode().unwrap_or_default().into_owned();
-                }
-                Ok(Event::End(ref e)) => {
-                    let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                    
-                    if tag == "item" {
-                        if let Some(mut episode) = current_episode.take() {
-                            // Apply all the Python-style parsing logic
-                            self.apply_python_style_parsing(&mut episode, &episode_data, artwork_url);
-                            
-                            if !episode.title.is_empty() {
-                                episodes.push(episode);
-                            }
-                        }
-                        in_item = false;
-                        episode_data.clear();
-                    } else if in_item {
-                        // Store all tag content for later processing
-                        episode_data.insert(tag.clone(), current_text.clone());
-                        
-                        // Handle content:encoded
-                        if tag == "content:encoded" {
-                            in_content = false;
-                        }
-                    }
-                }
-                Ok(Event::Eof) => break,
-                Err(e) => return Err(AppError::Internal(format!("RSS parsing error: {}", e))),
-                _ => {}
+            }
+            
+            // Debug what we're passing to duration parsing
+            println!("🕐 Episode '{}' duration data: itunes:duration={:?}, duration={:?}", 
+                episode_data.get("title").unwrap_or(&"NO TITLE".to_string()),
+                episode_data.get("itunes:duration"),
+                episode_data.get("duration"));
+            
+            // Apply all the Python-style parsing logic with ALL fallbacks
+            self.apply_python_style_parsing(&mut episode, &episode_data, artwork_url);
+            
+            if !episode.title.is_empty() {
+                episodes.push(episode);
             }
         }
         
@@ -4667,19 +4961,16 @@ impl DatabasePool {
             return;
         }
         
-        // Description with comprehensive fallbacks and HTML cleaning like Python version
+        // EXACT Python replication: parsed_description = entry.get('content', [{}])[0].get('value') or entry.get('summary') or "No description available"
         episode.description = self.parse_description_comprehensive(data);
         
-        // Audio URL - comprehensive fallback chain like Python version  
+        // EXACT Python replication: parsed_audio_url = entry.enclosures[0].href if entry.enclosures else ""
         episode.url = self.parse_audio_url_comprehensive(data);
         
         // Debug logging for episode URL extraction
-        println!("🎵 Episode URL extraction: title='{}', enclosure_url={:?}, media_audio_url={:?}, guid={:?}, link={:?}, final_url='{}'", 
+        println!("🎵 Episode URL extraction: title='{}', enclosure_url={:?}, final_url='{}'", 
             episode.title, 
             data.get("enclosure_url"), 
-            data.get("media_audio_url"),
-            data.get("guid"), 
-            data.get("link"), 
             episode.url);
         
         // Artwork with comprehensive fallbacks and validation like Python
@@ -4690,6 +4981,7 @@ impl DatabasePool {
         
         // Duration parsing with extensive fallbacks like Python
         episode.duration = self.parse_duration_comprehensive(data);
+        println!("🕐 Final parsed duration for '{}': {} seconds", episode.title, episode.duration);
     }
     
     // Clean and normalize titles like Python version
@@ -4723,90 +5015,22 @@ impl DatabasePool {
     
     // Comprehensive description parsing with HTML cleaning
     fn parse_description_comprehensive(&self, data: &HashMap<String, String>) -> String {
-        // Fallback chain exactly like Python version
-        let raw_description = data.get("content:encoded")
-            .or_else(|| data.get("content"))
+        // EXACT Python replication: entry.get('content', [{}])[0].get('value') or entry.get('summary') or "No description available"
+        data.get("content:encoded")
+            .or_else(|| data.get("content"))  
             .or_else(|| data.get("summary"))
-            .or_else(|| data.get("description"))
-            .or_else(|| data.get("itunes:summary"))
-            .or_else(|| data.get("subtitle"))
             .filter(|s| !s.trim().is_empty())
             .cloned()
-            .unwrap_or_else(|| "No description available".to_string());
-        
-        // HTML cleaning and normalization
-        let description = self.decode_html_entities(&raw_description);
-        let description = self.strip_html_tags(&description);
-        let description = self.normalize_whitespace(&description);
-        
-        // Reasonable length limit for descriptions - use char_indices for Unicode safety
-        if description.chars().count() > 5000 {
-            let mut truncated = String::new();
-            for (i, ch) in description.char_indices() {
-                if truncated.chars().count() >= 4997 {
-                    break;
-                }
-                truncated.push(ch);
-            }
-            format!("{}...", truncated)
-        } else {
-            description
-        }
+            .unwrap_or_else(|| "No description available".to_string())
     }
     
-    // Comprehensive audio URL parsing
+    // EXACT Python replication: parsed_audio_url = entry.enclosures[0].href if entry.enclosures else ""
     fn parse_audio_url_comprehensive(&self, data: &HashMap<String, String>) -> String {
-        // Priority chain based on reliability and Python patterns
-        
-        // 1. Standard RSS enclosure (most reliable)
-        if let Some(url) = data.get("enclosure_url") {
-            if !url.trim().is_empty() {
-                return self.validate_and_clean_url(url);
-            }
-        }
-        
-        // 2. Media RSS content with audio MIME type
-        if let Some(url) = data.get("media_audio_url") {
-            if !url.trim().is_empty() {
-                return self.validate_and_clean_url(url);
-            }
-        }
-        
-        // 3. iTunes or other namespace-specific URLs
-        if let Some(url) = data.get("itunes:audio_url") {
-            if !url.trim().is_empty() && self.is_audio_url(url) {
-                return self.validate_and_clean_url(url);
-            }
-        }
-        
-        // 4. GUID field if it contains an audio URL
-        if let Some(guid) = data.get("guid") {
-            if !guid.trim().is_empty() && self.is_audio_url(guid) {
-                return self.validate_and_clean_url(guid);
-            }
-        }
-        
-        // 5. Parse descriptions/content for embedded audio URLs
-        if let Some(url) = self.extract_audio_url_from_description(data) {
-            return self.validate_and_clean_url(&url);
-        }
-        
-        // 6. Check if link field is actually an audio URL (not just website)
-        if let Some(link) = data.get("link") {
-            if !link.trim().is_empty() && self.is_audio_url(link) {
-                return self.validate_and_clean_url(link);
-            }
-        }
-        
-        // 7. Last resort - use link even if it might not be audio (Python behavior)
-        if let Some(link) = data.get("link") {
-            if !link.trim().is_empty() {
-                return self.validate_and_clean_url(link);
-            }
-        }
-        
-        // 8. No URL found
-        String::new()
+        // Python: entry.enclosures[0].href if entry.enclosures else ""
+        data.get("enclosure_url")
+            .filter(|url| !url.trim().is_empty())
+            .cloned()
+            .unwrap_or_else(|| String::new())
     }
     
     // Comprehensive artwork URL parsing - prioritizes episode-specific artwork
@@ -5150,60 +5374,39 @@ impl DatabasePool {
         0
     }
     
-    // Parse duration string with multiple formats like Python
+    // Parse duration string - EXACT Python logic replication
     fn parse_duration_string(&self, duration_str: &str) -> Option<i32> {
         let duration_str = duration_str.trim();
         
-        // Format: HH:MM:SS or MM:SS
         if duration_str.contains(':') {
-            let parts: Vec<&str> = duration_str.split(':').collect();
-            match parts.len() {
-                2 => {
-                    // MM:SS format
-                    if let (Ok(minutes), Ok(seconds)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>()) {
-                        return Some(minutes * 60 + seconds);
-                    }
+            // Python: time_parts = list(map(int, duration_str.split(':')))
+            let parts: Result<Vec<i32>, _> = duration_str.split(':')
+                .map(|part| part.parse::<i32>())
+                .collect();
+                
+            if let Ok(mut time_parts) = parts {
+                // Python: while len(time_parts) < 3: time_parts.insert(0, 0)
+                while time_parts.len() < 3 {
+                    time_parts.insert(0, 0);
                 }
-                3 => {
-                    // HH:MM:SS format
-                    if let (Ok(hours), Ok(minutes), Ok(seconds)) = (
-                        parts[0].parse::<i32>(),
-                        parts[1].parse::<i32>(),
-                        parts[2].parse::<i32>(),
-                    ) {
-                        return Some(hours * 3600 + minutes * 60 + seconds);
-                    }
-                }
-                _ => {
-                    // Handle weird cases like HH:MM:SS:MS - take first 3 parts
-                    if parts.len() > 3 {
-                        if let (Ok(hours), Ok(minutes), Ok(seconds)) = (
-                            parts[0].parse::<i32>(),
-                            parts[1].parse::<i32>(),
-                            parts[2].parse::<i32>(),
-                        ) {
-                            return Some(hours * 3600 + minutes * 60 + seconds);
-                        }
+                
+                if time_parts.len() >= 3 {
+                    let h = time_parts[0];
+                    let m = time_parts[1]; 
+                    let s = time_parts[2];
+                    
+                    // Python: parsed_duration = h * 3600 + m * 60 + s
+                    let duration = h * 3600 + m * 60 + s;
+                    if duration >= 0 {
+                        return Some(duration);
                     }
                 }
             }
-        }
-        
-        // Format: Direct seconds
-        if let Ok(seconds) = duration_str.parse::<i32>() {
-            return Some(seconds);
-        }
-        
-        // Format: Milliseconds (convert to seconds)
-        if duration_str.len() > 6 {
-            if let Ok(milliseconds) = duration_str.parse::<i64>() {
-                return Some((milliseconds / 1000) as i32);
+        } else if duration_str.chars().all(|c| c.is_ascii_digit()) {
+            // Python: elif duration_str.isdigit(): parsed_duration = int(duration_str)
+            if let Ok(duration) = duration_str.parse::<i32>() {
+                return Some(duration);
             }
-        }
-        
-        // Format: Human readable like "1h 30m", "45min", "2hr 15min"
-        if let Some(duration) = self.parse_human_readable_duration(duration_str) {
-            return Some(duration);
         }
         
         None
@@ -8852,115 +9055,152 @@ pub struct GpodderSession {
 }
 
 impl DatabasePool {
-    // Execute SQL restore commands safely using transactions - matches Python api_restore_server function
+    // Use actual psql/mysql for reliable restore
     pub async fn restore_server_data(&self, sql_content: &str) -> AppResult<()> {
-        // Parse SQL content into individual statements more carefully
-        let statements = self.parse_sql_statements(sql_content)?;
+        use tokio::process::Command;
+        use tokio::io::AsyncWriteExt;
+        
+        // First, clear all existing data from tables
+        self.clear_all_data().await?;
         
         match self {
-            DatabasePool::Postgres(pool) => {
-                // First, drop all tables in a separate transaction
-                {
-                    let mut tx = pool.begin().await?;
-                    
-                    // Dynamically get all tables and drop them
-                    let tables_result = sqlx::query(
-                        "SELECT tablename FROM pg_tables WHERE schemaname = 'public'"
-                    ).fetch_all(&mut *tx).await;
-                    
-                    if let Ok(tables) = tables_result {
-                        for table_row in tables {
-                            if let Ok(table_name) = table_row.try_get::<String, _>("tablename") {
-                                let drop_stmt = format!("DROP TABLE IF EXISTS \"{}\" CASCADE", table_name);
-                                sqlx::query(&drop_stmt).execute(&mut *tx).await.ok(); // Ignore errors for dependencies
-                            }
-                        }
-                    }
-                    
-                    tx.commit().await?;
+            DatabasePool::Postgres(_) => {
+                // Extract connection details from environment
+                let host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
+                let port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
+                let database = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods".to_string());
+                let username = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
+                let password = std::env::var("DB_PASSWORD").unwrap_or_else(|_| "password".to_string());
+                
+                // Use psql to restore data - connect to target database
+                let mut cmd = Command::new("psql");
+                cmd.arg("--host").arg(&host)
+                   .arg("--port").arg(&port)
+                   .arg("--username").arg(&username)
+                   .arg("--no-password")
+                   .arg("--dbname").arg(&database)
+                   .arg("--quiet")
+                   .stdin(std::process::Stdio::piped())
+                   .stdout(std::process::Stdio::piped())
+                   .stderr(std::process::Stdio::piped());
+                
+                // Set password via environment variable
+                cmd.env("PGPASSWORD", &password);
+                
+                let mut child = cmd.spawn()
+                    .map_err(|e| AppError::internal(&format!("Failed to start psql: {}", e)))?;
+                
+                // Write SQL content to stdin
+                if let Some(stdin) = child.stdin.as_mut() {
+                    stdin.write_all(sql_content.as_bytes()).await
+                        .map_err(|e| AppError::internal(&format!("Failed to write SQL to psql: {}", e)))?;
+                    stdin.shutdown().await
+                        .map_err(|e| AppError::internal(&format!("Failed to close psql stdin: {}", e)))?;
                 }
                 
-                // Execute restore statements in batches to ensure CREATE statements are committed before INSERTs
-                let mut batch = Vec::new();
-                let batch_size = 50; // Process in smaller batches
+                // Wait for completion
+                let output = child.wait_with_output().await
+                    .map_err(|e| AppError::internal(&format!("Failed to wait for psql: {}", e)))?;
                 
-                for (i, statement) in statements.iter().enumerate() {
-                    if !statement.trim().is_empty() {
-                        batch.push((i, statement));
-                        
-                        // Commit batch when it reaches batch_size or when we hit a CREATE statement followed by INSERT
-                        let should_commit = batch.len() >= batch_size ||
-                            (statement.trim().to_lowercase().starts_with("create") && 
-                             i + 1 < statements.len() && 
-                             statements[i + 1].trim().to_lowercase().starts_with("insert"));
-                        
-                        if should_commit {
-                            let mut tx = pool.begin().await?;
-                            
-                            for (stmt_idx, stmt) in &batch {
-                                if let Err(e) = sqlx::query(stmt).execute(&mut *tx).await {
-                                    tx.rollback().await.ok();
-                                    return Err(AppError::database_error(&format!("SQL execution failed at statement {}: {} - Statement: {}", stmt_idx + 1, e, stmt.chars().take(200).collect::<String>())));
-                                }
-                            }
-                            
-                            tx.commit().await?;
-                            batch.clear();
-                        }
-                    }
-                }
-                
-                // Commit any remaining statements
-                if !batch.is_empty() {
-                    let mut tx = pool.begin().await?;
-                    
-                    for (stmt_idx, stmt) in &batch {
-                        if let Err(e) = sqlx::query(stmt).execute(&mut *tx).await {
-                            tx.rollback().await.ok();
-                            return Err(AppError::database_error(&format!("SQL execution failed at statement {}: {} - Statement: {}", stmt_idx + 1, e, stmt.chars().take(200).collect::<String>())));
-                        }
-                    }
-                    
-                    tx.commit().await?;
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(AppError::internal(&format!("psql failed: {}", stderr)));
                 }
             }
-            DatabasePool::MySQL(pool) => {
-                let mut tx = pool.begin().await?;
+            DatabasePool::MySQL(_) => {
+                // Extract connection details from environment
+                let host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
+                let port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
+                let database = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods".to_string());
+                let username = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
+                let password = std::env::var("DB_PASSWORD").unwrap_or_else(|_| "password".to_string());
                 
-                // Dynamically get all tables and drop them
-                let tables_result = sqlx::query(
-                    "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()"
-                ).fetch_all(&mut *tx).await;
+                // Use mysql to restore
+                let mut cmd = Command::new("mysql");
+                cmd.arg("--host").arg(&host)
+                   .arg("--port").arg(&port)
+                   .arg("--user").arg(&username)
+                   .arg(format!("--password={}", password))
+                   .arg(&database)
+                   .stdin(std::process::Stdio::piped())
+                   .stdout(std::process::Stdio::piped())
+                   .stderr(std::process::Stdio::piped());
                 
-                if let Ok(tables) = tables_result {
-                    // First disable foreign key checks to avoid dependency issues
-                    sqlx::query("SET FOREIGN_KEY_CHECKS = 0").execute(&mut *tx).await.ok();
-                    
-                    for table_row in tables {
-                        if let Ok(table_name) = table_row.try_get::<String, _>("table_name") {
-                            let drop_stmt = format!("DROP TABLE IF EXISTS {}", table_name);
-                            sqlx::query(&drop_stmt).execute(&mut *tx).await.ok(); // Ignore errors for dependencies
-                        }
-                    }
-                    
-                    // Re-enable foreign key checks
-                    sqlx::query("SET FOREIGN_KEY_CHECKS = 1").execute(&mut *tx).await.ok();
+                let mut child = cmd.spawn()
+                    .map_err(|e| AppError::internal(&format!("Failed to start mysql: {}", e)))?;
+                
+                // Write SQL content to stdin
+                if let Some(stdin) = child.stdin.as_mut() {
+                    stdin.write_all(sql_content.as_bytes()).await
+                        .map_err(|e| AppError::internal(&format!("Failed to write SQL to mysql: {}", e)))?;
+                    stdin.shutdown().await
+                        .map_err(|e| AppError::internal(&format!("Failed to close mysql stdin: {}", e)))?;
                 }
                 
-                // Execute restore statements
-                for (i, statement) in statements.iter().enumerate() {
-                    if !statement.trim().is_empty() {
-                        if let Err(e) = sqlx::query(statement).execute(&mut *tx).await {
-                            tx.rollback().await.ok();
-                            return Err(AppError::database_error(&format!("SQL execution failed at statement {}: {} - Statement: {}", i + 1, e, statement.chars().take(200).collect::<String>())));
-                        }
-                    }
-                }
+                // Wait for completion
+                let output = child.wait_with_output().await
+                    .map_err(|e| AppError::internal(&format!("Failed to wait for mysql: {}", e)))?;
                 
-                tx.commit().await?;
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(AppError::internal(&format!("mysql failed: {}", stderr)));
+                }
             }
         }
         
+        Ok(())
+    }
+    
+    // Clear all data from tables while preserving schema
+    async fn clear_all_data(&self) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Disable foreign key constraints temporarily
+                sqlx::query("SET session_replication_role = replica;").execute(pool).await?;
+                
+                // Get all table names
+                let tables = sqlx::query(r#"
+                    SELECT tablename FROM pg_tables 
+                    WHERE schemaname = 'public' 
+                    AND tablename NOT LIKE '%_seq'
+                "#)
+                .fetch_all(pool)
+                .await?;
+                
+                // Clear each table
+                for table in tables {
+                    let table_name: String = table.try_get("tablename")?;
+                    let query = format!(r#"TRUNCATE TABLE "{}" RESTART IDENTITY CASCADE"#, table_name);
+                    sqlx::query(&query).execute(pool).await?;
+                }
+                
+                // Re-enable foreign key constraints
+                sqlx::query("SET session_replication_role = DEFAULT;").execute(pool).await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                // Disable foreign key checks
+                sqlx::query("SET FOREIGN_KEY_CHECKS = 0;").execute(pool).await?;
+                
+                // Get all table names
+                let database = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods".to_string());
+                let tables = sqlx::query(&format!(r#"
+                    SELECT TABLE_NAME FROM information_schema.TABLES 
+                    WHERE TABLE_SCHEMA = '{}' AND TABLE_TYPE = 'BASE TABLE'
+                "#, database))
+                .fetch_all(pool)
+                .await?;
+                
+                // Clear each table
+                for table in tables {
+                    let table_name: String = table.try_get("TABLE_NAME")?;
+                    let query = format!("TRUNCATE TABLE `{}`", table_name);
+                    sqlx::query(&query).execute(pool).await?;
+                }
+                
+                // Re-enable foreign key checks
+                sqlx::query("SET FOREIGN_KEY_CHECKS = 1;").execute(pool).await?;
+            }
+        }
         Ok(())
     }
 

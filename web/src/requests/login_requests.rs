@@ -32,12 +32,16 @@ pub struct LoginServerRequest {
 #[derive(Deserialize)]
 pub struct LoginResponse {
     status: String,
-    retrieved_key: String,
+    retrieved_key: Option<String>,
+    mfa_required: Option<bool>,
+    user_id: Option<i32>,
+    mfa_session_token: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct PinepodsCheckResponse {
-    pinepods_instance: Option<bool>,
+    status_code: u16,
+    pinepods_instance: bool,
 }
 
 pub async fn verify_pinepods_instance(
@@ -48,7 +52,7 @@ pub async fn verify_pinepods_instance(
 
     if response.ok() {
         let check_data: PinepodsCheckResponse = response.json().await?;
-        if check_data.pinepods_instance.unwrap_or(false) {
+        if check_data.pinepods_instance {
             Ok(check_data)
         } else {
             Err(anyhow::Error::msg("Pinepods instance not found"))
@@ -163,6 +167,145 @@ pub async fn call_get_api_config(
     }
 }
 
+// New enum to represent the different states of login
+#[derive(Debug, Clone)]
+pub enum LoginResult {
+    Success(GetUserDetails, LoginServerRequest, GetApiDetails),
+    MfaRequired {
+        server_name: String,
+        username: String,
+        user_id: i32,
+        mfa_session_token: String,
+    },
+}
+
+// Updated login function that handles secure MFA flow
+pub async fn login_new_server_secure(
+    server_name: String,
+    username: String,
+    password: String,
+) -> Result<LoginResult, anyhow::Error> {
+    let credentials = STANDARD.encode(format!("{}:{}", username, password).as_bytes());
+    let auth_header = format!("Basic {}", credentials);
+    let url = format!("{}/api/data/get_key", server_name);
+
+    // Step 1: Verify Server
+    match verify_pinepods_instance(&server_name).await {
+        Ok(check_data) => {
+            if !check_data.pinepods_instance {
+                return Err(anyhow::Error::msg(
+                    "Pinepods instance not found at specified server",
+                ));
+            }
+            
+            // Step 2: Get API key or MFA session token
+            let response = Request::get(&url)
+                .header("Authorization", &auth_header)
+                .send()
+                .await?;
+
+            if !response.ok() {
+                return Err(anyhow::Error::msg(
+                    "Failed to authenticate user. Incorrect credentials?",
+                ));
+            }
+
+            let login_response = response.json::<LoginResponse>().await?;
+            
+            // Check if MFA is required
+            if login_response.status == "mfa_required" && login_response.mfa_required.unwrap_or(false) {
+                return Ok(LoginResult::MfaRequired {
+                    server_name,
+                    username,
+                    user_id: login_response.user_id.unwrap(),
+                    mfa_session_token: login_response.mfa_session_token.unwrap(),
+                });
+            }
+            
+            // Normal flow - MFA not required, proceed with existing logic
+            let api_key = login_response.retrieved_key.ok_or_else(|| {
+                anyhow::Error::msg("No API key returned from server")
+            })?;
+
+            // Continue with existing verification steps
+            let result = complete_login_flow(server_name, username, password, api_key).await?;
+            Ok(LoginResult::Success(result.0, result.1, result.2))
+        }
+        Err(e) => {
+            return Err(e);
+        }
+    }
+}
+
+// Complete MFA verification during login and get full login data
+pub async fn complete_mfa_login(
+    server_name: String,
+    username: String,
+    mfa_session_token: String,
+    mfa_code: String,
+) -> Result<(GetUserDetails, LoginServerRequest, GetApiDetails), anyhow::Error> {
+    // Verify MFA and get API key
+    let mfa_response = call_verify_mfa_and_get_key(&server_name, mfa_session_token, mfa_code).await?;
+    
+    if !mfa_response.verified || mfa_response.status != "success" {
+        return Err(anyhow::Error::msg("MFA verification failed"));
+    }
+    
+    let api_key = mfa_response.retrieved_key.ok_or_else(|| {
+        anyhow::Error::msg("No API key returned after MFA verification")
+    })?;
+    
+    // Complete the login flow with the verified API key
+    complete_login_flow(server_name, username, "".to_string(), api_key).await
+}
+
+// Extracted common login completion logic
+async fn complete_login_flow(
+    server_name: String,
+    username: String,
+    password: String,
+    api_key: String,
+) -> Result<(GetUserDetails, LoginServerRequest, GetApiDetails), anyhow::Error> {
+    // Step 1: Verify the API key
+    let verify_response = call_verify_key(&server_name, &api_key).await?;
+    if verify_response.status != "success" {
+        return Err(anyhow::Error::msg("API key verification failed"));
+    }
+
+    // Step 2: Get user ID
+    let user_id_response = call_get_user_id(&server_name, &api_key).await?;
+    if user_id_response.status != "success" {
+        return Err(anyhow::Error::msg("Failed to get user ID"));
+    }
+
+    let login_request = LoginServerRequest {
+        server_name: server_name.clone(),
+        username: Some(username.clone()),
+        password: if password.is_empty() { None } else { Some(password) },
+        api_key: Some(api_key.clone()),
+    };
+
+    // Step 3: Get user details
+    let user_details = call_get_user_details(
+        &server_name,
+        &api_key,
+        &user_id_response.retrieved_id.unwrap(),
+    )
+    .await?;
+    if user_details.Username.is_none() {
+        return Err(anyhow::Error::msg("Failed to get user details"));
+    }
+
+    // Step 4: Get server details
+    let server_details = call_get_api_config(&server_name, &api_key).await?;
+    if server_details.api_url.is_none() {
+        return Err(anyhow::Error::msg("Failed to get server details"));
+    }
+
+    Ok((user_details, login_request, server_details))
+}
+
+// Legacy function for backward compatibility
 pub async fn login_new_server(
     server_name: String,
     username: String,
@@ -175,7 +318,7 @@ pub async fn login_new_server(
     // Step 1: Verify Server
     match verify_pinepods_instance(&server_name).await {
         Ok(check_data) => {
-            if !check_data.pinepods_instance.unwrap_or(false) {
+            if !check_data.pinepods_instance {
                 return Err(anyhow::Error::msg(
                     "Pinepods instance not found at specified server",
                 ));
@@ -192,7 +335,18 @@ pub async fn login_new_server(
                 ));
             }
 
-            let api_key = response.json::<LoginResponse>().await?.retrieved_key;
+            let login_response = response.json::<LoginResponse>().await?;
+            
+            // Legacy function fails if MFA is required - use login_new_server_secure for MFA support
+            if login_response.status == "mfa_required" {
+                return Err(anyhow::Error::msg(
+                    "MFA is required for this account. Please use the MFA-enabled login flow.",
+                ));
+            }
+            
+            let api_key = login_response.retrieved_key.ok_or_else(|| {
+                anyhow::Error::msg("No API key returned from server")
+            })?;
 
             // Step 2: Verify the API key
             let verify_response = call_verify_key(&server_name, &api_key).await?;
@@ -495,6 +649,19 @@ pub struct VerifyMFAResponse {
     pub(crate) verified: bool,
 }
 
+#[derive(Serialize)]
+pub struct VerifyMfaLoginRequest {
+    pub mfa_session_token: String,
+    pub mfa_code: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct VerifyMfaLoginResponse {
+    pub status: String,
+    pub retrieved_key: Option<String>,
+    pub verified: bool,
+}
+
 pub async fn call_verify_mfa(
     server_name: &String,
     api_key: &String,
@@ -518,6 +685,33 @@ pub async fn call_verify_mfa(
     } else {
         Err(anyhow::Error::msg(format!(
             "Error verifying MFA: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// NEW SECURE MFA ENDPOINT: Verify MFA code during login and get API key
+pub async fn call_verify_mfa_and_get_key(
+    server_name: &String,
+    mfa_session_token: String,
+    mfa_code: String,
+) -> Result<VerifyMfaLoginResponse, Error> {
+    let url = format!("{}/api/data/verify_mfa_and_get_key", server_name);
+    let body = VerifyMfaLoginRequest { mfa_session_token, mfa_code };
+    let request_body = serde_json::to_string(&body)?;
+
+    let response = Request::post(&url)
+        .header("Content-Type", "application/json")
+        .body(&request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<VerifyMfaLoginResponse>().await?;
+        Ok(response_body)
+    } else {
+        Err(anyhow::Error::msg(format!(
+            "Error verifying MFA during login: {}",
             response.status_text()
         )))
     }

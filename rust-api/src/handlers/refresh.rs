@@ -212,17 +212,42 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                         }
                     }
                 } else {
-                    // Use the existing add_episodes function
-                    match state.db_pool.add_episodes(
+                    // Use the new function that returns newly inserted episodes - matches Python implementation exactly
+                    match state.db_pool.add_episodes_with_new_list(
                         podcast_id, 
                         &feed_url, 
                         &artwork_url, 
-                        auto_download,
                         username.as_deref(),
                         password.as_deref()
                     ).await {
-                        Ok(_) => {
-                            println!("Successfully refreshed podcast {}", podcast_id);
+                        Ok(new_episodes) => {
+                            println!("Successfully refreshed podcast {}: {} new episodes", podcast_id, new_episodes.len());
+                            
+                            // Handle auto-download for background refresh - matches Python implementation exactly
+                            if auto_download {
+                                println!("Auto-download enabled for podcast {} - processing {} new episodes", podcast_id, new_episodes.len());
+                                
+                                // Auto-download ONLY the episodes that were just inserted - 100% reliable!
+                                for episode in &new_episodes {
+                                    println!("Auto-downloading episode '{}' (ID: {}) for user {}", 
+                                        episode.episodetitle, episode.episodeid, user_id);
+                                    
+                                    // Determine if this is a YouTube episode
+                                    let is_youtube = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
+                                    
+                                    // Spawn download task
+                                    let task_result = if is_youtube {
+                                        state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
+                                    } else {
+                                        state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
+                                    };
+                                    
+                                    match task_result {
+                                        Ok(task_id) => println!("Auto-download task queued with ID: {}", task_id),
+                                        Err(e) => println!("Failed to queue auto-download task for episode {}: {}", episode.episodeid, e),
+                                    }
+                                }
+                            }
                         }
                         Err(e) => {
                             println!("Error refreshing podcast {}: {}", podcast_id, e);
@@ -280,17 +305,42 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                         }
                     }
                 } else {
-                    // Use the existing add_episodes function
-                    match state.db_pool.add_episodes(
+                    // Use the new function that returns newly inserted episodes - matches Python implementation exactly
+                    match state.db_pool.add_episodes_with_new_list(
                         podcast_id, 
                         &feed_url, 
                         &artwork_url, 
-                        auto_download,
                         username.as_deref(),
                         password.as_deref()
                     ).await {
-                        Ok(_) => {
-                            println!("Successfully refreshed podcast {}", podcast_id);
+                        Ok(new_episodes) => {
+                            println!("Successfully refreshed podcast {}: {} new episodes", podcast_id, new_episodes.len());
+                            
+                            // Handle auto-download for background refresh - matches Python implementation exactly
+                            if auto_download {
+                                println!("Auto-download enabled for podcast {} - processing {} new episodes", podcast_id, new_episodes.len());
+                                
+                                // Auto-download ONLY the episodes that were just inserted - 100% reliable!
+                                for episode in &new_episodes {
+                                    println!("Auto-downloading episode '{}' (ID: {}) for user {}", 
+                                        episode.episodetitle, episode.episodeid, user_id);
+                                    
+                                    // Determine if this is a YouTube episode
+                                    let is_youtube = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
+                                    
+                                    // Spawn download task
+                                    let task_result = if is_youtube {
+                                        state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
+                                    } else {
+                                        state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
+                                    };
+                                    
+                                    match task_result {
+                                        Ok(task_id) => println!("Auto-download task queued with ID: {}", task_id),
+                                        Err(e) => println!("Failed to queue auto-download task for episode {}: {}", episode.episodeid, e),
+                                    }
+                                }
+                            }
                         }
                         Err(e) => {
                             println!("Error refreshing podcast {}: {}", podcast_id, e);
@@ -404,6 +454,8 @@ async fn handle_refresh_websocket(
                 break;
             }
         }
+        // When the channel is closed (refresh complete), close the websocket
+        let _ = sender.close().await;
     });
 
     // Task to handle incoming WebSocket messages (keep alive)
@@ -430,6 +482,8 @@ async fn handle_refresh_websocket(
                     detail: format!("Error during refresh: {}", e) 
                 }).await;
             }
+            // Signal completion by dropping the sender
+            drop(tx);
         }
     });
 
@@ -437,7 +491,9 @@ async fn handle_refresh_websocket(
     tokio::select! {
         _ = send_task => {},
         _ = receive_task => {},
-        _ = refresh_task => {},
+        _ = refresh_task => {
+            // Refresh task completed - websocket will be closed when channel closes
+        },
     }
 
     // Cleanup
@@ -663,31 +719,52 @@ async fn refresh_rss_feed(
 ) -> AppResult<Vec<crate::handlers::podcasts::Episode>> {
     tracing::info!("Refreshing RSS feed for podcast: {}", podcast.name);
     
-    // Use the existing add_episodes function which already handles all RSS parsing, 
-    // duplicate detection, and episode insertion properly
-    let _first_episode_id = state.db_pool.add_episodes(
+    // Use the new function that returns newly inserted episodes - matches Python implementation exactly
+    let new_episodes = state.db_pool.add_episodes_with_new_list(
         podcast.id, 
         &podcast.feed_url, 
         &podcast.artwork_url, 
-        podcast.auto_download,
         podcast.username.as_deref(),
         podcast.password.as_deref()
     ).await?;
     
-    // For now, return empty vector since add_episodes handles everything internally
-    // In a full implementation, we'd modify add_episodes to return the actual new episodes
-    // or query for recently added episodes to return them for WebSocket notification
+    // Handle auto-download functionality - matches Python implementation exactly
+    if podcast.auto_download {
+        tracing::info!("Auto-download enabled for podcast '{}' - processing {} new episodes", 
+            podcast.name, new_episodes.len());
+        
+        // Auto-download ONLY the episodes that were just inserted - 100% reliable!
+        for episode in &new_episodes {
+            tracing::info!("Auto-downloading episode '{}' (ID: {}) for user {}", 
+                episode.episodetitle, episode.episodeid, user_id);
+            
+            // Determine if this is a YouTube episode
+            let is_youtube = episode.episodeurl.contains("youtube.com") || episode.episodeurl.contains("youtu.be");
+            
+            // Spawn download task using the same task system as the API endpoint
+            let task_result = if is_youtube {
+                state.task_spawner.spawn_download_youtube_video(episode.episodeid, user_id).await
+            } else {
+                state.task_spawner.spawn_download_podcast_episode(episode.episodeid, user_id).await
+            };
+            
+            match task_result {
+                Ok(task_id) => tracing::info!("Auto-download task queued with ID: {}", task_id),
+                Err(e) => tracing::error!("Failed to queue auto-download task for episode {}: {}", episode.episodeid, e),
+            }
+        }
+    }
     
     // Send notifications for user-triggered refreshes (not admin background refreshes)
     if user_id != 0 {
-        // The add_episodes function already handles the episode insertion
-        // We would need to enhance it to return new episode data for notifications
-        tracing::info!("Refreshed podcast '{}' for user {}", podcast.name, user_id);
+        tracing::info!("Refreshed podcast '{}' for user {}: {} new episodes", 
+            podcast.name, user_id, new_episodes.len());
     }
     
-    // Return empty for now - the add_episodes function already did all the work
-    Ok(Vec::new())
+    // Return the newly inserted episodes for websocket updates
+    Ok(new_episodes)
 }
+
 
 async fn refresh_youtube_channel(
     state: &AppState,
@@ -783,184 +860,3 @@ async fn handle_gpodder_sync(state: &AppState, user_id: i32, sync_type: &str) ->
 }
 
 
-// Helper function to check and send notifications - matches Python check_and_send_notification function
-async fn check_and_send_notification(db_pool: &crate::database::DatabasePool, podcast_id: i32, episode_title: &str) -> AppResult<bool> {
-    use std::time::Duration;
-    
-    let mut success = false;
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()?;
-    
-    match db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            let rows = sqlx::query(
-                r#"SELECT p.notificationsenabled, p.userid, p.podcastname,
-                       uns.platform, uns.enabled, uns.ntfytopic, uns.ntfyserverurl,
-                       uns.gotifyurl, uns.gotifytoken
-                FROM "Podcasts" p
-                JOIN "UserNotificationSettings" uns ON p.userid = uns.userid
-                WHERE p.podcastid = $1 AND p.notificationsenabled = true AND uns.enabled = true"#
-            )
-            .bind(podcast_id)
-            .fetch_all(pool)
-            .await?;
-            
-            for result in rows {
-                let platform: String = result.try_get("platform")?;
-                let podcast_name: String = result.try_get("podcastname")?;
-                
-                match platform.as_str() {
-                    "ntfy" => {
-                        let topic: String = result.try_get("ntfytopic")?;
-                        let server_url: String = result.try_get("ntfyserverurl")?;
-                        
-                        if let Ok(sent) = send_ntfy_notification(&client, &topic, &server_url, &podcast_name, episode_title).await {
-                            if sent {
-                                success = true;
-                            }
-                        }
-                    }
-                    "gotify" => {
-                        let url: String = result.try_get("gotifyurl")?;
-                        let token: String = result.try_get("gotifytoken")?;
-                        
-                        if let Ok(sent) = send_gotify_notification(&client, &url, &token, &podcast_name, episode_title).await {
-                            if sent {
-                                success = true;
-                            }
-                        }
-                    }
-                    _ => continue,
-                }
-            }
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
-            let rows = sqlx::query(
-                "SELECT p.NotificationsEnabled, p.UserID, p.PodcastName,
-                       uns.Platform, uns.Enabled, uns.NtfyTopic, uns.NtfyServerUrl,
-                       uns.GotifyUrl, uns.GotifyToken
-                FROM Podcasts p
-                JOIN UserNotificationSettings uns ON p.UserID = uns.UserID
-                WHERE p.PodcastID = ? AND p.NotificationsEnabled = 1 AND uns.Enabled = 1"
-            )
-            .bind(podcast_id)
-            .fetch_all(pool)
-            .await?;
-            
-            for result in rows {
-                let platform: String = result.try_get("Platform")?;
-                let podcast_name: String = result.try_get("PodcastName")?;
-                
-                match platform.as_str() {
-                    "ntfy" => {
-                        let topic: String = result.try_get("NtfyTopic")?;
-                        let server_url: String = result.try_get("NtfyServerUrl")?;
-                        
-                        if let Ok(sent) = send_ntfy_notification(&client, &topic, &server_url, &podcast_name, episode_title).await {
-                            if sent {
-                                success = true;
-                            }
-                        }
-                    }
-                    "gotify" => {
-                        let url: String = result.try_get("GotifyUrl")?;
-                        let token: String = result.try_get("GotifyToken")?;
-                        
-                        if let Ok(sent) = send_gotify_notification(&client, &url, &token, &podcast_name, episode_title).await {
-                            if sent {
-                                success = true;
-                            }
-                        }
-                    }
-                    _ => continue,
-                }
-            }
-        }
-    }
-    
-    Ok(success)
-}
-
-// Helper function to send NTFY notification - matches Python send_ntfy_notification function
-async fn send_ntfy_notification(
-    client: &reqwest::Client,
-    topic: &str,
-    server_url: &str,
-    podcast_name: &str,
-    episode_title: &str,
-) -> AppResult<bool> {
-    let base_url = if server_url.is_empty() {
-        "https://ntfy.sh"
-    } else {
-        server_url.trim_end_matches('/')
-    };
-    
-    let url = format!("{}/{}", base_url, topic);
-    let title = format!("New Episode: {}", podcast_name);
-    let message = format!("New episode published: {}", episode_title);
-    
-    match client
-        .post(&url)
-        .header("Title", title)
-        .header("Content-Type", "text/plain")
-        .body(message)
-        .send()
-        .await
-    {
-        Ok(response) => {
-            if response.status().is_success() {
-                tracing::info!("Successfully sent NTFY notification to {}", url);
-                Ok(true)
-            } else {
-                tracing::warn!("NTFY notification failed with status: {}", response.status());
-                Ok(false)
-            }
-        }
-        Err(e) => {
-            tracing::warn!("Failed to send NTFY notification: {}", e);
-            Ok(false)
-        }
-    }
-}
-
-// Helper function to send Gotify notification - matches Python send_gotify_notification function
-async fn send_gotify_notification(
-    client: &reqwest::Client,
-    server_url: &str,
-    token: &str,
-    podcast_name: &str,
-    episode_title: &str,
-) -> AppResult<bool> {
-    let url = format!("{}/message", server_url.trim_end_matches('/'));
-    let title = format!("New Episode: {}", podcast_name);
-    let message = format!("New episode published: {}", episode_title);
-    
-    let payload = serde_json::json!({
-        "title": title,
-        "message": message,
-        "priority": 5
-    });
-    
-    match client
-        .post(&url)
-        .header("X-Gotify-Key", token)
-        .json(&payload)
-        .send()
-        .await
-    {
-        Ok(response) => {
-            if response.status().is_success() {
-                tracing::info!("Successfully sent Gotify notification to {}", url);
-                Ok(true)
-            } else {
-                tracing::warn!("Gotify notification failed with status: {}", response.status());
-                Ok(false)
-            }
-        }
-        Err(e) => {
-            tracing::warn!("Failed to send Gotify notification: {}", e);
-            Ok(false)
-        }
-    }
-}

@@ -1492,6 +1492,54 @@ pub async fn search_data(
     Ok(Json(serde_json::json!({ "data": result })))
 }
 
+// Request for fetch_transcript - proxy to avoid CORS issues
+#[derive(Deserialize)]
+pub struct FetchTranscriptRequest {
+    pub url: String,
+}
+
+// Fetch transcript - proxy endpoint to avoid CORS issues
+pub async fn fetch_transcript(
+    headers: HeaderMap,
+    State(_state): State<AppState>,
+    Json(request): Json<FetchTranscriptRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = _state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    // Fetch the transcript content from the external URL
+    let client = reqwest::Client::new();
+    match client.get(&request.url).send().await {
+        Ok(response) => {
+            match response.text().await {
+                Ok(content) => {
+                    Ok(Json(serde_json::json!({
+                        "success": true,
+                        "content": content
+                    })))
+                }
+                Err(e) => {
+                    Ok(Json(serde_json::json!({
+                        "success": false,
+                        "error": format!("Failed to read response text: {}", e)
+                    })))
+                }
+            }
+        }
+        Err(e) => {
+            Ok(Json(serde_json::json!({
+                "success": false,
+                "error": format!("Failed to fetch transcript: {}", e)
+            })))
+        }
+    }
+}
+
 // Query struct for home_overview
 #[derive(Deserialize)]
 pub struct HomeOverviewQuery {
