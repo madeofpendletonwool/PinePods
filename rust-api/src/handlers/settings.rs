@@ -214,11 +214,11 @@ pub async fn set_fullname(
     let new_name = params.get("new_name")
         .ok_or_else(|| AppError::bad_request("Missing new_name parameter"))?;
 
-    // Check authorization (elevated access or own user)
+    // Check authorization - admins can edit other users, users can edit themselves
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(user_id_from_api_key).await?;
 
-    if !is_web_key && user_id != user_id_from_api_key {
+    if user_id != user_id_from_api_key && !is_admin {
         return Err(AppError::forbidden("You can only update your own full name"));
     }
 
@@ -2223,8 +2223,19 @@ pub async fn subscribe_to_person(
         request.podcast_id,
     ).await?;
 
-    // TODO: Trigger background task to process person subscription and gather episodes
-    // This would call process_person_subscription_task() equivalent
+    // Trigger immediate background task to process person subscription and gather episodes
+    let db_pool = state.db_pool.clone();
+    let person_name = request.person_name.clone();
+    tokio::spawn(async move {
+        match db_pool.process_person_subscription(user_id, person_db_id, person_name.clone()).await {
+            Ok(_) => {
+                tracing::info!("Successfully processed immediate person subscription for {}", person_name);
+            }
+            Err(e) => {
+                tracing::error!("Failed to process immediate person subscription for {}: {}", person_name, e);
+            }
+        }
+    });
 
     Ok(Json(serde_json::json!({
         "success": true,
@@ -2275,7 +2286,7 @@ pub async fn get_person_subscriptions(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
     headers: HeaderMap,
-) -> Result<Json<Vec<serde_json::Value>>, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
@@ -2288,7 +2299,9 @@ pub async fn get_person_subscriptions(
     }
 
     let subscriptions = state.db_pool.get_person_subscriptions(user_id).await?;
-    Ok(Json(subscriptions))
+    Ok(Json(serde_json::json!({
+        "subscriptions": subscriptions
+    })))
 }
 
 // Get person episodes - matches Python api_return_person_episodes function exactly
@@ -2296,7 +2309,7 @@ pub async fn get_person_episodes(
     State(state): State<AppState>,
     Path((user_id, person_id)): Path<(i32, i32)>,
     headers: HeaderMap,
-) -> Result<Json<Vec<serde_json::Value>>, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
@@ -2309,7 +2322,9 @@ pub async fn get_person_episodes(
     }
 
     let episodes = state.db_pool.get_person_episodes(user_id, person_id).await?;
-    Ok(Json(episodes))
+    Ok(Json(serde_json::json!({
+        "episodes": episodes
+    })))
 }
 
 // Request struct for set_podcast_playback_speed - matches Python SetPlaybackSpeedPodcast model

@@ -4792,22 +4792,50 @@ impl DatabasePool {
     }
 
     // Custom function to extract raw iTunes durations before feed_rs processes them
+    // This is needed because feed_rs incorrectly parses MM:SS durations as seconds only
     fn extract_raw_itunes_durations(content: &str) -> std::collections::HashMap<String, String> {
         use regex::Regex;
         let mut raw_durations = std::collections::HashMap::new();
         
-        // Regex to find iTunes duration elements with their context (title for matching)
-        let duration_regex = Regex::new(r"<item[^>]*>.*?<title[^>]*>([^<]*)</title>.*?<itunes:duration[^>]*>([^<]*)</itunes:duration>.*?</item>").unwrap();
+        // Professional-grade regex that handles real-world RSS feeds robustly
+        // Uses DOTALL flag (?s) to match across newlines, handles CDATA, whitespace variations
+        // Matches both <itunes:duration> and <duration> tags to be comprehensive
+        let duration_regex = Regex::new(
+            r"(?s)<item[^>]*>.*?<title(?:[^>]*)>(?:\s*<!\[CDATA\[)?\s*([^<\]]+?)(?:\]\]>)?\s*</title>.*?<(?:itunes:)?duration(?:[^>]*)>\s*(?:<!\[CDATA\[)?\s*([^<\]]+?)(?:\]\]>)?\s*</(?:itunes:)?duration>"
+        ).unwrap();
         
         for caps in duration_regex.captures_iter(content) {
-            if let (Some(title), Some(duration)) = (caps.get(1), caps.get(2)) {
-                let title_str = title.as_str().trim();
-                let duration_str = duration.as_str().trim();
-                println!("🕐 Raw iTunes duration found: title='{}' duration='{}'", title_str, duration_str);
-                raw_durations.insert(title_str.to_string(), duration_str.to_string());
+            if let (Some(title_match), Some(duration_match)) = (caps.get(1), caps.get(2)) {
+                let title_str = title_match.as_str().trim();
+                let duration_str = duration_match.as_str().trim();
+                
+                // Skip empty values
+                if !title_str.is_empty() && !duration_str.is_empty() {
+                    println!("🕐 Raw iTunes duration extracted: title='{}' duration='{}'", title_str, duration_str);
+                    raw_durations.insert(title_str.to_string(), duration_str.to_string());
+                }
             }
         }
         
+        // Fallback: try reverse order (duration before title) for edge case XML structures
+        let reverse_regex = Regex::new(
+            r"(?s)<item[^>]*>.*?<(?:itunes:)?duration(?:[^>]*)>\s*(?:<!\[CDATA\[)?\s*([^<\]]+?)(?:\]\]>)?\s*</(?:itunes:)?duration>.*?<title(?:[^>]*)>(?:\s*<!\[CDATA\[)?\s*([^<\]]+?)(?:\]\]>)?\s*</title>"
+        ).unwrap();
+        
+        for caps in reverse_regex.captures_iter(content) {
+            if let (Some(duration_match), Some(title_match)) = (caps.get(1), caps.get(2)) {
+                let title_str = title_match.as_str().trim();
+                let duration_str = duration_match.as_str().trim();
+                
+                // Only add if not already found and both values are non-empty
+                if !title_str.is_empty() && !duration_str.is_empty() && !raw_durations.contains_key(title_str) {
+                    println!("🕐 Raw iTunes duration extracted (reverse): title='{}' duration='{}'", title_str, duration_str);
+                    raw_durations.insert(title_str.to_string(), duration_str.to_string());
+                }
+            }
+        }
+        
+        println!("🕐 Total raw iTunes durations extracted: {}", raw_durations.len());
         raw_durations
     }
 
@@ -4905,7 +4933,15 @@ impl DatabasePool {
                 if let Some(duration) = &media.duration {
                     println!("🕐 Found media duration: {} seconds", duration.as_secs());
                     episode_data.insert("duration".to_string(), duration.as_secs().to_string());
-                    episode_data.insert("itunes:duration".to_string(), duration.as_secs().to_string());
+                    // Don't use feed_rs processed duration for iTunes - we'll use raw values
+                }
+                
+                // Check if we have a raw iTunes duration for this episode title
+                if let Some(title) = &entry.title {
+                    if let Some(raw_duration) = raw_durations.get(&title.content) {
+                        println!("🕐 Using raw iTunes duration: '{}' for episode '{}'", raw_duration, title.content);
+                        episode_data.insert("itunes:duration".to_string(), raw_duration.clone());
+                    }
                 }
                 
                 for thumbnail in &media.thumbnails {
@@ -11319,7 +11355,7 @@ impl DatabasePool {
                     // Update existing record
                     let result = sqlx::query(r#"
                         UPDATE "UserNotificationSettings" 
-                        SET enabled = $3, ntfy_topic = $4, ntfy_server_url = $5, gotify_url = $6, gotify_token = $7
+                        SET enabled = $3, ntfytopic = $4, ntfyserverurl = $5, gotifyurl = $6, gotifytoken = $7
                         WHERE userid = $1 AND platform = $2
                     "#)
                         .bind(user_id)
@@ -11336,7 +11372,7 @@ impl DatabasePool {
                     // Insert new record
                     let result = sqlx::query(r#"
                         INSERT INTO "UserNotificationSettings" 
-                        (userid, platform, enabled, ntfy_topic, ntfy_server_url, gotify_url, gotify_token)
+                        (userid, platform, enabled, ntfytopic, ntfyserverurl, gotifyurl, gotifytoken)
                         VALUES ($1, $2, $3, $4, $5, $6, $7)
                     "#)
                         .bind(user_id)
@@ -11934,51 +11970,95 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 let rows = sqlx::query(r#"
-                    SELECT 
-                        pe.episodeid,
+                    SELECT
+                        e.episodeid,  -- Will be NULL if no match in Episodes table
                         pe.episodetitle,
                         pe.episodedescription,
                         pe.episodeurl,
-                        pe.episodeartwork,
+                        CASE
+                            WHEN pe.episodeartwork IS NULL THEN
+                                (SELECT artworkurl FROM "Podcasts" WHERE podcastid = pe.podcastid)
+                            ELSE pe.episodeartwork
+                        END as episodeartwork,
                         pe.episodepubdate,
                         pe.episodeduration,
-                        pe.addeddate,
                         p.podcastname,
-                        p.artworkurl as podcast_artwork,
-                        CASE WHEN se.episodeid IS NOT NULL THEN true ELSE false END AS saved,
-                        CASE WHEN de.episodeid IS NOT NULL THEN true ELSE false END AS downloaded,
-                        COALESCE(ueh.listenduration, 0) AS listenduration
+                        CASE
+                            WHEN (
+                                SELECT 1 FROM "Podcasts"
+                                WHERE podcastid = pe.podcastid
+                                AND userid = $1
+                            ) IS NOT NULL THEN
+                            CASE
+                                WHEN s.episodeid IS NOT NULL THEN TRUE
+                                ELSE FALSE
+                            END
+                            ELSE FALSE
+                        END AS saved,
+                        CASE
+                            WHEN (
+                                SELECT 1 FROM "Podcasts"
+                                WHERE podcastid = pe.podcastid
+                                AND userid = $1
+                            ) IS NOT NULL THEN
+                            CASE
+                                WHEN d.episodeid IS NOT NULL THEN TRUE
+                                ELSE FALSE
+                            END
+                            ELSE FALSE
+                        END AS downloaded,
+                        CASE
+                            WHEN (
+                                SELECT 1 FROM "Podcasts"
+                                WHERE podcastid = pe.podcastid
+                                AND userid = $1
+                            ) IS NOT NULL THEN
+                            COALESCE(h.listenduration, 0)
+                            ELSE 0
+                        END AS listenduration,
+                        FALSE as is_youtube
                     FROM "PeopleEpisodes" pe
-                    JOIN "People" people ON pe.personid = people.personid
-                    LEFT JOIN "Podcasts" p ON pe.podcastid = p.podcastid
-                    LEFT JOIN "SavedEpisodes" se ON pe.episodeid = se.episodeid AND se.userid = $1
-                    LEFT JOIN "DownloadedEpisodes" de ON pe.episodeid = de.episodeid AND de.userid = $1
-                    LEFT JOIN "UserEpisodeHistory" ueh ON pe.episodeid = ueh.episodeid AND ueh.userid = $1
-                    WHERE people.userid = $1 AND people.peopledbid = $2
+                    INNER JOIN "People" pp ON pe.personid = pp.personid
+                    INNER JOIN "Podcasts" p ON pe.podcastid = p.podcastid
+                    LEFT JOIN "Episodes" e ON e.episodeurl = pe.episodeurl AND e.podcastid = pe.podcastid
+                    LEFT JOIN (
+                        SELECT * FROM "SavedEpisodes" WHERE userid = $2
+                    ) s ON s.episodeid = e.episodeid
+                    LEFT JOIN (
+                        SELECT * FROM "DownloadedEpisodes" WHERE userid = $3
+                    ) d ON d.episodeid = e.episodeid
+                    LEFT JOIN (
+                        SELECT * FROM "UserEpisodeHistory" WHERE userid = $4
+                    ) h ON h.episodeid = e.episodeid
+                    WHERE pe.personid = $5
+                    AND pe.episodepubdate >= NOW() - INTERVAL '30 days'
                     ORDER BY pe.episodepubdate DESC
                 "#)
-                    .bind(user_id)
-                    .bind(person_id)
+                    .bind(user_id)  // $1
+                    .bind(user_id)  // $2
+                    .bind(user_id)  // $3
+                    .bind(user_id)  // $4
+                    .bind(person_id) // $5
                     .fetch_all(pool)
                     .await?;
                 
                 for row in rows {
-                    let episodeid = row.try_get::<i32, _>("episodeid")?;
+                    let episodeid = row.try_get::<Option<i32>, _>("episodeid")?;
                     let episodetitle = row.try_get::<String, _>("episodetitle")?;
                     let episodedescription = row.try_get::<String, _>("episodedescription")?;
                     let episodeurl = row.try_get::<String, _>("episodeurl")?;
-                    let episodeartwork = row.try_get::<String, _>("episodeartwork")?;
+                    let episodeartwork = row.try_get::<Option<String>, _>("episodeartwork")?;
                     let dt = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
                     let episodepubdate = dt.format("%Y-%m-%dT%H:%M:%S").to_string();
                     let episodeduration = row.try_get::<i32, _>("episodeduration")?;
                     let podcastname = row.try_get::<String, _>("podcastname")?;
-                    let podcast_artwork = row.try_get::<String, _>("podcast_artwork")?;
                     let saved = row.try_get::<bool, _>("saved")?;
                     let downloaded = row.try_get::<bool, _>("downloaded")?;
                     let listenduration = row.try_get::<i32, _>("listenduration")?;
+                    let is_youtube = row.try_get::<bool, _>("is_youtube")?;
 
                     let episode = serde_json::json!({
-                        "episodeid": episodeid,
+                        "episodeid": episodeid.unwrap_or(-1),
                         "episodetitle": episodetitle,
                         "episodedescription": episodedescription,
                         "episodeurl": episodeurl,
@@ -11986,64 +12066,97 @@ impl DatabasePool {
                         "episodepubdate": episodepubdate,
                         "episodeduration": episodeduration,
                         "podcastname": podcastname,
-                        "podcast_artwork": podcast_artwork,
                         "saved": saved,
                         "downloaded": downloaded,
-                        "listenduration": listenduration
+                        "listenduration": listenduration,
+                        "is_youtube": is_youtube
                     });
                     episodes.push(episode);
                 }
             }
             DatabasePool::MySQL(pool) => {
                 let rows = sqlx::query("
-                    SELECT 
-                        pe.EpisodeID,
+                    SELECT
+                        e.EpisodeID,  -- Will be NULL if no match in Episodes table
                         pe.EpisodeTitle,
                         pe.EpisodeDescription,
                         pe.EpisodeURL,
-                        pe.EpisodeArtwork,
+                        COALESCE(pe.EpisodeArtwork, p.ArtworkURL) as EpisodeArtwork,
                         pe.EpisodePubDate,
                         pe.EpisodeDuration,
-                        pe.AddedDate,
                         p.PodcastName,
-                        p.ArtworkURL as podcast_artwork,
-                        CASE WHEN se.EpisodeID IS NOT NULL THEN true ELSE false END AS saved,
-                        CASE WHEN de.EpisodeID IS NOT NULL THEN true ELSE false END AS downloaded,
-                        COALESCE(ueh.ListenDuration, 0) AS listenduration
+                        IF(
+                            EXISTS(
+                                SELECT 1 FROM Podcasts
+                                WHERE PodcastID = pe.PodcastID
+                                AND UserID = ?
+                            ),
+                            IF(s.EpisodeID IS NOT NULL, TRUE, FALSE),
+                            FALSE
+                        ) AS Saved,
+                        IF(
+                            EXISTS(
+                                SELECT 1 FROM Podcasts
+                                WHERE PodcastID = pe.PodcastID
+                                AND UserID = ?
+                            ),
+                            IF(d.EpisodeID IS NOT NULL, TRUE, FALSE),
+                            FALSE
+                        ) AS Downloaded,
+                        IF(
+                            EXISTS(
+                                SELECT 1 FROM Podcasts
+                                WHERE PodcastID = pe.PodcastID
+                                AND UserID = ?
+                            ),
+                            COALESCE(h.ListenDuration, 0),
+                            0
+                        ) AS ListenDuration,
+                        FALSE as is_youtube
                     FROM PeopleEpisodes pe
-                    JOIN People people ON pe.PersonID = people.PersonID
-                    LEFT JOIN Podcasts p ON pe.PodcastID = p.PodcastID
-                    LEFT JOIN SavedEpisodes se ON pe.EpisodeID = se.EpisodeID AND se.UserID = ?
-                    LEFT JOIN DownloadedEpisodes de ON pe.EpisodeID = de.EpisodeID AND de.UserID = ?
-                    LEFT JOIN UserEpisodeHistory ueh ON pe.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
-                    WHERE people.UserID = ? AND people.PeopleDBID = ?
+                    INNER JOIN People pp ON pe.PersonID = pp.PersonID
+                    INNER JOIN Podcasts p ON pe.PodcastID = p.PodcastID
+                    LEFT JOIN Episodes e ON e.EpisodeURL = pe.EpisodeURL AND e.PodcastID = pe.PodcastID
+                    LEFT JOIN (
+                        SELECT * FROM SavedEpisodes WHERE UserID = ?
+                    ) s ON s.EpisodeID = e.EpisodeID
+                    LEFT JOIN (
+                        SELECT * FROM DownloadedEpisodes WHERE UserID = ?
+                    ) d ON d.EpisodeID = e.EpisodeID
+                    LEFT JOIN (
+                        SELECT * FROM UserEpisodeHistory WHERE UserID = ?
+                    ) h ON h.EpisodeID = e.EpisodeID
+                    WHERE pe.PersonID = ?
+                    AND pe.EpisodePubDate >= DATE_SUB(NOW(), INTERVAL 30 DAY)
                     ORDER BY pe.EpisodePubDate DESC
                 ")
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(person_id)
+                    .bind(user_id)    // 1st ?
+                    .bind(user_id)    // 2nd ?
+                    .bind(user_id)    // 3rd ?
+                    .bind(user_id)    // 4th ?
+                    .bind(user_id)    // 5th ?
+                    .bind(user_id)    // 6th ?
+                    .bind(person_id)  // 7th ?
                     .fetch_all(pool)
                     .await?;
                 
                 for row in rows {
-                    let episodeid = row.try_get::<i32, _>("EpisodeID")?;
+                    let episodeid = row.try_get::<Option<i32>, _>("EpisodeID")?;
                     let episodetitle = row.try_get::<String, _>("EpisodeTitle")?;
                     let episodedescription = row.try_get::<String, _>("EpisodeDescription")?;
                     let episodeurl = row.try_get::<String, _>("EpisodeURL")?;
-                    let episodeartwork = row.try_get::<String, _>("EpisodeArtwork")?;
+                    let episodeartwork = row.try_get::<Option<String>, _>("EpisodeArtwork")?;
                     let dt = row.try_get::<chrono::NaiveDateTime, _>("EpisodePubDate")?;
                     let episodepubdate = dt.format("%Y-%m-%dT%H:%M:%S").to_string();
                     let episodeduration = row.try_get::<i32, _>("EpisodeDuration")?;
                     let podcastname = row.try_get::<String, _>("PodcastName")?;
-                    let podcast_artwork = row.try_get::<String, _>("podcast_artwork")?;
-                    let saved = row.try_get::<bool, _>("saved")?;
-                    let downloaded = row.try_get::<bool, _>("downloaded")?;
-                    let listenduration = row.try_get::<i32, _>("listenduration")?;
+                    let saved = row.try_get::<bool, _>("Saved")?;
+                    let downloaded = row.try_get::<bool, _>("Downloaded")?;
+                    let listenduration = row.try_get::<i32, _>("ListenDuration")?;
+                    let is_youtube = row.try_get::<bool, _>("is_youtube")?;
 
                     let episode = serde_json::json!({
-                        "episodeid": episodeid,
+                        "episodeid": episodeid.unwrap_or(-1),
                         "episodetitle": episodetitle,
                         "episodedescription": episodedescription,
                         "episodeurl": episodeurl,
@@ -12051,10 +12164,10 @@ impl DatabasePool {
                         "episodepubdate": episodepubdate,
                         "episodeduration": episodeduration,
                         "podcastname": podcastname,
-                        "podcast_artwork": podcast_artwork,
                         "saved": saved,
                         "downloaded": downloaded,
-                        "listenduration": listenduration
+                        "listenduration": listenduration,
+                        "is_youtube": is_youtube
                     });
                     episodes.push(episode);
                 }
