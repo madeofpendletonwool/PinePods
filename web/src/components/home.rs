@@ -259,7 +259,7 @@ pub fn home() -> Html {
                                     podcast.artworkurl.clone().unwrap_or_default(),
                                     podcast.explicit.unwrap_or(false),
                                     podcast.episodecount.unwrap_or(0),
-                                    Some(podcast.categories.clone().unwrap_or_else(|| String::from("No Categories Found"))),
+                                    podcast.categories.as_ref().map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", ")).or_else(|| Some("No Categories Found".to_string())),
                                     podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
                                     user_id.unwrap(),
                                     podcast.is_youtube,

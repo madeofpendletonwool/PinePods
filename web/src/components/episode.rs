@@ -1666,7 +1666,7 @@ pub fn epsiode() -> Html {
                                                 details.artworkurl,
                                                 details.explicit,
                                                 details.episodecount,
-                                                Some(details.categories),
+                                                Some(details.categories.values().cloned().collect::<Vec<_>>().join(", ")),
                                                 details.websiteurl,
                                                 user_id.unwrap(),
                                                 details.is_youtube, // assuming we renamed this field

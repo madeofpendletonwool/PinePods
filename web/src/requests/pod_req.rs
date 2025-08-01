@@ -302,7 +302,7 @@ pub struct Podcast {
     pub websiteurl: Option<String>,
     pub feedurl: String,
     pub author: Option<String>,
-    pub categories: String, // Keeping as String since it's handled as empty string "{}" or "{}"
+    pub categories: Option<HashMap<String, String>>,
     #[serde(deserialize_with = "bool_from_int")]
     pub explicit: bool,
     #[serde(default)] // Add this line
@@ -368,7 +368,7 @@ pub struct PodcastExtra {
     pub websiteurl: Option<String>,
     pub feedurl: String,
     pub author: Option<String>,
-    pub categories: String,
+    pub categories: Option<HashMap<String, String>>,
     #[serde(deserialize_with = "bool_from_int")]
     pub explicit: bool,
     pub podcastindexid: i64,
@@ -1835,7 +1835,7 @@ pub struct PodcastDetails {
     pub podcastname: String,
     pub artworkurl: String,
     pub author: String,
-    pub categories: String,
+    pub categories: HashMap<String, String>,
     pub description: String,
     pub episodecount: i32,
     pub feedurl: String,
@@ -3150,7 +3150,7 @@ pub struct HomePodcast {
     pub podcastindexid: Option<i64>,
     pub artworkurl: Option<String>,
     pub author: Option<String>,
-    pub categories: Option<String>,
+    pub categories: Option<HashMap<String, String>>,
     pub description: Option<String>,
     pub episodecount: Option<i32>,
     pub feedurl: Option<String>,

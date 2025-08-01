@@ -242,12 +242,12 @@ pub async fn set_password(
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
-    // Check authorization (elevated access or own user)
+    // Check authorization - admins can edit other users, users can edit themselves
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(user_id_from_api_key).await?;
 
-    if !is_web_key && user_id != user_id_from_api_key {
-        return Err(AppError::forbidden("You are not authorized to access these user details"));
+    if user_id != user_id_from_api_key && !is_admin {
+        return Err(AppError::forbidden("You can only update your own password"));
     }
 
     state.db_pool.set_password(user_id, &request.hash_pw).await?;
@@ -291,12 +291,12 @@ pub async fn set_email(
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
-    // Check authorization (elevated access or own user)
+    // Check authorization - admins can edit other users, users can edit themselves
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(user_id_from_api_key).await?;
 
-    if !is_web_key && request.user_id != user_id_from_api_key {
-        return Err(AppError::forbidden("You are not authorized to access these user details"));
+    if request.user_id != user_id_from_api_key && !is_admin {
+        return Err(AppError::forbidden("You can only update your own email"));
     }
 
     state.db_pool.set_email(request.user_id, &request.new_email).await?;
@@ -319,12 +319,12 @@ pub async fn set_username(
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
-    // Check authorization (elevated access or own user)
+    // Check authorization - admins can edit other users, users can edit themselves
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(user_id_from_api_key).await?;
 
-    if !is_web_key && request.user_id != user_id_from_api_key {
-        return Err(AppError::forbidden("You are not authorized to access these user details"));
+    if request.user_id != user_id_from_api_key && !is_admin {
+        return Err(AppError::forbidden("You can only update your own username"));
     }
 
     state.db_pool.set_username(request.user_id, &request.new_username.to_lowercase()).await?;
@@ -514,13 +514,35 @@ pub struct SaveEmailSettingsRequest {
 #[derive(Deserialize)]
 pub struct EmailSettings {
     pub server_name: String,
+    #[serde(deserialize_with = "deserialize_string_to_i32")]
     pub server_port: i32,
     pub from_email: String,
     pub send_mode: String,
     pub encryption: String,
+    #[serde(deserialize_with = "deserialize_bool_to_i32")]
     pub auth_required: i32,
     pub email_username: String,
     pub email_password: String,
+}
+
+// Helper function to deserialize string to i32
+fn deserialize_string_to_i32<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where 
+    D: serde::Deserializer<'de>
+{
+    use serde::de::Error;
+    
+    let s = String::deserialize(deserializer)?;
+    s.parse::<i32>().map_err(D::Error::custom)
+}
+
+// Helper function to deserialize bool to i32
+fn deserialize_bool_to_i32<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where 
+    D: serde::Deserializer<'de>
+{
+    let b = bool::deserialize(deserializer)?;
+    Ok(if b { 1 } else { 0 })
 }
 
 // Save email settings - matches Python api_save_email_settings function exactly (admin only)
@@ -633,6 +655,7 @@ async fn send_email_internal(request: &SendTestEmailRequest) -> Result<String, A
         transport::smtp::{authentication::Credentials, client::Tls, client::TlsParameters},
         AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
     };
+    use tokio::time::{timeout, Duration};
 
     // Parse server port
     let port: u16 = request.server_port.parse()
@@ -692,29 +715,27 @@ async fn send_email_internal(request: &SendTestEmailRequest) -> Result<String, A
             }
         }
         _ => {
-            // No encryption
+            // No encryption - use builder_dangerous for unencrypted connections
             if request.auth_required {
                 let creds = Credentials::new(request.email_username.clone(), request.email_password.clone());
-                AsyncSmtpTransport::<Tokio1Executor>::relay(&request.server_name)
-                    .map_err(|e| AppError::internal(&format!("SMTP relay configuration failed: {}", e)))?
+                AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&request.server_name)
                     .port(port)
-                    .tls(Tls::None)
                     .credentials(creds)
                     .build()
             } else {
-                AsyncSmtpTransport::<Tokio1Executor>::relay(&request.server_name)
-                    .map_err(|e| AppError::internal(&format!("SMTP relay configuration failed: {}", e)))?
+                AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&request.server_name)
                     .port(port)
-                    .tls(Tls::None)
                     .build()
             }
         }
     };
 
-    // Send the email
-    match mailer.send(email).await {
-        Ok(_) => Ok("Email sent successfully".to_string()),
-        Err(e) => Err(AppError::internal(&format!("Failed to send email: {}", e))),
+    // Send the email with timeout
+    let email_future = mailer.send(email);
+    match timeout(Duration::from_secs(30), email_future).await {
+        Ok(Ok(_)) => Ok("Email sent successfully".to_string()),
+        Ok(Err(e)) => Err(AppError::internal(&format!("Failed to send email: {}", e))),
+        Err(_) => Err(AppError::internal("Email sending timed out after 30 seconds. Please check your SMTP server settings.".to_string())),
     }
 }
 
@@ -756,6 +777,7 @@ async fn send_email_with_settings(
         transport::smtp::{authentication::Credentials, client::Tls, client::TlsParameters},
         AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
     };
+    use tokio::time::{timeout, Duration};
 
     // Create email message
     let email = Message::builder()
@@ -811,29 +833,27 @@ async fn send_email_with_settings(
             }
         }
         _ => {
-            // No encryption
+            // No encryption - use builder_dangerous for unencrypted connections
             if settings.auth_required == 1 {
                 let creds = Credentials::new(settings.username.clone(), settings.password.clone());
-                AsyncSmtpTransport::<Tokio1Executor>::relay(&settings.server_name)
-                    .map_err(|e| AppError::internal(&format!("SMTP relay configuration failed: {}", e)))?
+                AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&settings.server_name)
                     .port(settings.server_port as u16)
-                    .tls(Tls::None)
                     .credentials(creds)
                     .build()
             } else {
-                AsyncSmtpTransport::<Tokio1Executor>::relay(&settings.server_name)
-                    .map_err(|e| AppError::internal(&format!("SMTP relay configuration failed: {}", e)))?
+                AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&settings.server_name)
                     .port(settings.server_port as u16)
-                    .tls(Tls::None)
                     .build()
             }
         }
     };
 
-    // Send the email
-    match mailer.send(email).await {
-        Ok(_) => Ok("Email sent successfully".to_string()),
-        Err(e) => Err(AppError::internal(&format!("Failed to send email: {}", e))),
+    // Send the email with timeout
+    let email_future = mailer.send(email);
+    match timeout(Duration::from_secs(30), email_future).await {
+        Ok(Ok(_)) => Ok("Email sent successfully".to_string()),
+        Ok(Err(e)) => Err(AppError::internal(&format!("Failed to send email: {}", e))),
+        Err(_) => Err(AppError::internal("Email sending timed out after 30 seconds. Please check your SMTP server settings.".to_string())),
     }
 }
 

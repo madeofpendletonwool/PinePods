@@ -1304,7 +1304,10 @@ impl DatabasePool {
                         websiteurl: row.try_get("websiteurl").ok(),
                         feedurl: row.try_get("feedurl")?,
                         author: row.try_get("author").ok(),
-                        categories: row.try_get("categories")?,
+                        categories: {
+                            let categories_str: String = row.try_get("categories")?;
+                            self.parse_categories_json(&categories_str)
+                        },
                         explicit: row.try_get("explicit")?,
                         podcastindexid: row.try_get::<i32, _>("podcastindexid").ok().map(|i| i as i64),
                     });
@@ -1348,7 +1351,10 @@ impl DatabasePool {
                         websiteurl: row.try_get("websiteurl").ok(),
                         feedurl: row.try_get("feedurl")?,
                         author: row.try_get("author").ok(),
-                        categories: row.try_get("categories")?,
+                        categories: {
+                            let categories_str: String = row.try_get("categories")?;
+                            self.parse_categories_json(&categories_str)
+                        },
                         explicit: row.try_get("explicit")?,
                         podcastindexid: row.try_get::<i32, _>("podcastindexid").ok().map(|i| i as i64),
                     });
@@ -1410,7 +1416,10 @@ impl DatabasePool {
                         websiteurl: row.try_get("websiteurl").ok(),
                         feedurl: feed_url,
                         author: row.try_get("author").ok(),
-                        categories: row.try_get("categories")?,
+                        categories: {
+                            let categories_str: String = row.try_get("categories")?;
+                            self.parse_categories_json(&categories_str)
+                        },
                         explicit: row.try_get("explicit")?,
                         podcastindexid: row.try_get::<i32, _>("podcastindexid").ok().map(|i| i as i64),
                         play_count: row.try_get("play_count")?,
@@ -1471,7 +1480,10 @@ impl DatabasePool {
                         websiteurl: row.try_get("websiteurl").ok(),
                         feedurl: feed_url,
                         author: row.try_get("author").ok(),
-                        categories: row.try_get("categories")?,
+                        categories: {
+                            let categories_str: String = row.try_get("categories")?;
+                            self.parse_categories_json(&categories_str)
+                        },
                         explicit: row.try_get("explicit")?,
                         podcastindexid: row.try_get::<i32, _>("podcastindexid").ok().map(|i| i as i64),
                         play_count: row.try_get("play_count")?,
@@ -2667,12 +2679,15 @@ impl DatabasePool {
                         "".to_string()
                     };
 
+                    let categories_str = row.try_get::<String, _>("categories").unwrap_or_default();
+                    let categories_value = serde_json::to_value(self.parse_categories_json(&categories_str).unwrap_or_default()).unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+
                     let result = serde_json::json!({
                         "podcastid": row.try_get::<i32, _>("podcastid").unwrap_or(0),
                         "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default(),
                         "artworkurl": row.try_get::<String, _>("artworkurl").unwrap_or_default(),
                         "author": row.try_get::<String, _>("author").unwrap_or_default(),
-                        "categories": row.try_get::<String, _>("categories").unwrap_or_default(),
+                        "categories": categories_value,
                         "description": row.try_get::<String, _>("description").unwrap_or_default(),
                         "episodecount": row.try_get::<Option<i32>, _>("episodecount").ok().flatten(),
                         "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
@@ -2755,12 +2770,15 @@ impl DatabasePool {
                         "".to_string()
                     };
 
+                    let categories_str = row.try_get::<String, _>("categories").unwrap_or_default();
+                    let categories_value = serde_json::to_value(self.parse_categories_json(&categories_str).unwrap_or_default()).unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+
                     let result = serde_json::json!({
                         "podcastid": row.try_get::<i32, _>("podcastid").unwrap_or(0),
                         "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default(),
                         "artworkurl": row.try_get::<String, _>("artworkurl").unwrap_or_default(),
                         "author": row.try_get::<String, _>("author").unwrap_or_default(),
-                        "categories": row.try_get::<String, _>("categories").unwrap_or_default(),
+                        "categories": categories_value,
                         "description": row.try_get::<String, _>("description").unwrap_or_default(),
                         "episodecount": row.try_get::<Option<i32>, _>("episodecount").ok().flatten(),
                         "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
@@ -3009,7 +3027,8 @@ impl DatabasePool {
                     let podcastindexid: Option<i32> = row.try_get("podcastindexid").ok();
                     let artworkurl: String = row.try_get("artworkurl").unwrap_or_default();
                     let author: String = row.try_get("author").unwrap_or_default();
-                    let categories: String = row.try_get("categories").unwrap_or_default();
+                    let categories_str: String = row.try_get("categories").unwrap_or_default();
+                    let categories = self.parse_categories_json(&categories_str).unwrap_or_default();
                     let description: String = row.try_get("description").unwrap_or_default();
                     let episodecount: i32 = row.try_get("episodecount").unwrap_or(0);
                     let feedurl: String = row.try_get("feedurl").unwrap_or_default();
@@ -3025,7 +3044,7 @@ impl DatabasePool {
                         "podcastindexid": podcastindexid,
                         "artworkurl": artworkurl,
                         "author": author,
-                        "categories": categories,
+                        "categories": serde_json::to_value(categories).unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
                         "description": description,
                         "episodecount": episodecount,
                         "feedurl": feedurl,
@@ -3277,7 +3296,8 @@ impl DatabasePool {
                     let podcastindexid: Option<i32> = row.try_get("PodcastIndexID").ok();
                     let artworkurl: String = row.try_get("ArtworkURL").unwrap_or_default();
                     let author: String = row.try_get("Author").unwrap_or_default();
-                    let categories: String = row.try_get("Categories").unwrap_or_default();
+                    let categories_str: String = row.try_get("Categories").unwrap_or_default();
+                    let categories = self.parse_categories_json(&categories_str).unwrap_or_default();
                     let description: String = row.try_get("Description").unwrap_or_default();
                     let episodecount: i32 = row.try_get("EpisodeCount").unwrap_or(0);
                     let feedurl: String = row.try_get("FeedURL").unwrap_or_default();
@@ -3293,7 +3313,7 @@ impl DatabasePool {
                         "podcastindexid": podcastindexid,
                         "artworkurl": artworkurl,
                         "author": author,
-                        "categories": categories,
+                        "categories": serde_json::to_value(categories).unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
                         "description": description,
                         "episodecount": episodecount,
                         "feedurl": feedurl,
@@ -6280,6 +6300,85 @@ impl DatabasePool {
                             "is_youtube": row.try_get::<bool, _>("is_youtube")?,
                         }));
                     }
+                } else if person_episode {
+                    // Query for person episodes - matches Python implementation
+                    let row = sqlx::query(
+                        r#"SELECT 
+                            p.podcastid, 
+                            p.podcastindexid, 
+                            p.feedurl,
+                            p.podcastname, 
+                            p.artworkurl,
+                            pe.episodetitle,
+                            pe.episodepubdate,
+                            pe.episodedescription,
+                            pe.episodeartwork,
+                            pe.episodeurl,
+                            pe.episodeduration,
+                            pe.episodeid,
+                            COALESCE(e.episodeid, pe.episodeid) as real_episode_id,
+                            CASE WHEN q.episodeid IS NOT NULL THEN true ELSE false END as is_queued,
+                            CASE WHEN s.episodeid IS NOT NULL THEN true ELSE false END as is_saved,
+                            CASE WHEN d.episodeid IS NOT NULL THEN true ELSE false END as is_downloaded,
+                            FALSE::boolean as is_youtube
+                        FROM "PeopleEpisodes" pe
+                        INNER JOIN "Podcasts" p ON pe.podcastid = p.podcastid
+                        LEFT JOIN "Episodes" e ON (pe.episodetitle = e.episodetitle AND pe.episodeurl = e.episodeurl)
+                        LEFT JOIN "EpisodeQueue" q ON COALESCE(e.episodeid, pe.episodeid) = q.episodeid AND q.userid = $1
+                        LEFT JOIN "SavedEpisodes" s ON COALESCE(e.episodeid, pe.episodeid) = s.episodeid AND s.userid = $1
+                        LEFT JOIN "DownloadedEpisodes" d ON COALESCE(e.episodeid, pe.episodeid) = d.episodeid AND d.userid = $1
+                        WHERE pe.episodeid = $2"#
+                    )
+                    .bind(user_id)
+                    .bind(episode_id)
+                    .fetch_optional(pool)
+                    .await?;
+                    
+                    if let Some(row) = row {
+                        let naive_date = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
+                        let episode_pubdate = naive_date.format("%Y-%m-%dT%H:%M:%S").to_string();
+                        let real_episode_id: i32 = row.try_get("real_episode_id")?;
+                        
+                        // Get listen history using the real episode ID
+                        let listen_history = sqlx::query(
+                            r#"SELECT listenduration, completed FROM "UserEpisodeHistory" 
+                               WHERE episodeid = $1 AND userid = $2"#
+                        )
+                        .bind(real_episode_id)
+                        .bind(user_id)
+                        .fetch_optional(pool)
+                        .await?;
+                        
+                        let (listenduration, completed) = if let Some(history) = listen_history {
+                            (
+                                history.try_get::<Option<i32>, _>("listenduration")?,
+                                history.try_get::<bool, _>("completed")?
+                            )
+                        } else {
+                            (None, false)
+                        };
+                        
+                        return Ok(serde_json::json!({
+                            "podcastid": row.try_get::<i32, _>("podcastid")?,
+                            "podcastindexid": row.try_get::<Option<i32>, _>("podcastindexid")?,
+                            "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
+                            "podcastname": row.try_get::<String, _>("podcastname")?,
+                            "artworkurl": row.try_get::<String, _>("artworkurl")?,
+                            "episodetitle": row.try_get::<String, _>("episodetitle")?,
+                            "episodepubdate": episode_pubdate,
+                            "episodedescription": row.try_get::<String, _>("episodedescription")?,
+                            "episodeartwork": row.try_get::<String, _>("episodeartwork")?,
+                            "episodeurl": row.try_get::<String, _>("episodeurl")?,
+                            "episodeduration": row.try_get::<i32, _>("episodeduration")?,
+                            "episodeid": real_episode_id, // Return the real episode ID, not person episode ID
+                            "listenduration": listenduration,
+                            "completed": completed,
+                            "is_queued": row.try_get::<bool, _>("is_queued")?,
+                            "is_saved": row.try_get::<bool, _>("is_saved")?,
+                            "is_downloaded": row.try_get::<bool, _>("is_downloaded")?,
+                            "is_youtube": row.try_get::<bool, _>("is_youtube")?,
+                        }));
+                    }
                 }
                 
                 // Query for regular episodes
@@ -7291,19 +7390,19 @@ impl DatabasePool {
                     .await?;
                 
                 if let Some(row) = row {
-                    let current_categories: String = row.try_get("categories").unwrap_or_default();
+                    let current_categories_str: String = row.try_get("categories").unwrap_or_default();
+                    let mut categories = self.parse_categories_json(&current_categories_str).unwrap_or_default();
                     
-                    // Split categories, remove the specified one, and rejoin
-                    let categories: Vec<&str> = current_categories.split(',')
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty() && *s != category)
-                        .collect();
+                    // Remove the category by value (find and remove the key with this value)
+                    categories.retain(|_key, value| value != category);
                     
-                    let new_categories = categories.join(", ");
+                    // Convert back to JSON string
+                    let new_categories_json = serde_json::to_string(&categories)
+                        .unwrap_or_else(|_| "{}".to_string());
                     
                     // Update with new categories
                     sqlx::query(r#"UPDATE "Podcasts" SET categories = $1 WHERE podcastid = $2 AND userid = $3"#)
-                        .bind(&new_categories)
+                        .bind(&new_categories_json)
                         .bind(podcast_id)
                         .bind(user_id)
                         .execute(pool)
@@ -7319,19 +7418,19 @@ impl DatabasePool {
                     .await?;
                 
                 if let Some(row) = row {
-                    let current_categories: String = row.try_get("Categories").unwrap_or_default();
+                    let current_categories_str: String = row.try_get("Categories").unwrap_or_default();
+                    let mut categories = self.parse_categories_json(&current_categories_str).unwrap_or_default();
                     
-                    // Split categories, remove the specified one, and rejoin
-                    let categories: Vec<&str> = current_categories.split(',')
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty() && *s != category)
-                        .collect();
+                    // Remove the category by value (find and remove the key with this value)
+                    categories.retain(|_key, value| value != category);
                     
-                    let new_categories = categories.join(", ");
+                    // Convert back to JSON string
+                    let new_categories_json = serde_json::to_string(&categories)
+                        .unwrap_or_else(|_| "{}".to_string());
                     
                     // Update with new categories
                     sqlx::query("UPDATE Podcasts SET Categories = ? WHERE PodcastID = ? AND UserID = ?")
-                        .bind(&new_categories)
+                        .bind(&new_categories_json)
                         .bind(podcast_id)
                         .bind(user_id)
                         .execute(pool)
@@ -7354,28 +7453,34 @@ impl DatabasePool {
                     .await?;
                 
                 if let Some(row) = row {
-                    let current_categories: String = row.try_get("categories").unwrap_or_default();
+                    let current_categories_str: String = row.try_get("categories").unwrap_or_default();
+                    let mut categories = self.parse_categories_json(&current_categories_str).unwrap_or_default();
                     
                     // Check if category already exists
-                    let existing_categories: Vec<&str> = current_categories.split(',')
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty())
-                        .collect();
-                    
-                    if existing_categories.contains(&category) {
+                    if categories.values().any(|v| v == category) {
                         return Ok("Category already exists.".to_string());
                     }
                     
-                    // Add new category
-                    let new_categories = if current_categories.trim().is_empty() {
-                        category.to_string()
+                    // Add new category with a generated key (use the next available number)
+                    let next_key = if categories.is_empty() {
+                        "1".to_string()
                     } else {
-                        format!("{}, {}", current_categories, category)
+                        let max_key = categories.keys()
+                            .filter_map(|k| k.parse::<i32>().ok())
+                            .max()
+                            .unwrap_or(0);
+                        (max_key + 1).to_string()
                     };
+                    
+                    categories.insert(next_key, category.to_string());
+                    
+                    // Convert back to JSON string
+                    let new_categories_json = serde_json::to_string(&categories)
+                        .unwrap_or_else(|_| "{}".to_string());
                     
                     // Update with new categories
                     sqlx::query(r#"UPDATE "Podcasts" SET categories = $1 WHERE podcastid = $2 AND userid = $3"#)
-                        .bind(&new_categories)
+                        .bind(&new_categories_json)
                         .bind(podcast_id)
                         .bind(user_id)
                         .execute(pool)
@@ -7395,28 +7500,34 @@ impl DatabasePool {
                     .await?;
                 
                 if let Some(row) = row {
-                    let current_categories: String = row.try_get("Categories").unwrap_or_default();
+                    let current_categories_str: String = row.try_get("Categories").unwrap_or_default();
+                    let mut categories = self.parse_categories_json(&current_categories_str).unwrap_or_default();
                     
                     // Check if category already exists
-                    let existing_categories: Vec<&str> = current_categories.split(',')
-                        .map(|s| s.trim())
-                        .filter(|s| !s.is_empty())
-                        .collect();
-                    
-                    if existing_categories.contains(&category) {
+                    if categories.values().any(|v| v == category) {
                         return Ok("Category already exists.".to_string());
                     }
                     
-                    // Add new category
-                    let new_categories = if current_categories.trim().is_empty() {
-                        category.to_string()
+                    // Add new category with a generated key (use the next available number)
+                    let next_key = if categories.is_empty() {
+                        "1".to_string()
                     } else {
-                        format!("{}, {}", current_categories, category)
+                        let max_key = categories.keys()
+                            .filter_map(|k| k.parse::<i32>().ok())
+                            .max()
+                            .unwrap_or(0);
+                        (max_key + 1).to_string()
                     };
+                    
+                    categories.insert(next_key, category.to_string());
+                    
+                    // Convert back to JSON string
+                    let new_categories_json = serde_json::to_string(&categories)
+                        .unwrap_or_else(|_| "{}".to_string());
                     
                     // Update with new categories
                     sqlx::query("UPDATE Podcasts SET Categories = ? WHERE PodcastID = ? AND UserID = ?")
-                        .bind(&new_categories)
+                        .bind(&new_categories_json)
                         .bind(podcast_id)
                         .bind(user_id)
                         .execute(pool)
@@ -13151,9 +13262,57 @@ impl DatabasePool {
             
             if system_podcast_id.is_none() {
                 // Add as new system podcast
+                tracing::info!("Creating system podcast for feed: {}", feed_url);
                 let podcast_values = self.get_podcast_values_for_person(feed_url).await?;
-                self.add_person_podcast_from_values(&podcast_values, 1).await?;
-                self.get_podcast_id_by_feed_url(1, feed_url).await?.unwrap_or(-1)
+                let add_result = self.add_person_podcast_from_values(&podcast_values, 1).await?;
+                tracing::info!("Add podcast result: {}", add_result);
+                
+                // Get the podcast ID after adding
+                tracing::info!("Looking for podcast with UserID=1 and FeedURL='{}'", feed_url);
+                match self.get_podcast_id_by_feed_url(1, feed_url).await? {
+                    Some(id) => {
+                        tracing::info!("Successfully created system podcast with ID: {}", id);
+                        id
+                    }
+                    None => {
+                        // Let's debug by listing all podcasts for UserID=1
+                        tracing::error!("Failed to get podcast ID after adding system podcast for feed: {}", feed_url);
+                        
+                        // Debug: List all system podcasts to see what's there
+                        match self {
+                            DatabasePool::Postgres(pool) => {
+                                let rows = sqlx::query(r#"SELECT podcastid, podcastname, feedurl FROM "Podcasts" WHERE userid = $1"#)
+                                    .bind(1)
+                                    .fetch_all(pool)
+                                    .await?;
+                                
+                                tracing::error!("System podcasts (UserID=1):");
+                                for row in rows {
+                                    let id: i32 = row.try_get("podcastid")?;
+                                    let name: String = row.try_get("podcastname")?;
+                                    let url: String = row.try_get("feedurl")?;
+                                    tracing::error!("  ID: {}, Name: '{}', URL: '{}'", id, name, url);
+                                }
+                            }
+                            DatabasePool::MySQL(pool) => {
+                                let rows = sqlx::query("SELECT PodcastID, PodcastName, FeedURL FROM Podcasts WHERE UserID = ?")
+                                    .bind(1)
+                                    .fetch_all(pool)
+                                    .await?;
+                                
+                                tracing::error!("System podcasts (UserID=1):");
+                                for row in rows {
+                                    let id: i32 = row.try_get("PodcastID")?;
+                                    let name: String = row.try_get("PodcastName")?;
+                                    let url: String = row.try_get("FeedURL")?;
+                                    tracing::error!("  ID: {}, Name: '{}', URL: '{}'", id, name, url);
+                                }
+                            }
+                        }
+                        
+                        return Err(AppError::internal("Failed to create system podcast"));
+                    }
+                }
             } else {
                 system_podcast_id.unwrap()
             }
@@ -13171,86 +13330,20 @@ impl DatabasePool {
 
     // Add people episodes - matches Python add_people_episodes function exactly
     pub async fn add_people_episodes(&self, person_id: i32, podcast_id: i32, feed_url: &str) -> AppResult<()> {
-        // Parse RSS feed
-        let client = reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3")
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| AppError::internal(&format!("Failed to create HTTP client: {}", e)))?;
+        // Validate that we have a valid podcast ID
+        if podcast_id <= 0 {
+            return Err(AppError::internal(&format!("Invalid podcast ID {} for person episodes", podcast_id)));
+        }
         
-        let response = client
-            .get(feed_url)
-            .header("Accept-Language", "en-US,en;q=0.9")
-            .send()
-            .await
-            .map_err(|e| AppError::internal(&format!("Failed to fetch feed: {}", e)))?;
+        // Use the same robust feed fetching and parsing as add_episodes
+        let content = self.try_fetch_feed(feed_url, None, None).await?;
+        let episodes = self.parse_rss_feed(&content, podcast_id, "").await?;
         
-        let content = response.text().await
-            .map_err(|e| AppError::internal(&format!("Failed to read feed content: {}", e)))?;
+        println!("Parsed {} episodes from feed for person {} with podcast ID {}", episodes.len(), person_id, podcast_id);
         
-        let feed = feed_rs::parser::parse(content.as_bytes())
-            .map_err(|e| AppError::internal(&format!("Failed to parse feed: {}", e)))?;
+        let mut added_count = 0;
         
-        // Get existing episode IDs
-        let existing_episodes = match self {
-            DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"
-                    SELECT episodeid FROM "PeopleEpisodes"
-                    WHERE personid = $1 AND podcastid = $2
-                "#)
-                .bind(person_id)
-                .bind(podcast_id)
-                .fetch_all(pool)
-                .await?;
-                
-                rows.into_iter()
-                    .filter_map(|row| row.try_get::<i32, _>("episodeid").ok())
-                    .collect::<HashSet<_>>()
-            }
-            DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query("
-                    SELECT EpisodeID FROM PeopleEpisodes
-                    WHERE PersonID = ? AND PodcastID = ?
-                ")
-                .bind(person_id)
-                .bind(podcast_id)
-                .fetch_all(pool)
-                .await?;
-                
-                rows.into_iter()
-                    .filter_map(|row| row.try_get::<i32, _>("EpisodeID").ok())
-                    .collect::<HashSet<_>>()
-            }
-        };
-        
-        let mut processed_episodes = HashSet::new();
-        
-        for entry in feed.entries {
-            let title = entry.title.map(|t| t.content).unwrap_or_default();
-            let description = entry.summary.map(|s| s.content).unwrap_or_default();
-            
-            // Get audio URL from links
-            let audio_url = entry.links.iter()
-                .find(|link| link.media_type.as_ref().map_or(false, |mt| mt.starts_with("audio/")))
-                .map(|link| link.href.clone())
-                .unwrap_or_default();
-            
-            if audio_url.is_empty() {
-                continue;
-            }
-            
-            let pub_date = entry.published
-                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                .unwrap_or_else(|| chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string());
-            
-            let artwork_url = entry.media.first()
-                .and_then(|m| m.thumbnails.first())
-                .map(|t| t.image.uri.clone())
-                .unwrap_or_default();
-            
-            // Parse duration from iTunes extension if available
-            let duration = 0; // Simplified for now - would need proper iTunes extension parsing
-            
+        for episode in episodes {
             // Check if episode already exists
             let episode_exists = match self {
                 DatabasePool::Postgres(pool) => {
@@ -13260,17 +13353,11 @@ impl DatabasePool {
                     "#)
                     .bind(person_id)
                     .bind(podcast_id)
-                    .bind(&audio_url)
+                    .bind(&episode.url)
                     .fetch_optional(pool)
                     .await?;
                     
-                    if let Some(row) = result {
-                        let episode_id: i32 = row.try_get("episodeid")?;
-                        processed_episodes.insert(episode_id);
-                        true
-                    } else {
-                        false
-                    }
+                    result.is_some()
                 }
                 DatabasePool::MySQL(pool) => {
                     let result = sqlx::query("
@@ -13279,17 +13366,11 @@ impl DatabasePool {
                     ")
                     .bind(person_id)
                     .bind(podcast_id)
-                    .bind(&audio_url)
+                    .bind(&episode.url)
                     .fetch_optional(pool)
                     .await?;
                     
-                    if let Some(row) = result {
-                        let episode_id: i32 = row.try_get("EpisodeID")?;
-                        processed_episodes.insert(episode_id);
-                        true
-                    } else {
-                        false
-                    }
+                    result.is_some()
                 }
             };
             
@@ -13300,28 +13381,28 @@ impl DatabasePool {
             // Insert new episode
             match self {
                 DatabasePool::Postgres(pool) => {
-                    let result = sqlx::query(r#"
+                    // PostgreSQL expects timestamp type, not string
+                    let naive_datetime = episode.pub_date.naive_utc();
+                    sqlx::query(r#"
                         INSERT INTO "PeopleEpisodes"
                         (personid, podcastid, episodetitle, episodedescription,
                         episodeurl, episodeartwork, episodepubdate, episodeduration)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                        RETURNING episodeid
                     "#)
                     .bind(person_id)
                     .bind(podcast_id)
-                    .bind(&title)
-                    .bind(&description)
-                    .bind(&audio_url)
-                    .bind(&artwork_url)
-                    .bind(&pub_date)
-                    .bind(duration as i32)
-                    .fetch_one(pool)
+                    .bind(&episode.title)
+                    .bind(&episode.description)
+                    .bind(&episode.url)
+                    .bind(&episode.artwork_url)
+                    .bind(naive_datetime)
+                    .bind(episode.duration as i32)
+                    .execute(pool)
                     .await?;
-                    
-                    let episode_id: i32 = result.try_get("episodeid")?;
-                    processed_episodes.insert(episode_id);
                 }
                 DatabasePool::MySQL(pool) => {
+                    // MySQL accepts string format
+                    let pub_date_str = episode.pub_date.format("%Y-%m-%d %H:%M:%S").to_string();
                     sqlx::query("
                         INSERT INTO PeopleEpisodes
                         (PersonID, PodcastID, EpisodeTitle, EpisodeDescription,
@@ -13330,19 +13411,21 @@ impl DatabasePool {
                     ")
                     .bind(person_id)
                     .bind(podcast_id)
-                    .bind(&title)
-                    .bind(&description)
-                    .bind(&audio_url)
-                    .bind(&artwork_url)
-                    .bind(&pub_date)
-                    .bind(duration as i32)
+                    .bind(&episode.title)
+                    .bind(&episode.description)
+                    .bind(&episode.url)
+                    .bind(&episode.artwork_url)
+                    .bind(&pub_date_str)
+                    .bind(episode.duration as i32)
                     .execute(pool)
                     .await?;
                 }
             }
+            
+            added_count += 1;
         }
         
-        tracing::info!("Processed {} episodes for person {} podcast {}", processed_episodes.len(), person_id, podcast_id);
+        println!("Successfully added {} new episodes for person {} from podcast {}", added_count, person_id, podcast_id);
         Ok(())
     }
 
@@ -13373,14 +13456,15 @@ impl DatabasePool {
 
     // Add person podcast from values map - matches Python add_person_podcast function exactly  
     pub async fn add_person_podcast_from_values(&self, podcast_values: &std::collections::HashMap<String, String>, user_id: i32) -> AppResult<bool> {
-        let pod_title = podcast_values.get("pod_title").cloned().unwrap_or_default();
-        let pod_feed_url = podcast_values.get("pod_feed_url").cloned().unwrap_or_default();
-        let pod_artwork = podcast_values.get("pod_artwork").cloned().unwrap_or_default();
-        let pod_description = podcast_values.get("pod_description").cloned().unwrap_or_default();
-        // First check if podcast already exists for user
+        // Use the same key mapping as add_podcast_from_values
+        let pod_title = podcast_values.get("podcastname").cloned().unwrap_or_default();
+        let pod_feed_url = podcast_values.get("feedurl").cloned().unwrap_or_default();
+        let pod_artwork = podcast_values.get("artworkurl").cloned().unwrap_or_default();
+        let pod_description = podcast_values.get("description").cloned().unwrap_or_default();
+        // First check if podcast already exists for user with a valid feed URL
         match self {
             DatabasePool::Postgres(pool) => {
-                let existing = sqlx::query(r#"SELECT podcastid FROM "Podcasts" WHERE feedurl = $1 AND userid = $2"#)
+                let existing = sqlx::query(r#"SELECT podcastid FROM "Podcasts" WHERE feedurl = $1 AND userid = $2 AND feedurl != ''"#)
                     .bind(&pod_feed_url)
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -13406,7 +13490,7 @@ impl DatabasePool {
                 .await?;
             }
             DatabasePool::MySQL(pool) => {
-                let existing = sqlx::query("SELECT PodcastID FROM Podcasts WHERE FeedURL = ? AND UserID = ?")
+                let existing = sqlx::query("SELECT PodcastID FROM Podcasts WHERE FeedURL = ? AND UserID = ? AND FeedURL != ''")
                     .bind(&pod_feed_url)
                     .bind(user_id)
                     .fetch_optional(pool)
@@ -14088,6 +14172,30 @@ impl DatabasePool {
         Ok(())
     }
 
+    // Helper function to parse categories JSON string into HashMap - matches Python version
+    fn parse_categories_json(&self, categories_str: &str) -> Option<std::collections::HashMap<String, String>> {
+        if categories_str.is_empty() {
+            return Some(std::collections::HashMap::new());
+        }
+        
+        if categories_str.starts_with('{') {
+            // Try to parse as JSON first
+            if let Ok(parsed) = serde_json::from_str::<std::collections::HashMap<String, String>>(categories_str) {
+                return Some(parsed);
+            }
+        } else {
+            // Fall back to comma-separated parsing like Python version
+            let mut result = std::collections::HashMap::new();
+            for (i, cat) in categories_str.split(',').enumerate() {
+                result.insert(i.to_string(), cat.trim().to_string());
+            }
+            return Some(result);
+        }
+        
+        // Return empty map if parsing fails
+        Some(std::collections::HashMap::new())
+    }
+
     // Execute the final playlist query for PostgreSQL - FIXED VERSION
     async fn execute_playlist_query_postgres(&self, pool: &Pool<Postgres>, query: &str, params: &[i32], _playlist_id: i32) -> AppResult<i32> {
         tracing::info!("Executing PostgreSQL playlist query with {} parameters", params.len());
@@ -14163,8 +14271,9 @@ impl DatabasePool {
                     row.try_get("episodecount").unwrap_or(0)
                 };
 
-                // Get categories as string - matches Python version exactly
-                let categories = row.try_get::<String, _>("categories").unwrap_or_else(|_| String::new());
+                // Get categories and parse to HashMap - matches Python version exactly
+                let categories_str = row.try_get::<String, _>("categories").unwrap_or_else(|_| String::new());
+                let categories = self.parse_categories_json(&categories_str);
 
                 Ok(serde_json::json!({
                     "podcastid": row.try_get::<i32, _>("podcastid")?,
@@ -14236,8 +14345,9 @@ impl DatabasePool {
                     row.try_get("EpisodeCount").unwrap_or(0)
                 };
 
-                // Get categories as string - matches Python version exactly
-                let categories = row.try_get::<String, _>("Categories").unwrap_or_else(|_| String::new());
+                // Get categories and parse to HashMap - matches Python version exactly
+                let categories_str = row.try_get::<String, _>("Categories").unwrap_or_else(|_| String::new());
+                let categories = self.parse_categories_json(&categories_str);
 
                 Ok(serde_json::json!({
                     "podcastid": row.try_get::<i32, _>("PodcastID")?,
@@ -16393,7 +16503,9 @@ impl DatabasePool {
                     details.insert("artworkurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("artworkurl").unwrap_or_default()));
                     details.insert("explicit".to_string(), serde_json::Value::Bool(row.try_get::<bool, _>("explicit").unwrap_or(false)));
                     details.insert("episodecount".to_string(), serde_json::Value::Number(serde_json::Number::from(row.try_get::<i32, _>("episodecount").unwrap_or(0))));
-                    details.insert("categories".to_string(), serde_json::Value::String(row.try_get::<String, _>("categories").unwrap_or_default()));
+                    let categories_str = row.try_get::<String, _>("categories").unwrap_or_default();
+                    let categories_parsed = self.parse_categories_json(&categories_str).unwrap_or_default();
+                    details.insert("categories".to_string(), serde_json::to_value(categories_parsed).unwrap_or(serde_json::Value::Object(serde_json::Map::new())));
                     details.insert("websiteurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("websiteurl").unwrap_or_default()));
                     details.insert("podcastindexid".to_string(), serde_json::Value::Number(serde_json::Number::from(row.try_get::<i32, _>("podcastindexid").unwrap_or(0))));
                     details.insert("isyoutubechannel".to_string(), serde_json::Value::Bool(row.try_get::<bool, _>("isyoutubechannel").unwrap_or(false)));
@@ -16422,7 +16534,9 @@ impl DatabasePool {
                     details.insert("artworkurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("ArtworkURL").unwrap_or_default()));
                     details.insert("explicit".to_string(), serde_json::Value::Bool(row.try_get::<bool, _>("Explicit").unwrap_or(false)));
                     details.insert("episodecount".to_string(), serde_json::Value::Number(serde_json::Number::from(row.try_get::<i32, _>("EpisodeCount").unwrap_or(0))));
-                    details.insert("categories".to_string(), serde_json::Value::String(row.try_get::<String, _>("Categories").unwrap_or_default()));
+                    let categories_str = row.try_get::<String, _>("Categories").unwrap_or_default();
+                    let categories_parsed = self.parse_categories_json(&categories_str).unwrap_or_default();
+                    details.insert("categories".to_string(), serde_json::to_value(categories_parsed).unwrap_or(serde_json::Value::Object(serde_json::Map::new())));
                     details.insert("websiteurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("WebsiteURL").unwrap_or_default()));
                     details.insert("podcastindexid".to_string(), serde_json::Value::Number(serde_json::Number::from(row.try_get::<i32, _>("PodcastIndexID").unwrap_or(0))));
                     details.insert("isyoutubechannel".to_string(), serde_json::Value::Bool(row.try_get::<bool, _>("IsYouTubeChannel").unwrap_or(false)));

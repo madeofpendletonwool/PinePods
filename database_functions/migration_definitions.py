@@ -1076,12 +1076,18 @@ def migration_009_people_sharing_tables(conn, db_type: str):
             
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS "PeopleEpisodes" (
-                    PeopleEpisodeID SERIAL PRIMARY KEY,
-                    PersonID INT NOT NULL,
-                    EpisodeID INT NOT NULL,
+                    EpisodeID SERIAL PRIMARY KEY,
+                    PersonID INT,
+                    PodcastID INT,
+                    EpisodeTitle TEXT,
+                    EpisodeDescription TEXT,
+                    EpisodeURL TEXT,
+                    EpisodeArtwork TEXT,
+                    EpisodePubDate TIMESTAMP,
+                    EpisodeDuration INT,
                     AddedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (PersonID) REFERENCES "People"(PersonID) ON DELETE CASCADE,
-                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE
+                    FOREIGN KEY (PersonID) REFERENCES "People"(PersonID),
+                    FOREIGN KEY (PodcastID) REFERENCES "Podcasts"(PodcastID)
                 )
             """)
             
@@ -1113,12 +1119,18 @@ def migration_009_people_sharing_tables(conn, db_type: str):
             
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS PeopleEpisodes (
-                    PeopleEpisodeID INT AUTO_INCREMENT PRIMARY KEY,
-                    PersonID INT NOT NULL,
-                    EpisodeID INT NOT NULL,
+                    EpisodeID INT AUTO_INCREMENT PRIMARY KEY,
+                    PersonID INT,
+                    PodcastID INT,
+                    EpisodeTitle TEXT,
+                    EpisodeDescription TEXT,
+                    EpisodeURL TEXT,
+                    EpisodeArtwork TEXT,
+                    EpisodePubDate TIMESTAMP,
+                    EpisodeDuration INT,
                     AddedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (PersonID) REFERENCES People(PersonID) ON DELETE CASCADE,
-                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE
+                    FOREIGN KEY (PersonID) REFERENCES People(PersonID),
+                    FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
                 )
             """)
             

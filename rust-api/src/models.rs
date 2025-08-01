@@ -204,7 +204,7 @@ pub struct PodcastResponse {
     pub websiteurl: Option<String>,
     pub feedurl: String,
     pub author: Option<String>,
-    pub categories: String,
+    pub categories: Option<std::collections::HashMap<String, String>>,
     pub explicit: bool,
     pub podcastindexid: Option<i64>,
 }
@@ -219,7 +219,7 @@ pub struct PodcastExtraResponse {
     pub websiteurl: Option<String>,
     pub feedurl: String,
     pub author: Option<String>,
-    pub categories: String,
+    pub categories: Option<std::collections::HashMap<String, String>>,
     pub explicit: bool,
     pub podcastindexid: Option<i64>,
     pub play_count: i64,
