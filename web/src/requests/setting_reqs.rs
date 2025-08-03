@@ -2310,3 +2310,195 @@ pub async fn call_get_rss_key(
         )))
     }
 }
+
+// Timezone, Date Format, and Time Format Update Requests
+
+#[derive(Serialize, Debug)]
+pub struct UpdateTimezoneRequest {
+    pub user_id: i32,
+    pub timezone: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct UpdateDateFormatRequest {
+    pub user_id: i32,
+    pub date_format: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct UpdateTimeFormatRequest {
+    pub user_id: i32,
+    pub hour_pref: i32,
+}
+#[derive(Serialize, Debug)]
+pub struct UpdateAutoCompleteSecondsRequest {
+    pub user_id: i32,
+    pub seconds: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AutoCompleteSecondsResponse {
+    pub auto_complete_seconds: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct UpdateSettingResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+pub async fn call_update_timezone(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    timezone: String,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/update_timezone", server_name);
+    
+    let request_body = UpdateTimezoneRequest {
+        user_id,
+        timezone,
+    };
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: UpdateSettingResponse = response.json().await?;
+        Ok(response_data.success)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating timezone: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_update_date_format(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    date_format: String,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/update_date_format", server_name);
+    
+    let request_body = UpdateDateFormatRequest {
+        user_id,
+        date_format,
+    };
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: UpdateSettingResponse = response.json().await?;
+        Ok(response_data.success)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating date format: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_update_time_format(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    hour_pref: i32,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/update_time_format", server_name);
+    
+    let request_body = UpdateTimeFormatRequest {
+        user_id,
+        hour_pref,
+    };
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: UpdateSettingResponse = response.json().await?;
+        Ok(response_data.success)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating time format: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_get_auto_complete_seconds(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<i32, Error> {
+    let url = format!("{}/api/data/get_auto_complete_seconds/{}", server_name, user_id);
+
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: AutoCompleteSecondsResponse = response.json().await?;
+        Ok(response_data.auto_complete_seconds)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting auto complete seconds: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_update_auto_complete_seconds(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    seconds: i32,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/update_auto_complete_seconds", server_name);
+    
+    let request_body = UpdateAutoCompleteSecondsRequest {
+        user_id,
+        seconds,
+    };
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: UpdateSettingResponse = response.json().await?;
+        Ok(response_data.success)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating auto complete seconds: {}",
+            response.status_text()
+        )))
+    }
+}

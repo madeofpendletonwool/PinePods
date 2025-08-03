@@ -3,7 +3,9 @@ use super::gen_components::{FallbackImage, Search_nav, UseScrollToTop};
 use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
-use crate::components::gen_funcs::format_error_message;
+use crate::components::gen_funcs::{
+    format_error_message, get_filter_preference, set_filter_preference, get_default_sort_direction,
+};
 use crate::components::host_component::HostDropdown;
 use crate::components::podcast_layout::ClickedFeedURL;
 use crate::components::virtual_list::PodcastEpisodeVirtualList;
@@ -183,7 +185,21 @@ pub fn episode_layout() -> Html {
     let loading = use_state(|| true);
     let page_state = use_state(|| PageState::Hidden);
     let episode_search_term = use_state(|| String::new());
-    let episode_sort_direction = use_state(|| Some(EpisodeSortDirection::NewestFirst)); // Default to newest first
+    
+    // Initialize sort direction from local storage or default to newest first
+    let episode_sort_direction = use_state(|| {
+        let saved_preference = get_filter_preference("episodes");
+        match saved_preference.as_deref() {
+            Some("newest") => Some(EpisodeSortDirection::NewestFirst),
+            Some("oldest") => Some(EpisodeSortDirection::OldestFirst),
+            Some("shortest") => Some(EpisodeSortDirection::ShortestFirst),
+            Some("longest") => Some(EpisodeSortDirection::LongestFirst),
+            Some("title_az") => Some(EpisodeSortDirection::TitleAZ),
+            Some("title_za") => Some(EpisodeSortDirection::TitleZA),
+            _ => Some(EpisodeSortDirection::NewestFirst), // Default to newest first
+        }
+    });
+    
     let completed_filter_state = use_state(|| CompletedFilter::ShowAll);
     let show_in_progress = use_state(|| false);
     let notification_status = use_state(|| false);
@@ -2465,6 +2481,10 @@ pub fn episode_layout() -> Html {
                                                         Callback::from(move |e: Event| {
                                                             let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
                                                             let value = target.value();
+                                                            
+                                                            // Save preference to local storage
+                                                            set_filter_preference("episodes", &value);
+                                                            
                                                             match value.as_str() {
                                                                 "newest" => episode_sort_direction.set(Some(EpisodeSortDirection::NewestFirst)),
                                                                 "oldest" => episode_sort_direction.set(Some(EpisodeSortDirection::OldestFirst)),
@@ -2477,12 +2497,12 @@ pub fn episode_layout() -> Html {
                                                         })
                                                     }
                                                 >
-                                                    <option value="newest" selected=true>{"Newest First"}</option>
-                                                    <option value="oldest">{"Oldest First"}</option>
-                                                    <option value="shortest">{"Shortest First"}</option>
-                                                    <option value="longest">{"Longest First"}</option>
-                                                    <option value="title_az">{"Title A-Z"}</option>
-                                                    <option value="title_za">{"Title Z-A"}</option>
+                                                    <option value="newest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"}>{"Newest First"}</option>
+                                                    <option value="oldest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"}>{"Oldest First"}</option>
+                                                    <option value="shortest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"}>{"Shortest First"}</option>
+                                                    <option value="longest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"}>{"Longest First"}</option>
+                                                    <option value="title_az" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{"Title A-Z"}</option>
+                                                    <option value="title_za" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{"Title Z-A"}</option>
                                                 </select>
                                                 <i class="ph ph-caret-down dropdown-arrow"></i>
                                             </div>

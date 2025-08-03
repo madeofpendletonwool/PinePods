@@ -1662,6 +1662,28 @@ pub async fn record_listen_duration(
         state.db_pool.record_listen_duration(data.episode_id, data.user_id, data.listen_duration).await?;
     }
 
+    // Check if episode should be auto-completed based on user's setting
+    let auto_complete_seconds = state.db_pool.get_user_auto_complete_seconds(data.user_id).await.unwrap_or(0);
+    
+    if auto_complete_seconds > 0 {
+        // Get episode duration
+        let episode_duration = if data.is_youtube {
+            state.db_pool.get_youtube_episode_duration(data.episode_id).await.unwrap_or(0)
+        } else {
+            state.db_pool.get_episode_duration(data.episode_id).await.unwrap_or(0)
+        };
+        
+        if episode_duration > 0 {
+            let remaining_time = episode_duration as f64 - data.listen_duration;
+            
+            // Auto-complete if remaining time <= auto_complete_seconds
+            // Also handle cases where listen_duration exceeds episode_duration (dynamic ads, etc.)
+            if remaining_time <= auto_complete_seconds as f64 || data.listen_duration >= episode_duration as f64 {
+                let _ = state.db_pool.mark_episode_completed(data.episode_id, data.user_id, data.is_youtube).await;
+            }
+        }
+    }
+
     Ok(Json(serde_json::json!({ "detail": "Listen duration recorded." })))
 }
 

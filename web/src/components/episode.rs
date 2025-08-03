@@ -510,10 +510,29 @@ pub fn epsiode() -> Html {
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
+                    // Check if the current episode_id is the same as the already fetched episode
+                    let should_reload = if let Some(current_episode_id) = episode_id {
+                        if let Some(fetched_episode) = &effect_pod_state.fetched_episode {
+                            // Only reload if the episode ID has actually changed
+                            fetched_episode.episode.episodeid != current_episode_id
+                        } else {
+                            // No episode is currently loaded, so we need to load
+                            true
+                        }
+                    } else {
+                        // No episode ID provided, need to load based on URL params
+                        true
+                    };
+
+                    if !should_reload {
+                        // Episode is already loaded and it's the same one, no need to reload
+                        loading_clone.set(false);
+                    } else {
+
                     // Reset loading state when episode_id changes
                     loading_clone.set(true);
 
-                    // Clear previous episode data when transitioning
+                    // Clear previous episode data when transitioning to a different episode
                     effect_dispatch.reduce_mut(|state| {
                         state.fetched_episode = None;
                     });
@@ -1037,6 +1056,7 @@ pub fn epsiode() -> Html {
                         }
                     }
                     initial_fetch_complete.set(true);
+                    } // Close the else block
                 }
                 || ()
             },

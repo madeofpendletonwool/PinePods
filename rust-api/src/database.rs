@@ -5612,6 +5612,78 @@ impl DatabasePool {
         }
     }
 
+    // Update user timezone
+    pub async fn update_user_timezone(&self, user_id: i32, timezone: &str) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"UPDATE "Users" SET timezone = $1 WHERE userid = $2"#)
+                    .bind(timezone)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("UPDATE Users SET Timezone = ? WHERE UserID = ?")
+                    .bind(timezone)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
+    // Update user date format
+    pub async fn update_user_date_format(&self, user_id: i32, date_format: &str) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"UPDATE "Users" SET dateformat = $1 WHERE userid = $2"#)
+                    .bind(date_format)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("UPDATE Users SET DateFormat = ? WHERE UserID = ?")
+                    .bind(date_format)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
+    // Update user time format (hour preference)
+    pub async fn update_user_time_format(&self, user_id: i32, hour_pref: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"UPDATE "Users" SET timeformat = $1 WHERE userid = $2"#)
+                    .bind(hour_pref)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("UPDATE Users SET TimeFormat = ? WHERE UserID = ?")
+                    .bind(hour_pref)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
     // User admin check - matches Python user_admin_check function
     pub async fn user_admin_check(&self, user_id: i32) -> AppResult<bool> {
         match self {
@@ -9181,6 +9253,12 @@ pub struct UserSyncSettings {
     pub sync_type: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct UserAutoComplete {
+    pub user_id: i32,
+    pub auto_complete_seconds: i32,
+}
+
 // gPodder device structure
 #[derive(Debug, Clone)]
 pub struct GpodderDevice {
@@ -11820,6 +11898,306 @@ impl DatabasePool {
     // Get startpage wrapper function for compatibility 
     pub async fn get_startpage(&self, user_id: i32) -> AppResult<String> {
         self.get_user_startpage(user_id).await
+    }
+
+    // Get user auto complete seconds setting
+    pub async fn get_user_auto_complete_seconds(&self, user_id: i32) -> AppResult<i32> {
+        println!("Getting auto complete seconds for user {}", user_id);
+        
+        let auto_complete_seconds = match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT autocompleteseconds FROM "UserSettings" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    row.try_get::<Option<i32>, _>("autocompleteseconds")?.unwrap_or(0)
+                } else {
+                    0
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT AutoCompleteSeconds FROM UserSettings WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    row.try_get::<Option<i32>, _>("AutoCompleteSeconds")?.unwrap_or(0)
+                } else {
+                    0
+                }
+            }
+        };
+        
+        Ok(auto_complete_seconds)
+    }
+    
+    // Set user auto complete seconds setting
+    pub async fn set_user_auto_complete_seconds(&self, user_id: i32, seconds: i32) -> AppResult<bool> {
+        println!("Setting auto complete seconds for user {} to {}", user_id, seconds);
+        
+        // Check if user settings exist and perform update/insert
+        let success = match self {
+            DatabasePool::Postgres(pool) => {
+                let existing = sqlx::query(r#"SELECT COUNT(*) as count FROM "UserSettings" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                let count: i64 = existing.try_get("count")?;
+                
+                if count > 0 {
+                    // Update existing record
+                    let result = sqlx::query(r#"UPDATE "UserSettings" SET autocompleteseconds = $2 WHERE userid = $1"#)
+                        .bind(user_id)
+                        .bind(seconds)
+                        .execute(pool)
+                        .await?;
+                    result.rows_affected() > 0
+                } else {
+                    // Insert new record with default theme
+                    let result = sqlx::query(r#"INSERT INTO "UserSettings" (userid, autocompleteseconds, theme) VALUES ($1, $2, 'Nordic')"#)
+                        .bind(user_id)
+                        .bind(seconds)
+                        .execute(pool)
+                        .await?;
+                    result.rows_affected() > 0
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let existing = sqlx::query("SELECT COUNT(*) as count FROM UserSettings WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                let count: i64 = existing.try_get("count")?;
+                
+                if count > 0 {
+                    // Update existing record
+                    let result = sqlx::query("UPDATE UserSettings SET AutoCompleteSeconds = ? WHERE UserID = ?")
+                        .bind(seconds)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                    result.rows_affected() > 0
+                } else {
+                    // Insert new record with default theme
+                    let result = sqlx::query("INSERT INTO UserSettings (UserID, AutoCompleteSeconds, Theme) VALUES (?, ?, 'Nordic')")
+                        .bind(user_id)
+                        .bind(seconds)
+                        .execute(pool)
+                        .await?;
+                    result.rows_affected() > 0
+                }
+            }
+        };
+        
+        println!("Successfully set auto complete seconds for user {} to {}: {}", user_id, seconds, success);
+        Ok(success)
+    }
+
+    // Get episode duration in seconds
+    pub async fn get_episode_duration(&self, episode_id: i32) -> AppResult<i32> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT episodeduration FROM "Episodes" WHERE episodeid = $1"#)
+                    .bind(episode_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.try_get::<Option<i32>, _>("episodeduration")?.unwrap_or(0))
+                } else {
+                    Ok(0)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT EpisodeDuration FROM Episodes WHERE EpisodeID = ?")
+                    .bind(episode_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.try_get::<Option<i32>, _>("EpisodeDuration")?.unwrap_or(0))
+                } else {
+                    Ok(0)
+                }
+            }
+        }
+    }
+
+    // Get YouTube episode duration in seconds
+    pub async fn get_youtube_episode_duration(&self, episode_id: i32) -> AppResult<i32> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT duration FROM "YouTubeVideos" WHERE videoid = $1"#)
+                    .bind(episode_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.try_get::<Option<i32>, _>("duration")?.unwrap_or(0))
+                } else {
+                    Ok(0)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT Duration FROM YouTubeVideos WHERE VideoID = ?")
+                    .bind(episode_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.try_get::<Option<i32>, _>("Duration")?.unwrap_or(0))
+                } else {
+                    Ok(0)
+                }
+            }
+        }
+    }
+
+    // Get users who have auto-complete enabled (auto_complete_seconds > 0)
+    pub async fn get_users_with_auto_complete_enabled(&self) -> AppResult<Vec<UserAutoComplete>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT us.userid, us.autocompleteseconds 
+                    FROM "UserSettings" us 
+                    WHERE us.autocompleteseconds > 0
+                "#)
+                .fetch_all(pool)
+                .await?;
+
+                let mut users = Vec::new();
+                for row in rows {
+                    users.push(UserAutoComplete {
+                        user_id: row.try_get("userid")?,
+                        auto_complete_seconds: row.try_get("autocompleteseconds")?,
+                    });
+                }
+                Ok(users)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query("
+                    SELECT UserID, AutoCompleteSeconds 
+                    FROM UserSettings 
+                    WHERE AutoCompleteSeconds > 0
+                ")
+                .fetch_all(pool)
+                .await?;
+
+                let mut users = Vec::new();
+                for row in rows {
+                    users.push(UserAutoComplete {
+                        user_id: row.try_get("UserID")?,
+                        auto_complete_seconds: row.try_get("AutoCompleteSeconds")?,
+                    });
+                }
+                Ok(users)
+            }
+        }
+    }
+
+    // Auto-complete episodes for a user based on their setting
+    pub async fn auto_complete_user_episodes(&self, user_id: i32, auto_complete_seconds: i32) -> AppResult<i32> {
+        if auto_complete_seconds <= 0 {
+            return Ok(0);
+        }
+
+        let mut completed_count = 0;
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Handle regular episodes
+                let episode_rows = sqlx::query(r#"
+                    SELECT e.episodeid, e.episodeduration, COALESCE(h.listenduration, 0) as listenduration
+                    FROM "Episodes" e
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $1
+                    WHERE e.completed = false 
+                      AND e.episodeduration > 0 
+                      AND h.listenduration > 0
+                      AND (e.episodeduration - h.listenduration) <= $2
+                "#)
+                .bind(user_id)
+                .bind(auto_complete_seconds)
+                .fetch_all(pool)
+                .await?;
+
+                for row in episode_rows {
+                    let episode_id: i32 = row.try_get("episodeid")?;
+                    let _ = self.mark_episode_completed(episode_id, user_id, false).await;
+                    completed_count += 1;
+                }
+
+                // Handle YouTube episodes
+                let youtube_rows = sqlx::query(r#"
+                    SELECT v.videoid, v.duration, COALESCE(h.listenduration, 0) as listenduration
+                    FROM "YouTubeVideos" v
+                    LEFT JOIN "UserVideoHistory" h ON v.videoid = h.videoid AND h.userid = $1
+                    WHERE v.completed = false 
+                      AND v.duration > 0 
+                      AND h.listenduration > 0
+                      AND (v.duration - h.listenduration) <= $2
+                "#)
+                .bind(user_id)
+                .bind(auto_complete_seconds)
+                .fetch_all(pool)
+                .await?;
+
+                for row in youtube_rows {
+                    let video_id: i32 = row.try_get("videoid")?;
+                    let _ = self.mark_episode_completed(video_id, user_id, true).await;
+                    completed_count += 1;
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                // Handle regular episodes
+                let episode_rows = sqlx::query("
+                    SELECT e.EpisodeID, e.EpisodeDuration, COALESCE(h.ListenDuration, 0) as ListenDuration
+                    FROM Episodes e
+                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = ?
+                    WHERE e.Completed = 0 
+                      AND e.EpisodeDuration > 0 
+                      AND h.ListenDuration > 0
+                      AND (e.EpisodeDuration - h.ListenDuration) <= ?
+                ")
+                .bind(user_id)
+                .bind(auto_complete_seconds)
+                .fetch_all(pool)
+                .await?;
+
+                for row in episode_rows {
+                    let episode_id: i32 = row.try_get("EpisodeID")?;
+                    let _ = self.mark_episode_completed(episode_id, user_id, false).await;
+                    completed_count += 1;
+                }
+
+                // Handle YouTube episodes
+                let youtube_rows = sqlx::query("
+                    SELECT v.VideoID, v.Duration, COALESCE(h.ListenDuration, 0) as ListenDuration
+                    FROM YouTubeVideos v
+                    LEFT JOIN UserVideoHistory h ON v.VideoID = h.VideoID AND h.UserID = ?
+                    WHERE v.Completed = 0 
+                      AND v.Duration > 0 
+                      AND h.ListenDuration > 0
+                      AND (v.Duration - h.ListenDuration) <= ?
+                ")
+                .bind(user_id)
+                .bind(auto_complete_seconds)
+                .fetch_all(pool)
+                .await?;
+
+                for row in youtube_rows {
+                    let video_id: i32 = row.try_get("VideoID")?;
+                    let _ = self.mark_episode_completed(video_id, user_id, true).await;
+                    completed_count += 1;
+                }
+            }
+        }
+
+        Ok(completed_count)
     }
     
     // Subscribe to person - matches Python subscribe_to_person function exactly

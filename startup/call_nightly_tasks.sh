@@ -28,3 +28,4 @@ fi
 # Run cleanup tasks
 echo "Running nightly tasks..."
 curl -X GET "http://localhost:8032/api/data/refresh_hosts" -H "Api-Key: $API_KEY" >> /cron.log 2>&1
+curl -X GET "http://localhost:8032/api/data/auto_complete_episodes" -H "Api-Key: $API_KEY" >> /cron.log 2>&1

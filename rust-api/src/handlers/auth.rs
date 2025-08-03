@@ -104,6 +104,29 @@ pub struct TimeZoneInfo {
 }
 
 #[derive(Deserialize)]
+pub struct UpdateTimezoneRequest {
+    pub user_id: i32,
+    pub timezone: String,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateDateFormatRequest {
+    pub user_id: i32,
+    pub date_format: String,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateTimeFormatRequest {
+    pub user_id: i32,
+    pub hour_pref: i32,
+}
+#[derive(Deserialize)]
+pub struct UpdateAutoCompleteSecondsRequest {
+    pub user_id: i32,
+    pub seconds: i32,
+}
+
+#[derive(Deserialize)]
 pub struct OPMLImportRequest {
     pub podcasts: Vec<String>,
     pub user_id: i32,
@@ -1316,6 +1339,166 @@ pub async fn oidc_callback(
 
     // Success - EXACT match to Python
     Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?api_key={}", frontend_base, api_key)))
+}
+
+// Update user timezone
+pub async fn update_timezone(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(data): Json<UpdateTimezoneRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    
+    // Get user ID from API key for authorization check
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user
+    if data.user_id != user_id_from_api_key {
+        return Err(AppError::forbidden("You are not authorized to update timezone for other users"));
+    }
+    
+    let success = state.db_pool.update_user_timezone(data.user_id, &data.timezone).await?;
+    
+    if success {
+        Ok(Json(json!({
+            "success": true,
+            "message": "Timezone updated successfully"
+        })))
+    } else {
+        Err(AppError::not_found("User not found"))
+    }
+}
+
+// Update user date format
+pub async fn update_date_format(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(data): Json<UpdateDateFormatRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    
+    // Get user ID from API key for authorization check
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user
+    if data.user_id != user_id_from_api_key {
+        return Err(AppError::forbidden("You are not authorized to update date format for other users"));
+    }
+    
+    let success = state.db_pool.update_user_date_format(data.user_id, &data.date_format).await?;
+    
+    if success {
+        Ok(Json(json!({
+            "success": true,
+            "message": "Date format updated successfully"
+        })))
+    } else {
+        Err(AppError::not_found("User not found"))
+    }
+}
+
+// Update user time format
+pub async fn update_time_format(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(data): Json<UpdateTimeFormatRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    
+    // Get user ID from API key for authorization check
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user
+    if data.user_id != user_id_from_api_key {
+        return Err(AppError::forbidden("You are not authorized to update time format for other users"));
+    }
+    
+    let success = state.db_pool.update_user_time_format(data.user_id, data.hour_pref).await?;
+    
+    if success {
+        Ok(Json(json!({
+            "success": true,
+            "message": "Time format updated successfully"
+        })))
+    } else {
+        Err(AppError::not_found("User not found"))
+    }
+}
+
+// Get user auto complete seconds
+pub async fn get_auto_complete_seconds(
+    headers: HeaderMap,
+    Path(user_id): Path<i32>,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    
+    // Get user ID from API key for authorization check
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user
+    if user_id != user_id_from_api_key {
+        return Err(AppError::forbidden("You are not authorized to view auto complete seconds for other users"));
+    }
+    
+    let auto_complete_seconds = state.db_pool.get_user_auto_complete_seconds(user_id).await?;
+    
+    Ok(Json(json!({
+        "auto_complete_seconds": auto_complete_seconds
+    })))
+}
+
+// Update user auto complete seconds
+pub async fn update_auto_complete_seconds(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(data): Json<UpdateAutoCompleteSecondsRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    if !state.db_pool.verify_api_key(&api_key).await? {
+        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+    }
+    
+    // Get user ID from API key for authorization check
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Allow the action if the API key belongs to the user
+    if data.user_id != user_id_from_api_key {
+        return Err(AppError::forbidden("You are not authorized to update auto complete seconds for other users"));
+    }
+    
+    let success = state.db_pool.set_user_auto_complete_seconds(data.user_id, data.seconds).await?;
+    
+    if success {
+        Ok(Json(json!({
+            "success": true,
+            "message": "Auto complete seconds updated successfully"
+        })))
+    } else {
+        Err(AppError::not_found("User not found"))
+    }
 }
 
 // Construct base URL from request headers (matches Python request.base_url)

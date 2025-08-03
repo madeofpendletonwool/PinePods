@@ -1767,6 +1767,59 @@ def migration_015_oidc_claims_and_roles(conn, db_type: str):
         cursor.close()
 
 
+# Migration 016: Add autocompleteseconds to UserSettings
+@register_migration("016", "add_auto_complete_seconds", "Add autocompleteseconds column to UserSettings table", requires=["003"])
+def migration_016_add_auto_complete_seconds(conn, db_type: str):
+    """Add autocompleteseconds column to UserSettings table"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == 'postgresql':
+            # Check if column exists first
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserSettings' 
+                AND column_name = 'autocompleteseconds'
+                AND table_schema = 'public'
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+            
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE "UserSettings"
+                    ADD COLUMN autocompleteseconds INTEGER DEFAULT 0
+                """)
+                logger.info("Added autocompleteseconds column to UserSettings table (PostgreSQL)")
+            else:
+                logger.info("autocompleteseconds column already exists in UserSettings table (PostgreSQL)")
+                
+        else:  # mysql
+            # Check if column exists first
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserSettings' 
+                AND column_name = 'AutoCompleteSeconds'
+                AND table_schema = DATABASE()
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+            
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE UserSettings
+                    ADD COLUMN AutoCompleteSeconds INT DEFAULT 0
+                """)
+                logger.info("Added AutoCompleteSeconds column to UserSettings table (MySQL)")
+            else:
+                logger.info("AutoCompleteSeconds column already exists in UserSettings table (MySQL)")
+        
+        logger.info("Auto complete seconds migration completed successfully")
+        
+    finally:
+        cursor.close()
+
+
 def register_all_migrations():
     """Register all migrations with the migration manager"""
     # Migrations are auto-registered via decorators

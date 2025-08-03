@@ -3,6 +3,7 @@ use axum::{
     http::HeaderMap,
     response::Json,
 };
+use serde::{Deserialize, Serialize};
 use serde_json;
 
 use crate::{
@@ -11,21 +12,24 @@ use crate::{
     AppState,
 };
 
+#[derive(Deserialize)]
+pub struct InitRequest {
+    pub api_key: String,
+}
+
 // Startup tasks endpoint - matches Python startup_tasks function exactly
 pub async fn startup_tasks(
-    headers: HeaderMap,
     State(state): State<AppState>,
+    Json(request): Json<InitRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    
     // Verify if the API key is valid
-    let is_valid = validate_api_key(&state, &api_key).await?;
+    let is_valid = validate_api_key(&state, &request.api_key).await?;
     if !is_valid {
         return Err(AppError::forbidden("Invalid or unauthorized API key"));
     }
 
     // Check if the provided API key is from the background_tasks user (UserID 1)
-    let api_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let api_user_id = state.db_pool.get_user_id_from_api_key(&request.api_key).await?;
     if api_user_id != 1 {
         return Err(AppError::forbidden("Invalid or unauthorized API key"));
     }
@@ -266,6 +270,40 @@ async fn refresh_user_podcasts(db_pool: &crate::database::DatabasePool, user_id:
     }
     
     Ok((successful_podcasts, total_new_episodes))
+}
+
+// Auto-complete episodes based on user settings - nightly task
+pub async fn auto_complete_episodes(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify if the API key is valid
+    let is_valid = validate_api_key(&state, &api_key).await?;
+    if !is_valid {
+        return Err(AppError::forbidden("Invalid or unauthorized API key"));
+    }
+
+    // Check if the provided API key is from the background_tasks user (UserID 1)
+    let api_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if api_user_id != 1 {
+        return Err(AppError::forbidden("Invalid or unauthorized API key"));
+    }
+
+    // Get all users who have auto_complete_seconds > 0
+    let users_with_auto_complete = state.db_pool.get_users_with_auto_complete_enabled().await?;
+    let mut total_completed = 0;
+
+    for user in users_with_auto_complete {
+        let completed_count = state.db_pool.auto_complete_user_episodes(user.user_id, user.auto_complete_seconds).await.unwrap_or(0);
+        total_completed += completed_count;
+    }
+
+    Ok(Json(serde_json::json!({
+        "status": "Auto-complete task completed successfully",
+        "episodes_completed": total_completed
+    })))
 }
 
 // Helper function to refresh a single podcast

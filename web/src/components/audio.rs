@@ -1601,8 +1601,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             let history_clone = history.clone();
                             wasm_bindgen_futures::spawn_local(async move {
                                 dispatch_clone.reduce_mut(move |state| {
+                                    // Only clear fetched_episode if we're navigating to a different episode
+                                    if state.selected_episode_id != Some(episode_id) {
+                                        state.fetched_episode = None;
+                                    }
                                     state.selected_episode_id = Some(episode_id);
-                                    state.fetched_episode = None;
                                 });
                                 history_clone.push("/episode");
                             });
