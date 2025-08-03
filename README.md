@@ -447,7 +447,6 @@ externalDatabase:
   user: postgres
   password: "your-password"
   database: pinepods_database
-```
     size: 3Gi
 
 valkey:
