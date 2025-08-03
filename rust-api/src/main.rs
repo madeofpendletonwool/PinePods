@@ -204,6 +204,11 @@ fn create_data_routes() -> Router<AppState> {
         .route("/get_play_episode_details", post(handlers::podcasts::get_play_episode_details))
         .route("/fetch_podcasting_2_pod_data", get(handlers::podcasts::fetch_podcasting_2_pod_data))
         .route("/mark_episode_completed", post(handlers::podcasts::mark_episode_completed))
+        // Bulk episode operations
+        .route("/bulk_mark_episodes_completed", post(handlers::episodes::bulk_mark_episodes_completed))
+        .route("/bulk_save_episodes", post(handlers::episodes::bulk_save_episodes))
+        .route("/bulk_queue_episodes", post(handlers::episodes::bulk_queue_episodes))
+        .route("/bulk_download_episodes", post(handlers::episodes::bulk_download_episodes))
         .route("/increment_played/{user_id}", put(handlers::podcasts::increment_played))
         .route("/record_listen_duration", post(handlers::podcasts::record_listen_duration))
         .route("/get_podcast_id_from_ep_id", get(handlers::podcasts::get_podcast_id_from_ep_id))

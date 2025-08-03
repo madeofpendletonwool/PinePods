@@ -1972,6 +1972,169 @@ pub async fn call_mark_episode_uncompleted(
     }
 }
 
+// Bulk episode action structures and functions
+#[derive(Serialize, Deserialize, Debug)]
+pub struct BulkEpisodeActionRequest {
+    pub episode_ids: Vec<i32>,
+    pub user_id: i32,
+    pub is_youtube: Option<bool>,
+}
+
+#[derive(Deserialize, Debug)]
+struct BulkEpisodeActionResponse {
+    pub message: String,
+    pub processed_count: i32,
+    pub failed_count: Option<i32>,
+}
+
+pub async fn call_bulk_mark_episodes_completed(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &BulkEpisodeActionRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/bulk_mark_episodes_completed", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: BulkEpisodeActionResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.message)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to bulk mark episodes completed: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+pub async fn call_bulk_save_episodes(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &BulkEpisodeActionRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/bulk_save_episodes", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: BulkEpisodeActionResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.message)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to bulk save episodes: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+pub async fn call_bulk_queue_episodes(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &BulkEpisodeActionRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/bulk_queue_episodes", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: BulkEpisodeActionResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.message)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to bulk queue episodes: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+pub async fn call_bulk_download_episodes(
+    server_name: &String,
+    api_key: &Option<String>,
+    request_data: &BulkEpisodeActionRequest,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/bulk_download_episodes", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let request_body = serde_json::to_string(request_data)
+        .map_err(|e| anyhow::Error::msg(format!("Serialization Error: {}", e)))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body: BulkEpisodeActionResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(response_body.message)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to bulk download episodes: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AutoDownloadRequest {
     pub podcast_id: i32,

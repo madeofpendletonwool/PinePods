@@ -386,6 +386,21 @@ pub struct ReorderQueueResponse {
     pub message: String,
 }
 
+// Bulk episode action models - flexible episode ID lists
+#[derive(Debug, Deserialize)]
+pub struct BulkEpisodeActionRequest {
+    pub episode_ids: Vec<i32>,
+    pub user_id: i32,
+    pub is_youtube: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BulkEpisodeActionResponse {
+    pub message: String,
+    pub processed_count: i32,
+    pub failed_count: Option<i32>,
+}
+
 // Background task models
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TaskStatus {

@@ -16619,6 +16619,345 @@ impl DatabasePool {
             }
         }
     }
+
+    // Bulk episode operations for efficient batch processing
+    pub async fn bulk_mark_episodes_completed(&self, episode_ids: Vec<i32>, user_id: i32, is_youtube: bool) -> AppResult<(i32, i32)> {
+        if episode_ids.is_empty() {
+            return Ok((0, 0));
+        }
+
+        let mut processed = 0;
+        let mut failed = 0;
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                if is_youtube {
+                    for episode_id in episode_ids {
+                        match self.mark_episode_completed(episode_id, user_id, is_youtube).await {
+                            Ok(_) => processed += 1,
+                            Err(_) => failed += 1,
+                        }
+                    }
+                } else {
+                    // Batch update regular episodes
+                    let episode_ids_str: Vec<String> = episode_ids.iter().map(|id| id.to_string()).collect();
+                    let ids_clause = episode_ids_str.join(",");
+                    
+                    let query = format!(
+                        r#"UPDATE "Episodes" SET completed = TRUE WHERE episodeid IN ({})"#,
+                        ids_clause
+                    );
+                    
+                    let result = sqlx::query(&query).execute(&mut *tx).await?;
+                    processed = result.rows_affected() as i32;
+                }
+                
+                tx.commit().await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                if is_youtube {
+                    for episode_id in episode_ids {
+                        match self.mark_episode_completed(episode_id, user_id, is_youtube).await {
+                            Ok(_) => processed += 1,
+                            Err(_) => failed += 1,
+                        }
+                    }
+                } else {
+                    // Batch update regular episodes
+                    let episode_ids_str: Vec<String> = episode_ids.iter().map(|id| id.to_string()).collect();
+                    let ids_clause = episode_ids_str.join(",");
+                    
+                    let query = format!(
+                        "UPDATE Episodes SET Completed = TRUE WHERE EpisodeID IN ({})",
+                        ids_clause
+                    );
+                    
+                    let result = sqlx::query(&query).execute(&mut *tx).await?;
+                    processed = result.rows_affected() as i32;
+                }
+                
+                tx.commit().await?;
+            }
+        }
+
+        Ok((processed, failed))
+    }
+
+    pub async fn bulk_save_episodes(&self, episode_ids: Vec<i32>, user_id: i32, is_youtube: bool) -> AppResult<(i32, i32)> {
+        if episode_ids.is_empty() {
+            return Ok((0, 0));
+        }
+
+        let mut processed = 0;
+        let mut failed = 0;
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                if is_youtube {
+                    for episode_id in episode_ids {
+                        // Check if already saved to avoid duplicates
+                        let existing = sqlx::query(
+                            r#"SELECT "SaveID" FROM "SavedVideos" WHERE "VideoID" = $1 AND "UserID" = $2"#
+                        )
+                        .bind(episode_id)
+                        .bind(user_id)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+                        
+                        if existing.is_none() {
+                            match sqlx::query(
+                                r#"INSERT INTO "SavedVideos" ("VideoID", "UserID") VALUES ($1, $2)"#
+                            )
+                            .bind(episode_id)
+                            .bind(user_id)
+                            .execute(&mut *tx)
+                            .await {
+                                Ok(_) => processed += 1,
+                                Err(_) => failed += 1,
+                            }
+                        }
+                    }
+                } else {
+                    for episode_id in episode_ids {
+                        // Check if already saved to avoid duplicates  
+                        let existing = sqlx::query(
+                            r#"SELECT saveid FROM "SavedEpisodes" WHERE episodeid = $1 AND userid = $2"#
+                        )
+                        .bind(episode_id)
+                        .bind(user_id)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+                        
+                        if existing.is_none() {
+                            match sqlx::query(
+                                r#"INSERT INTO "SavedEpisodes" (episodeid, userid) VALUES ($1, $2)"#
+                            )
+                            .bind(episode_id)
+                            .bind(user_id)
+                            .execute(&mut *tx)
+                            .await {
+                                Ok(_) => processed += 1,
+                                Err(_) => failed += 1,
+                            }
+                        }
+                    }
+                }
+                
+                tx.commit().await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                if is_youtube {
+                    for episode_id in episode_ids {
+                        let existing = sqlx::query(
+                            "SELECT SaveID FROM SavedVideos WHERE VideoID = ? AND UserID = ?"
+                        )
+                        .bind(episode_id)
+                        .bind(user_id)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+                        
+                        if existing.is_none() {
+                            match sqlx::query(
+                                "INSERT INTO SavedVideos (VideoID, UserID) VALUES (?, ?)"
+                            )
+                            .bind(episode_id)
+                            .bind(user_id)
+                            .execute(&mut *tx)
+                            .await {
+                                Ok(_) => processed += 1,
+                                Err(_) => failed += 1,
+                            }
+                        }
+                    }
+                } else {
+                    for episode_id in episode_ids {
+                        let existing = sqlx::query(
+                            "SELECT SaveID FROM SavedEpisodes WHERE EpisodeID = ? AND UserID = ?"
+                        )
+                        .bind(episode_id)
+                        .bind(user_id)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+                        
+                        if existing.is_none() {
+                            match sqlx::query(
+                                "INSERT INTO SavedEpisodes (EpisodeID, UserID) VALUES (?, ?)"
+                            )
+                            .bind(episode_id)
+                            .bind(user_id)
+                            .execute(&mut *tx)
+                            .await {
+                                Ok(_) => processed += 1,
+                                Err(_) => failed += 1,
+                            }
+                        }
+                    }
+                }
+                
+                tx.commit().await?;
+            }
+        }
+
+        Ok((processed, failed))
+    }
+
+    pub async fn bulk_queue_episodes(&self, episode_ids: Vec<i32>, user_id: i32, is_youtube: bool) -> AppResult<(i32, i32)> {
+        if episode_ids.is_empty() {
+            return Ok((0, 0));
+        }
+
+        let mut processed = 0;
+        let mut failed = 0;
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                if is_youtube {
+                    for episode_id in episode_ids {
+                        // Check if already queued to avoid duplicates
+                        let existing = sqlx::query(
+                            r#"SELECT "QueueID" FROM "QueuedVideos" WHERE "VideoID" = $1 AND "UserID" = $2"#
+                        )
+                        .bind(episode_id)
+                        .bind(user_id)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+                        
+                        if existing.is_none() {
+                            match sqlx::query(
+                                r#"INSERT INTO "QueuedVideos" ("VideoID", "UserID") VALUES ($1, $2)"#
+                            )
+                            .bind(episode_id)
+                            .bind(user_id)
+                            .execute(&mut *tx)
+                            .await {
+                                Ok(_) => processed += 1,
+                                Err(_) => failed += 1,
+                            }
+                        }
+                    }
+                } else {
+                    // Get max queue position for user
+                    let max_pos_row = sqlx::query(
+                        r#"SELECT COALESCE(MAX(queueposition), 0) as max_pos FROM "EpisodeQueue" WHERE userid = $1"#
+                    )
+                    .bind(user_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                    
+                    let mut max_pos: i32 = max_pos_row.try_get("max_pos")?;
+                    
+                    for episode_id in episode_ids {
+                        // Check if already queued to avoid duplicates
+                        let existing = sqlx::query(
+                            r#"SELECT queueid FROM "EpisodeQueue" WHERE episodeid = $1 AND userid = $2 AND is_youtube = $3"#
+                        )
+                        .bind(episode_id)
+                        .bind(user_id)
+                        .bind(is_youtube)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+                        
+                        if existing.is_none() {
+                            max_pos += 1;
+                            match sqlx::query(
+                                r#"INSERT INTO "EpisodeQueue" (episodeid, userid, queueposition, is_youtube) VALUES ($1, $2, $3, $4)"#
+                            )
+                            .bind(episode_id)
+                            .bind(user_id)
+                            .bind(max_pos)
+                            .bind(is_youtube)
+                            .execute(&mut *tx)
+                            .await {
+                                Ok(_) => processed += 1,
+                                Err(_) => failed += 1,
+                            }
+                        }
+                    }
+                }
+                
+                tx.commit().await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                if is_youtube {
+                    for episode_id in episode_ids {
+                        let existing = sqlx::query(
+                            "SELECT QueueID FROM QueuedVideos WHERE VideoID = ? AND UserID = ?"
+                        )
+                        .bind(episode_id)
+                        .bind(user_id)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+                        
+                        if existing.is_none() {
+                            match sqlx::query(
+                                "INSERT INTO QueuedVideos (VideoID, UserID) VALUES (?, ?)"
+                            )
+                            .bind(episode_id)
+                            .bind(user_id)
+                            .execute(&mut *tx)
+                            .await {
+                                Ok(_) => processed += 1,
+                                Err(_) => failed += 1,
+                            }
+                        }
+                    }
+                } else {
+                    // Get max queue position for user
+                    let max_pos_row = sqlx::query(
+                        "SELECT COALESCE(MAX(QueuePosition), 0) as max_pos FROM EpisodeQueue WHERE UserID = ?"
+                    )
+                    .bind(user_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                    
+                    let mut max_pos: i32 = max_pos_row.try_get("max_pos")?;
+                    
+                    for episode_id in episode_ids {
+                        let existing = sqlx::query(
+                            "SELECT QueueID FROM EpisodeQueue WHERE EpisodeID = ? AND UserID = ? AND is_youtube = ?"
+                        )
+                        .bind(episode_id)
+                        .bind(user_id)
+                        .bind(is_youtube)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+                        
+                        if existing.is_none() {
+                            max_pos += 1;
+                            match sqlx::query(
+                                "INSERT INTO EpisodeQueue (EpisodeID, UserID, QueuePosition, is_youtube) VALUES (?, ?, ?, ?)"
+                            )
+                            .bind(episode_id)
+                            .bind(user_id)
+                            .bind(max_pos)
+                            .bind(is_youtube)
+                            .execute(&mut *tx)
+                            .await {
+                                Ok(_) => processed += 1,
+                                Err(_) => failed += 1,
+                            }
+                        }
+                    }
+                }
+                
+                tx.commit().await?;
+            }
+        }
+
+        Ok((processed, failed))
+    }
 }
 
 #[derive(Debug)]

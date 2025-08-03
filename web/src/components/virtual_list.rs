@@ -35,6 +35,12 @@ pub struct PodcastEpisodeVirtualListProps {
     pub api_key: Option<Option<String>>,
     pub podcast_link: String,
     pub podcast_title: String,
+    // Bulk selection props
+    pub selected_episodes: Option<Rc<std::collections::HashSet<i32>>>,
+    pub is_selecting: Option<bool>,
+    pub on_episode_select: Option<Callback<(i32, bool)>>,
+    pub on_select_older: Option<Callback<i32>>,
+    pub on_select_newer: Option<Callback<i32>>,
 }
 
 #[function_component(PodcastEpisodeVirtualList)]
@@ -238,6 +244,72 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                     class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg"
                     style={format!("height: {}px; overflow: hidden;", *container_item_height)}
                 >
+                    {
+                        // Show checkbox when in selection mode
+                        if props.is_selecting.unwrap_or(false) {
+                            let episode_id = episode.episode_id.unwrap_or(0);
+                            let is_selected = props.selected_episodes.as_ref().map_or(false, |selected| selected.contains(&episode_id));
+                            let on_select = props.on_episode_select.clone();
+                            let checkbox_callback = Callback::from(move |_| {
+                                if let Some(callback) = &on_select {
+                                    callback.emit((episode_id, !is_selected));
+                                }
+                            });
+                            
+                            html! {
+                                <div class="flex flex-col items-center justify-center pl-4" style={format!("height: {}px;", *container_item_height)}>
+                                    {
+                                        if let Some(on_select_newer) = &props.on_select_newer {
+                                            let episode_id = episode.episode_id.unwrap_or(0);
+                                            let callback = on_select_newer.clone();
+                                            let newer_callback = Callback::from(move |_| {
+                                                callback.emit(episode_id);
+                                            });
+                                            html! {
+                                                <button
+                                                    onclick={newer_callback}
+                                                    class="episode-select-button mb-1"
+                                                    title="Select this episode and all newer episodes"
+                                                >
+                                                    {"↑"}
+                                                </button>
+                                            }
+                                        } else {
+                                            html! {}
+                                        }
+                                    }
+                                    <input
+                                        type="checkbox"
+                                        checked={is_selected}
+                                        onchange={checkbox_callback}
+                                        class="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 my-1"
+                                    />
+                                    {
+                                        if let Some(on_select_older) = &props.on_select_older {
+                                            let episode_id = episode.episode_id.unwrap_or(0);
+                                            let callback = on_select_older.clone();
+                                            let older_callback = Callback::from(move |_| {
+                                                callback.emit(episode_id);
+                                            });
+                                            html! {
+                                                <button
+                                                    onclick={older_callback}
+                                                    class="episode-select-button mt-1"
+                                                    title="Select this episode and all older episodes"  
+                                                >
+                                                    {"↓"}
+                                                </button>
+                                            }
+                                        } else {
+                                            html! {}
+                                        }
+                                    }
+                                </div>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
                     <div class="flex flex-col w-auto object-cover pl-4">
                         <FallbackImage
                             src={episode.artwork.clone().unwrap_or_default()}
