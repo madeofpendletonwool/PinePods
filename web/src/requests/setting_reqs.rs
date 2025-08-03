@@ -1967,6 +1967,9 @@ pub struct NotificationSettings {
     pub enabled: bool,
     pub ntfy_topic: Option<String>,
     pub ntfy_server_url: Option<String>,
+    pub ntfy_username: Option<String>,
+    pub ntfy_password: Option<String>,
+    pub ntfy_access_token: Option<String>,
     pub gotify_url: Option<String>,
     pub gotify_token: Option<String>,
 }
@@ -2027,6 +2030,9 @@ pub async fn call_update_notification_settings(
         "enabled": settings.enabled,
         "ntfy_topic": settings.ntfy_topic,
         "ntfy_server_url": settings.ntfy_server_url,
+        "ntfy_username": settings.ntfy_username,
+        "ntfy_password": settings.ntfy_password,
+        "ntfy_access_token": settings.ntfy_access_token,
         "gotify_url": settings.gotify_url,
         "gotify_token": settings.gotify_token,
     });

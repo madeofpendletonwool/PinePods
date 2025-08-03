@@ -93,6 +93,9 @@ impl NotificationManager {
     async fn send_ntfy_notification(&self, settings: &serde_json::Value) -> AppResult<bool> {
         let topic = settings.get("ntfy_topic").and_then(|v| v.as_str()).unwrap_or("");
         let server_url = settings.get("ntfy_server_url").and_then(|v| v.as_str()).unwrap_or("https://ntfy.sh");
+        let username = settings.get("ntfy_username").and_then(|v| v.as_str());
+        let password = settings.get("ntfy_password").and_then(|v| v.as_str());
+        let access_token = settings.get("ntfy_access_token").and_then(|v| v.as_str());
         
         if topic.is_empty() {
             return Ok(false);
@@ -101,12 +104,21 @@ impl NotificationManager {
         let client = reqwest::Client::new();
         let url = format!("{}/{}", server_url, topic);
         
-        let response = client
+        let mut request = client
             .post(&url)
             .header("Content-Type", "text/plain")
-            .body("Test notification from PinePods")
-            .send()
-            .await?;
+            .body("Test notification from PinePods");
+        
+        // Add authentication if provided
+        if let Some(token) = access_token.filter(|t| !t.is_empty()) {
+            // Use access token (preferred method)
+            request = request.header("Authorization", format!("Bearer {}", token));
+        } else if let (Some(user), Some(pass)) = (username.filter(|u| !u.is_empty()), password.filter(|p| !p.is_empty())) {
+            // Use username/password basic auth
+            request = request.basic_auth(user, Some(pass));
+        }
+        
+        let response = request.send().await?;
 
         Ok(response.status().is_success())
     }

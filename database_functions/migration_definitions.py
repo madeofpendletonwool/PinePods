@@ -1820,6 +1820,98 @@ def migration_016_add_auto_complete_seconds(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("017", "add_ntfy_auth_columns", "Add ntfy authentication columns to UserNotificationSettings table", requires=["011"])
+def migration_017_add_ntfy_auth_columns(conn, db_type: str):
+    """Add ntfy authentication columns (username, password, access_token) to UserNotificationSettings table"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            # Check if columns already exist (PostgreSQL - lowercase column names)
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name IN ('ntfyusername', 'ntfypassword', 'ntfyaccesstoken')
+            """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'ntfyusername' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "UserNotificationSettings"
+                    ADD COLUMN ntfyusername VARCHAR(255)
+                """)
+                logger.info("Added ntfyusername column to UserNotificationSettings table (PostgreSQL)")
+            
+            if 'ntfypassword' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "UserNotificationSettings"
+                    ADD COLUMN ntfypassword VARCHAR(255)
+                """)
+                logger.info("Added ntfypassword column to UserNotificationSettings table (PostgreSQL)")
+            
+            if 'ntfyaccesstoken' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "UserNotificationSettings"
+                    ADD COLUMN ntfyaccesstoken VARCHAR(255)
+                """)
+                logger.info("Added ntfyaccesstoken column to UserNotificationSettings table (PostgreSQL)")
+        
+        else:
+            # Check if columns already exist (MySQL)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name = 'NtfyUsername'
+                AND table_schema = DATABASE()
+            """)
+            username_exists = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name = 'NtfyPassword'
+                AND table_schema = DATABASE()
+            """)
+            password_exists = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name = 'NtfyAccessToken'
+                AND table_schema = DATABASE()
+            """)
+            token_exists = cursor.fetchone()[0] > 0
+            
+            if not username_exists:
+                cursor.execute("""
+                    ALTER TABLE UserNotificationSettings
+                    ADD COLUMN NtfyUsername VARCHAR(255)
+                """)
+                logger.info("Added NtfyUsername column to UserNotificationSettings table (MySQL)")
+            
+            if not password_exists:
+                cursor.execute("""
+                    ALTER TABLE UserNotificationSettings
+                    ADD COLUMN NtfyPassword VARCHAR(255)
+                """)
+                logger.info("Added NtfyPassword column to UserNotificationSettings table (MySQL)")
+            
+            if not token_exists:
+                cursor.execute("""
+                    ALTER TABLE UserNotificationSettings
+                    ADD COLUMN NtfyAccessToken VARCHAR(255)
+                """)
+                logger.info("Added NtfyAccessToken column to UserNotificationSettings table (MySQL)")
+        
+        logger.info("Ntfy authentication columns migration completed successfully")
+        
+    finally:
+        cursor.close()
+
+
 def register_all_migrations():
     """Register all migrations with the migration manager"""
     # Migrations are auto-registered via decorators
