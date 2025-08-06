@@ -10,8 +10,9 @@ use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
 use crate::requests::pod_req::{
-    call_get_episode_downloads, call_get_podcasts, call_remove_downloaded_episode,
-    DownloadEpisodeRequest, EpisodeDownload, EpisodeDownloadResponse, Podcast, PodcastResponse,
+    call_bulk_delete_downloaded_episodes, call_get_episode_downloads, call_get_podcasts,
+    BulkEpisodeActionRequest, DownloadEpisodeRequest, EpisodeDownload, EpisodeDownloadResponse,
+    Podcast, PodcastResponse,
 };
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -177,58 +178,59 @@ pub fn downloads() -> Html {
         let page_state = page_state.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
-        let user_id = user_id.clone(); // Make sure this is cloned from a state or props where it's guaranteed to exist.
+        let user_id = user_id.clone();
 
         Callback::from(move |_: MouseEvent| {
-            // Clone values for use inside the async block
             let dispatch_cloned = dispatch.clone();
             let page_state_cloned = page_state.clone();
-            let server_name_cloned = server_name.clone().unwrap(); // Assuming you've ensured these are present
+            let server_name_cloned = server_name.clone().unwrap();
             let api_key_cloned = api_key.clone().unwrap();
             let user_id_cloned = user_id.unwrap();
 
             dispatch.reduce_mut(move |state| {
-                let selected_episodes = state.selected_episodes_for_deletion.clone();
-                // Clear the selected episodes for deletion right away to prevent re-deletion in case of re-render
+                let selected_episodes: Vec<i32> = state.selected_episodes_for_deletion.iter().cloned().collect();
+                let is_youtube = state.selected_is_youtube.unwrap_or(false);
+                
+                // Clear the selected episodes for deletion right away to prevent re-deletion
                 state.selected_episodes_for_deletion.clear();
 
-                for &episode_id in &selected_episodes {
-                    let request = DownloadEpisodeRequest {
-                        episode_id,
+                if !selected_episodes.is_empty() {
+                    let bulk_request = BulkEpisodeActionRequest {
+                        episode_ids: selected_episodes.clone(),
                         user_id: user_id_cloned,
-                        is_youtube: state.selected_is_youtube.unwrap_or(false),
-                    };
-                    let server_name_cloned = server_name_cloned.clone();
-                    let api_key_cloned = api_key_cloned.clone();
-                    let future = async move {
-                        match call_remove_downloaded_episode(
-                            &server_name_cloned,
-                            &api_key_cloned,
-                            &request,
-                        )
-                        .await
-                        {
-                            Ok(success_message) => Some((success_message, episode_id)),
-                            Err(_) => None,
-                        }
+                        is_youtube: Some(is_youtube),
                     };
 
                     let dispatch_for_future = dispatch_cloned.clone();
                     wasm_bindgen_futures::spawn_local(async move {
-                        if let Some((success_message, episode_id)) = future.await {
-                            dispatch_for_future.reduce_mut(|state| {
-                                if let Some(downloaded_episodes) = &mut state.downloaded_episodes {
-                                    downloaded_episodes
-                                        .episodes
-                                        .retain(|ep| ep.episodeid != episode_id);
-                                }
-                                state.info_message = Some(success_message);
-                            });
+                        match call_bulk_delete_downloaded_episodes(
+                            &server_name_cloned,
+                            &api_key_cloned,
+                            &bulk_request,
+                        )
+                        .await
+                        {
+                            Ok(success_message) => {
+                                dispatch_for_future.reduce_mut(|state| {
+                                    // Remove deleted episodes from the state
+                                    if let Some(downloaded_episodes) = &mut state.downloaded_episodes {
+                                        downloaded_episodes.episodes.retain(|ep| {
+                                            !selected_episodes.contains(&ep.episodeid)
+                                        });
+                                    }
+                                    state.info_message = Some(success_message);
+                                });
+                            }
+                            Err(e) => {
+                                dispatch_for_future.reduce_mut(|state| {
+                                    state.error_message = Some(format!("Failed to delete episodes: {}", e));
+                                });
+                            }
                         }
                     });
                 }
 
-                page_state_cloned.set(PageState::Normal); // Return to normal state after operations
+                page_state_cloned.set(PageState::Normal);
             });
         })
     };

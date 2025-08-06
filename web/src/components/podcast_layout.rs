@@ -41,10 +41,7 @@ impl ClickedFeedURL {
             podcastname: self.podcastname,
             artworkurl: self.artworkurl,
             author: self.author,
-            categories: self
-                .categories
-                .map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", "))
-                .unwrap_or_default(),
+            categories: self.categories.unwrap_or_default(),
             description: self.description,
             episodecount: self.episodecount,
             feedurl: self.feedurl,

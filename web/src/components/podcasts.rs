@@ -140,7 +140,7 @@ fn render_podcasts(
                             podcast_artwork.clone(), // Use the saved artwork URL directly
                             podcast.explicit.clone(),
                             episode_count,
-                            Some(podcast.categories.clone()),
+                            podcast.categories.as_ref().map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", ")),
                             podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
                             user_id.unwrap(),
                             podcast.is_youtube,
@@ -243,7 +243,7 @@ fn render_podcasts(
                             podcast_artwork.clone(), // Use the saved artwork URL directly
                             podcast.explicit.clone(),
                             podcast.episodecount.clone().unwrap_or_else(|| 0),
-                            Some(podcast.categories.clone()),
+                            podcast.categories.as_ref().map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", ")),
                             podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
                             user_id.unwrap(),
                             podcast.is_youtube,
@@ -363,11 +363,11 @@ pub fn podcasts() -> Html {
                                 // Extract unique categories
                                 let mut categories = HashSet::new();
                                 for podcast in &fetched_podcasts {
-                                    if !podcast.categories.is_empty() {
-                                        let podcast_categories: Vec<&str> =
-                                            podcast.categories.split(',').collect();
-                                        for cat in podcast_categories {
-                                            categories.insert(cat.trim().to_string());
+                                    if let Some(ref podcast_categories) = podcast.categories {
+                                        if !podcast_categories.is_empty() {
+                                            for category in podcast_categories.values() {
+                                                categories.insert(category.trim().to_string());
+                                            }
                                         }
                                     }
                                 }
@@ -727,7 +727,11 @@ pub fn podcasts() -> Html {
 
                         // Apply category filter
                         let matches_category = if let Some(cat) = selected_cat.as_ref() {
-                            podcast.categories.split(',').any(|c| c.trim() == cat)
+                            if let Some(ref categories) = podcast.categories {
+                                categories.values().any(|c| c.trim() == cat)
+                            } else {
+                                false
+                            }
                         } else {
                             true
                         };

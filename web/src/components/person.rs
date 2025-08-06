@@ -273,8 +273,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                         }
 
                         // Assuming you have this inside the `toggle_podcast` closure:
-                        let categories_og_hashmap =
-                            convert_categories_to_hashmap(podcast.categories.clone());
+                        let categories_og_hashmap = podcast.categories.clone().unwrap_or_default();
 
                         // Add podcast logic
                         let podcast_values = PodcastValues {
@@ -654,7 +653,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
                                             podcast.explicit.clone(),
                                             podcast.episodecount.clone().unwrap_or_else(|| 0),
-                                            Some(podcast.categories.clone()),
+                                            podcast.categories.as_ref().map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", ")),
                                             podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
 
                                             user_id.unwrap(),

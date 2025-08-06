@@ -7,8 +7,9 @@ use crate::requests::setting_reqs::{
     call_get_gpodder_api_status, call_get_gpodder_devices, call_get_nextcloud_server,
     call_remove_podcast_sync, call_set_default_gpodder_device, call_sync_with_gpodder,
     call_test_gpodder_connection, call_toggle_gpodder_api, call_verify_gpodder_auth,
-    initiate_nextcloud_login, CreateDeviceRequest, GpodderAuthRequest, GpodderCheckRequest,
-    GpodderDevice, NextcloudAuthRequest,
+    call_get_gpodder_statistics, initiate_nextcloud_login, 
+    CreateDeviceRequest, GpodderAuthRequest, GpodderCheckRequest,
+    GpodderDevice, GpodderStatistics, NextcloudAuthRequest,
 };
 use serde::Deserialize;
 use serde::Serialize;
@@ -913,6 +914,7 @@ pub fn sync_options() -> Html {
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let is_internal_gpodder_enabled = is_internal_gpodder_enabled.clone();
+        let is_sync_configured = is_sync_configured.clone();
         let dispatch = dispatch.clone();
         let sync_type = sync_type.clone();
 
@@ -923,7 +925,9 @@ pub fn sync_options() -> Html {
                         Ok(status) => {
                             is_internal_gpodder_enabled.set(status.gpodder_enabled);
                             // Set the sync type from the API response
-                            sync_type.set(status.sync_type);
+                            sync_type.set(status.sync_type.clone());
+                            // Set sync configured if any sync type is active
+                            is_sync_configured.set(status.gpodder_enabled || status.sync_type != "None");
                         }
                         Err(e) => {
                             let error_msg = format!("Error fetching gpodder API status: {}", e);
@@ -1549,15 +1553,17 @@ pub fn sync_options() -> Html {
     };
 
     let determine_sync_type = || {
-        if *is_internal_gpodder_enabled && (*nextcloud_url) == "http://localhost:8042" {
-            // Only consider it internal if BOTH gpodder_enabled is true AND the URL is localhost
+        if *is_internal_gpodder_enabled {
+            // Internal gpodder API is enabled
             "internal_gpodder"
-        } else if *sync_type == "nextcloud" {
-            "nextcloud"
-        } else if *is_sync_configured && *sync_type == "gpodder" {
-            // External gpodder - when sync_type is gpodder but URL is not localhost
+        } else if *sync_type == "nextcloud" && *is_sync_configured {
+            // Nextcloud sync is configured
+            "nextcloud" 
+        } else if *sync_type == "gpodder" && *is_sync_configured {
+            // External gpodder server sync is configured
             "external_gpodder"
         } else {
+            // No sync configured
             "none"
         }
     };
@@ -1574,16 +1580,20 @@ pub fn sync_options() -> Html {
                 <p class="item_container-text text-md mr-4">{"Current Podcast Sync Server: "}
                     <span class="item_container-text font-bold">
                     {
-                        if (*nextcloud_url) == "http://localhost:8042" {
-                            "Internal Sync Server".to_string()
-                        } else {
+                        if *is_internal_gpodder_enabled {
+                            "Internal GPodder API".to_string()
+                        } else if *sync_type == "nextcloud" {
                             (*nextcloud_url).clone()
+                        } else if *sync_type == "gpodder" && *is_sync_configured {
+                            (*nextcloud_url).clone()
+                        } else {
+                            "Not currently syncing with any server".to_string()
                         }
                     }
                     </span>
                 </p>
                 {
-                    if *is_sync_configured {
+                    if *is_sync_configured || *is_internal_gpodder_enabled {
                         html! {
                             <button
                                 onclick={on_remove_sync_click}
@@ -1609,9 +1619,8 @@ pub fn sync_options() -> Html {
 
             // Internal Gpodder API Section
             {
-                if !should_hide_sync_options {
-                    html! {
-                        <div class="mb-6 p-4 border rounded-lg">
+                html! {
+                    <div class="mb-6 p-4 border rounded-lg">
                             <h3 class="item_container-text text-md font-bold mb-4">{"Internal Gpodder API"}</h3>
                             <p class="item_container-text text-sm mb-4">
                                 {"Enable the internal gpodder API to synchronize podcasts between Pinepods and other gpodder-compatible clients. This will disable external sync options while enabled."}
@@ -1639,14 +1648,11 @@ pub fn sync_options() -> Html {
                                     </span>
                                 </label>
                             </div>
-                        </div>
-                    }
-                } else {
-                    html! {}
+                    </div>
                 }
             }
 
-            // Nextcloud Section - hide completely when internal API is enabled
+            // Nextcloud Section - hide when internal API is enabled
             {
                 if !should_hide_sync_options {
                     html! {
@@ -1675,7 +1681,7 @@ pub fn sync_options() -> Html {
                 }
             }
 
-            // GPodder Section - hide completely when internal API is enabled
+            // GPodder Section - hide when internal API is enabled
             {
                 if !should_hide_sync_options {
                     html! {
@@ -1852,9 +1858,18 @@ pub fn sync_options() -> Html {
                 }
             }
 
+            // GPodder Statistics Dropdown - show when any sync is enabled
             {
-                // Show advanced options toggle only if sync is configured and the type is gpodder
-                if *is_sync_configured && *sync_type == "gpodder" {
+                if *is_internal_gpodder_enabled || *is_sync_configured {
+                    html! { <GpodderStatisticsDropdown /> }
+                } else {
+                    html! {}
+                }
+            }
+
+            {
+                // Show advanced options toggle for internal gpodder or external gpodder (but not nextcloud)
+                if *is_internal_gpodder_enabled || (*is_sync_configured && *sync_type == "gpodder") {
                     html! {
                         <div class="mt-6">
                             <button
@@ -1875,6 +1890,334 @@ pub fn sync_options() -> Html {
                                     html! { <GpodderAdvancedOptions /> }
                                 } else {
                                     html! {}
+                                }
+                            }
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
+        </div>
+    }
+}
+
+// GPodder Statistics Dropdown Component
+#[function_component(GpodderStatisticsDropdown)]
+pub fn gpodder_statistics_dropdown() -> Html {
+    let (state, dispatch) = use_store::<AppState>();
+    let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+    let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+    
+    // State for dropdown visibility and statistics
+    let show_statistics = use_state(|| false);
+    let statistics = use_state(|| None::<GpodderStatistics>);
+    let is_loading_stats = use_state(|| false);
+
+    // Toggle statistics dropdown
+    let on_toggle_statistics = {
+        let show_statistics = show_statistics.clone();
+        let statistics = statistics.clone();
+        let is_loading_stats = is_loading_stats.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let dispatch = dispatch.clone();
+
+        Callback::from(move |_| {
+            let current_show = *show_statistics;
+            show_statistics.set(!current_show);
+            
+            // Load statistics when opening dropdown
+            if !current_show && statistics.is_none() {
+                if let (Some(server_name), Some(api_key)) = (server_name.clone(), api_key.clone()) {
+                    is_loading_stats.set(true);
+                    let statistics_clone = statistics.clone();
+                    let is_loading_clone = is_loading_stats.clone();
+                    let dispatch_clone = dispatch.clone();
+                    
+                    spawn_local(async move {
+                        match call_get_gpodder_statistics(&server_name, &api_key.unwrap()).await {
+                            Ok(stats) => {
+                                statistics_clone.set(Some(stats));
+                            }
+                            Err(e) => {
+                                let error_msg = format!("Failed to load GPodder statistics: {}", e);
+                                dispatch_clone.reduce_mut(|state| {
+                                    state.error_message = Some(error_msg);
+                                });
+                            }
+                        }
+                        is_loading_clone.set(false);
+                    });
+                }
+            }
+        })
+    };
+
+    // Refresh statistics
+    let on_refresh_statistics = {
+        let statistics = statistics.clone();
+        let is_loading_stats = is_loading_stats.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let dispatch = dispatch.clone();
+
+        Callback::from(move |_| {
+            if let (Some(server_name), Some(api_key)) = (server_name.clone(), api_key.clone()) {
+                is_loading_stats.set(true);
+                let statistics_clone = statistics.clone();
+                let is_loading_clone = is_loading_stats.clone();
+                let dispatch_clone = dispatch.clone();
+                
+                spawn_local(async move {
+                    match call_get_gpodder_statistics(&server_name, &api_key.unwrap()).await {
+                        Ok(stats) => {
+                            statistics_clone.set(Some(stats));
+                        }
+                        Err(e) => {
+                            let error_msg = format!("Failed to refresh GPodder statistics: {}", e);
+                            dispatch_clone.reduce_mut(|state| {
+                                state.error_message = Some(error_msg);
+                            });
+                        }
+                    }
+                    is_loading_clone.set(false);
+                });
+            }
+        })
+    };
+
+    html! {
+        <div class="mt-6 p-4 border rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-700">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <i class="ph ph-chart-bar text-blue-600 dark:text-blue-400 text-lg mr-2"></i>
+                    <h4 class="font-semibold text-gray-800 dark:text-gray-200">{"GPodder Sync Statistics"}</h4>
+                </div>
+                <div class="flex items-center space-x-2">
+                    {
+                        if *show_statistics {
+                            html! {
+                                <button
+                                    onclick={on_refresh_statistics}
+                                    disabled={*is_loading_stats}
+                                    class="p-1 text-gray-600 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400 transition-colors"
+                                    title="Refresh statistics"
+                                >
+                                    {
+                                        if *is_loading_stats {
+                                            html! { <i class="ph ph-spinner animate-spin"></i> }
+                                        } else {
+                                            html! { <i class="ph ph-arrow-clockwise"></i> }
+                                        }
+                                    }
+                                </button>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
+                    <button
+                        onclick={on_toggle_statistics}
+                        class="text-gray-600 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400 transition-colors"
+                    >
+                        {
+                            if *show_statistics {
+                                html! { <i class="ph ph-caret-up text-lg"></i> }
+                            } else {
+                                html! { <i class="ph ph-caret-down text-lg"></i> }
+                            }
+                        }
+                    </button>
+                </div>
+            </div>
+            
+            {
+                if *show_statistics {
+                    html! {
+                        <div class="mt-4 space-y-4">
+                            {
+                                if *is_loading_stats {
+                                    html! {
+                                        <div class="flex items-center justify-center py-8">
+                                            <div class="flex items-center space-x-3">
+                                                <i class="ph ph-spinner animate-spin text-2xl text-blue-600"></i>
+                                                <span class="text-gray-600 dark:text-gray-300">{"Loading server statistics..."}</span>
+                                            </div>
+                                        </div>
+                                    }
+                                } else if let Some(stats) = statistics.as_ref() {
+                                    html! {
+                                        <>
+                                            // Connection Status
+                                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                                    <div class="flex items-center">
+                                                        <i class="ph ph-globe text-green-500 text-xl mr-3"></i>
+                                                        <div>
+                                                            <p class="text-sm text-gray-600 dark:text-gray-400">{"Connection"}</p>
+                                                            <p class={format!("font-semibold {}", 
+                                                                if stats.connection_status == "All endpoints working" { 
+                                                                    "text-green-600 dark:text-green-400" 
+                                                                } else if stats.connection_status == "Partial connectivity" { 
+                                                                    "text-yellow-600 dark:text-yellow-400" 
+                                                                } else { 
+                                                                    "text-red-600 dark:text-red-400" 
+                                                                }
+                                                            )}>{&stats.connection_status}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                                    <div class="flex items-center">
+                                                        <i class="ph ph-devices text-blue-500 text-xl mr-3"></i>
+                                                        <div>
+                                                            <p class="text-sm text-gray-600 dark:text-gray-400">{"Devices"}</p>
+                                                            <p class="font-semibold text-gray-800 dark:text-gray-200">{stats.total_devices}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                                    <div class="flex items-center">
+                                                        <i class="ph ph-podcast text-purple-500 text-xl mr-3"></i>
+                                                        <div>
+                                                            <p class="text-sm text-gray-600 dark:text-gray-400">{"Subscriptions"}</p>
+                                                            <p class="font-semibold text-gray-800 dark:text-gray-200">{stats.total_subscriptions}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            // Server Info
+                                            <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                                <h5 class="font-medium text-gray-800 dark:text-gray-200 mb-2 flex items-center">
+                                                    <i class="ph ph-server mr-2"></i>{"Server Information"}
+                                                </h5>
+                                                <div class="space-y-2">
+                                                    <div class="flex justify-between">
+                                                        <span class="text-sm text-gray-600 dark:text-gray-400">{"Server URL:"}</span>
+                                                        <span class="text-sm font-mono text-gray-800 dark:text-gray-200">{&stats.server_url}</span>
+                                                    </div>
+                                                    <div class="flex justify-between">
+                                                        <span class="text-sm text-gray-600 dark:text-gray-400">{"Sync Type:"}</span>
+                                                        <span class="text-sm font-semibold text-blue-600 dark:text-blue-400">{&stats.sync_type}</span>
+                                                    </div>
+                                                    {
+                                                        if let Some(last_sync) = &stats.last_sync_timestamp {
+                                                            html! {
+                                                                <div class="flex justify-between">
+                                                                    <span class="text-sm text-gray-600 dark:text-gray-400">{"Last Sync:"}</span>
+                                                                    <span class="text-sm text-gray-800 dark:text-gray-200">{last_sync}</span>
+                                                                </div>
+                                                            }
+                                                        } else {
+                                                            html! {}
+                                                        }
+                                                    }
+                                                </div>
+                                            </div>
+
+                                            // API Endpoint Tests
+                                            {
+                                                if !stats.api_endpoints_tested.is_empty() {
+                                                    html! {
+                                                        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                                            <h5 class="font-medium text-gray-800 dark:text-gray-200 mb-3 flex items-center">
+                                                                <i class="ph ph-plug mr-2"></i>{"API Endpoint Status"}
+                                                            </h5>
+                                                            <div class="space-y-2">
+                                                                {
+                                                                    stats.api_endpoints_tested.iter().map(|endpoint| {
+                                                                        let status_class = if endpoint.status == "success" {
+                                                                            "text-green-600 dark:text-green-400"
+                                                                        } else {
+                                                                            "text-red-600 dark:text-red-400"
+                                                                        };
+                                                                        
+                                                                        html! {
+                                                                            <div class="flex items-center justify-between py-1">
+                                                                                <span class="text-sm font-mono text-gray-700 dark:text-gray-300">{&endpoint.endpoint}</span>
+                                                                                <div class="flex items-center space-x-2">
+                                                                                    {
+                                                                                        if let Some(time) = endpoint.response_time_ms {
+                                                                                            html! {
+                                                                                                <span class="text-xs text-gray-500 dark:text-gray-400">{format!("{}ms", time)}</span>
+                                                                                            }
+                                                                                        } else {
+                                                                                            html! {}
+                                                                                        }
+                                                                                    }
+                                                                                    <span class={format!("text-sm font-semibold {}", status_class)}>
+                                                                                        {
+                                                                                            if endpoint.status == "success" {
+                                                                                                html! { <i class="ph ph-check-circle"></i> }
+                                                                                            } else {
+                                                                                                html! { <i class="ph ph-x-circle"></i> }
+                                                                                            }
+                                                                                        }
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                        }
+                                                                    }).collect::<Html>()
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
+
+                                            // Recent Episode Actions (if any)
+                                            {
+                                                if !stats.recent_episode_actions.is_empty() {
+                                                    html! {
+                                                        <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                                                            <h5 class="font-medium text-gray-800 dark:text-gray-200 mb-3 flex items-center">
+                                                                <i class="ph ph-play mr-2"></i>{"Recent Episode Actions"}
+                                                            </h5>
+                                                            <div class="space-y-2 max-h-40 overflow-y-auto">
+                                                                {
+                                                                    stats.recent_episode_actions.iter().take(5).map(|action| {
+                                                                        let action_icon = match action.action.as_str() {
+                                                                            "play" => "ph-play",
+                                                                            "download" => "ph-download",
+                                                                            _ => "ph-circle"
+                                                                        };
+                                                                        
+                                                                        html! {
+                                                                            <div class="flex items-center space-x-3 py-1">
+                                                                                <i class={format!("ph {} text-gray-500", action_icon)}></i>
+                                                                                <div class="flex-1 min-w-0">
+                                                                                    <p class="text-sm text-gray-800 dark:text-gray-200 truncate">
+                                                                                        {format!("{} - {}", action.action, action.episode)}
+                                                                                    </p>
+                                                                                    <p class="text-xs text-gray-500 dark:text-gray-400">{&action.timestamp}</p>
+                                                                                </div>
+                                                                            </div>
+                                                                        }
+                                                                    }).collect::<Html>()
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
+                                        </>
+                                    }
+                                } else {
+                                    html! {
+                                        <div class="text-center py-6">
+                                            <i class="ph ph-warning text-yellow-500 text-2xl mb-2"></i>
+                                            <p class="text-gray-600 dark:text-gray-300">{"No statistics available"}</p>
+                                            <p class="text-sm text-gray-500 dark:text-gray-400">{"Click refresh to load server statistics"}</p>
+                                        </div>
+                                    }
                                 }
                             }
                         </div>

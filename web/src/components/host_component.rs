@@ -50,7 +50,7 @@ fn map_podcast_details_to_podcast(details: PodcastDetails) -> Podcast {
         websiteurl: Some(details.websiteurl),
         feedurl: details.feedurl,
         author: Some(details.author),
-        categories: details.categories,
+        categories: Some(details.categories),
         explicit: details.explicit,
         podcastindexid: Some(details.podcastindexid.unwrap_or(0)),
     }
@@ -394,15 +394,7 @@ pub fn host_dropdown(
                                                         websiteurl: Some(details.websiteurl), // Changed from podcast_link
                                                         feedurl: details.feedurl, // Changed from podcast_url
                                                         author: Some(details.author), // Changed from podcast_author
-                                                        categories: details.categories
-                                                            .map(|cat_map| {
-                                                                cat_map
-                                                                    .values()
-                                                                    .next()
-                                                                    .cloned()
-                                                                    .unwrap_or_default()
-                                                            })
-                                                            .unwrap_or_default(),
+                                                        categories: details.categories,
                                                         explicit: details.explicit, // Changed from podcast_explicit
                                                         podcastindexid: Some(details.podcastindexid), // Changed from podcast_index_id
                                                     })

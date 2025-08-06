@@ -1334,8 +1334,10 @@ input[type="range"]::-moz-range-thumb {
 .audio-player .line-content {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     opacity: 1;
     visibility: visible;
+    width: 100%;
 }
 
 .audio-player.expanded .line-content {
@@ -1361,7 +1363,13 @@ input[type="range"]::-moz-range-thumb {
     visibility: visible;
 }
 
-.audio-player .line-content .left-group,
+.audio-player .line-content .left-group {
+    display: flex;
+    align-items: center;
+    flex: 0 1 auto;
+    min-width: 0;
+}
+
 .audio-player .line-content .right-group {
     display: flex;
     align-items: center;
@@ -1470,6 +1478,63 @@ input[type="range"]::-moz-range-thumb {
 .audio-player .line-content .right-group {
     justify-content: flex-end;
     padding-right: 5px;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Seek bar container for minimized player */
+.audio-player .line-content .seek-bar-container {
+    flex: 1;
+    max-width: 50%;
+    min-width: 200px;
+    margin-left: 16px;
+}
+
+/* Better responsive title sizing - dynamic space allocation */
+.audio-player .line-content .title {
+    flex: 1 1 auto;
+    min-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 24px;
+    max-width: calc(100vw - 400px); /* Reserve space for controls */
+}
+
+/* Responsive breakpoints - dynamic space allocation */
+@media (min-width: 768px) {
+    .audio-player .line-content .title {
+        max-width: calc(100vw - 350px);
+    }
+}
+
+@media (min-width: 1200px) {
+    .audio-player .line-content .seek-bar-container {
+        max-width: 45%;
+    }
+    .audio-player .line-content .title {
+        max-width: calc(100vw - 320px);
+    }
+}
+
+@media (min-width: 1600px) {
+    .audio-player .line-content .seek-bar-container {
+        max-width: 50%;
+    }
+    .audio-player .line-content .title {
+        max-width: calc(100vw - 300px);
+    }
+}
+
+@media (min-width: 2000px) {
+    .audio-player .line-content .seek-bar-container {
+        max-width: 55%;
+    }
+    .audio-player .line-content .title {
+        max-width: calc(100vw - 280px);
+    }
 }
 
 @media (max-width: 640px) {
@@ -5648,4 +5713,80 @@ button.item-container-action-button.item-container-action-button {
 
 .downloads-search-input::placeholder {
     color: var(--text-secondary-color);
+}
+
+/* Bulk Episode Management Styles */
+.bulk-select-button {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    border-radius: 9999px;
+    background-color: var(--container-background);
+    color: var(--text-color);
+    border: 1px solid var(--accent-color);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.bulk-select-button:hover {
+    background-color: var(--hover-color);
+}
+
+.bulk-filter-button {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    border-radius: 9999px;
+    background-color: var(--secondary-background);
+    color: var(--text-color);
+    border: 1px solid var(--accent-color);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.bulk-filter-button:hover {
+    background-color: var(--hover-color);
+}
+
+.bulk-action-success {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    border-radius: 0.375rem;
+    background-color: var(--success-color);
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.bulk-action-success:hover {
+    opacity: 0.8;
+}
+
+.bulk-action-primary {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    border-radius: 0.375rem;
+    background-color: var(--link-color);
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.bulk-action-primary:hover {
+    opacity: 0.8;
+}
+
+.episode-select-button {
+    padding: 0.125rem 0.25rem;
+    font-size: 0.75rem;
+    border-radius: 0.25rem;
+    background-color: var(--accent-color);
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.episode-select-button:hover {
+    opacity: 0.8;
 }

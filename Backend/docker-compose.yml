@@ -2,8 +2,11 @@ version: '3'
 services:
     pinepods-backend:
        image: madeofpendletonwool/pinepods_backend:latest
-       container_name: pypods-be
+       container_name: pinepods-backend
        env_file: env_file
+       environment:
+         # Add your YouTube Data API v3 key here for YouTube channel search
+         - YOUTUBE_API_KEY=your_youtube_api_key_here
        ports:
             - 5000:5000
        restart: unless-stopped

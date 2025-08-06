@@ -577,9 +577,7 @@ def migration_004_default_users(conn, db_type: str):
             # Extract API key from existing record
             api_key = result[0] if isinstance(result, tuple) else result['apikey']
         
-        # Always write API key to temp file for web service (file may not exist after container restart)
-        with open("/tmp/web_api_key.txt", "w") as f:
-            f.write(api_key)
+        # Note: Web API key file removed for security - background tasks now authenticate via database
         
         logger.info("Created default users successfully")
         
@@ -1067,20 +1065,29 @@ def migration_009_people_sharing_tables(conn, db_type: str):
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS "People" (
                     PersonID SERIAL PRIMARY KEY,
-                    Name VARCHAR(255) NOT NULL,
-                    UserID INT NOT NULL,
+                    Name TEXT,
+                    PersonImg TEXT,
+                    PeopleDBID INT,
+                    AssociatedPodcasts TEXT,
+                    UserID INT,
                     FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE
                 )
             """)
             
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS "PeopleEpisodes" (
-                    PeopleEpisodeID SERIAL PRIMARY KEY,
-                    PersonID INT NOT NULL,
-                    EpisodeID INT NOT NULL,
+                    EpisodeID SERIAL PRIMARY KEY,
+                    PersonID INT,
+                    PodcastID INT,
+                    EpisodeTitle TEXT,
+                    EpisodeDescription TEXT,
+                    EpisodeURL TEXT,
+                    EpisodeArtwork TEXT,
+                    EpisodePubDate TIMESTAMP,
+                    EpisodeDuration INT,
                     AddedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (PersonID) REFERENCES "People"(PersonID) ON DELETE CASCADE,
-                    FOREIGN KEY (EpisodeID) REFERENCES "Episodes"(EpisodeID) ON DELETE CASCADE
+                    FOREIGN KEY (PersonID) REFERENCES "People"(PersonID),
+                    FOREIGN KEY (PodcastID) REFERENCES "Podcasts"(PodcastID)
                 )
             """)
             
@@ -1101,20 +1108,29 @@ def migration_009_people_sharing_tables(conn, db_type: str):
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS People (
                     PersonID INT AUTO_INCREMENT PRIMARY KEY,
-                    Name VARCHAR(255) NOT NULL,
-                    UserID INT NOT NULL,
+                    Name TEXT,
+                    PersonImg TEXT,
+                    PeopleDBID INT,
+                    AssociatedPodcasts TEXT,
+                    UserID INT,
                     FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
                 )
             """)
             
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS PeopleEpisodes (
-                    PeopleEpisodeID INT AUTO_INCREMENT PRIMARY KEY,
-                    PersonID INT NOT NULL,
-                    EpisodeID INT NOT NULL,
+                    EpisodeID INT AUTO_INCREMENT PRIMARY KEY,
+                    PersonID INT,
+                    PodcastID INT,
+                    EpisodeTitle TEXT,
+                    EpisodeDescription TEXT,
+                    EpisodeURL TEXT,
+                    EpisodeArtwork TEXT,
+                    EpisodePubDate TIMESTAMP,
+                    EpisodeDuration INT,
                     AddedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (PersonID) REFERENCES People(PersonID) ON DELETE CASCADE,
-                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE
+                    FOREIGN KEY (PersonID) REFERENCES People(PersonID),
+                    FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
                 )
             """)
             
@@ -1747,6 +1763,197 @@ def migration_015_oidc_claims_and_roles(conn, db_type: str):
 
         logger.info("Added claim & roles settings to OIDC table")
 
+    finally:
+        cursor.close()
+
+
+# Migration 016: Add autocompleteseconds to UserSettings
+@register_migration("016", "add_auto_complete_seconds", "Add autocompleteseconds column to UserSettings table", requires=["003"])
+def migration_016_add_auto_complete_seconds(conn, db_type: str):
+    """Add autocompleteseconds column to UserSettings table"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == 'postgresql':
+            # Check if column exists first
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserSettings' 
+                AND column_name = 'autocompleteseconds'
+                AND table_schema = 'public'
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+            
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE "UserSettings"
+                    ADD COLUMN autocompleteseconds INTEGER DEFAULT 0
+                """)
+                logger.info("Added autocompleteseconds column to UserSettings table (PostgreSQL)")
+            else:
+                logger.info("autocompleteseconds column already exists in UserSettings table (PostgreSQL)")
+                
+        else:  # mysql
+            # Check if column exists first
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserSettings' 
+                AND column_name = 'AutoCompleteSeconds'
+                AND table_schema = DATABASE()
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+            
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE UserSettings
+                    ADD COLUMN AutoCompleteSeconds INT DEFAULT 0
+                """)
+                logger.info("Added AutoCompleteSeconds column to UserSettings table (MySQL)")
+            else:
+                logger.info("AutoCompleteSeconds column already exists in UserSettings table (MySQL)")
+        
+        logger.info("Auto complete seconds migration completed successfully")
+        
+    finally:
+        cursor.close()
+
+
+@register_migration("017", "add_ntfy_auth_columns", "Add ntfy authentication columns to UserNotificationSettings table", requires=["011"])
+def migration_017_add_ntfy_auth_columns(conn, db_type: str):
+    """Add ntfy authentication columns (username, password, access_token) to UserNotificationSettings table"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            # Check if columns already exist (PostgreSQL - lowercase column names)
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name IN ('ntfyusername', 'ntfypassword', 'ntfyaccesstoken')
+            """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'ntfyusername' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "UserNotificationSettings"
+                    ADD COLUMN ntfyusername VARCHAR(255)
+                """)
+                logger.info("Added ntfyusername column to UserNotificationSettings table (PostgreSQL)")
+            
+            if 'ntfypassword' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "UserNotificationSettings"
+                    ADD COLUMN ntfypassword VARCHAR(255)
+                """)
+                logger.info("Added ntfypassword column to UserNotificationSettings table (PostgreSQL)")
+            
+            if 'ntfyaccesstoken' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "UserNotificationSettings"
+                    ADD COLUMN ntfyaccesstoken VARCHAR(255)
+                """)
+                logger.info("Added ntfyaccesstoken column to UserNotificationSettings table (PostgreSQL)")
+        
+        else:
+            # Check if columns already exist (MySQL)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name = 'NtfyUsername'
+                AND table_schema = DATABASE()
+            """)
+            username_exists = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name = 'NtfyPassword'
+                AND table_schema = DATABASE()
+            """)
+            password_exists = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name = 'NtfyAccessToken'
+                AND table_schema = DATABASE()
+            """)
+            token_exists = cursor.fetchone()[0] > 0
+            
+            if not username_exists:
+                cursor.execute("""
+                    ALTER TABLE UserNotificationSettings
+                    ADD COLUMN NtfyUsername VARCHAR(255)
+                """)
+                logger.info("Added NtfyUsername column to UserNotificationSettings table (MySQL)")
+            
+            if not password_exists:
+                cursor.execute("""
+                    ALTER TABLE UserNotificationSettings
+                    ADD COLUMN NtfyPassword VARCHAR(255)
+                """)
+                logger.info("Added NtfyPassword column to UserNotificationSettings table (MySQL)")
+            
+            if not token_exists:
+                cursor.execute("""
+                    ALTER TABLE UserNotificationSettings
+                    ADD COLUMN NtfyAccessToken VARCHAR(255)
+                """)
+                logger.info("Added NtfyAccessToken column to UserNotificationSettings table (MySQL)")
+        
+        logger.info("Ntfy authentication columns migration completed successfully")
+        
+    finally:
+        cursor.close()
+
+
+@register_migration("018", "add_gpodder_sync_timestamp", "Add GPodder last sync timestamp for incremental sync", requires=["001"])
+def migration_018_gpodder_sync_timestamp(conn, db_type: str):
+    """Add GPodder last sync timestamp column for proper incremental sync per GPodder spec"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            # Check if column already exists (PostgreSQL)
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'Users' 
+                AND column_name = 'lastsynctime'
+            """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'lastsynctime' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "Users"
+                    ADD COLUMN LastSyncTime TIMESTAMP WITH TIME ZONE
+                """)
+                logger.info("Added LastSyncTime column to Users table (PostgreSQL)")
+        
+        else:
+            # Check if column already exists (MySQL)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'Users' 
+                AND column_name = 'LastSyncTime'
+                AND table_schema = DATABASE()
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+            
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE Users
+                    ADD COLUMN LastSyncTime DATETIME
+                """)
+                logger.info("Added LastSyncTime column to Users table (MySQL)")
+        
+        logger.info("GPodder sync timestamp migration completed successfully")
+        
     finally:
         cursor.close()
 

@@ -28,11 +28,12 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::{spawn_local, JsFuture};
 use web_sys::UrlSearchParams;
-use web_sys::{window, Request, RequestInit, Response};
+use web_sys::{window, Headers, Request, RequestInit, Response};
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
+use wasm_bindgen::JsValue;
 
 async fn fallback_to_podcast_parsing(
     server_name: String,
@@ -203,6 +204,8 @@ fn get_current_url() -> String {
 pub struct TranscriptModalProps {
     pub transcripts: Vec<Transcript>,
     pub onclose: Callback<()>,
+    pub server_name: String,
+    pub api_key: String,
 }
 
 #[function_component(TranscriptModal)]
@@ -217,6 +220,8 @@ pub fn transcript_modal(props: &TranscriptModalProps) -> Html {
         let transcript_content = transcript_content.clone();
         let loading = loading.clone();
         let error = error.clone();
+        let server_name = props.server_name.clone();
+        let api_key = props.api_key.clone();
 
         use_effect_with(transcripts, move |transcripts| {
             if !transcripts.is_empty() {
@@ -239,58 +244,98 @@ pub fn transcript_modal(props: &TranscriptModalProps) -> Html {
                     let speaker_regex = Regex::new(r"<v\s+[^>]+>").unwrap();
                     let simple_speaker_regex = Regex::new(r"<v\s+").unwrap();
 
-                    let opts = RequestInit::new();
-                    opts.set_method("GET");
+                    // Use backend proxy to fetch transcript
+                    let api_url = format!("{}/api/data/fetch_transcript", server_name);
+                    let request_body = serde_json::json!({
+                        "url": url
+                    });
 
-                    let request = Request::new_with_str_and_init(&url, &opts).unwrap();
+                    let opts = RequestInit::new();
+                    opts.set_method("POST");
+                    opts.set_body(&JsValue::from_str(&request_body.to_string()));
+                    let headers = Headers::new().unwrap();
+                    headers.set("Content-Type", "application/json").unwrap();
+                    headers.set("Api-Key", &api_key).unwrap();
+                    opts.set_headers(&headers);
+
+                    let request = Request::new_with_str_and_init(&api_url, &opts).unwrap();
 
                     let window = web_sys::window().unwrap();
-                    let resp_value = JsFuture::from(window.fetch_with_request(&request))
-                        .await
-                        .unwrap();
-                    let resp: Response = resp_value.dyn_into().unwrap();
+                    match JsFuture::from(window.fetch_with_request(&request)).await {
+                        Ok(resp_value) => {
+                            match resp_value.dyn_into::<Response>() {
+                                Ok(resp) => {
+                                    match JsFuture::from(resp.text().unwrap()).await {
+                                        Ok(text) => {
+                                            let text_str = text.as_string().unwrap();
+                                            
+                                            // Parse the JSON response from backend
+                                            match serde_json::from_str::<serde_json::Value>(&text_str) {
+                                                Ok(json) => {
+                                                    if json["success"].as_bool().unwrap_or(false) {
+                                                        let content = json["content"].as_str().unwrap_or("");
+                                                        
+                                                        // Basic parsing to clean up the transcript text
+                                                        let cleaned_text = match mime_type.as_str() {
+                                                            "text/html" => {
+                                                                // For HTML content, we'll sanitize but preserve formatting
+                                                                let div = web_sys::window()
+                                                                    .unwrap()
+                                                                    .document()
+                                                                    .unwrap()
+                                                                    .create_element("div")
+                                                                    .unwrap();
+                                                                div.set_inner_html(content);
+                                                                div.text_content().unwrap_or_default()
+                                                            }
+                                                            _ => {
+                                                                // For other formats (VTT, SRT), clean up as before
+                                                                content.lines()
+                                                                    .filter(|line| {
+                                                                        !line.trim().is_empty()
+                                                                            && !line.trim().parse::<i32>().is_ok()
+                                                                            && !line.starts_with("WEBVTT")
+                                                                            && !line.contains("-->")
+                                                                    })
+                                                                    .map(|line| {
+                                                                        let line = speaker_regex.replace_all(line, "");
+                                                                        let line = simple_speaker_regex.replace_all(&line, "");
+                                                                        line.trim().to_string()
+                                                                    })
+                                                                    .filter(|line| !line.is_empty())
+                                                                    .collect::<Vec<_>>()
+                                                                    .join("\n")
+                                                            }
+                                                        };
 
-                    match JsFuture::from(resp.text().unwrap()).await {
-                        Ok(text) => {
-                            let text = text.as_string().unwrap();
-                            // Basic parsing to clean up the transcript text
-                            let cleaned_text = match mime_type.as_str() {
-                                "text/html" => {
-                                    // For HTML content, we'll sanitize but preserve formatting
-                                    let div = web_sys::window()
-                                        .unwrap()
-                                        .document()
-                                        .unwrap()
-                                        .create_element("div")
-                                        .unwrap();
-                                    div.set_inner_html(&text);
-                                    div.text_content().unwrap_or_default()
+                                                        transcript_content.set(Some(cleaned_text));
+                                                        loading.set(false);
+                                                    } else {
+                                                        let error_msg = json["error"].as_str().unwrap_or("Unknown error");
+                                                        error.set(Some(format!("Backend error: {}", error_msg)));
+                                                        loading.set(false);
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    error.set(Some(format!("Failed to parse JSON response: {:?}", e)));
+                                                    loading.set(false);
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error.set(Some(format!("Failed to read response text: {:?}", e)));
+                                            loading.set(false);
+                                        }
+                                    }
                                 }
-                                _ => {
-                                    // For other formats (VTT, SRT), clean up as before
-                                    text.lines()
-                                        .filter(|line| {
-                                            !line.trim().is_empty()
-                                                && !line.trim().parse::<i32>().is_ok()
-                                                && !line.starts_with("WEBVTT")
-                                                && !line.contains("-->")
-                                        })
-                                        .map(|line| {
-                                            let line = speaker_regex.replace_all(line, "");
-                                            let line = simple_speaker_regex.replace_all(&line, "");
-                                            line.trim().to_string()
-                                        })
-                                        .filter(|line| !line.is_empty())
-                                        .collect::<Vec<_>>()
-                                        .join("\n")
+                                Err(e) => {
+                                    error.set(Some(format!("Failed to parse response: {:?}", e)));
+                                    loading.set(false);
                                 }
-                            };
-
-                            transcript_content.set(Some(cleaned_text));
-                            loading.set(false);
+                            }
                         }
                         Err(e) => {
-                            error.set(Some(format!("Failed to load transcript: {:?}", e)));
+                            error.set(Some(format!("Failed to fetch transcript via backend: {:?}", e)));
                             loading.set(false);
                         }
                     }
@@ -465,10 +510,29 @@ pub fn epsiode() -> Html {
                 if let (Some(api_key), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
+                    // Check if the current episode_id is the same as the already fetched episode
+                    let should_reload = if let Some(current_episode_id) = episode_id {
+                        if let Some(fetched_episode) = &effect_pod_state.fetched_episode {
+                            // Only reload if the episode ID has actually changed
+                            fetched_episode.episode.episodeid != current_episode_id
+                        } else {
+                            // No episode is currently loaded, so we need to load
+                            true
+                        }
+                    } else {
+                        // No episode ID provided, need to load based on URL params
+                        true
+                    };
+
+                    if !should_reload {
+                        // Episode is already loaded and it's the same one, no need to reload
+                        loading_clone.set(false);
+                    } else {
+
                     // Reset loading state when episode_id changes
                     loading_clone.set(true);
 
-                    // Clear previous episode data when transitioning
+                    // Clear previous episode data when transitioning to a different episode
                     effect_dispatch.reduce_mut(|state| {
                         state.fetched_episode = None;
                     });
@@ -992,6 +1056,7 @@ pub fn epsiode() -> Html {
                         }
                     }
                     initial_fetch_complete.set(true);
+                    } // Close the else block
                 }
                 || ()
             },
@@ -1621,7 +1686,7 @@ pub fn epsiode() -> Html {
                                                 details.artworkurl,
                                                 details.explicit,
                                                 details.episodecount,
-                                                Some(details.categories),
+                                                Some(details.categories.values().cloned().collect::<Vec<_>>().join(", ")),
                                                 details.websiteurl,
                                                 user_id.unwrap(),
                                                 details.is_youtube, // assuming we renamed this field
@@ -1756,6 +1821,8 @@ pub fn epsiode() -> Html {
                                                                 if show_modal {
                                                                     <TranscriptModal
                                                                         transcripts={state.current_transcripts.clone().unwrap_or_default()}
+                                                                        server_name={server_name.unwrap_or_default()}
+                                                                        api_key={api_key.unwrap().unwrap_or_default()}
                                                                         onclose={Callback::from(move |_| {
                                                                             dispatch.reduce_mut(|state| {
                                                                                 state.show_transcript_modal = Some(false);
@@ -1942,23 +2009,39 @@ pub fn epsiode() -> Html {
                                                 if let Some(transcript) = &audio_state.episode_page_transcript {
                                                     if !transcript.is_empty() {
                                                         let transcript_clone = transcript.clone();
+                                                        let dispatch = dispatch.clone();
+                                                        let dispatch_call = dispatch.clone();
                                                         html! {
                                                             <>
-                                                            { for transcript_clone.iter().map(|transcript| {
-                                                                let open_in_new_tab = open_in_new_tab.clone();
-                                                                let url = transcript.url.clone();
-                                                                html! {
-                                                                    <div class="header-info pb-2 pt-2">
-                                                                        <button
-                                                                            onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
-                                                                            title={"Transcript"}
-                                                                            class="font-bold item-container-button"
-                                                                        >
-                                                                            { "Episode Transcript" }
-                                                                        </button>
-                                                                    </div>
+                                                            <div class="header-info pb-2 pt-2">
+                                                                <button
+                                                                    onclick={Callback::from(move |_| {
+                                                                        dispatch_call.reduce_mut(|state| {
+                                                                            state.show_transcript_modal = Some(true);
+                                                                            state.current_transcripts = Some(transcript_clone.clone());
+                                                                        });
+                                                                    })}
+                                                                    title={"Transcript"}
+                                                                    class="font-bold item-container-button"
+                                                                >
+                                                                    { "View Transcript" }
+                                                                </button>
+                                                            </div>
+
+                                                            if let Some(show_modal) = state.show_transcript_modal {
+                                                                if show_modal {
+                                                                    <TranscriptModal
+                                                                        transcripts={state.current_transcripts.clone().unwrap_or_default()}
+                                                                        server_name={server_name.unwrap_or_default()}
+                                                                        api_key={api_key.unwrap().unwrap_or_default()}
+                                                                        onclose={Callback::from(move |_| {
+                                                                            dispatch.reduce_mut(|state| {
+                                                                                state.show_transcript_modal = Some(false);
+                                                                            });
+                                                                        })}
+                                                                    />
                                                                 }
-                                                            })}
+                                                            }
                                                             </>
                                                         }
                                                     } else {
