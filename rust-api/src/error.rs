@@ -49,6 +49,9 @@ pub enum AppError {
     #[error("Internal server error: {0}")]
     Internal(String),
 
+    #[error("Scheduler error: {0}")]
+    Scheduler(#[from] tokio_cron_scheduler::JobSchedulerError),
+
     #[error("Service unavailable: {0}")]
     ServiceUnavailable(String),
 
@@ -78,6 +81,7 @@ impl IntoResponse for AppError {
             AppError::ServiceUnavailable(_) => (StatusCode::SERVICE_UNAVAILABLE, "Service unavailable"),
             AppError::FeedParsing(_) => (StatusCode::BAD_REQUEST, "Feed parsing error"),
             AppError::Email(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Email error"),
+            AppError::Scheduler(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Scheduler error"),
         };
 
         let body = Json(json!({

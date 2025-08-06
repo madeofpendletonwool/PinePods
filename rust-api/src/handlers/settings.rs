@@ -2079,7 +2079,7 @@ pub async fn update_notification_settings(
         request.gotify_url.as_deref(),
         request.gotify_token.as_deref()
     ).await?;
-    Ok(Json(serde_json::json!({ "message": "Notification settings updated successfully" })))
+    Ok(Json(serde_json::json!({ "detail": "Notification settings updated successfully" })))
 }
 
 // Test notification - matches Python test_notification function exactly

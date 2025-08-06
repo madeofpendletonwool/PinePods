@@ -66,7 +66,7 @@ LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 
 # Install runtime dependencies (removed Python)
 RUN apk update && apk upgrade && \
-    apk add --no-cache nginx tzdata openssl bash mariadb-client curl cronie openrc ffmpeg supervisor wget jq && \
+    apk add --no-cache nginx tzdata openssl bash mariadb-client curl ffmpeg supervisor wget jq && \
     rm -rf /var/cache/apk/*
 
 # Download and install latest yt-dlp binary for ARM64
@@ -97,10 +97,8 @@ RUN mkdir -p /pinepods /var/log/supervisor/
 COPY startup/ /pinepods/startup/
 COPY clients/ /pinepods/clients/
 COPY database_functions/ /pinepods/database_functions/
-RUN chmod +x /pinepods/startup/call_refresh_endpoint.sh \
-    /pinepods/startup/app_startup.sh \
-    /pinepods/startup/call_nightly_tasks.sh \
-    /pinepods/startup/startup.sh
+# Legacy cron scripts removed - background tasks now handled by internal Rust scheduler
+RUN chmod +x /pinepods/startup/startup.sh
 
 # Clean things up
 RUN rm -rf \

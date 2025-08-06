@@ -109,8 +109,7 @@ echo "Using $DB_TYPE database"
 /usr/local/bin/pinepods-db-setup
 echo "Database validation complete"
 
-# Set up cron jobs
-echo -e "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh >/dev/null 2>&1\n0 0 * * * /pinepods/startup/call_nightly_tasks.sh >/dev/null 2>&1" > /etc/crontabs/root
+# Cron jobs removed - now handled by internal Rust scheduler
 
 # Check if we need to create exim directories
 # Only do this if the user/group exists on the system

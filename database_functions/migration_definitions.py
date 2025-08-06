@@ -1912,6 +1912,52 @@ def migration_017_add_ntfy_auth_columns(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("018", "add_gpodder_sync_timestamp", "Add GPodder last sync timestamp for incremental sync", requires=["001"])
+def migration_018_gpodder_sync_timestamp(conn, db_type: str):
+    """Add GPodder last sync timestamp column for proper incremental sync per GPodder spec"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            # Check if column already exists (PostgreSQL)
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'Users' 
+                AND column_name = 'lastsynctime'
+            """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'lastsynctime' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "Users"
+                    ADD COLUMN LastSyncTime TIMESTAMP WITH TIME ZONE
+                """)
+                logger.info("Added LastSyncTime column to Users table (PostgreSQL)")
+        
+        else:
+            # Check if column already exists (MySQL)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'Users' 
+                AND column_name = 'LastSyncTime'
+                AND table_schema = DATABASE()
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+            
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE Users
+                    ADD COLUMN LastSyncTime DATETIME
+                """)
+                logger.info("Added LastSyncTime column to Users table (MySQL)")
+        
+        logger.info("GPodder sync timestamp migration completed successfully")
+        
+    finally:
+        cursor.close()
+
+
 def register_all_migrations():
     """Register all migrations with the migration manager"""
     # Migrations are auto-registered via decorators

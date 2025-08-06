@@ -9,6 +9,136 @@ use std::sync::Arc;
 use tokio::task::JoinHandle;
 use sqlx::Row;
 
+// New function that actually downloads an episode and waits for completion
+async fn download_episode_and_wait(
+    db_pool: &crate::database::DatabasePool,
+    episode_id: i32,
+    user_id: i32,
+) -> Result<String, crate::error::AppError> {
+    tracing::info!("Starting actual download for episode {} for user {}", episode_id, user_id);
+    
+    // Get episode metadata from database
+    let episode_info = match db_pool {
+        crate::database::DatabasePool::Postgres(pool) => {
+            let row = sqlx::query(r#"
+                SELECT e.episodeurl, e.episodetitle, p.podcastname, 
+                       e.episodepubdate
+                FROM "Episodes" e
+                JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                WHERE e.episodeid = $1
+            "#)
+            .bind(episode_id)
+            .fetch_one(pool)
+            .await?;
+            
+            (
+                row.try_get::<String, _>("episodeurl")?,
+                row.try_get::<String, _>("episodetitle")?,
+                row.try_get::<String, _>("podcastname")?,
+                row.try_get::<Option<chrono::NaiveDateTime>, _>("episodepubdate")?,
+            )
+        }
+        crate::database::DatabasePool::MySQL(pool) => {
+            let row = sqlx::query("
+                SELECT e.EpisodeURL, e.EpisodeTitle, p.PodcastName, e.EpisodePubDate
+                FROM Episodes e
+                JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                WHERE e.EpisodeID = ?
+            ")
+            .bind(episode_id)
+            .fetch_one(pool)
+            .await?;
+            
+            (
+                row.try_get::<String, _>("EpisodeURL")?,
+                row.try_get::<String, _>("EpisodeTitle")?,
+                row.try_get::<String, _>("PodcastName")?,
+                row.try_get::<Option<chrono::NaiveDateTime>, _>("EpisodePubDate")?,
+            )
+        }
+    };
+    
+    let (episode_url, episode_title, podcast_name, pub_date) = episode_info;
+    
+    // Create download directory structure
+    let safe_podcast_name = podcast_name.chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>()
+        .trim()
+        .to_string();
+    
+    let safe_episode_title = episode_title.chars()
+        .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>()
+        .trim()
+        .to_string();
+    
+    let download_dir = std::path::Path::new("/opt/pinepods/downloads").join(&safe_podcast_name);
+    if !download_dir.exists() {
+        std::fs::create_dir_all(&download_dir)
+            .map_err(|e| crate::error::AppError::Internal(format!("Failed to create download directory: {}", e)))?;
+    }
+    
+    let pub_date_str = if let Some(date) = pub_date {
+        date.format("%Y-%m-%d").to_string()
+    } else {
+        chrono::Utc::now().format("%Y-%m-%d").to_string()
+    };
+    
+    let filename = format!("{}_{}_{}_{}.mp3", pub_date_str, safe_episode_title, user_id, episode_id);
+    let file_path = download_dir.join(&filename);
+    
+    // Download the file
+    let client = reqwest::Client::new();
+    let mut response = client.get(&episode_url)
+        .send()
+        .await
+        .map_err(|e| crate::error::AppError::Internal(format!("Failed to start download: {}", e)))?;
+    
+    if !response.status().is_success() {
+        return Err(crate::error::AppError::Internal(format!("Server returned error: {}", response.status())));
+    }
+    
+    let mut file = std::fs::File::create(&file_path)
+        .map_err(|e| crate::error::AppError::Internal(format!("Failed to create file: {}", e)))?;
+    
+    // Download the content
+    while let Some(chunk) = response.chunk().await.map_err(|e| crate::error::AppError::Internal(format!("Download failed: {}", e)))? {
+        std::io::Write::write_all(&mut file, &chunk)
+            .map_err(|e| crate::error::AppError::Internal(format!("Failed to write file: {}", e)))?;
+    }
+    
+    // Record download in database  
+    let file_size = tokio::fs::metadata(&file_path).await
+        .map(|m| m.len() as i64)
+        .unwrap_or(0);
+        
+    match db_pool {
+        crate::database::DatabasePool::Postgres(pool) => {
+            sqlx::query(r#"INSERT INTO "DownloadedEpisodes" (userid, episodeid, downloadedsize, downloadedlocation) VALUES ($1, $2, $3, $4)"#)
+                .bind(user_id)
+                .bind(episode_id)
+                .bind(file_size)
+                .bind(file_path.to_string_lossy().to_string())
+                .execute(pool)
+                .await?;
+        }
+        crate::database::DatabasePool::MySQL(pool) => {
+            sqlx::query("INSERT INTO DownloadedEpisodes (UserID, EpisodeID, DownloadedSize, DownloadedLocation) VALUES (?, ?, ?, ?)")
+                .bind(user_id)
+                .bind(episode_id)
+                .bind(file_size)
+                .bind(file_path.to_string_lossy().to_string())
+                .execute(pool)
+                .await?;
+        }
+    }
+    
+    tracing::info!("Successfully downloaded episode {} - {}", episode_id, episode_title);
+    Ok(episode_title)
+}
+
+#[derive(Clone)]
 pub struct TaskSpawner {
     task_manager: Arc<TaskManager>,
     db_pool: DatabasePool,
@@ -569,26 +699,150 @@ impl TaskSpawner {
     }
 
     pub async fn spawn_download_all_podcast_episodes(&self, podcast_id: i32, user_id: i32) -> AppResult<String> {
-        self.spawn_task(
-            "download_all_episodes".to_string(),
-            user_id,
-            move |task_id, task_manager, db_pool| async move {
-                // TODO: Implement actual bulk download logic
+        // Create the task first
+        let task_id = self.task_manager.create_task("download_all_episodes".to_string(), user_id).await?;
+        let task_manager = self.task_manager.clone();
+        let task_spawner = self.clone();
+        let db_pool = self.db_pool.clone();
+        let task_id_clone = task_id.clone();
+        let task_manager_for_completion = task_manager.clone();
+        let task_id_for_completion = task_id_clone.clone();
+
+        tokio::spawn(async move {
+            let result: Result<serde_json::Value, crate::error::AppError> = (async move {
                 tracing::info!("Downloading all episodes for podcast {} for user {}", podcast_id, user_id);
                 
-                // Placeholder - in real implementation this would:
-                // 1. Get all episodes for the podcast from database
-                // 2. Queue individual download tasks for each episode
-                // 3. Monitor progress of all downloads
-                // 4. Update overall progress via task_manager.update_progress()
+                // Update progress to starting
+                task_manager.update_task_progress_with_details(&task_id_clone, 0.0, Some("Getting episode list...".to_string()), None, Some("bulk_download".to_string()), None).await?;
+                
+                // Get episode IDs that are NOT already downloaded (replicating check_downloaded logic)
+                let episode_ids = match &db_pool {
+                    crate::database::DatabasePool::Postgres(pool) => {
+                        let rows = sqlx::query(r#"
+                            SELECT e.episodeid 
+                            FROM "Episodes" e
+                            LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid AND de.userid = $2
+                            WHERE e.podcastid = $1 AND de.episodeid IS NULL
+                            ORDER BY e.episodepubdate DESC
+                        "#)
+                            .bind(podcast_id)
+                            .bind(user_id)
+                            .fetch_all(pool)
+                            .await?;
+                        
+                        rows.into_iter()
+                            .map(|row| row.try_get::<i32, _>("episodeid"))
+                            .collect::<Result<Vec<i32>, _>>()?
+                    }
+                    crate::database::DatabasePool::MySQL(pool) => {
+                        let rows = sqlx::query("
+                            SELECT e.EpisodeID 
+                            FROM Episodes e
+                            LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
+                            WHERE e.PodcastID = ? AND de.EpisodeID IS NULL
+                            ORDER BY e.EpisodePubDate DESC
+                        ")
+                            .bind(user_id)
+                            .bind(podcast_id)
+                            .fetch_all(pool)
+                            .await?;
+                        
+                        rows.into_iter()
+                            .map(|row| row.try_get::<i32, _>("EpisodeID"))
+                            .collect::<Result<Vec<i32>, _>>()?
+                    }
+                };
+                
+                let total_episodes = episode_ids.len();
+                tracing::info!("Found {} episodes for podcast {} to download", total_episodes, podcast_id);
+                
+                if total_episodes == 0 {
+                    task_manager.update_task_progress_with_details(&task_id_clone, 100.0, Some("No episodes found to download".to_string()), None, Some("bulk_download".to_string()), None).await?;
+                    return Ok(serde_json::json!({
+                        "podcast_id": podcast_id,
+                        "user_id": user_id,
+                        "status": "no_episodes_found",
+                        "total_episodes": 0
+                    }));
+                }
+                
+                // Download episodes ONE at a time sequentially
+                let mut successful_downloads = 0;
+                
+                for (index, episode_id) in episode_ids.iter().enumerate() {
+                    tracing::info!("Starting download {}/{}: episode {}", index + 1, total_episodes, episode_id);
+                    
+                    // Update progress before starting download
+                    let progress = (index as f64 / total_episodes as f64) * 100.0;
+                    task_manager.update_task_progress_with_details(
+                        &task_id_clone, 
+                        progress, 
+                        Some(format!("Starting download {}/{} episodes...", index + 1, total_episodes)), 
+                        None, 
+                        Some("bulk_download".to_string()), 
+                        None
+                    ).await?;
+                    
+                    // Actually download the episode and wait for it to complete
+                    match download_episode_and_wait(&db_pool, *episode_id, user_id).await {
+                        Ok(episode_title) => {
+                            successful_downloads += 1;
+                            tracing::info!("Successfully downloaded episode {} - {}", episode_id, episode_title);
+                            
+                            // Update progress after actual completion
+                            let completed_progress = ((index + 1) as f64 / total_episodes as f64) * 100.0;
+                            task_manager.update_task_progress_with_details(
+                                &task_id_clone, 
+                                completed_progress, 
+                                Some(format!("Downloaded {}/{} episodes: {}", index + 1, total_episodes, episode_title)), 
+                                None, 
+                                Some("bulk_download".to_string()), 
+                                None
+                            ).await?;
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to download episode {}: {}", episode_id, e);
+                        }
+                    }
+                }
+                
+                tracing::info!("Successfully started {} out of {} episode downloads", successful_downloads, total_episodes);
+                
+                task_manager.update_task_progress_with_details(
+                    &task_id_clone, 
+                    100.0, 
+                    Some(format!("Successfully started {}/{} episode downloads", successful_downloads, total_episodes)), 
+                    None, 
+                    Some("bulk_download".to_string()), 
+                    None
+                ).await?;
+                
+                tracing::info!("Successfully started {} out of {} episode downloads for podcast {} for user {}", successful_downloads, total_episodes, podcast_id, user_id);
                 
                 Ok(serde_json::json!({
                     "podcast_id": podcast_id,
                     "user_id": user_id,
-                    "status": "all_episodes_queued"
+                    "status": "episodes_queued_sequentially",
+                    "total_episodes": total_episodes,
+                    "queued_episodes": successful_downloads
                 }))
-            },
-        ).await
+            }).await;
+
+            match result {
+                Ok(response) => {
+                    if let Err(e) = task_manager_for_completion.complete_task(&task_id_for_completion, Some(response), Some("All episodes queued for download".to_string())).await {
+                        tracing::error!("Failed to complete download all episodes task: {}", e);
+                    }
+                }
+                Err(e) => {
+                    if let Err(err) = task_manager_for_completion.fail_task(&task_id_for_completion, format!("Download all episodes failed: {}", e)).await {
+                        tracing::error!("Failed to mark download all episodes task as failed: {}", err);
+                    }
+                }
+            }
+        });
+
+        Ok(task_id)
     }
 
     pub async fn spawn_download_all_youtube_videos(&self, channel_id: i32, user_id: i32) -> AppResult<String> {

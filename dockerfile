@@ -96,8 +96,8 @@ RUN cargo build --release
 FROM alpine
 # Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
-# Install runtime dependencies (removed python3 and py3-pip)
-RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl cronie openrc ffmpeg supervisor wget jq
+# Install runtime dependencies (removed python3, py3-pip, cronie, and openrc)
+RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg supervisor wget jq
 
 # Download and install latest yt-dlp binary
 RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r .tag_name) && \
@@ -121,9 +121,7 @@ RUN chmod +x /startup.sh
 RUN mkdir -p /pinepods
 RUN mkdir -p /var/log/supervisor/
 COPY startup/ /pinepods/startup/
-RUN chmod +x /pinepods/startup/call_refresh_endpoint.sh
-RUN chmod +x /pinepods/startup/app_startup.sh
-RUN chmod +x /pinepods/startup/call_nightly_tasks.sh
+# Legacy cron scripts removed - background tasks now handled by internal Rust scheduler
 COPY clients/ /pinepods/clients/
 COPY database_functions/ /pinepods/database_functions/
 RUN chmod +x /pinepods/startup/startup.sh

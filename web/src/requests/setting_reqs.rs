@@ -2508,3 +2508,77 @@ pub async fn call_update_auto_complete_seconds(
         )))
     }
 }
+
+// GPodder Statistics
+#[derive(Deserialize, Debug, Clone)]
+pub struct GpodderStatistics {
+    pub server_url: String,
+    pub sync_type: String,
+    pub sync_enabled: bool,
+    pub server_devices: Vec<ServerDevice>,
+    pub total_devices: i32,
+    pub server_subscriptions: Vec<ServerSubscription>,
+    pub total_subscriptions: i32,
+    pub recent_episode_actions: Vec<ServerEpisodeAction>,
+    pub total_episode_actions: i32,
+    pub connection_status: String,
+    pub last_sync_timestamp: Option<String>,
+    pub api_endpoints_tested: Vec<EndpointTest>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ServerDevice {
+    pub id: String,
+    pub caption: String,
+    pub device_type: String,
+    pub subscriptions: i32,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ServerSubscription {
+    pub url: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ServerEpisodeAction {
+    pub podcast: String,
+    pub episode: String,
+    pub action: String,
+    pub timestamp: String,
+    pub position: Option<i32>,
+    pub device: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct EndpointTest {
+    pub endpoint: String,
+    pub status: String,
+    pub response_time_ms: Option<i64>,
+    pub error: Option<String>,
+}
+
+pub async fn call_get_gpodder_statistics(
+    server_name: &str,
+    api_key: &str,
+) -> Result<GpodderStatistics, Error> {
+    let url = format!("{}/api/gpodder/gpodder_statistics", server_name);
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let statistics = response.json::<GpodderStatistics>().await?;
+        Ok(statistics)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting GPodder statistics: {}",
+            response.status_text()
+        )))
+    }
+}

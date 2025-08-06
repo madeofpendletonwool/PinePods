@@ -11,6 +11,11 @@ use crate::{
     AppState,
 };
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateGpodderSyncRequest {
+    pub enabled: bool,
+}
+
 // Set default gPodder device - matches Python set_default_device function exactly
 pub async fn gpodder_set_default(
     State(state): State<AppState>,
@@ -48,7 +53,7 @@ pub async fn gpodder_get_user_devices(
     }
 
     let devices = state.db_pool.gpodder_get_user_devices(user_id).await?;
-    Ok(Json(serde_json::json!({ "devices": devices })))
+    Ok(Json(serde_json::json!(devices)))
 }
 
 // Get all gPodder devices - matches Python get_all_devices function exactly
@@ -61,7 +66,7 @@ pub async fn gpodder_get_all_devices(
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let devices = state.db_pool.gpodder_get_user_devices(user_id).await?;
-    Ok(Json(serde_json::json!({ "devices": devices })))
+    Ok(Json(serde_json::json!(devices)))
 }
 
 // Force sync gPodder - matches Python force_sync function exactly
@@ -120,21 +125,91 @@ pub async fn gpodder_status(
     })))
 }
 
-// Toggle gPodder sync - matches Python toggle_gpodder function exactly
+// Toggle gPodder sync - matches Python toggle_gpodder_sync function exactly  
 pub async fn gpodder_toggle(
     State(state): State<AppState>,
     headers: HeaderMap,
+    Json(request): Json<UpdateGpodderSyncRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let new_status = state.db_pool.gpodder_toggle_sync(user_id).await?;
     
-    Ok(Json(serde_json::json!({
-        "status": "success",
-        "enabled": new_status
-    })))
+    // Get current user status to match Python logic
+    let user_status = state.db_pool.gpodder_get_status(user_id).await?;
+    let current_sync_type = &user_status.sync_type;
+    
+    let mut device_info: Option<serde_json::Value> = None;
+    
+    if request.enabled {
+        // Enable gpodder sync - call function that matches Python set_gpodder_internal_sync
+        if let Ok(result) = state.db_pool.set_gpodder_internal_sync(user_id).await {
+            device_info = Some(result);
+        } else {
+            return Err(AppError::internal("Failed to enable gpodder sync"));
+        }
+        
+        // Add background task for subscription refresh (matches Python background_tasks.add_task)
+        let db_pool = state.db_pool.clone();
+        let _task_id = state.task_spawner.spawn_progress_task(
+            "gpodder_subscription_refresh".to_string(),
+            user_id,
+            move |reporter| async move {
+                reporter.update_progress(10.0, Some("Starting GPodder subscription refresh...".to_string())).await?;
+                
+                let success = db_pool.refresh_gpodder_subscription_background(user_id).await
+                    .map_err(|e| AppError::internal(&format!("GPodder sync failed: {}", e)))?;
+                
+                if success {
+                    reporter.update_progress(100.0, Some("GPodder subscription refresh completed successfully".to_string())).await?;
+                    Ok(serde_json::json!({"status": "GPodder subscription refresh completed successfully"}))
+                } else {
+                    reporter.update_progress(100.0, Some("GPodder subscription refresh completed with no changes".to_string())).await?;
+                    Ok(serde_json::json!({"status": "No sync performed"}))
+                }
+            },
+        ).await?;
+    } else {
+        // Disable gpodder sync - call function that matches Python disable_gpodder_internal_sync  
+        if !state.db_pool.disable_gpodder_internal_sync(user_id).await? {
+            return Err(AppError::internal("Failed to disable gpodder sync"));
+        }
+    }
+    
+    // Get updated status after changes
+    let updated_status = state.db_pool.gpodder_get_status(user_id).await?;
+    let new_sync_type = &updated_status.sync_type;
+    
+    let mut response = serde_json::json!({
+        "sync_type": new_sync_type,
+        "gpodder_enabled": new_sync_type == "gpodder" || new_sync_type == "both",
+        "external_enabled": new_sync_type == "external" || new_sync_type == "both", 
+        "external_url": if new_sync_type == "external" || new_sync_type == "both" {
+            updated_status.gpodder_url
+        } else {
+            None::<String>
+        },
+        "api_url": if new_sync_type == "gpodder" || new_sync_type == "both" {
+            Some("http://localhost:8042")
+        } else {
+            None
+        }
+    });
+    
+    // Add device information if available (matches Python logic)
+    if let Some(device_data) = device_info {
+        if request.enabled {
+            if let Some(device_name) = device_data.get("device_name") {
+                response["device_name"] = device_name.clone();
+            }
+            if let Some(device_id) = device_data.get("device_id") {
+                response["device_id"] = device_id.clone();
+            }
+        }
+    }
+    
+    Ok(Json(response))
 }
 
 // gPodder test connection - matches Python test connection functionality
@@ -181,7 +256,7 @@ pub async fn gpodder_get_default_device(
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let default_device = state.db_pool.gpodder_get_default_device(user_id).await?;
     
-    Ok(Json(serde_json::json!({ "default_device": default_device })))
+    Ok(Json(serde_json::json!(default_device)))
 }
 
 // Create gPodder device - matches Python create_device function exactly
@@ -214,4 +289,89 @@ pub async fn gpodder_create_device(
         "device_id": device_id,
         "device_name": request.device_name 
     })))
+}
+
+// GPodder Statistics - real server-side stats from GPodder API
+#[derive(Serialize)]
+pub struct GpodderStatistics {
+    pub server_url: String,
+    pub sync_type: String,
+    pub sync_enabled: bool,
+    pub server_devices: Vec<ServerDevice>,
+    pub total_devices: i32,
+    pub server_subscriptions: Vec<ServerSubscription>,
+    pub total_subscriptions: i32,
+    pub recent_episode_actions: Vec<ServerEpisodeAction>,
+    pub total_episode_actions: i32,
+    pub connection_status: String,
+    pub last_sync_timestamp: Option<String>,
+    pub api_endpoints_tested: Vec<EndpointTest>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ServerDevice {
+    pub id: String,
+    pub caption: String,
+    pub device_type: String,
+    pub subscriptions: i32,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ServerSubscription {
+    pub url: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ServerEpisodeAction {
+    pub podcast: String,
+    pub episode: String,
+    pub action: String,
+    pub timestamp: String,
+    pub position: Option<i32>,
+    pub device: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct EndpointTest {
+    pub endpoint: String,
+    pub status: String, // "success", "failed", "not_tested"
+    pub response_time_ms: Option<i64>,
+    pub error: Option<String>,
+}
+
+pub async fn gpodder_get_statistics(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<GpodderStatistics>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Check if GPodder is enabled for this user
+    let gpodder_status = state.db_pool.gpodder_get_status(user_id).await?;
+    
+    if gpodder_status.sync_type == "None" {
+        return Ok(Json(GpodderStatistics {
+            server_url: "No sync configured".to_string(),
+            sync_type: "None".to_string(),
+            sync_enabled: false,
+            server_devices: vec![],
+            total_devices: 0,
+            server_subscriptions: vec![],
+            total_subscriptions: 0,
+            recent_episode_actions: vec![],
+            total_episode_actions: 0,
+            connection_status: "Not configured".to_string(),
+            last_sync_timestamp: None,
+            api_endpoints_tested: vec![],
+        }));
+    }
+
+    // Get real statistics from GPodder server
+    let statistics = state.db_pool.get_gpodder_server_statistics(user_id).await?;
+    
+    Ok(Json(statistics))
 }

@@ -2283,7 +2283,7 @@ pub fn episode_item(
     // Calculate the percentage of the episode that has been listened to
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
-            (ld as f64 / episode_duration as f64) * 100.0
+            ((ld as f64 / episode_duration as f64) * 100.0).min(100.0)
         } else {
             0.0 // Avoid division by zero
         }
@@ -2497,7 +2497,7 @@ pub fn virtual_episode_item(
     // Calculate the percentage of the episode that has been listened to
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
-            (ld as f64 / episode_duration as f64) * 100.0
+            ((ld as f64 / episode_duration as f64) * 100.0).min(100.0)
         } else {
             0.0 // Avoid division by zero
         }
@@ -2744,7 +2744,7 @@ pub fn download_episode_item(
     let formatted_listen_duration = span_duration.map(|ld| format_time(ld as f64));
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
-            (ld as f64 / episode_duration as f64) * 100.0
+            ((ld as f64 / episode_duration as f64) * 100.0).min(100.0)
         } else {
             0.0
         }
@@ -2957,7 +2957,7 @@ pub fn queue_episode_item(
     // Calculate the percentage of the episode that has been listened to
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
-            (ld as f64 / episode_duration as f64) * 100.0
+            ((ld as f64 / episode_duration as f64) * 100.0).min(100.0)
         } else {
             0.0 // Avoid division by zero
         }
@@ -3184,7 +3184,7 @@ pub fn person_episode_item(
 
     let listen_duration_percentage = listen_duration.map_or(0.0, |ld| {
         if episode_duration > 0 {
-            (ld as f64 / episode_duration as f64) * 100.0
+            ((ld as f64 / episode_duration as f64) * 100.0).min(100.0)
         } else {
             0.0
         }

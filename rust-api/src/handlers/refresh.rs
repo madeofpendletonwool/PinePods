@@ -81,14 +81,14 @@ pub async fn refresh_pods_admin(
 }
 
 // Separate endpoint for gPodder refresh (scheduled separately like Python)
-pub async fn refresh_nextcloud_subscriptions_admin(
+pub async fn refresh_gpodder_subscriptions_admin(
     State(state): State<AppState>,
 ) -> Result<axum::Json<serde_json::Value>, AppError> {
     println!("Starting admin gPodder sync process for all users");
     
     let state_clone = state.clone();
     let task_id = state.task_spawner.spawn_progress_task(
-        "refresh_nextcloud_subscriptions".to_string(),
+        "refresh_gpodder_subscriptions".to_string(),
         0, // System user
         move |reporter| async move {
             let state = state_clone;
@@ -857,6 +857,155 @@ async fn handle_gpodder_sync(state: &AppState, user_id: i32, sync_type: &str) ->
             Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
         }
     }
+}
+
+// Internal functions for scheduler (no HTTP context needed)
+pub async fn refresh_pods_admin_internal(state: &AppState) -> AppResult<()> {
+    tracing::info!("Starting internal podcast refresh (scheduler)");
+    refresh_all_podcasts_background(state).await
+}
+
+pub async fn refresh_gpodder_subscriptions_admin_internal(state: &AppState) -> AppResult<()> {
+    tracing::info!("Starting internal GPodder sync (scheduler)");
+    
+    // Get all users who have gPodder sync enabled (internal, external, both - NOT nextcloud)
+    let gpodder_users = state.db_pool.get_all_users_with_gpodder_sync().await?;
+    tracing::info!("Found {} users with GPodder sync enabled", gpodder_users.len());
+    
+    let mut successful_syncs = 0;
+    let mut failed_syncs = 0;
+    
+    for user_id in gpodder_users.iter() {
+        tracing::info!("Running GPodder sync for user {}", user_id);
+        
+        // Get user's sync type
+        let gpodder_status = state.db_pool.gpodder_get_status(*user_id).await?;
+        
+        // Only sync GPodder types (internal, external, both) - NOT nextcloud
+        if gpodder_status.sync_type != "None" && gpodder_status.sync_type != "nextcloud" && !gpodder_status.sync_type.is_empty() {
+            match run_admin_gpodder_sync(state, *user_id, &gpodder_status.sync_type).await {
+                Ok(_) => {
+                    successful_syncs += 1;
+                    tracing::info!("GPodder sync successful for user {}", user_id);
+                }
+                Err(e) => {
+                    failed_syncs += 1;
+                    tracing::error!("GPodder sync failed for user {}: {}", user_id, e);
+                }
+            }
+        }
+    }
+    
+    tracing::info!("Internal GPodder sync completed: {}/{} users successful", 
+        successful_syncs, gpodder_users.len());
+    
+    Ok(())
+}
+
+// Separate endpoint for actual Nextcloud refresh (different from GPodder)
+pub async fn refresh_nextcloud_subscriptions_admin(
+    State(state): State<AppState>,
+) -> Result<axum::Json<serde_json::Value>, AppError> {
+    println!("Starting admin Nextcloud sync process for all users");
+    
+    let state_clone = state.clone();
+    let task_id = state.task_spawner.spawn_progress_task(
+        "refresh_nextcloud_subscriptions".to_string(),
+        0, // System user
+        move |reporter| async move {
+            let state = state_clone;
+            reporter.update_progress(10.0, Some("Starting Nextcloud sync for all users...".to_string())).await?;
+            
+            // Get all users who have Nextcloud sync enabled
+            let nextcloud_users = state.db_pool.get_all_users_with_nextcloud_sync().await
+                .map_err(|e| AppError::internal(&format!("Failed to get Nextcloud users: {}", e)))?;
+            
+            println!("Found {} users with Nextcloud sync enabled", nextcloud_users.len());
+            
+            let mut successful_syncs = 0;
+            let mut failed_syncs = 0;
+            
+            let total_users = nextcloud_users.len();
+            if total_users == 0 {
+                reporter.update_progress(100.0, Some("No users with Nextcloud sync found".to_string())).await?;
+                return Ok(serde_json::json!({
+                    "status": "No users found",
+                    "successful_syncs": 0,
+                    "failed_syncs": 0,
+                    "total_users": 0
+                }));
+            }
+            
+            for (index, user_id) in nextcloud_users.iter().enumerate() {
+                let progress = 10.0 + ((index as f64 / total_users as f64) * 80.0);
+                reporter.update_progress(progress, Some(format!("Running Nextcloud sync for user {}", user_id))).await?;
+                
+                match state.db_pool.sync_with_nextcloud_for_user(*user_id).await {
+                    Ok(true) => {
+                        successful_syncs += 1;
+                        println!("Nextcloud sync successful for user {}", user_id);
+                    }
+                    Ok(false) => {
+                        println!("Nextcloud sync for user {} - no changes", user_id);
+                        successful_syncs += 1; // Count as success
+                    }
+                    Err(e) => {
+                        failed_syncs += 1;
+                        println!("Nextcloud sync failed for user {}: {}", user_id, e);
+                    }
+                }
+            }
+            
+            reporter.update_progress(100.0, Some(format!("Nextcloud sync completed: {}/{} users successful", successful_syncs, total_users))).await?;
+            
+            Ok(serde_json::json!({
+                "status": "Nextcloud sync completed successfully",
+                "successful_syncs": successful_syncs,
+                "failed_syncs": failed_syncs,
+                "total_users": total_users
+            }))
+        },
+    ).await?;
+
+    Ok(axum::Json(serde_json::json!({
+        "detail": "Nextcloud sync initiated",
+        "task_id": task_id
+    })))
+}
+
+pub async fn refresh_nextcloud_subscriptions_admin_internal(state: &AppState) -> AppResult<()> {
+    tracing::info!("Starting internal Nextcloud sync (scheduler)");
+    
+    // Get all users who have Nextcloud sync enabled
+    let nextcloud_users = state.db_pool.get_all_users_with_nextcloud_sync().await?;
+    tracing::info!("Found {} users with Nextcloud sync enabled", nextcloud_users.len());
+    
+    let mut successful_syncs = 0;
+    let mut failed_syncs = 0;
+    
+    for user_id in nextcloud_users.iter() {
+        tracing::info!("Running Nextcloud sync for user {}", user_id);
+        
+        match state.db_pool.sync_with_nextcloud_for_user(*user_id).await {
+            Ok(true) => {
+                successful_syncs += 1;
+                tracing::info!("Nextcloud sync successful for user {}", user_id);
+            }
+            Ok(false) => {
+                tracing::info!("Nextcloud sync for user {} - no changes", user_id);
+                successful_syncs += 1; // Count as success
+            }
+            Err(e) => {
+                failed_syncs += 1;
+                tracing::error!("Nextcloud sync failed for user {}: {}", user_id, e);
+            }
+        }
+    }
+    
+    tracing::info!("Internal Nextcloud sync completed: {}/{} users successful", 
+        successful_syncs, nextcloud_users.len());
+    
+    Ok(())
 }
 
 

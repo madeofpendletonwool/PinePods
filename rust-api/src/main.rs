@@ -13,7 +13,7 @@ use tower_http::{
     trace::TraceLayer,
     compression::CompressionLayer,
 };
-use tracing::{info, warn};
+use tracing::{info, warn, error};
 
 mod config;
 mod database;
@@ -28,7 +28,7 @@ use config::Config;
 use database::DatabasePool;
 use error::AppResult;
 use redis_client::RedisClient;
-use services::{task_manager::TaskManager, tasks::TaskSpawner};
+use services::{scheduler::BackgroundScheduler, task_manager::TaskManager, tasks::TaskSpawner};
 use handlers::websocket::WebSocketManager;
 use redis_manager::{ImportProgressManager, NotificationManager};
 use std::sync::Arc;
@@ -97,7 +97,25 @@ async fn main() -> AppResult<()> {
     };
 
     // Build the application with routes
-    let app = create_app(app_state);
+    let app = create_app(app_state.clone());
+
+    // Initialize and start background scheduler
+    info!("🕒 Initializing background task scheduler...");
+    let scheduler = BackgroundScheduler::new().await?;
+    let scheduler_state = Arc::new(app_state.clone());
+    
+    // Start the scheduler with background tasks
+    scheduler.start(scheduler_state.clone()).await?;
+    
+    // Run initial startup tasks immediately
+    tokio::spawn({
+        let startup_state = scheduler_state.clone();
+        async move {
+            if let Err(e) = BackgroundScheduler::run_startup_tasks(startup_state).await {
+                error!("❌ Startup tasks failed: {}", e);
+            }
+        }
+    });
 
     // Determine the address to bind to
     let addr = SocketAddr::from(([0, 0, 0, 0], config.server.port));
@@ -214,6 +232,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/bulk_save_episodes", post(handlers::episodes::bulk_save_episodes))
         .route("/bulk_queue_episodes", post(handlers::episodes::bulk_queue_episodes))
         .route("/bulk_download_episodes", post(handlers::episodes::bulk_download_episodes))
+        .route("/bulk_delete_downloaded_episodes", post(handlers::episodes::bulk_delete_downloaded_episodes))
         .route("/increment_played/{user_id}", put(handlers::podcasts::increment_played))
         .route("/record_listen_duration", post(handlers::podcasts::record_listen_duration))
         .route("/get_podcast_id_from_ep_id", get(handlers::podcasts::get_podcast_id_from_ep_id))
@@ -279,6 +298,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/gpodder/status", get(handlers::sync::gpodder_status))
         .route("/gpodder/toggle", post(handlers::sync::gpodder_toggle))
         .route("/refresh_pods", get(handlers::refresh::refresh_pods_admin))
+        .route("/refresh_gpodder_subscriptions", get(handlers::refresh::refresh_gpodder_subscriptions_admin))
         .route("/refresh_nextcloud_subscriptions", get(handlers::refresh::refresh_nextcloud_subscriptions_admin))
         .route("/refresh_hosts", get(handlers::tasks::refresh_hosts))
         .route("/cleanup_tasks", get(handlers::tasks::cleanup_tasks))
@@ -357,6 +377,7 @@ fn create_gpodder_routes() -> Router<AppState> {
         .route("/devices", post(handlers::sync::gpodder_create_device))
         .route("/sync/force", post(handlers::sync::gpodder_force_sync))
         .route("/sync", post(handlers::sync::gpodder_sync))
+        .route("/gpodder_statistics", get(handlers::sync::gpodder_get_statistics))
 }
 
 fn create_init_routes() -> Router<AppState> {

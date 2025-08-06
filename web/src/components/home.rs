@@ -386,7 +386,7 @@ pub fn home_episode_item(props: &HomeEpisodeItemProps) -> Html {
             .contains(&props.episode.episodeid);
 
     let progress_percentage = if total_duration > 0 {
-        (listen_duration as f64 / total_duration as f64) * 100.0
+        ((listen_duration as f64 / total_duration as f64) * 100.0).min(100.0)
     } else {
         0.0
     };

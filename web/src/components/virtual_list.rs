@@ -376,7 +376,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                             } else {
                                 if let Some(listen_duration) = episode.listen_duration {
                                     let listen_duration_percentage = if episode_duration_in_seconds > 0 {
-                                        (listen_duration as f64 / episode_duration_in_seconds as f64) * 100.0
+                                        ((listen_duration as f64 / episode_duration_in_seconds as f64) * 100.0).min(100.0)
                                     } else {
                                         0.0
                                     };

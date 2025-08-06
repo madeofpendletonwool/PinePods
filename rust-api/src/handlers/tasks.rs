@@ -316,3 +316,79 @@ async fn refresh_single_podcast(
     // For now return 0 as placeholder since we need the podcast refresh system to be implemented
     Ok(0)
 }
+
+// Internal functions for scheduler (no HTTP context needed)
+pub async fn cleanup_tasks_internal(state: &AppState) -> AppResult<()> {
+    tracing::info!("Starting internal cleanup tasks (scheduler)");
+    
+    state.db_pool.cleanup_old_episodes().await?;
+    tracing::info!("Cleanup tasks completed successfully");
+    
+    Ok(())
+}
+
+pub async fn update_playlists_internal(state: &AppState) -> AppResult<()> {
+    tracing::info!("Starting internal playlist update (scheduler)");
+    
+    state.db_pool.update_all_playlists().await?;
+    tracing::info!("Playlist update completed successfully");
+    
+    Ok(())
+}
+
+pub async fn refresh_hosts_internal(state: &AppState) -> AppResult<()> {
+    tracing::info!("Starting internal host refresh (scheduler)");
+    
+    let all_people = state.db_pool.get_all_people_for_refresh().await?;
+    tracing::info!("Found {} people/hosts to refresh", all_people.len());
+    
+    let mut successful_refreshes = 0;
+    let mut failed_refreshes = 0;
+    
+    for (person_id, person_name, user_id) in all_people.iter() {
+        tracing::info!("Starting refresh for host: {} (ID: {}, User: {})", person_name, person_id, user_id);
+        
+        match process_person_refresh(&state.db_pool, *person_id, person_name, *user_id).await {
+            Ok(_) => {
+                successful_refreshes += 1;
+                tracing::info!("Successfully refreshed host: {}", person_name);
+            }
+            Err(e) => {
+                failed_refreshes += 1;
+                tracing::error!("Failed to refresh host {}: {}", person_name, e);
+            }
+        }
+    }
+    
+    // After processing all people, trigger the regular podcast refresh
+    tracing::info!("Person subscription processed, initiating server refresh...");
+    match trigger_podcast_refresh(&state.db_pool).await {
+        Ok(_) => {
+            tracing::info!("Server refresh completed successfully");
+        }
+        Err(e) => {
+            tracing::error!("Error during server refresh: {}", e);
+        }
+    }
+    
+    tracing::info!("Host refresh completed: {}/{} successful, {} failed", 
+        successful_refreshes, all_people.len(), failed_refreshes);
+    
+    Ok(())
+}
+
+pub async fn auto_complete_episodes_internal(state: &AppState) -> AppResult<()> {
+    tracing::info!("Starting internal auto-complete episodes (scheduler)");
+    
+    // Get all users who have auto_complete_seconds > 0
+    let users_with_auto_complete = state.db_pool.get_users_with_auto_complete_enabled().await?;
+    let mut total_completed = 0;
+
+    for user in users_with_auto_complete {
+        let completed_count = state.db_pool.auto_complete_user_episodes(user.user_id, user.auto_complete_seconds).await.unwrap_or(0);
+        total_completed += completed_count;
+    }
+    
+    tracing::info!("Auto-complete task completed: {} episodes completed", total_completed);
+    Ok(())
+}

@@ -1562,11 +1562,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     <button onclick={skip_forward} class="audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                         <i class="ph ph-fast-forward text-2xl"></i>
                     </button>
-                    <div class="flex-grow flex items-center md:block hidden">
-                        <div class="flex items-center flex-nowrap">
+                    <div class="seek-bar-container md:flex hidden items-center">
+                        <div class="flex items-center flex-nowrap w-full">
                             <span class="time-display px-2">{audio_state.current_time_formatted.clone()}</span>
                             <input type="range"
-                                class="flex-grow h-1 cursor-pointer"
+                                class="flex-grow h-1 cursor-pointer mx-2"
                                 min="0.0"
                                 max={audio_props.duration_sec.to_string().clone()}
                                 value={audio_state.current_time_seconds.to_string()}

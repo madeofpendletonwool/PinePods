@@ -155,3 +155,35 @@ pub async fn bulk_download_episodes(
         failed_count: if failed_count > 0 { Some(failed_count) } else { None },
     }))
 }
+
+// Bulk delete downloaded episodes - removes multiple downloaded episodes at once
+pub async fn bulk_delete_downloaded_episodes(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<BulkEpisodeActionRequest>,
+) -> AppResult<Json<BulkEpisodeActionResponse>> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+    
+    let calling_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if calling_user_id != request.user_id {
+        return Err(AppError::forbidden("You can only delete your own downloaded episodes!"));
+    }
+
+    let is_youtube = request.is_youtube.unwrap_or(false);
+    let (processed_count, failed_count) = state.db_pool
+        .bulk_delete_downloaded_episodes(request.episode_ids, request.user_id, is_youtube)
+        .await?;
+
+    let message = if failed_count > 0 {
+        format!("Deleted {} downloaded episodes, {} failed or were not found", processed_count, failed_count)
+    } else {
+        format!("Successfully deleted {} downloaded episodes", processed_count)
+    };
+
+    Ok(Json(BulkEpisodeActionResponse {
+        message,
+        processed_count,
+        failed_count: if failed_count > 0 { Some(failed_count) } else { None },
+    }))
+}
