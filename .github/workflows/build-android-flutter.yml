@@ -1,6 +1,11 @@
+permissions:
+  contents: read
 name: Build Android Flutter App
 
 on:
+  push:
+    tags:
+      - "*"
   release:
     types: [published]
   workflow_dispatch:
@@ -33,8 +38,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.0'
-          channel: 'stable'
+          flutter-version: "3.32.0"
+          channel: "stable"
 
       - name: Install dependencies
         run: |
@@ -53,9 +58,12 @@ jobs:
       - name: Update app version
         run: |
           cd mobile
-          # Update pubspec.yaml version
+          # Update pubspec.yaml version to use Flutter format (version+build)
           if [[ "$IMAGE_TAG" != "latest" ]]; then
-            sed -i "s/^version: .*/version: ${IMAGE_TAG#v}/" pubspec.yaml
+            # Remove 'v' prefix if present and create build number from date
+            VERSION_NAME=${IMAGE_TAG#v}
+            BUILD_NUMBER=$(date +%Y%m%d)
+            sed -i "s/^version: .*/version: ${VERSION_NAME}+${BUILD_NUMBER}/" pubspec.yaml
           fi
 
       - name: Build APK
@@ -63,10 +71,10 @@ jobs:
           cd mobile
           flutter build apk --release --split-per-abi
 
-      - name: Build AAB
-        run: |
-          cd mobile
-          flutter build appbundle --release
+      # - name: Build AAB
+      #   run: |
+      #     cd mobile
+      #     flutter build appbundle --release
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
@@ -74,18 +82,18 @@ jobs:
           name: android-apk-builds
           path: mobile/build/app/outputs/flutter-apk/*.apk
 
-      - name: Upload AAB artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-aab-build
-          path: mobile/build/app/outputs/bundle/release/app-release.aab
+      # - name: Upload AAB artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: android-aab-build
+      #     path: mobile/build/app/outputs/bundle/release/app-release.aab
 
-      - name: Upload to Google Play Store
-        if: github.event_name == 'release'
-        env:
-          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-        run: |
-          echo "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > service-account.json
-          # Install fastlane if needed for Play Store upload
-          # gem install fastlane
-          # fastlane supply --aab mobile/build/app/outputs/bundle/release/app-release.aab --json_key service-account.json --package_name com.gooseberrydevelopment.pinepods --track production
+      # - name: Upload to Google Play Store
+      #   if: github.event_name == 'release'
+      #   env:
+      #     GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+      #   run: |
+      #     echo "$GOOGLE_PLAY_SERVICE_ACCOUNT_JSON" > service-account.json
+      #     # Install fastlane if needed for Play Store upload
+      #     # gem install fastlane
+      #     # fastlane supply --aab mobile/build/app/outputs/bundle/release/app-release.aab --json_key service-account.json --package_name com.gooseberrydevelopment.pinepods --track production

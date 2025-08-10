@@ -51,6 +51,7 @@ pub fn login() -> Html {
     let date_format = use_state(|| "".to_string());
     let time_pref = use_state(|| 12);
     let mfa_code = use_state(|| "".to_string());
+    let mfa_session_token = use_state(|| "".to_string());
     let temp_api_key = use_state(|| "".to_string());
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
@@ -390,6 +391,7 @@ pub fn login() -> Html {
     let submit_post_state = dispatch.clone();
     let on_submit = {
         let submit_dispatch = dispatch.clone();
+        let mfa_session_token = mfa_session_token.clone();
         Callback::from(move |_| {
             let history = history_clone.clone();
             let username = username.clone();
@@ -400,20 +402,21 @@ pub fn login() -> Html {
             let temp_server_name = call_server_name.clone();
             let temp_api_key = call_api_key.clone();
             let temp_user_id = call_user_id.clone();
+            let mfa_session_token = mfa_session_token.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let window = window().expect("no global `window` exists");
                 let location = window.location();
                 let server_name = location.href().expect("should have a href");
                 let server_name = server_name.trim_end_matches('/').to_string();
                 let page_state = page_state.clone();
-                match login_requests::login_new_server(
+                match login_requests::login_new_server_secure(
                     server_name.clone(),
                     username.to_string(),
                     password.to_string(),
                 )
                 .await
                 {
-                    Ok((user_details, login_request, server_details)) => {
+                    Ok(login_requests::LoginResult::Success(user_details, login_request, server_details)) => {
                         // After user login, update the image URL with user's email from user_details
                         let gravatar_url = generate_gravatar_url(&user_details.Email, 80); // 80 is the image size
                         let key_copy = login_request.clone();
@@ -563,6 +566,22 @@ pub fn login() -> Html {
                                 });
                             }
                         }
+                    }
+                    Ok(login_requests::LoginResult::MfaRequired { 
+                        server_name: mfa_server, 
+                        username: _mfa_username, 
+                        user_id: mfa_user_id, 
+                        mfa_session_token: session_token 
+                    }) => {
+                        // Store MFA session data for the MFA prompt
+                        temp_server_name.set(mfa_server.clone());
+                        temp_user_id.set(mfa_user_id);
+                        mfa_session_token.set(session_token);
+                        
+                        console::log_1(&"MFA required - transitioning to MFA prompt".into());
+                        
+                        // Set page state to show MFA prompt
+                        page_state.set(PageState::MFAPrompt);
                     }
                     Err(_) => {
                         post_state.reduce_mut(|state| {
@@ -1329,128 +1348,162 @@ pub fn login() -> Html {
     };
 
     let on_mfa_submit = {
-        let (state, dispatch) = use_store::<AppState>();
+        let dispatch = dispatch.clone();
         let page_state = page_state.clone();
         let mfa_code = mfa_code.clone();
-        let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-        let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
-        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let mfa_session_token = mfa_session_token.clone();
+        let temp_server_name = temp_server_name.clone();
+        let temp_user_id = temp_user_id.clone();
         let history = history.clone();
-        // let error_message_create = error_message.clone();
-        let dispatch_wasm = dispatch.clone();
+        
         Callback::from(move |e: MouseEvent| {
-            let dispatch = dispatch_wasm.clone();
+            let dispatch = dispatch.clone();
             let mfa_code = mfa_code.clone();
-            let server_name = server_name.clone();
-            let api_key = api_key.clone();
-            let user_id = user_id.clone();
+            let mfa_session_token = mfa_session_token.clone();
+            let temp_server_name = temp_server_name.clone();
+            let temp_user_id = temp_user_id.clone();
             let page_state = page_state.clone();
             let history = history.clone();
-            // let error_message_clone = error_message_create.clone();
+            
             e.prevent_default();
 
             wasm_bindgen_futures::spawn_local(async move {
-                // let verify_mfa_request = VerifyMFABody {
-                //     user_id: user_id,
-                //     mfa_code: mfa_code,
-                // };
-                match call_verify_mfa(
-                    &server_name.clone().unwrap(),
-                    &api_key.clone().unwrap().unwrap(),
-                    user_id.clone().unwrap(),
+                // Use the new secure MFA verification endpoint
+                match login_requests::complete_mfa_login(
+                    (*temp_server_name).clone(),
+                    "".to_string(), // Username not needed for completion
+                    (*mfa_session_token).clone(),
                     (*mfa_code).clone(),
                 )
                 .await
                 {
-                    Ok(response) => {
-                        if response.verified {
-                            page_state.set(PageState::Default);
-                            let theme_api = api_key.clone();
-                            let theme_server = server_name.clone();
-                            wasm_bindgen_futures::spawn_local(async move {
-                                match call_get_theme(
-                                    theme_server.unwrap(),
-                                    theme_api.unwrap().unwrap(),
-                                    &user_id.unwrap(),
-                                )
-                                .await
-                                {
-                                    Ok(theme) => {
-                                        crate::components::setting_components::theme_options::changeTheme(&theme);
-                                    }
-                                    Err(_e) => {
-                                        // console::log_1(&format!("Error getting theme: {:?}", e).into());
-                                    }
-                                }
-                            });
-                            let time_server = server_name.clone();
-                            let api_server = api_key.clone();
-                            wasm_bindgen_futures::spawn_local(async move {
-                                match call_get_time_info(
-                                    time_server.unwrap(),
-                                    api_server.unwrap().unwrap(),
-                                    &user_id.unwrap(),
-                                )
-                                .await
-                                {
-                                    Ok(tz_response) => {
-                                        dispatch.reduce_mut(move |state| {
-                                            state.user_tz = Some(tz_response.timezone);
-                                            state.hour_preference = Some(tz_response.hour_pref);
-                                            state.date_format = Some(tz_response.date_format);
-                                        });
-                                    }
-                                    Err(e) => {
-                                        console::log_1(
-                                            &format!("Error getting theme: {:?}", e).into(),
-                                        );
-                                    }
-                                }
-                            });
-                            // Add start page retrieval before redirecting
-                            let startpage_api = api_key.clone();
-                            let startpage_server = server_name.clone();
-                            let startpage_user_id = user_id.clone();
-                            let startpage_history = history.clone();
+                    Ok((user_details, login_request, server_details)) => {
+                        // MFA verified successfully - complete the login process
+                        let gravatar_url = generate_gravatar_url(&user_details.Email, 80);
+                        
+                        // Extract values for theme/time/startpage operations before moving into closure
+                        let server_name = login_request.server_name.clone();
+                        let api_key = login_request.api_key.clone().unwrap();
+                        let user_id = user_details.UserID;
+                        
+                        dispatch.reduce_mut(move |state| {
+                            state.user_details = Some(user_details);
+                            state.auth_details = Some(login_request);
+                            state.server_details = Some(server_details);
+                            state.gravatar_url = Some(gravatar_url);
+                            
+                            state.store_app_state();
+                        });
 
-                            wasm_bindgen_futures::spawn_local(async move {
-                                // Try to get the user's configured start page
-                                match call_get_startpage(
-                                    &startpage_server.unwrap(),
-                                    &startpage_api.unwrap().unwrap(),
-                                    &startpage_user_id.unwrap(),
-                                )
-                                .await
-                                {
-                                    Ok(start_page) => {
-                                        if !start_page.is_empty() {
-                                            // Use user's configured start page
-                                            startpage_history.push(&start_page);
-                                        } else {
-                                            // Empty start page, use default
-                                            startpage_history.push("/home");
+                        page_state.set(PageState::Default);
+
+                        // Set session authentication
+                        let window = web_sys::window().expect("no global `window` exists");
+                        let session_storage = window.session_storage().unwrap().unwrap();
+                        session_storage.set_item("isAuthenticated", "true").unwrap();
+
+                        // Get theme
+                        let theme_api = api_key.clone();
+                        let theme_server = server_name.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match call_get_theme(
+                                theme_server,
+                                theme_api,
+                                &user_id,
+                            )
+                            .await
+                            {
+                                Ok(theme) => {
+                                    crate::components::setting_components::theme_options::changeTheme(&theme);
+                                    // Update local storage with the new theme
+                                    if let Some(window) = web_sys::window() {
+                                        if let Ok(Some(local_storage)) = window.local_storage() {
+                                            match local_storage.set_item("selected_theme", &theme) {
+                                                Ok(_) => console::log_1(&"Updated theme in local storage".into()),
+                                                Err(e) => console::log_1(&format!("Error updating theme in local storage: {:?}", e).into()),
+                                            }
                                         }
                                     }
-                                    Err(_) => {
-                                        // Failed to get start page, use default
+                                }
+                                Err(_e) => {
+                                    // console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                }
+                            }
+                        });
+
+                        // Get time info
+                        let time_server = server_name.clone();
+                        let time_api = api_key.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match call_get_time_info(
+                                time_server,
+                                time_api,
+                                &user_id,
+                            )
+                            .await
+                            {
+                                Ok(tz_response) => {
+                                    dispatch.reduce_mut(move |state| {
+                                        state.user_tz = Some(tz_response.timezone);
+                                        state.hour_preference = Some(tz_response.hour_pref);
+                                        state.date_format = Some(tz_response.date_format);
+                                    });
+                                }
+                                Err(e) => {
+                                    console::log_1(
+                                        &format!("Error getting time info: {:?}", e).into(),
+                                    );
+                                }
+                            }
+                        });
+
+                        // Get start page and redirect
+                        let startpage_api = api_key.clone();
+                        let startpage_server = server_name.clone();
+                        let startpage_user_id = user_id.clone();
+                        let startpage_history = history.clone();
+
+                        wasm_bindgen_futures::spawn_local(async move {
+                            // First check for requested route
+                            let window = web_sys::window().expect("no global `window` exists");
+                            let session_storage = window.session_storage().unwrap().unwrap();
+                            let requested_route = session_storage.get_item("requested_route").unwrap_or(None);
+                            
+                            if let Some(route) = requested_route {
+                                startpage_history.push(&route);
+                                return;
+                            }
+
+                            // Try to get the user's configured start page
+                            match call_get_startpage(
+                                &startpage_server,
+                                &startpage_api,
+                                &startpage_user_id,
+                            )
+                            .await
+                            {
+                                Ok(start_page) => {
+                                    if !start_page.is_empty() {
+                                        // Use user's configured start page
+                                        startpage_history.push(&start_page);
+                                    } else {
+                                        // Empty start page, use default
                                         startpage_history.push("/home");
                                     }
                                 }
-                            });
-                        } else {
-                            page_state.set(PageState::Default);
-                            dispatch.reduce_mut(|state| {
-                                state.error_message =
-                                    Option::from(format!("Error setting up time zone"))
-                            });
-                        }
+                                Err(_) => {
+                                    // Failed to get start page, use default
+                                    startpage_history.push("/home");
+                                }
+                            }
+                        });
                     }
                     Err(e) => {
                         page_state.set(PageState::Default);
                         let formatted_error = format_error_message(&e.to_string());
                         dispatch.reduce_mut(|state| {
                             state.error_message = Option::from(format!(
-                                "Error setting up time zone: {:?}",
+                                "MFA verification failed: {}",
                                 formatted_error
                             ))
                         });

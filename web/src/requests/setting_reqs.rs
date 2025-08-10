@@ -1967,6 +1967,9 @@ pub struct NotificationSettings {
     pub enabled: bool,
     pub ntfy_topic: Option<String>,
     pub ntfy_server_url: Option<String>,
+    pub ntfy_username: Option<String>,
+    pub ntfy_password: Option<String>,
+    pub ntfy_access_token: Option<String>,
     pub gotify_url: Option<String>,
     pub gotify_token: Option<String>,
 }
@@ -2027,6 +2030,9 @@ pub async fn call_update_notification_settings(
         "enabled": settings.enabled,
         "ntfy_topic": settings.ntfy_topic,
         "ntfy_server_url": settings.ntfy_server_url,
+        "ntfy_username": settings.ntfy_username,
+        "ntfy_password": settings.ntfy_password,
+        "ntfy_access_token": settings.ntfy_access_token,
         "gotify_url": settings.gotify_url,
         "gotify_token": settings.gotify_token,
     });
@@ -2104,6 +2110,12 @@ pub struct AddOIDCProviderRequest {
     pub button_color: Option<String>,
     pub button_text_color: Option<String>,
     pub icon_svg: Option<String>,
+    pub name_claim: Option<String>,
+    pub email_claim: Option<String>,
+    pub username_claim: Option<String>,
+    pub roles_claim: Option<String>,
+    pub user_role: Option<String>,
+    pub admin_role: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2120,6 +2132,12 @@ pub struct OIDCProvider {
     pub button_color: String,
     pub button_text_color: String,
     pub icon_svg: Option<String>,
+    pub name_claim: Option<String>,
+    pub email_claim: Option<String>,
+    pub username_claim: Option<String>,
+    pub roles_claim: Option<String>,
+    pub user_role: Option<String>,
+    pub admin_role: Option<String>,
     pub enabled: bool,
 }
 
@@ -2262,6 +2280,304 @@ pub async fn call_set_startpage(
     } else {
         Err(Error::msg(format!(
             "Failed to set startpage: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// RSS Key Requests
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct GetRssKeyResponse {
+    pub rss_key: String,
+}
+
+pub async fn call_get_rss_key(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/get_rss_key?user_id={}", server_name, user_id);
+
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: GetRssKeyResponse = response.json().await?;
+        Ok(response_data.rss_key)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting RSS key: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// Timezone, Date Format, and Time Format Update Requests
+
+#[derive(Serialize, Debug)]
+pub struct UpdateTimezoneRequest {
+    pub user_id: i32,
+    pub timezone: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct UpdateDateFormatRequest {
+    pub user_id: i32,
+    pub date_format: String,
+}
+
+#[derive(Serialize, Debug)]
+pub struct UpdateTimeFormatRequest {
+    pub user_id: i32,
+    pub hour_pref: i32,
+}
+#[derive(Serialize, Debug)]
+pub struct UpdateAutoCompleteSecondsRequest {
+    pub user_id: i32,
+    pub seconds: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AutoCompleteSecondsResponse {
+    pub auto_complete_seconds: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct UpdateSettingResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+pub async fn call_update_timezone(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    timezone: String,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/update_timezone", server_name);
+    
+    let request_body = UpdateTimezoneRequest {
+        user_id,
+        timezone,
+    };
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: UpdateSettingResponse = response.json().await?;
+        Ok(response_data.success)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating timezone: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_update_date_format(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    date_format: String,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/update_date_format", server_name);
+    
+    let request_body = UpdateDateFormatRequest {
+        user_id,
+        date_format,
+    };
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: UpdateSettingResponse = response.json().await?;
+        Ok(response_data.success)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating date format: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_update_time_format(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    hour_pref: i32,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/update_time_format", server_name);
+    
+    let request_body = UpdateTimeFormatRequest {
+        user_id,
+        hour_pref,
+    };
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: UpdateSettingResponse = response.json().await?;
+        Ok(response_data.success)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating time format: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_get_auto_complete_seconds(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<i32, Error> {
+    let url = format!("{}/api/data/get_auto_complete_seconds/{}", server_name, user_id);
+
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: AutoCompleteSecondsResponse = response.json().await?;
+        Ok(response_data.auto_complete_seconds)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting auto complete seconds: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_update_auto_complete_seconds(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    seconds: i32,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/update_auto_complete_seconds", server_name);
+    
+    let request_body = UpdateAutoCompleteSecondsRequest {
+        user_id,
+        seconds,
+    };
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: UpdateSettingResponse = response.json().await?;
+        Ok(response_data.success)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating auto complete seconds: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// GPodder Statistics
+#[derive(Deserialize, Debug, Clone)]
+pub struct GpodderStatistics {
+    pub server_url: String,
+    pub sync_type: String,
+    pub sync_enabled: bool,
+    pub server_devices: Vec<ServerDevice>,
+    pub total_devices: i32,
+    pub server_subscriptions: Vec<ServerSubscription>,
+    pub total_subscriptions: i32,
+    pub recent_episode_actions: Vec<ServerEpisodeAction>,
+    pub total_episode_actions: i32,
+    pub connection_status: String,
+    pub last_sync_timestamp: Option<String>,
+    pub api_endpoints_tested: Vec<EndpointTest>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ServerDevice {
+    pub id: String,
+    pub caption: String,
+    pub device_type: String,
+    pub subscriptions: i32,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ServerSubscription {
+    pub url: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ServerEpisodeAction {
+    pub podcast: String,
+    pub episode: String,
+    pub action: String,
+    pub timestamp: String,
+    pub position: Option<i32>,
+    pub device: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct EndpointTest {
+    pub endpoint: String,
+    pub status: String,
+    pub response_time_ms: Option<i64>,
+    pub error: Option<String>,
+}
+
+pub async fn call_get_gpodder_statistics(
+    server_name: &str,
+    api_key: &str,
+) -> Result<GpodderStatistics, Error> {
+    let url = format!("{}/api/gpodder/gpodder_statistics", server_name);
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let statistics = response.json::<GpodderStatistics>().await?;
+        Ok(statistics)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting GPodder statistics: {}",
             response.status_text()
         )))
     }

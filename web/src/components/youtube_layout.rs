@@ -352,29 +352,6 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
                         html! {}
                     }
                 }
-
-                // Recent videos section
-                <div class="mt-auto">
-                    <div class="flex items-center">
-                        <i class="ph ph-video text-lg mr-2 item_container-text"></i>
-                        <span class="item_container-text text-sm">
-                            {if !channel.recent_videos.is_empty() {
-                                format!("{} recent video{}", channel.recent_videos.len(), if channel.recent_videos.len() == 1 { "" } else { "s" })
-                            } else {
-                                "No recent videos".to_string()
-                            }}
-                        </span>
-                    </div>
-
-                    // Recent videos preview
-                    if !channel.recent_videos.is_empty() {
-                        <div class="mt-2">
-                            { for channel.recent_videos.iter().take(3).map(|video| html! {
-                                <p class="item_container-text text-sm line-clamp-1 mt-1">{&video.title}</p>
-                            })}
-                        </div>
-                    }
-                </div>
             </div>
         </div>
     }

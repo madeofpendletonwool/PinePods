@@ -1,1 +1,1 @@
-A beautiful, self-hosted podcast app with powerful server synchronization
+A beautiful, open-source self-hosted podcast app with powerful server synchronization

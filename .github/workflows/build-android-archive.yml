@@ -1,12 +1,14 @@
+permissions:
+  contents: read
 name: Build Android Release Archive
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version tag (e.g., v0.7.9001)"
+        description: "Version tag (e.g., v0.7.9)"
         required: false
-        default: 'manual-build'
+        default: "manual-build"
 
 jobs:
   build-android:
@@ -32,11 +34,17 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          link-to-sdk: true
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.0'
-          channel: 'stable'
+          flutter-version: "3.32.0"
+          channel: "stable"
 
       - name: Install dependencies
         run: |
@@ -84,18 +92,18 @@ jobs:
         run: |
           cd mobile
           mkdir -p ../release-artifacts/android
-          
+
           # Copy split APKs with descriptive names
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ../release-artifacts/android/PinePods-${VERSION_TAG}-arm64-v8a.apk
           cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ../release-artifacts/android/PinePods-${VERSION_TAG}-armeabi-v7a.apk
           cp build/app/outputs/flutter-apk/app-x86_64-release.apk ../release-artifacts/android/PinePods-${VERSION_TAG}-x86_64.apk
-          
+
           # Copy universal APK
           cp build/app/outputs/flutter-apk/app-release.apk ../release-artifacts/android/PinePods-${VERSION_TAG}-universal.apk
-          
+
           # Copy AAB for Play Store
           cp build/app/outputs/bundle/release/app-release.aab ../release-artifacts/android/PinePods-${VERSION_TAG}-playstore.aab
-          
+
           # Create build info file
           cat > ../release-artifacts/android/BUILD_INFO.txt << EOF
           PinePods Mobile - Android Release Build
@@ -105,25 +113,25 @@ jobs:
           Build Number: $BUILD_NUMBER
           Flutter Version: 3.32.0
           Package: com.gooseberrydevelopment.pinepods
-          
+
           📱 APK FILES:
           =============
           PinePods-${VERSION_TAG}-arm64-v8a.apk      - 64-bit ARM (most modern phones)
           PinePods-${VERSION_TAG}-armeabi-v7a.apk    - 32-bit ARM (older phones)
           PinePods-${VERSION_TAG}-x86_64.apk         - 64-bit Intel (emulators/some tablets)
           PinePods-${VERSION_TAG}-universal.apk      - Works on all devices (larger size)
-          
+
           📦 STORE FILES:
           ==============
           PinePods-${VERSION_TAG}-playstore.aab      - Google Play Store upload (.aab format)
-          
+
           🚀 DISTRIBUTION:
           ================
           • Google Play Store: Use the .aab file
           • F-Droid: They build from source (no APK needed)
           • IzzyOnDroid: Use universal.apk or arm64-v8a.apk
           • Direct install: Use arm64-v8a.apk for most users
-          
+
           ⚡ QUICK INSTALL:
           ================
           Most users should download: PinePods-${VERSION_TAG}-arm64-v8a.apk
@@ -143,7 +151,7 @@ jobs:
           echo "**Version:** ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Build Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           echo "## 📦 Generated Files" >> $GITHUB_STEP_SUMMARY
           echo "- 🎯 **arm64-v8a.apk** - Recommended for most users" >> $GITHUB_STEP_SUMMARY
           echo "- 📱 **armeabi-v7a.apk** - For older Android devices" >> $GITHUB_STEP_SUMMARY

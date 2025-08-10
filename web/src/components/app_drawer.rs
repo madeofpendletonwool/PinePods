@@ -94,7 +94,7 @@ pub fn app_drawer() -> Html {
             spawn_local(async move {
                 web_sys::console::log_1(&"Starting refresh...".into());
 
-                if let Err(e) = connect_to_episode_websocket(
+                match connect_to_episode_websocket(
                     &server_name_call.unwrap(),
                     &user_id_call.unwrap(),
                     &api_key_call.unwrap().unwrap(),
@@ -103,10 +103,15 @@ pub fn app_drawer() -> Html {
                 )
                 .await
                 {
-                    web_sys::console::log_1(&format!("Refresh failed: {:?}", e).into());
+                    Ok(_) => {
+                        web_sys::console::log_1(&"Refresh completed successfully".into());
+                    }
+                    Err(e) => {
+                        web_sys::console::log_1(&format!("Refresh failed: {:?}", e).into());
+                    }
                 }
 
-                // Always reset the refreshing state
+                // Reset the refreshing state after websocket completes
                 dispatch_clone.reduce_mut(|state| {
                     state.is_refreshing = Some(false);
                     state.clone()

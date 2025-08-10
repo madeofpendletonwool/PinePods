@@ -818,13 +818,18 @@ pub struct YouTubeVideo {
 
 #[derive(Deserialize, Serialize, Debug, Clone, PartialEq)]
 pub struct YouTubeChannel {
+    #[serde(rename = "channelId")]
     pub channel_id: String,
     pub name: String,
     pub description: String,
+    #[serde(rename = "subscriberCount")]
     pub subscriber_count: Option<i64>,
     pub url: String,
+    #[serde(rename = "videoCount")]
     pub video_count: Option<i32>,
+    #[serde(rename = "recentVideos", default)]
     pub recent_videos: Vec<YouTubeVideo>,
+    #[serde(rename = "thumbnailUrl")]
     pub thumbnail_url: String,
 }
 
@@ -840,24 +845,16 @@ pub struct YouTubeSearchResponse {
 }
 
 pub async fn call_youtube_search(
-    server_name: &str,
-    api_key: &str,
-    user_id: i32,
     query: &str,
-    search_type: &str,
-    max_results: i32,
+    search_api_url: &Option<String>,
 ) -> Result<YouTubeSearchResponse, Error> {
-    let encoded_query = js_sys::encode_uri_component(query)
-        .as_string()
-        .unwrap_or_else(|| query.to_string());
-
-    let url = format!(
-        "{}/api/data/search_youtube_channels?user_id={}&query={}&max_results={}",
-        server_name, user_id, encoded_query, max_results
-    );
+    let url = if let Some(api_url) = search_api_url {
+        format!("{}?query={}&index=youtube", api_url, query)
+    } else {
+        return Err(anyhow::Error::msg("Search API URL is not provided"));
+    };
 
     let response = Request::get(&url)
-        .header("Api-Key", api_key)
         .send()
         .await
         .map_err(|e| Error::msg(format!("Network request error: {}", e)))?;
@@ -881,6 +878,75 @@ pub async fn call_youtube_search(
         let error_text = response.status_text();
         Err(Error::msg(format!(
             "Error searching YouTube. Server response: {}",
+            error_text
+        )))
+    }
+}
+
+// YouTube channel details response for when user clicks a channel
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct YouTubeChannelDetails {
+    #[serde(rename = "channelId")]
+    pub channel_id: String,
+    pub name: String,
+    pub description: String,
+    #[serde(rename = "thumbnailUrl")]
+    pub thumbnail_url: String,
+    pub url: String,
+    #[serde(rename = "subscriberCount")]
+    pub subscriber_count: Option<i64>,
+    #[serde(rename = "videoCount")]
+    pub video_count: Option<i64>,
+    #[serde(rename = "recentVideos")]
+    pub recent_videos: Vec<YouTubeVideoDetails>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub struct YouTubeVideoDetails {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub url: String,
+    pub thumbnail: String,
+    #[serde(rename = "publishedAt")]
+    pub published_at: String,
+    pub duration: Option<String>,
+}
+
+pub async fn call_youtube_channel_details(
+    channel_id: &str,
+    search_api_url: &Option<String>,
+) -> Result<YouTubeChannelDetails, Error> {
+    let url = if let Some(api_url) = search_api_url {
+        format!("{}/youtube/channel?id={}", api_url, channel_id)
+    } else {
+        return Err(anyhow::Error::msg("Search API URL is not provided"));
+    };
+
+    let response = Request::get(&url)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network request error: {}", e)))?;
+
+    if response.ok() {
+        let text = response
+            .text()
+            .await
+            .map_err(|e| Error::msg(format!("Failed to get response text: {}", e)))?;
+
+        let channel_details: YouTubeChannelDetails = serde_json::from_str(&text).map_err(|e| {
+            web_sys::console::log_1(&format!("Parse error: {}", e).into());
+            Error::msg(format!(
+                "Failed to parse channel details: {} - Raw text: {}",
+                e, text
+            ))
+        })?;
+
+        Ok(channel_details)
+    } else {
+        let error_text = response.status_text();
+        Err(Error::msg(format!(
+            "Error getting YouTube channel details. Server response: {}",
             error_text
         )))
     }

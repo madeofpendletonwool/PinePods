@@ -9,6 +9,7 @@ use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::episodes_layout::AppStateMsg;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
+    get_filter_preference, set_filter_preference, get_default_sort_direction,
 };
 use crate::requests::pod_req::{self, HistoryDataResponse};
 use gloo::events::EventListener;
@@ -44,7 +45,21 @@ pub fn history() -> Html {
     let loading = use_state(|| true);
 
     let episode_search_term = use_state(|| String::new());
-    let episode_sort_direction = use_state(|| Some(HistorySortDirection::NewestFirst)); // Default to newest first
+    
+    // Initialize sort direction from local storage or default to newest first
+    let episode_sort_direction = use_state(|| {
+        let saved_preference = get_filter_preference("history");
+        match saved_preference.as_deref() {
+            Some("newest") => Some(HistorySortDirection::NewestFirst),
+            Some("oldest") => Some(HistorySortDirection::OldestFirst),
+            Some("shortest") => Some(HistorySortDirection::ShortestFirst),
+            Some("longest") => Some(HistorySortDirection::LongestFirst),
+            Some("title_az") => Some(HistorySortDirection::TitleAZ),
+            Some("title_za") => Some(HistorySortDirection::TitleZA),
+            _ => Some(HistorySortDirection::NewestFirst), // Default to newest first
+        }
+    });
+    
     let show_completed = use_state(|| false); // Toggle for showing completed episodes only
     let show_in_progress = use_state(|| false); // Toggle for showing in-progress episodes only
 
@@ -228,6 +243,10 @@ pub fn history() -> Html {
                                                 Callback::from(move |e: Event| {
                                                     let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
                                                     let value = target.value();
+                                                    
+                                                    // Save preference to local storage
+                                                    set_filter_preference("history", &value);
+                                                    
                                                     match value.as_str() {
                                                         "newest" => episode_sort_direction.set(Some(HistorySortDirection::NewestFirst)),
                                                         "oldest" => episode_sort_direction.set(Some(HistorySortDirection::OldestFirst)),
@@ -240,12 +259,12 @@ pub fn history() -> Html {
                                                 })
                                             }
                                         >
-                                            <option value="newest" selected=true>{"Newest First"}</option>
-                                            <option value="oldest">{"Oldest First"}</option>
-                                            <option value="shortest">{"Shortest First"}</option>
-                                            <option value="longest">{"Longest First"}</option>
-                                            <option value="title_az">{"Title A-Z"}</option>
-                                            <option value="title_za">{"Title Z-A"}</option>
+                                            <option value="newest" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"}>{"Newest First"}</option>
+                                            <option value="oldest" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"}>{"Oldest First"}</option>
+                                            <option value="shortest" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"}>{"Shortest First"}</option>
+                                            <option value="longest" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"}>{"Longest First"}</option>
+                                            <option value="title_az" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{"Title A-Z"}</option>
+                                            <option value="title_za" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{"Title Z-A"}</option>
                                         </select>
                                         <i class="ph ph-caret-down dropdown-arrow"></i>
                                     </div>

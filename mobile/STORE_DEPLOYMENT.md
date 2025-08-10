@@ -5,7 +5,7 @@ This guide covers deployment to **Google Play Store**, **iOS App Store**, **F-Dr
 ## 📋 Overview
 
 - **Google Play Store**: Official Android distribution
-- **iOS App Store**: Official iOS distribution  
+- **iOS App Store**: Official iOS distribution
 - **F-Droid**: Open-source Android app repository
 - **IzzyOnDroid**: F-Droid compatible repository with faster updates
 
@@ -21,7 +21,7 @@ keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -vali
 
 # Follow prompts to set:
 # - Keystore password (save as ANDROID_STORE_PASSWORD)
-# - Key password (save as ANDROID_KEY_PASSWORD) 
+# - Key password (save as ANDROID_KEY_PASSWORD)
 # - Alias: "upload" (save as ANDROID_KEY_ALIAS)
 # - Your name/organization details
 
@@ -64,7 +64,7 @@ base64 upload-keystore.jks > keystore.base64.txt
 
 4. **App Store Connect API Key**:
    - Go to [App Store Connect](https://appstoreconnect.apple.com/)
-   - Users and Access → Keys → "+" 
+   - Users and Access → Keys → "+"
    - Create key with "App Manager" role
    - Download .p8 file and note Key ID + Issuer ID
    - Convert: `base64 AuthKey_XXXXXXXXXX.p8 > app-store-api.base64.txt`
@@ -86,7 +86,7 @@ Go to your repo → **Settings** → **Secrets and variables** → **Actions** �
 ### **Android Secrets:**
 - `ANDROID_KEYSTORE_BASE64` - Base64 encoded upload-keystore.jks
 - `ANDROID_STORE_PASSWORD` - Keystore password
-- `ANDROID_KEY_PASSWORD` - Key password  
+- `ANDROID_KEY_PASSWORD` - Key password
 - `ANDROID_KEY_ALIAS` - Key alias (usually "upload")
 - `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` - Base64 encoded service account JSON
 
@@ -133,7 +133,7 @@ flutter build appbundle --release
 
 # Deploy via GitHub Actions
 git tag v0.7.9001
-git push origin v0.7.9001
+git push origin v0.7.9
 # This triggers automatic build and upload to Play Store
 ```
 
@@ -169,7 +169,7 @@ flutter build ios --release --no-codesign
 
 # Deploy via GitHub Actions
 git tag v0.7.9001
-git push origin v0.7.9001
+git push origin v0.7.9
 # This triggers automatic build and upload to App Store Connect
 ```
 
@@ -187,12 +187,12 @@ F-Droid builds apps from source automatically. No signing required from your end
 
 ### **Submission Process:**
 1. **Fork F-Droid Data Repository**: https://gitlab.com/fdroid/fdroiddata
-2. **Create App Metadata**: 
+2. **Create App Metadata**:
    ```bash
    # Clone your fork
    git clone https://gitlab.com/yourusername/fdroiddata.git
    cd fdroiddata
-   
+
    # Create app directory
    mkdir metadata/com.gooseberrydevelopment.pinepods.yml
    ```
@@ -206,11 +206,11 @@ F-Droid builds apps from source automatically. No signing required from your end
    AuthorEmail: your-email@example.com
    SourceCode: https://github.com/madeofpendletonwool/PinePods
    IssueTracker: https://github.com/madeofpendletonwool/PinePods/issues
-   
+
    AutoName: PinePods
    Description: |-
        A beautiful, self-hosted podcast app with powerful server synchronization.
-       
+
        Features:
        * Self-hosted podcast server synchronization
        * Beautiful, intuitive mobile interface
@@ -222,28 +222,28 @@ F-Droid builds apps from source automatically. No signing required from your end
        * Search and discovery
        * Background audio playback
        * Sleep timer and playback speed controls
-       
+
        Note: This app requires a PinePods server to be set up.
-   
+
    RepoType: git
    Repo: https://github.com/madeofpendletonwool/PinePods.git
    Binaries: https://github.com/madeofpendletonwool/PinePods/releases/download/v%v/PinePods-fdroid-%v.apk
-   
+
    Builds:
-     - versionName: 0.7.9001
-       versionCode: 7009001
-       commit: v0.7.9001
+     - versionName: 0.7.9
+       versionCode: 20250714
+       commit: v0.7.9
        subdir: mobile
        output: build/app/outputs/flutter-apk/app-release.apk
        build:
          - $$flutter$$/bin/flutter config --no-analytics
          - $$flutter$$/bin/flutter pub get
          - $$flutter$$/bin/flutter build apk --release
-   
+
    AutoUpdateMode: Version v%v
    UpdateCheckMode: Tags
-   CurrentVersion: 0.7.9001
-   CurrentVersionCode: 7009001
+   CurrentVersion: 0.7.9
+   CurrentVersionCode: 20250714
    ```
 
 4. **Submit Merge Request**:
@@ -280,10 +280,10 @@ IzzyOnDroid accepts APKs directly and offers faster updates than F-Droid.
    echo "keyPassword=YOUR_KEY_PASSWORD" >> key.properties
    echo "keyAlias=upload" >> key.properties
    echo "storeFile=../upload-keystore.jks" >> key.properties
-   
+
    # Copy your keystore
    cp /path/to/upload-keystore.jks ./
-   
+
    # Build signed APK
    cd ..
    flutter build apk --release
@@ -291,8 +291,8 @@ IzzyOnDroid accepts APKs directly and offers faster updates than F-Droid.
 
 2. **Create GitHub Release**:
    ```bash
-   git tag v0.7.9001
-   git push origin v0.7.9001
+   git tag v0.7.9
+   git push origin v0.7.9
    # Upload the signed APK to GitHub releases
    ```
 
@@ -353,13 +353,13 @@ IzzyOnDroid accepts APKs directly and offers faster updates than F-Droid.
 # Ensure all secrets are set in GitHub
 # Ensure screenshots are added to fastlane/metadata directories
 # Create and push tag
-git tag v0.7.9001
-git push origin v0.7.9001
+git tag v0.7.9
+git push origin v0.7.9
 ```
 
 ### **2. Automated Deployments**:
 - ✅ **Google Play**: Automatic upload via GitHub Actions
-- ✅ **iOS App Store**: Automatic upload via GitHub Actions  
+- ✅ **iOS App Store**: Automatic upload via GitHub Actions
 - ✅ **F-Droid**: Builds automatically after merge request accepted
 - ✅ **IzzyOnDroid**: Manual submission of signed APK
 
@@ -426,7 +426,7 @@ For subsequent releases:
 
 Once deployed, your app will be available on:
 - **Google Play Store**: Official Android users
-- **iOS App Store**: iPhone/iPad users  
+- **iOS App Store**: iPhone/iPad users
 - **F-Droid**: Privacy-focused Android users
 - **IzzyOnDroid**: F-Droid users who want faster updates
 

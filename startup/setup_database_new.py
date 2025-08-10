@@ -204,39 +204,8 @@ def ensure_usernames_lowercase():
 
 
 def ensure_web_api_key_file():
-    """Ensure the web API key file exists for background tasks"""
-    try:
-        from database_functions.migrations import get_migration_manager
-        
-        manager = get_migration_manager()
-        conn = manager.get_connection()
-        cursor = conn.cursor()
-        
-        db_type = manager.db_type
-        api_keys_table = '"APIKeys"' if db_type == 'postgresql' else 'APIKeys'
-        
-        try:
-            # Get the API key for background tasks user (UserID = 1)
-            cursor.execute(f'SELECT APIKey FROM {api_keys_table} WHERE UserID = 1')
-            result = cursor.fetchone()
-            
-            if result:
-                # Extract API key from result (handle both tuple and dict formats)
-                api_key = result[0] if isinstance(result, tuple) else result['apikey']
-                
-                # Write API key to temp file for web services
-                with open("/tmp/web_api_key.txt", "w") as f:
-                    f.write(api_key)
-                logger.info("Web API key file created successfully")
-            else:
-                logger.warning("No API key found for background tasks user")
-            
-        finally:
-            cursor.close()
-            manager.close_connection()
-            
-    except Exception as e:
-        logger.error(f"Error creating web API key file: {e}")
+    """Deprecated: Web API key file removed for security reasons"""
+    logger.info("Web API key file creation skipped - background tasks now authenticate via database")
 
 
 def main():
