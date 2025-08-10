@@ -17,6 +17,9 @@ pub fn notification_settings() -> Html {
     let enabled = use_state(|| false);
     let ntfy_topic = use_state(|| "".to_string());
     let ntfy_server = use_state(|| "https://ntfy.sh".to_string());
+    let ntfy_username = use_state(|| "".to_string());
+    let ntfy_password = use_state(|| "".to_string());
+    let ntfy_access_token = use_state(|| "".to_string());
     let gotify_url = use_state(|| "".to_string());
     let gotify_token = use_state(|| "".to_string());
 
@@ -57,6 +60,9 @@ pub fn notification_settings() -> Html {
         let enabled = enabled.clone();
         let ntfy_topic = ntfy_topic.clone();
         let ntfy_server = ntfy_server.clone();
+        let ntfy_username = ntfy_username.clone();
+        let ntfy_password = ntfy_password.clone();
+        let ntfy_access_token = ntfy_access_token.clone();
         let gotify_url = gotify_url.clone();
         let gotify_token = gotify_token.clone();
         let _dispatch = _dispatch.clone();
@@ -81,36 +87,47 @@ pub fn notification_settings() -> Html {
                                 // Set the notification_info state
                                 notification_info.set(Some(settings_response.clone()));
 
-                                // Update individual form states
-                                if let Some(setting) = settings_response.settings.first() {
-                                    // Set platform first to ensure correct field visibility
-                                    platform.set(setting.platform.clone());
-                                    enabled.set(setting.enabled);
-
-                                    // Then set the appropriate fields based on the platform
-                                    if setting.platform == "ntfy" {
-                                        if let Some(topic) = &setting.ntfy_topic {
-                                            ntfy_topic.set(topic.clone());
-                                        }
-                                        if let Some(server) = &setting.ntfy_server_url {
-                                            ntfy_server.set(server.clone());
-                                        }
-                                    } else {
-                                        if let Some(url) = &setting.gotify_url {
-                                            gotify_url.set(url.clone());
-                                        }
-                                        if let Some(token) = &setting.gotify_token {
-                                            gotify_token.set(token.clone());
-                                        }
-                                    }
+                                // Always default to ntfy platform, but populate all settings
+                                let ntfy_setting = settings_response.settings.iter().find(|s| s.platform == "ntfy");
+                                let gotify_setting = settings_response.settings.iter().find(|s| s.platform == "gotify");
+                                
+                                // Always set platform to ntfy by default - override any existing setting
+                                platform.set("ntfy".to_string());
+                                
+                                // Set enabled state based on ntfy setting if it exists
+                                if let Some(ntfy) = ntfy_setting {
+                                    enabled.set(ntfy.enabled);
                                 } else {
-                                    // No settings exist yet, ensure we default to ntfy
-                                    platform.set("ntfy".to_string());
                                     enabled.set(false);
-                                    ntfy_topic.set("".to_string());
-                                    ntfy_server.set("https://ntfy.sh".to_string());
-                                    gotify_url.set("".to_string());
-                                    gotify_token.set("".to_string());
+                                }
+
+                                // Populate ntfy fields if ntfy setting exists
+                                if let Some(ntfy) = ntfy_setting {
+                                    if let Some(topic) = &ntfy.ntfy_topic {
+                                        ntfy_topic.set(topic.clone());
+                                    }
+                                    if let Some(server) = &ntfy.ntfy_server_url {
+                                        ntfy_server.set(server.clone());
+                                    }
+                                    if let Some(username) = &ntfy.ntfy_username {
+                                        ntfy_username.set(username.clone());
+                                    }
+                                    if let Some(password) = &ntfy.ntfy_password {
+                                        ntfy_password.set(password.clone());
+                                    }
+                                    if let Some(token) = &ntfy.ntfy_access_token {
+                                        ntfy_access_token.set(token.clone());
+                                    }
+                                }
+                                
+                                // Populate gotify fields if gotify setting exists (for when user switches)
+                                if let Some(gotify) = gotify_setting {
+                                    if let Some(url) = &gotify.gotify_url {
+                                        gotify_url.set(url.clone());
+                                    }
+                                    if let Some(token) = &gotify.gotify_token {
+                                        gotify_token.set(token.clone());
+                                    }
                                 }
                             }
                             Err(e) => {
@@ -139,6 +156,9 @@ pub fn notification_settings() -> Html {
         let enabled = enabled.clone();
         let ntfy_topic = ntfy_topic.clone();
         let ntfy_server = ntfy_server.clone();
+        let ntfy_username = ntfy_username.clone();
+        let ntfy_password = ntfy_password.clone();
+        let ntfy_access_token = ntfy_access_token.clone();
         let gotify_url = gotify_url.clone();
         let gotify_token = gotify_token.clone();
         let show_success = show_success.clone();
@@ -161,6 +181,9 @@ pub fn notification_settings() -> Html {
                 enabled: *enabled,
                 ntfy_topic: Some((*ntfy_topic).clone()),
                 ntfy_server_url: Some((*ntfy_server).clone()),
+                ntfy_username: Some((*ntfy_username).clone()),
+                ntfy_password: Some((*ntfy_password).clone()),
+                ntfy_access_token: Some((*ntfy_access_token).clone()),
                 gotify_url: Some((*gotify_url).clone()),
                 gotify_token: Some((*gotify_token).clone()),
             };
@@ -301,13 +324,13 @@ pub fn notification_settings() -> Html {
                     <label class="form-label">{"Notification Platform"}</label>
                     <select
                         class="form-input"
-                        value={(*platform).clone()}
+                        value="ntfy"
                         onchange={let platform = platform.clone(); Callback::from(move |e: Event| {
                             let target: HtmlInputElement = e.target_unchecked_into();
                             platform.set(target.value());
                         })}
                     >
-                        <option value="ntfy">{"ntfy"}</option>
+                        <option value="ntfy" selected=true>{"ntfy"}</option>
                         <option value="gotify">{"Gotify"}</option>
                     </select>
                 </div>
@@ -354,6 +377,72 @@ pub fn notification_settings() -> Html {
                                         })}
                                         class="form-input"
                                         placeholder="Enter ntfy server URL (default: https://ntfy.sh)"
+                                    />
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label class="form-label">{"Authentication (Optional)"}</label>
+                                    <p class="text-sm opacity-80 mb-2">{"Choose either username/password OR access token, not both"}</p>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="ntfy_username" class="form-label">{"Username"}</label>
+                                    <input
+                                        type="text"
+                                        id="ntfy_username"
+                                        value={(*ntfy_username).clone()}
+                                        disabled={!(*ntfy_access_token).is_empty()}
+                                        oninput={let ntfy_username = ntfy_username.clone(); let ntfy_access_token = ntfy_access_token.clone(); Callback::from(move |e: InputEvent| {
+                                            let target: HtmlInputElement = e.target_unchecked_into();
+                                            ntfy_username.set(target.value());
+                                            // Clear access token if username/password is being used
+                                            if !target.value().is_empty() {
+                                                ntfy_access_token.set("".to_string());
+                                            }
+                                        })}
+                                        class="form-input"
+                                        placeholder="ntfy username (optional)"
+                                    />
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="ntfy_password" class="form-label">{"Password"}</label>
+                                    <input
+                                        type="password"
+                                        id="ntfy_password"
+                                        value={(*ntfy_password).clone()}
+                                        disabled={!(*ntfy_access_token).is_empty()}
+                                        oninput={let ntfy_password = ntfy_password.clone(); let ntfy_access_token = ntfy_access_token.clone(); Callback::from(move |e: InputEvent| {
+                                            let target: HtmlInputElement = e.target_unchecked_into();
+                                            ntfy_password.set(target.value());
+                                            // Clear access token if username/password is being used
+                                            if !target.value().is_empty() {
+                                                ntfy_access_token.set("".to_string());
+                                            }
+                                        })}
+                                        class="form-input"
+                                        placeholder="ntfy password (optional)"
+                                    />
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="ntfy_access_token" class="form-label">{"Access Token"}</label>
+                                    <input
+                                        type="password"
+                                        id="ntfy_access_token"
+                                        value={(*ntfy_access_token).clone()}
+                                        disabled={!(*ntfy_username).is_empty() || !(*ntfy_password).is_empty()}
+                                        oninput={let ntfy_access_token = ntfy_access_token.clone(); let ntfy_username = ntfy_username.clone(); let ntfy_password = ntfy_password.clone(); Callback::from(move |e: InputEvent| {
+                                            let target: HtmlInputElement = e.target_unchecked_into();
+                                            ntfy_access_token.set(target.value());
+                                            // Clear username/password if access token is being used
+                                            if !target.value().is_empty() {
+                                                ntfy_username.set("".to_string());
+                                                ntfy_password.set("".to_string());
+                                            }
+                                        })}
+                                        class="form-input"
+                                        placeholder="ntfy access token (alternative to username/password)"
                                     />
                                 </div>
                             </>

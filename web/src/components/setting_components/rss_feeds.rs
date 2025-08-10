@@ -1,6 +1,6 @@
 use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
-use crate::requests::setting_reqs::{call_rss_feed_status, call_toggle_rss_feeds};
+use crate::requests::setting_reqs::{call_rss_feed_status, call_toggle_rss_feeds, call_get_rss_key};
 use std::borrow::Borrow;
 use web_sys::console;
 use yew::platform::spawn_local;
@@ -15,6 +15,7 @@ pub fn rss_feed_settings() -> Html {
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let rss_feed_status = use_state(|| false);
     let loading = use_state(|| false);
+    let rss_feed_url = use_state(|| String::new());
 
     // Effect to get initial RSS feed status
     {
@@ -46,19 +47,40 @@ pub fn rss_feed_settings() -> Html {
 
     let html_rss_status = rss_feed_status.clone();
 
-    // Generate RSS feed URL
-    let rss_feed_url = if let (Some(server_name), Some(user_id), Some(api_key)) =
-        (server_name.clone(), user_id.clone(), api_key.clone())
+    // Effect to fetch RSS key and generate URL when RSS feeds are enabled
     {
-        format!(
-            "{}/rss/{}?api_key={}",
-            server_name,
-            user_id,
-            api_key.unwrap()
-        )
-    } else {
-        String::from("")
-    };
+        let rss_feed_url = rss_feed_url.clone();
+        use_effect_with(
+            (api_key.clone(), server_name.clone(), user_id.clone(), *rss_feed_status),
+            move |(api_key, server_name, user_id, rss_enabled)| {
+                let rss_feed_url = rss_feed_url.clone();
+                let api_key = api_key.clone();
+                let server_name = server_name.clone();
+                let user_id = user_id.clone();
+                let rss_enabled = *rss_enabled;
+                spawn_local(async move {
+                    if rss_enabled {
+                        if let (Some(api_key), Some(server_name), Some(user_id)) = 
+                            (api_key, server_name, user_id) {
+                            match call_get_rss_key(server_name.clone(), api_key.unwrap(), user_id).await {
+                                Ok(rss_key) => {
+                                    let url = format!("{}/rss/{}?api_key={}", server_name, user_id, rss_key);
+                                    rss_feed_url.set(url);
+                                }
+                                Err(e) => {
+                                    console::log_1(&format!("Error getting RSS key: {}", e).into());
+                                    rss_feed_url.set(String::new());
+                                }
+                            }
+                        }
+                    } else {
+                        rss_feed_url.set(String::new());
+                    }
+                });
+                || {}
+            },
+        );
+    }
 
     html! {
         <div class="p-4">
@@ -108,17 +130,20 @@ pub fn rss_feed_settings() -> Html {
                     <div class="relative">
                         <input
                             type="text"
-                            value={rss_feed_url.clone()}
+                            value={(*rss_feed_url).clone()}
                             readonly=true
                             class="w-full p-2 pr-20 border rounded bg-gray-100 dark:bg-gray-700 text-sm item_container-text"
                         />
                         <button
-                            onclick={Callback::from(move |_| {
-                                if let Some(window) = web_sys::window() {
-                                    let clipboard = window.navigator().clipboard();
-                                    let _ = clipboard.write_text(&rss_feed_url);
-                                }
-                            })}
+                            onclick={{
+                                let rss_feed_url = rss_feed_url.clone();
+                                Callback::from(move |_| {
+                                    if let Some(window) = web_sys::window() {
+                                        let clipboard = window.navigator().clipboard();
+                                        let _ = clipboard.write_text(&(*rss_feed_url));
+                                    }
+                                })
+                            }}
                             class="absolute right-2 top-1/2 transform -translate-y-1/2 px-4 py-1 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                         >
                             {"Copy"}

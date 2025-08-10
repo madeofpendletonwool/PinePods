@@ -4,7 +4,9 @@ use crate::components::gen_funcs::{encode_password, validate_email, validate_use
 use crate::requests::setting_reqs::{call_get_my_user_info, MyUserInfo};
 use crate::requests::setting_reqs::{
     call_set_email, call_set_fullname, call_set_password, call_set_username,
+    call_update_timezone, call_update_date_format, call_update_time_format,
 };
+use chrono_tz::{Tz, TZ_VARIANTS};
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
@@ -28,6 +30,11 @@ pub fn user_self_settings() -> Html {
     let confirm_password = use_state(String::new);
     let email = use_state(|| "".to_string());
     let fullname = use_state(|| "".to_string());
+    
+    // Time zone and format states
+    let timezone = use_state(|| "".to_string());
+    let date_format = use_state(|| "".to_string());
+    let time_format = use_state(|| "".to_string()); // Default to empty string
 
     // Main user info state
     let user_info: UseStateHandle<Option<MyUserInfo>> = use_state(|| None);
@@ -120,6 +127,37 @@ pub fn user_self_settings() -> Html {
         })
     };
 
+    let on_timezone_change = {
+        let timezone = timezone.clone();
+        Callback::from(move |e: Event| {
+            let target = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
+            timezone.set(target.value());
+        })
+    };
+
+    let on_date_format_change = {
+        let date_format = date_format.clone();
+        Callback::from(move |e: Event| {
+            let target = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
+            date_format.set(target.value());
+        })
+    };
+
+    let on_time_format_change = {
+        let time_format = time_format.clone();
+        Callback::from(move |e: Event| {
+            let target = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
+            time_format.set(target.value());
+        })
+    };
+
+    // Helper function to render timezone options
+    fn render_time_zone_option(tz: Tz) -> Html {
+        html! {
+            <option value={tz.name()}>{tz.name()}</option>
+        }
+    }
+
     // Submit handler
     let on_submit = {
         let username = username.clone();
@@ -127,6 +165,9 @@ pub fn user_self_settings() -> Html {
         let email = email.clone();
         let new_password = new_password.clone();
         let confirm_password = confirm_password.clone();
+        let timezone = timezone.clone();
+        let date_format = date_format.clone();
+        let time_format = time_format.clone();
         let show_username_error = show_username_error.clone();
         let show_email_error = show_email_error.clone();
         let show_password_error = show_password_error.clone();
@@ -344,6 +385,110 @@ pub fn user_self_settings() -> Html {
                     }
                 }
             }
+
+            // Update timezone if entered
+            if !timezone.is_empty() {
+                let server_name = server_name.clone();
+                let api_key = api_key.clone();
+                let show_success = show_success.clone();
+                let success_message = success_message.clone();
+                let _dispatch = _dispatch.clone();
+                let updated_user = updated_fields_call.clone();
+                let updated_trigger_call = update_trigger.clone();
+
+                let timezone_clone = (*timezone).clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_update_timezone(server_name, api_key, user_id, timezone_clone).await {
+                        Ok(_) => {
+                            let mut fields = (*updated_user).clone();
+                            fields.push("timezone");
+                            updated_user.set(fields.clone());
+                            show_success.set(true);
+                            updated_trigger_call.set(!*updated_trigger_call);
+                            success_message.set("Successfully updated user values".to_string());
+                        }
+                        Err(e) => {
+                            let formatted_error = format_error_message(&e.to_string());
+                            _dispatch.reduce_mut(|state| {
+                                state.error_message = Some(format!(
+                                    "Failed to update timezone: {}",
+                                    formatted_error
+                                ));
+                            });
+                        }
+                    }
+                });
+            }
+
+            // Update date format if entered
+            if !date_format.is_empty() {
+                let server_name = server_name.clone();
+                let api_key = api_key.clone();
+                let show_success = show_success.clone();
+                let success_message = success_message.clone();
+                let _dispatch = _dispatch.clone();
+                let updated_user = updated_fields_call.clone();
+                let updated_trigger_call = update_trigger.clone();
+
+                let date_format_clone = (*date_format).clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_update_date_format(server_name, api_key, user_id, date_format_clone).await {
+                        Ok(_) => {
+                            let mut fields = (*updated_user).clone();
+                            fields.push("date_format");
+                            updated_user.set(fields.clone());
+                            show_success.set(true);
+                            updated_trigger_call.set(!*updated_trigger_call);
+                            success_message.set("Successfully updated user values".to_string());
+                        }
+                        Err(e) => {
+                            let formatted_error = format_error_message(&e.to_string());
+                            _dispatch.reduce_mut(|state| {
+                                state.error_message = Some(format!(
+                                    "Failed to update date format: {}",
+                                    formatted_error
+                                ));
+                            });
+                        }
+                    }
+                });
+            }
+
+            // Update time format if entered
+            if !time_format.is_empty() {
+                let server_name = server_name.clone();
+                let api_key = api_key.clone();
+                let show_success = show_success.clone();
+                let success_message = success_message.clone();
+                let _dispatch = _dispatch.clone();
+                let updated_user = updated_fields_call.clone();
+                let updated_trigger_call = update_trigger.clone();
+
+                // Parse string to integer for API call
+                if let Ok(time_format_int) = time_format.parse::<i32>() {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match call_update_time_format(server_name, api_key, user_id, time_format_int).await {
+                            Ok(_) => {
+                                let mut fields = (*updated_user).clone();
+                                fields.push("time_format");
+                                updated_user.set(fields.clone());
+                                show_success.set(true);
+                                updated_trigger_call.set(!*updated_trigger_call);
+                                success_message.set("Successfully updated user values".to_string());
+                            }
+                            Err(e) => {
+                                let formatted_error = format_error_message(&e.to_string());
+                                _dispatch.reduce_mut(|state| {
+                                    state.error_message = Some(format!(
+                                        "Failed to update time format: {}",
+                                        formatted_error
+                                    ));
+                                });
+                            }
+                        }
+                    });
+                }
+            }
         })
     };
 
@@ -356,7 +501,7 @@ pub fn user_self_settings() -> Html {
                 </div>
                 if let Some(info) = &*user_info {
                     <div class="user-info-container mt-4 p-4 border border-solid border-opacity-10 rounded-lg">
-                        <div class="grid grid-cols-3 gap-6">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             <div>
                                 <span class="text-sm opacity-80">{"Current Username:"}</span>
                                 <p class="font-medium mt-1">{&info.username}</p>
@@ -447,6 +592,65 @@ pub fn user_self_settings() -> Html {
                         if *show_password_match_error {
                             <p class="error-text">{"Passwords do not match"}</p>
                         }
+                    </div>
+                </div>
+
+                <div class="timezone-section">
+                    <h3 class="text-lg font-medium">{"Time & Date Settings"}</h3>
+                    
+                    <div class="form-group">
+                        <label for="timezone" class="form-label">
+                            <i class="ph ph-globe"></i>
+                            {"Time Zone"}
+                        </label>
+                        <select
+                            id="timezone"
+                            class="form-input"
+                            onchange={on_timezone_change}
+                            value={(*timezone).clone()}
+                        >
+                            <option value="">{"Select timezone..."}</option>
+                            { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="date_format" class="form-label">
+                            <i class="ph ph-calendar"></i>
+                            {"Date Format"}
+                        </label>
+                        <select
+                            id="date_format"
+                            class="form-input"
+                            onchange={on_date_format_change}
+                            value={(*date_format).clone()}
+                        >
+                            <option value="">{"Select date format..."}</option>
+                            <option value="MDY">{"MM-DD-YYYY"}</option>
+                            <option value="DMY">{"DD-MM-YYYY"}</option>
+                            <option value="YMD">{"YYYY-MM-DD"}</option>
+                            <option value="JUL">{"YY/DDD (Julian)"}</option>
+                            <option value="ISO">{"ISO 8601"}</option>
+                            <option value="USA">{"MM/DD/YYYY"}</option>
+                            <option value="EUR">{"DD.MM.YYYY"}</option>
+                            <option value="JIS">{"YYYY-MM-DD"}</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="time_format" class="form-label">
+                            <i class="ph ph-clock-clockwise"></i>
+                            {"Time Format"}
+                        </label>
+                        <select
+                            id="time_format"
+                            class="form-input"
+                            onchange={on_time_format_change}
+                            value={time_format.to_string()}
+                        >
+                            <option value="12">{"12 Hour"}</option>
+                            <option value="24">{"24 Hour"}</option>
+                        </select>
                     </div>
                 </div>
 

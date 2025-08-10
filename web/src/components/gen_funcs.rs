@@ -597,3 +597,29 @@ pub fn format_error_message(error: &str) -> String {
     // Return the original error as a fallback
     error.to_string()
 }
+
+// Local storage utilities for filtering preferences
+pub fn get_filter_preference(page_type: &str) -> Option<String> {
+    if let Some(window) = web_sys::window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            let key = format!("{}_sort_preference", page_type);
+            if let Ok(Some(value)) = storage.get_item(&key) {
+                return Some(value);
+            }
+        }
+    }
+    None
+}
+
+pub fn set_filter_preference(page_type: &str, sort_direction: &str) {
+    if let Some(window) = web_sys::window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            let key = format!("{}_sort_preference", page_type);
+            let _ = storage.set_item(&key, sort_direction);
+        }
+    }
+}
+
+pub fn get_default_sort_direction() -> &'static str {
+    "newest"
+}

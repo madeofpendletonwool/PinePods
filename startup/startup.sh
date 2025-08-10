@@ -104,12 +104,12 @@ mkdir -p /var/log/supervisor  # Make sure supervisor log directory exists
 
 # Database Setup
 echo "Using $DB_TYPE database"
-# The setup_database_new.py script now includes proper database readiness checking
-python3 /pinepods/startup/setup_database_new.py
+# Use compiled database setup binary (no Python dependency)
+# Web API key file creation has been removed for security
+/usr/local/bin/pinepods-db-setup
 echo "Database validation complete"
 
-# Set up cron jobs
-echo -e "*/30 * * * * /pinepods/startup/call_refresh_endpoint.sh >/dev/null 2>&1\n0 0 * * * /pinepods/startup/call_nightly_tasks.sh >/dev/null 2>&1" > /etc/crontabs/root
+# Cron jobs removed - now handled by internal Rust scheduler
 
 # Check if we need to create exim directories
 # Only do this if the user/group exists on the system

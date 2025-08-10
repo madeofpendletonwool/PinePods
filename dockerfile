@@ -40,26 +40,78 @@ COPY ./gpodder-api/internal ./internal
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux go build -o gpodder-api ./cmd/server/
 
+# Python builder stage for database setup
+FROM python:3.11-alpine AS python-builder
+WORKDIR /build
+
+# Install build dependencies for PyInstaller
+RUN apk add --no-cache gcc musl-dev libffi-dev openssl-dev
+
+# Copy Python source files
+COPY ./database_functions ./database_functions
+COPY ./startup/setup_database_new.py ./startup/setup_database_new.py
+COPY ./requirements.txt ./requirements.txt
+
+# Install Python dependencies including PyInstaller
+RUN pip install --no-cache-dir -r requirements.txt pyinstaller
+
+# Build standalone database setup binary
+RUN pyinstaller --onefile \
+    --name pinepods-db-setup \
+    --hidden-import psycopg \
+    --hidden-import mysql.connector \
+    --hidden-import cryptography \
+    --hidden-import cryptography.fernet \
+    --hidden-import passlib \
+    --hidden-import passlib.hash \
+    --hidden-import passlib.hash.argon2 \
+    --hidden-import argon2 \
+    --hidden-import argon2.exceptions \
+    --hidden-import argon2.profiles \
+    --hidden-import argon2._password_hasher \
+    --add-data "database_functions:database_functions" \
+    --console \
+    startup/setup_database_new.py
+
+# Rust API builder stage
+FROM rust:alpine AS rust-api-builder
+WORKDIR /rust-api
+
+# Install build dependencies
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static
+
+# Copy Rust API files
+COPY ./rust-api/Cargo.toml ./rust-api/Cargo.lock ./
+COPY ./rust-api/src ./src
+
+# Set environment for static linking
+ENV OPENSSL_STATIC=1
+ENV OPENSSL_LIB_DIR=/usr/lib
+ENV OPENSSL_INCLUDE_DIR=/usr/include
+
+# Build the Rust API
+RUN cargo build --release
+
 # Final stage for setting up runtime environment
 FROM alpine
 # Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
-# Install runtime dependencies
-RUN apk add --no-cache tzdata nginx python3 openssl py3-pip bash mariadb-client postgresql-client curl cronie openrc ffmpeg supervisor
+# Install runtime dependencies (removed python3, py3-pip, cronie, and openrc)
+RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg supervisor wget jq
+
+# Download and install latest yt-dlp binary
+RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r .tag_name) && \
+    wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${LATEST_VERSION}/yt-dlp_linux" && \
+    chmod +x /usr/local/bin/yt-dlp
 ENV TZ=UTC
-# Setup Python environment
-RUN python3 -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-# Install Python packages
-COPY ./requirements.txt /
-RUN pip install --no-cache-dir -r /requirements.txt
-# Copy wait-for-it script and give execute permission
-COPY ./wait-for-it/wait-for-it.sh /wait-for-it.sh
-RUN chmod +x /wait-for-it.sh
+# Copy compiled database setup binary (replaces Python dependency)
+COPY --from=python-builder /build/dist/pinepods-db-setup /usr/local/bin/
 # Copy built files from the builder stage to the Nginx serving directory
 COPY --from=builder /app/dist /var/www/html/
 # Copy Go API binary from the go-builder stage
 COPY --from=go-builder /gpodder-api/gpodder-api /usr/local/bin/
+# Copy Rust API binary from the rust-api-builder stage
+COPY --from=rust-api-builder /rust-api/target/release/pinepods-api /usr/local/bin/
 # Move to the root directory to execute the startup script
 WORKDIR /
 # Copy startup scripts
@@ -69,9 +121,7 @@ RUN chmod +x /startup.sh
 RUN mkdir -p /pinepods
 RUN mkdir -p /var/log/supervisor/
 COPY startup/ /pinepods/startup/
-RUN chmod +x /pinepods/startup/call_refresh_endpoint.sh
-RUN chmod +x /pinepods/startup/app_startup.sh
-RUN chmod +x /pinepods/startup/call_nightly_tasks.sh
+# Legacy cron scripts removed - background tasks now handled by internal Rust scheduler
 COPY clients/ /pinepods/clients/
 COPY database_functions/ /pinepods/database_functions/
 RUN chmod +x /pinepods/startup/startup.sh

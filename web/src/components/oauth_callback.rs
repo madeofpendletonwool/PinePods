@@ -327,6 +327,7 @@ pub fn oauth_callback() -> Html {
                         "username_conflict" => "Unable to create account - username already exists",
                         "authentication_failed" => "Authentication failed. Please try again.",
                         "invalid_provider" => "Invalid authentication provider.",
+                        "no_access" => "Access denied.",
                         _ => "An unexpected error occurred during login.",
                     };
                     page_state.set(PageState::Error(error_message.into()));

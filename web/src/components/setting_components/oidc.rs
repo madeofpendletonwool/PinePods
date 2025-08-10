@@ -385,6 +385,12 @@ pub fn oidc_settings() -> Html {
     let button_color = use_state(|| String::from("#000000"));
     let button_text_color = use_state(|| String::from("#000000"));
     let icon_svg = use_state(|| String::new());
+    let name_claim = use_state(|| String::new());
+    let email_claim = use_state(|| String::new());
+    let username_claim = use_state(|| String::new());
+    let roles_claim = use_state(|| String::new());
+    let user_role = use_state(|| String::new());
+    let admin_role = use_state(|| String::new());
     // Add this to your state declarations in the form component
     let selected_scopes = use_state(|| Vec::<String>::new());
 
@@ -586,6 +592,54 @@ pub fn oidc_settings() -> Html {
         })
     };
 
+    let on_name_claim_change = {
+        let name_claim = name_claim.clone();
+        Callback::from(move |e: InputEvent| {
+            let target = e.target_unchecked_into::<HtmlInputElement>();
+            name_claim.set(target.value());
+        })
+    };
+
+    let on_email_claim_change = {
+        let email_claim = email_claim.clone();
+        Callback::from(move |e: InputEvent| {
+            let target = e.target_unchecked_into::<HtmlInputElement>();
+            email_claim.set(target.value());
+        })
+    };
+
+    let on_username_claim_change = {
+        let username_claim = username_claim.clone();
+        Callback::from(move |e: InputEvent| {
+            let target = e.target_unchecked_into::<HtmlInputElement>();
+            username_claim.set(target.value());
+        })
+    };
+
+    let on_roles_claim_change = {
+        let roles_claim = roles_claim.clone();
+        Callback::from(move |e: InputEvent| {
+            let target = e.target_unchecked_into::<HtmlInputElement>();
+            roles_claim.set(target.value());
+        })
+    };
+
+    let on_user_role_change = {
+        let user_role = user_role.clone();
+        Callback::from(move |e: InputEvent| {
+            let target = e.target_unchecked_into::<HtmlInputElement>();
+            user_role.set(target.value());
+        })
+    };
+
+    let on_admin_role_change = {
+        let admin_role = admin_role.clone();
+        Callback::from(move |e: InputEvent| {
+            let target = e.target_unchecked_into::<HtmlInputElement>();
+            admin_role.set(target.value());
+        })
+    };
+
     let submit_state = state.clone();
     let on_submit = {
         let provider_name = provider_name.clone();
@@ -598,6 +652,12 @@ pub fn oidc_settings() -> Html {
         let button_color = button_color.clone();
         let button_text_color = button_text_color.clone();
         let icon_svg = icon_svg.clone();
+        let name_claim = name_claim.clone();
+        let email_claim = email_claim.clone();
+        let username_claim = username_claim.clone();
+        let roles_claim = roles_claim.clone();
+        let user_role = user_role.clone();
+        let admin_role = admin_role.clone();
         let page_state = page_state.clone();
         let update_trigger = update_trigger.clone();
         let _dispatch = _dispatch.clone();
@@ -627,6 +687,12 @@ pub fn oidc_settings() -> Html {
                 button_color: Some((*button_color).clone()),
                 button_text_color: Some((*button_text_color).clone()),
                 icon_svg: Some((*icon_svg).clone()),
+                name_claim: Some((*name_claim).clone()),
+                email_claim: Some((*email_claim).clone()),
+                username_claim: Some((*username_claim).clone()),
+                roles_claim: Some((*roles_claim).clone()),
+                user_role: Some((*user_role).clone()),
+                admin_role: Some((*admin_role).clone()),
             };
 
             // Rest of your submission code...
@@ -832,6 +898,60 @@ pub fn oidc_settings() -> Html {
                                         value={(*icon_svg).clone()}
                                         oninput={on_icon_svg_change}
                                         placeholder="<svg>...</svg>"
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">{"Name Claim"}</label>
+                                    <input
+                                        type="text"
+                                        class="form-input"
+                                        value={(*name_claim).clone()}
+                                        oninput={on_name_claim_change}
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">{"Email Claim"}</label>
+                                    <input
+                                        type="text"
+                                        class="form-input"
+                                        value={(*email_claim).clone()}
+                                        oninput={on_email_claim_change}
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">{"Username Claim"}</label>
+                                    <input
+                                        type="text"
+                                        class="form-input"
+                                        value={(*username_claim).clone()}
+                                        oninput={on_username_claim_change}
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">{"Roles Claim"}</label>
+                                    <input
+                                        type="text"
+                                        class="form-input"
+                                        value={(*roles_claim).clone()}
+                                        oninput={on_roles_claim_change}
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">{"User Role"}</label>
+                                    <input
+                                        type="text"
+                                        class="form-input"
+                                        value={(*user_role).clone()}
+                                        oninput={on_user_role_change}
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">{"Admin Role"}</label>
+                                    <input
+                                        type="text"
+                                        class="form-input"
+                                        value={(*admin_role).clone()}
+                                        oninput={on_admin_role_change}
                                     />
                                 </div>
                             </div>

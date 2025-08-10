@@ -6,11 +6,12 @@ permissions:
   actions: write
 
 on:
+  workflow_dispatch:
     inputs:
       version:
-        description: "Version tag (e.g., v0.7.9001)"
+        description: "Version tag (e.g., v0.7.9)"
         required: false
-        default: 'manual-build'
+        default: "manual-build"
 
 jobs:
   build-ios:
@@ -30,8 +31,8 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.0'
-          channel: 'stable'
+          flutter-version: "3.32.0"
+          channel: "stable"
 
       - name: Install dependencies
         run: |
@@ -52,11 +53,11 @@ jobs:
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -t 3600 -l build.keychain
-          
+
           # Import certificate
           echo "$IOS_CERTIFICATE_BASE64" | base64 -d > certificate.p12
           security import certificate.p12 -P "$IOS_CERTIFICATE_PASSWORD" -A
-          
+
           # Install provisioning profile
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           echo "$IOS_PROVISIONING_PROFILE_BASE64" | base64 -d > ~/Library/MobileDevice/Provisioning\ Profiles/build.mobileprovision
@@ -98,7 +99,7 @@ jobs:
           cd mobile
           flutter build ios --release --no-codesign
           echo "iOS build completed"
-          
+
       - name: Archive and sign iOS app
         run: |
           cd mobile/ios
@@ -108,7 +109,7 @@ jobs:
                      -destination generic/platform=iOS \
                      -archivePath build/Runner.xcarchive \
                      archive
-          
+
           xcodebuild -exportArchive \
                      -archivePath build/Runner.xcarchive \
                      -exportPath build \
@@ -118,10 +119,10 @@ jobs:
         run: |
           cd mobile
           mkdir -p ../release-artifacts/ios
-          
+
           # Find and copy IPA
           find ios/build -name "*.ipa" -exec cp {} ../release-artifacts/ios/PinePods-${VERSION_TAG}.ipa \;
-          
+
           # Create build info file
           cat > ../release-artifacts/ios/BUILD_INFO.txt << EOF
           PinePods Mobile - iOS Release Build
@@ -131,17 +132,17 @@ jobs:
           Build Number: $BUILD_NUMBER
           Flutter Version: 3.32.0
           Bundle ID: com.gooseberrydevelopment.pinepods
-          
+
           📱 IPA FILE:
           ===========
           PinePods-${VERSION_TAG}.ipa - iOS App Store package
-          
+
           🚀 DISTRIBUTION:
           ===============
           • App Store: Upload IPA to App Store Connect
           • TestFlight: Upload via App Store Connect for beta testing
           • Enterprise: Use enterprise provisioning profile (separate build needed)
-          
+
           ⚡ UPLOAD INSTRUCTIONS:
           ======================
           1. Go to App Store Connect (appstoreconnect.apple.com)
@@ -166,7 +167,7 @@ jobs:
           echo "**Version:** ${{ github.event.inputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "**Build Date:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          
+
           echo "## 📦 Generated Files" >> $GITHUB_STEP_SUMMARY
           echo "- 📱 **PinePods-${{ github.event.inputs.version }}.ipa** - App Store ready package" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

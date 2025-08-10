@@ -2,6 +2,7 @@
 
 use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
+use crate::requests::setting_reqs::{call_get_auto_complete_seconds, call_update_auto_complete_seconds};
 use anyhow::Error;
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
@@ -134,6 +135,10 @@ pub fn playback_settings() -> Html {
     let is_loading = use_state(|| true);
     let show_success = use_state(|| false);
     let success_message = use_state(|| "".to_string());
+    
+    // State for auto complete seconds
+    let auto_complete_seconds = use_state(|| 0);
+    let auto_complete_loading = use_state(|| true);
 
     // Fetch initial playback speed
     {
@@ -176,6 +181,46 @@ pub fn playback_settings() -> Html {
         );
     }
 
+    // Fetch initial auto complete seconds
+    {
+        let auto_complete_seconds = auto_complete_seconds.clone();
+        let auto_complete_loading = auto_complete_loading.clone();
+        let dispatch = dispatch.clone();
+
+        use_effect_with(
+            (api_key.clone(), server_name.clone()),
+            move |(api_key, server_name)| {
+                if let (Some(api_key), Some(server_name), Some(user_id)) =
+                    (api_key.clone(), server_name.clone(), user_id)
+                {
+                    let server_name = server_name.clone();
+                    let api_key = api_key.clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match call_get_auto_complete_seconds(server_name, api_key.unwrap(), user_id).await {
+                            Ok(seconds) => {
+                                auto_complete_seconds.set(seconds);
+                                auto_complete_loading.set(false);
+                            }
+                            Err(e) => {
+                                let formatted_error = format_error_message(&e.to_string());
+                                dispatch.reduce_mut(|state| {
+                                    state.error_message = Some(format!(
+                                        "Failed to fetch auto complete seconds: {}",
+                                        formatted_error
+                                    ));
+                                });
+                                auto_complete_loading.set(false);
+                            }
+                        }
+                    });
+                } else {
+                    auto_complete_loading.set(false);
+                }
+                || ()
+            },
+        );
+    }
+
     // Input handler for playback speed
     let on_playback_speed_change = {
         let default_playback_speed = default_playback_speed.clone();
@@ -194,12 +239,14 @@ pub fn playback_settings() -> Html {
         let show_success = show_success.clone();
         let success_message = success_message.clone();
         let dispatch = dispatch.clone();
+        let api_key_call = api_key.clone();
+        let server_name_call = server_name.clone();
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
 
             if let (Some(api_key), Some(server_name), Some(user_id)) =
-                (api_key.clone(), server_name.clone(), user_id)
+                (api_key_call.clone(), server_name_call.clone(), user_id)
             {
                 let server_name = server_name.clone();
                 let api_key = api_key.clone();
@@ -238,10 +285,74 @@ pub fn playback_settings() -> Html {
         })
     };
 
+    // Input handler for auto complete seconds
+    let on_auto_complete_change = {
+        let auto_complete_seconds = auto_complete_seconds.clone();
+        Callback::from(move |e: InputEvent| {
+            let target = e.target_unchecked_into::<HtmlInputElement>();
+            let value = target.value().parse::<i32>().unwrap_or(0);
+            // Constrain to reasonable values (0 to 3600 seconds = 1 hour)
+            let value = value.max(0).min(3600);
+            auto_complete_seconds.set(value);
+        })
+    };
+
+    // Save auto complete seconds
+    let on_save_auto_complete = {
+        let auto_complete_seconds = auto_complete_seconds.clone();
+        let show_success = show_success.clone();
+        let success_message = success_message.clone();
+        let dispatch = dispatch.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+
+            if let (Some(api_key), Some(server_name), Some(user_id)) =
+                (api_key.clone(), server_name.clone(), user_id)
+            {
+                let server_name = server_name.clone();
+                let api_key = api_key.clone();
+                let seconds = *auto_complete_seconds;
+                let show_success = show_success.clone();
+                let success_message = success_message.clone();
+                let dispatch = dispatch.clone();
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_update_auto_complete_seconds(server_name, api_key.unwrap(), user_id, seconds).await
+                    {
+                        Ok(_) => {
+                            show_success.set(true);
+                            success_message
+                                .set("Auto complete seconds updated successfully".to_string());
+
+                            // Auto-hide success message after 3 seconds
+                            let show_success_clone = show_success.clone();
+                            gloo_timers::callback::Timeout::new(3000, move || {
+                                show_success_clone.set(false);
+                            })
+                            .forget();
+                        }
+                        Err(e) => {
+                            let formatted_error = format_error_message(&e.to_string());
+                            dispatch.reduce_mut(|state| {
+                                state.error_message = Some(format!(
+                                    "Failed to update auto complete seconds: {}",
+                                    formatted_error
+                                ));
+                            });
+                        }
+                    }
+                });
+            }
+        })
+    };
+
     html! {
         <div class="playback-settings-container">
             <div class="settings-description mb-4">
-                <p>{"Set your default playback speed for all podcasts. This will be used as the default playback speed for all podcasts unless a podcast-specific playback speed is set."}</p>
+                <p>{"Configure your playback preferences including default playback speed and auto-complete behavior."}</p>
             </div>
 
             <div class="playback-speed-control">
@@ -270,6 +381,35 @@ pub fn playback_settings() -> Html {
                         </button>
                     </div>
                     <p class="text-xs text-gray-500 mt-1">{"Range: 0.5x - 3.0x"}</p>
+                </div>
+            </div>
+
+            <div class="auto-complete-control mt-6">
+                <div class="mt-4">
+                    <label for="auto-complete-seconds" class="block mb-2 text-sm font-medium">{"Auto Complete Episode Threshold:"}</label>
+                    <div class="flex items-center space-x-2">
+                        <input
+                            type="number"
+                            id="auto-complete-seconds"
+                            value={auto_complete_seconds.to_string()}
+                            oninput={on_auto_complete_change}
+                            class="form-input w-20"
+                            min="0"
+                            max="3600"
+                            step="1"
+                            disabled={*auto_complete_loading}
+                        />
+                        <span class="text-sm">{"seconds"}</span>
+                        <button
+                            class="playback-submit-button ml-2"
+                            onclick={on_save_auto_complete}
+                            disabled={*auto_complete_loading}
+                        >
+                            <i class="ph ph-floppy-disk mr-1"></i>
+                            {"Save"}
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">{"Episodes with this many seconds or less remaining will be automatically marked as complete. Set to 0 to disable."}</p>
                 </div>
             </div>
 
