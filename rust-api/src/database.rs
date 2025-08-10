@@ -12938,42 +12938,54 @@ impl DatabasePool {
                 let rows = sqlx::query(
                     r#"SELECT * FROM (
                         SELECT
-                            "Episodes".EpisodeID as episodeid,
-                            "UserEpisodeHistory".ListenDate as listendate,
-                            "UserEpisodeHistory".ListenDuration as listenduration,
-                            "Episodes".EpisodeTitle as episodetitle,
-                            "Episodes".EpisodeDescription as episodedescription,
-                            "Episodes".EpisodeArtwork as episodeartwork,
-                            "Episodes".EpisodeURL as episodeurl,
-                            "Episodes".EpisodeDuration as episodeduration,
-                            "Podcasts".PodcastName as podcastname,
-                            "Episodes".EpisodePubDate as episodepubdate,
-                            "Episodes".Completed as completed,
+                            "Episodes".episodeid as episodeid,
+                            "UserEpisodeHistory".listendate as listendate,
+                            "UserEpisodeHistory".listenduration as listenduration,
+                            "Episodes".episodetitle as episodetitle,
+                            "Episodes".episodedescription as episodedescription,
+                            "Episodes".episodeartwork as episodeartwork,
+                            "Episodes".episodeurl as episodeurl,
+                            "Episodes".episodeduration as episodeduration,
+                            "Podcasts".podcastname as podcastname,
+                            "Episodes".episodepubdate as episodepubdate,
+                            "Episodes".completed as completed,
+                            CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                            CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             FALSE as is_youtube
                         FROM "UserEpisodeHistory"
-                        JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID
-                        JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
-                        WHERE "UserEpisodeHistory".UserID = $1
+                        JOIN "Episodes" ON "UserEpisodeHistory".episodeid = "Episodes".episodeid
+                        JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "SavedEpisodes" ON "Episodes".episodeid = "SavedEpisodes".episodeid AND "SavedEpisodes".userid = $1
+                        LEFT JOIN "EpisodeQueue" ON "Episodes".episodeid = "EpisodeQueue".episodeid AND "EpisodeQueue".userid = $1
+                        LEFT JOIN "DownloadedEpisodes" ON "Episodes".episodeid = "DownloadedEpisodes".episodeid AND "DownloadedEpisodes".userid = $1
+                        WHERE "UserEpisodeHistory".userid = $1
 
                         UNION ALL
 
                         SELECT
-                            "YouTubeVideos".VideoID as episodeid,
+                            "YouTubeVideos".videoid as episodeid,
                             NULL as listendate,
-                            "YouTubeVideos".ListenPosition as listenduration,
-                            "YouTubeVideos".VideoTitle as episodetitle,
-                            "YouTubeVideos".VideoDescription as episodedescription,
-                            "YouTubeVideos".ThumbnailURL as episodeartwork,
-                            "YouTubeVideos".VideoURL as episodeurl,
-                            "YouTubeVideos".Duration as episodeduration,
-                            "Podcasts".PodcastName as podcastname,
-                            "YouTubeVideos".PublishedAt as episodepubdate,
-                            "YouTubeVideos".Completed as completed,
+                            "YouTubeVideos".listenposition as listenduration,
+                            "YouTubeVideos".videotitle as episodetitle,
+                            "YouTubeVideos".videodescription as episodedescription,
+                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            "YouTubeVideos".videourl as episodeurl,
+                            "YouTubeVideos".duration as episodeduration,
+                            "Podcasts".podcastname as podcastname,
+                            "YouTubeVideos".publishedat as episodepubdate,
+                            "YouTubeVideos".completed as completed,
+                            CASE WHEN "SavedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                            CASE WHEN "DownloadedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             TRUE as is_youtube
                         FROM "YouTubeVideos"
-                        JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
-                        WHERE "YouTubeVideos".ListenPosition > 0
-                          AND "Podcasts".UserID = $1
+                        JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "SavedVideos" ON "YouTubeVideos".videoid = "SavedVideos".videoid AND "SavedVideos".userid = $1
+                        LEFT JOIN "EpisodeQueue" ON "YouTubeVideos".videoid = "EpisodeQueue".episodeid AND "EpisodeQueue".userid = $1
+                        LEFT JOIN "DownloadedVideos" ON "YouTubeVideos".videoid = "DownloadedVideos".videoid AND "DownloadedVideos".userid = $1
+                        WHERE "YouTubeVideos".listenposition > 0
+                          AND "Podcasts".userid = $1
                     ) combined_results
                     ORDER BY listendate DESC NULLS LAST"#
                 )
@@ -13000,6 +13012,9 @@ impl DatabasePool {
                         "podcastname": row.get::<Option<String>, _>("podcastname"),
                         "episodepubdate": episodepubdate,
                         "completed": row.get::<Option<bool>, _>("completed"),
+                        "saved": row.get::<Option<bool>, _>("saved"),
+                        "queued": row.get::<Option<bool>, _>("queued"),
+                        "downloaded": row.get::<Option<bool>, _>("downloaded"),
                         "is_youtube": row.get::<Option<bool>, _>("is_youtube")
                     }));
                 }
@@ -13020,10 +13035,16 @@ impl DatabasePool {
                             p.PodcastName as podcastname,
                             e.EpisodePubDate as episodepubdate,
                             e.Completed as completed,
+                            CASE WHEN se.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN eq.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                            CASE WHEN de.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             0 as is_youtube
                         FROM UserEpisodeHistory ueh
                         JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
                         JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                        LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
+                        LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ?
+                        LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
                         WHERE ueh.UserID = ?
 
                         UNION ALL
@@ -13040,16 +13061,28 @@ impl DatabasePool {
                             p.PodcastName as podcastname,
                             yv.PublishedAt as episodepubdate,
                             yv.Completed as completed,
+                            CASE WHEN sv.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN eq.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                            CASE WHEN dv.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             1 as is_youtube
                         FROM YouTubeVideos yv
                         JOIN Podcasts p ON yv.PodcastID = p.PodcastID
+                        LEFT JOIN SavedVideos sv ON yv.VideoID = sv.VideoID AND sv.UserID = ?
+                        LEFT JOIN EpisodeQueue eq ON yv.VideoID = eq.EpisodeID AND eq.UserID = ?
+                        LEFT JOIN DownloadedVideos dv ON yv.VideoID = dv.VideoID AND dv.UserID = ?
                         WHERE yv.ListenPosition > 0
                           AND p.UserID = ?
                     ) combined_results
                     ORDER BY listendate DESC"
                 )
-                .bind(user_id)
-                .bind(user_id)
+                .bind(user_id)  // SavedEpisodes join
+                .bind(user_id)  // EpisodeQueue join  
+                .bind(user_id)  // DownloadedEpisodes join
+                .bind(user_id)  // WHERE clause
+                .bind(user_id)  // SavedVideos join
+                .bind(user_id)  // EpisodeQueue join (YouTube)
+                .bind(user_id)  // DownloadedVideos join
+                .bind(user_id)  // WHERE clause (YouTube)
                 .fetch_all(pool)
                 .await?;
 
@@ -13072,6 +13105,9 @@ impl DatabasePool {
                         "podcastname": row.get::<Option<String>, _>("podcastname"),
                         "episodepubdate": episodepubdate,
                         "completed": row.get::<Option<bool>, _>("completed"),
+                        "saved": row.get::<Option<bool>, _>("saved"),
+                        "queued": row.get::<Option<bool>, _>("queued"),
+                        "downloaded": row.get::<Option<bool>, _>("downloaded"),
                         "is_youtube": row.get::<Option<bool>, _>("is_youtube")
                     }));
                 }

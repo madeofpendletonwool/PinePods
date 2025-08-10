@@ -25,8 +25,8 @@ class PinepodsLoginService {
     }
   }
 
-  /// Get API key using Basic authentication
-  static Future<String?> getApiKey(String serverUrl, String username, String password) async {
+  /// Initial login - returns either API key or MFA session info
+  static Future<InitialLoginResponse> initialLogin(String serverUrl, String username, String password) async {
     try {
       final normalizedUrl = serverUrl.trim().replaceAll(RegExp(r'/$'), '');
       final credentials = base64Encode(utf8.encode('$username:$password'));
@@ -43,12 +43,35 @@ class PinepodsLoginService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        return data['retrieved_key'];
+        
+        // Check if MFA is required
+        if (data['status'] == 'mfa_required' && data['mfa_required'] == true) {
+          return InitialLoginResponse.mfaRequired(
+            serverUrl: normalizedUrl,
+            username: username,
+            userId: data['user_id'],
+            mfaSessionToken: data['mfa_session_token'],
+          );
+        }
+        
+        // Normal flow - no MFA required
+        final apiKey = data['retrieved_key'];
+        if (apiKey != null) {
+          return InitialLoginResponse.success(apiKey: apiKey);
+        }
       }
-      return null;
+      
+      return InitialLoginResponse.failure('Authentication failed');
     } catch (e) {
-      return null;
+      return InitialLoginResponse.failure('Error: ${e.toString()}');
     }
+  }
+
+  /// Legacy method for backwards compatibility
+  @deprecated
+  static Future<String?> getApiKey(String serverUrl, String username, String password) async {
+    final result = await initialLogin(serverUrl, username, password);
+    return result.isSuccess ? result.apiKey : null;
   }
 
   /// Verify API key is valid
@@ -173,7 +196,40 @@ class PinepodsLoginService {
     }
   }
 
-  /// Verify MFA code
+  /// Verify MFA code and get API key during login (secure flow)
+  static Future<String?> verifyMfaAndGetKey(String serverUrl, String mfaSessionToken, String mfaCode) async {
+    try {
+      final normalizedUrl = serverUrl.trim().replaceAll(RegExp(r'/$'), '');
+      final url = Uri.parse('$normalizedUrl/api/data/verify_mfa_and_get_key');
+
+      final requestBody = jsonEncode({
+        'mfa_session_token': mfaSessionToken,
+        'mfa_code': mfaCode,
+      });
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': userAgent,
+        },
+        body: requestBody,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['verified'] == true && data['status'] == 'success') {
+          return data['retrieved_key'];
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Legacy MFA verification (for post-login MFA checks)
+  @deprecated
   static Future<bool> verifyMfa(String serverUrl, String apiKey, int userId, String mfaCode) async {
     try {
       final normalizedUrl = serverUrl.trim().replaceAll(RegExp(r'/$'), '');
@@ -204,8 +260,8 @@ class PinepodsLoginService {
     }
   }
 
-  /// Complete login flow
-  static Future<LoginResult> login(String serverUrl, String username, String password, {String? mfaCode}) async {
+  /// Complete login flow (new secure MFA implementation)
+  static Future<LoginResult> login(String serverUrl, String username, String password) async {
     try {
       // Step 1: Verify server
       final isPinepods = await verifyPinepodsInstance(serverUrl);
@@ -213,59 +269,142 @@ class PinepodsLoginService {
         return LoginResult.failure('Not a valid PinePods server');
       }
 
-      // Step 2: Get API key
-      final apiKey = await getApiKey(serverUrl, username, password);
-      if (apiKey == null) {
-        return LoginResult.failure('Login failed. Check your credentials.');
+      // Step 2: Initial login - get API key or MFA session
+      final initialResult = await initialLogin(serverUrl, username, password);
+      
+      if (!initialResult.isSuccess) {
+        return LoginResult.failure(initialResult.errorMessage ?? 'Login failed');
+      }
+      
+      if (initialResult.requiresMfa) {
+        // MFA required - return MFA prompt state
+        return LoginResult.mfaRequired(
+          serverUrl: initialResult.serverUrl!,
+          username: username,
+          userId: initialResult.userId!,
+          mfaSessionToken: initialResult.mfaSessionToken!,
+        );
       }
 
-      // Step 3: Verify API key
-      final isValidKey = await verifyApiKey(serverUrl, apiKey);
-      if (!isValidKey) {
-        return LoginResult.failure('API key verification failed');
-      }
-
-      // Step 4: Get user ID
-      final userId = await getUserId(serverUrl, apiKey);
-      if (userId == null) {
-        return LoginResult.failure('Failed to get user ID');
-      }
-
-      // Step 5: Check MFA
-      final mfaEnabled = await checkMfaEnabled(serverUrl, apiKey, userId);
-      if (mfaEnabled) {
-        if (mfaCode == null || mfaCode.isEmpty) {
-          return LoginResult.mfaRequired(serverUrl, apiKey, userId);
-        }
-        
-        final mfaValid = await verifyMfa(serverUrl, apiKey, userId, mfaCode);
-        if (!mfaValid) {
-          return LoginResult.failure('Invalid MFA code');
-        }
-      }
-
-      // Step 6: Get user details
-      final userDetails = await getUserDetails(serverUrl, apiKey, userId);
-      if (userDetails == null) {
-        return LoginResult.failure('Failed to get user details');
-      }
-
-      // Step 7: Get API configuration
-      final apiConfig = await getApiConfig(serverUrl, apiKey);
-      if (apiConfig == null) {
-        return LoginResult.failure('Failed to get server configuration');
-      }
-
-      return LoginResult.success(
-        serverUrl: serverUrl,
-        apiKey: apiKey,
-        userId: userId,
-        userDetails: userDetails,
-        apiConfig: apiConfig,
+      // No MFA required - complete login with API key
+      return await _completeLoginWithApiKey(
+        serverUrl, 
+        username, 
+        initialResult.apiKey!,
       );
     } catch (e) {
       return LoginResult.failure('Error: ${e.toString()}');
     }
+  }
+
+  /// Complete MFA login flow
+  static Future<LoginResult> completeMfaLogin({
+    required String serverUrl,
+    required String username,
+    required String mfaSessionToken,
+    required String mfaCode,
+  }) async {
+    try {
+      // Verify MFA and get API key
+      final apiKey = await verifyMfaAndGetKey(serverUrl, mfaSessionToken, mfaCode);
+      if (apiKey == null) {
+        return LoginResult.failure('Invalid MFA code');
+      }
+
+      // Complete login with verified API key
+      return await _completeLoginWithApiKey(serverUrl, username, apiKey);
+    } catch (e) {
+      return LoginResult.failure('Error: ${e.toString()}');
+    }
+  }
+
+  /// Complete login flow with API key (common logic)
+  static Future<LoginResult> _completeLoginWithApiKey(String serverUrl, String username, String apiKey) async {
+    // Step 1: Verify API key
+    final isValidKey = await verifyApiKey(serverUrl, apiKey);
+    if (!isValidKey) {
+      return LoginResult.failure('API key verification failed');
+    }
+
+    // Step 2: Get user ID
+    final userId = await getUserId(serverUrl, apiKey);
+    if (userId == null) {
+      return LoginResult.failure('Failed to get user ID');
+    }
+
+    // Step 3: Get user details
+    final userDetails = await getUserDetails(serverUrl, apiKey, userId);
+    if (userDetails == null) {
+      return LoginResult.failure('Failed to get user details');
+    }
+
+    // Step 4: Get API configuration
+    final apiConfig = await getApiConfig(serverUrl, apiKey);
+    if (apiConfig == null) {
+      return LoginResult.failure('Failed to get server configuration');
+    }
+
+    return LoginResult.success(
+      serverUrl: serverUrl,
+      apiKey: apiKey,
+      userId: userId,
+      userDetails: userDetails,
+      apiConfig: apiConfig,
+    );
+  }
+}
+
+class InitialLoginResponse {
+  final bool isSuccess;
+  final bool requiresMfa;
+  final String? errorMessage;
+  final String? apiKey;
+  final String? serverUrl;
+  final String? username;
+  final int? userId;
+  final String? mfaSessionToken;
+
+  InitialLoginResponse._({
+    required this.isSuccess,
+    required this.requiresMfa,
+    this.errorMessage,
+    this.apiKey,
+    this.serverUrl,
+    this.username,
+    this.userId,
+    this.mfaSessionToken,
+  });
+
+  factory InitialLoginResponse.success({required String apiKey}) {
+    return InitialLoginResponse._(
+      isSuccess: true,
+      requiresMfa: false,
+      apiKey: apiKey,
+    );
+  }
+
+  factory InitialLoginResponse.mfaRequired({
+    required String serverUrl,
+    required String username,
+    required int userId,
+    required String mfaSessionToken,
+  }) {
+    return InitialLoginResponse._(
+      isSuccess: true,
+      requiresMfa: true,
+      serverUrl: serverUrl,
+      username: username,
+      userId: userId,
+      mfaSessionToken: mfaSessionToken,
+    );
+  }
+
+  factory InitialLoginResponse.failure(String errorMessage) {
+    return InitialLoginResponse._(
+      isSuccess: false,
+      requiresMfa: false,
+      errorMessage: errorMessage,
+    );
   }
 }
 
@@ -275,7 +414,9 @@ class LoginResult {
   final String? errorMessage;
   final String? serverUrl;
   final String? apiKey;
+  final String? username;
   final int? userId;
+  final String? mfaSessionToken;
   final UserDetails? userDetails;
   final ApiConfig? apiConfig;
 
@@ -285,7 +426,9 @@ class LoginResult {
     this.errorMessage,
     this.serverUrl,
     this.apiKey,
+    this.username,
     this.userId,
+    this.mfaSessionToken,
     this.userDetails,
     this.apiConfig,
   });
@@ -316,13 +459,19 @@ class LoginResult {
     );
   }
 
-  factory LoginResult.mfaRequired(String serverUrl, String apiKey, int userId) {
+  factory LoginResult.mfaRequired({
+    required String serverUrl,
+    required String username,
+    required int userId,
+    required String mfaSessionToken,
+  }) {
     return LoginResult._(
       isSuccess: false,
       requiresMfa: true,
       serverUrl: serverUrl,
-      apiKey: apiKey,
+      username: username,
       userId: userId,
+      mfaSessionToken: mfaSessionToken,
     );
   }
 }

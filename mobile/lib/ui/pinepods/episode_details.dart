@@ -482,22 +482,33 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
     }
 
     try {
-      // Create a minimal podcast object using data from episode - same pattern as podcast tile
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      final settings = settingsBloc.currentSettings;
+      final userId = settings.pinepodsUserId;
+
+      if (userId == null) {
+        _showSnackBar('Not logged in', Colors.red);
+        return;
+      }
+
+      // Fetch the actual podcast details to get correct episode count
+      final podcastDetails = await _pinepodsService.getPodcastDetailsById(_episode!.podcastId!, userId);
+      
       final podcast = UnifiedPinepodsPodcast(
         id: _episode!.podcastId!,
         indexId: 0,
         title: _episode!.podcastName,
-        url: '', // Will be loaded by the details page
-        originalUrl: '',
-        link: '',
-        description: '',
-        author: '',
-        ownerName: '',
-        image: _episode!.episodeArtwork,
-        artwork: _episode!.episodeArtwork,
+        url: podcastDetails?['feedurl'] ?? '',
+        originalUrl: podcastDetails?['feedurl'] ?? '',
+        link: podcastDetails?['websiteurl'] ?? '',
+        description: podcastDetails?['description'] ?? '',
+        author: podcastDetails?['author'] ?? '',
+        ownerName: podcastDetails?['author'] ?? '',
+        image: podcastDetails?['artworkurl'] ?? _episode!.episodeArtwork,
+        artwork: podcastDetails?['artworkurl'] ?? _episode!.episodeArtwork,
         lastUpdateTime: 0,
-        explicit: false,
-        episodeCount: 0,
+        explicit: podcastDetails?['explicit'] ?? false,
+        episodeCount: podcastDetails?['episodecount'] ?? 0,
       );
       
       // Navigate to podcast details - same as podcast tile does  

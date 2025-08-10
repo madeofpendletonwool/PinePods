@@ -12,7 +12,6 @@ class PaginatedEpisodeList extends StatefulWidget {
   final Function(dynamic episode)? onEpisodeTap;
   final Function(dynamic episode, int globalIndex)? onEpisodeLongPress;
   final Function(dynamic episode)? onPlayPressed;
-  final Function(dynamic episode)? onDownloadPressed;
   final int pageSize;
 
   const PaginatedEpisodeList({
@@ -22,7 +21,6 @@ class PaginatedEpisodeList extends StatefulWidget {
     this.onEpisodeTap,
     this.onEpisodeLongPress,
     this.onPlayPressed,
-    this.onDownloadPressed,
     this.pageSize = 20, // Show 20 episodes at a time
   });
 
@@ -69,9 +67,6 @@ class _PaginatedEpisodeListState extends State<PaginatedEpisodeList> {
           : null,
         onPlayPressed: widget.onPlayPressed != null
           ? () => widget.onPlayPressed!(episode)
-          : null,
-        onDownloadPressed: widget.onDownloadPressed != null
-          ? () => widget.onDownloadPressed!(episode)
           : null,
       );
     } else if (!widget.isServerEpisodes && episode is Episode) {

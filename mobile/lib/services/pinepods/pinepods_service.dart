@@ -79,10 +79,7 @@ class PinepodsService {
     final url = Uri.parse('$_server/api/data/verify_key');
 
     try {
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': _apiKey!},
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -105,10 +102,7 @@ class PinepodsService {
     final url = Uri.parse('$_server/api/data/podcasts');
 
     try {
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': _apiKey!},
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as List;
@@ -131,45 +125,47 @@ class PinepodsService {
     print('Making API call to: $url');
 
     try {
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': _apiKey!},
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print('Get user podcasts response: ${response.statusCode} - ${response.body}');
+      print(
+        'Get user podcasts response: ${response.statusCode} - ${response.body}',
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List<dynamic> podsData = data['pods'] ?? [];
-        
+
         List<Podcast> podcasts = [];
         for (var podData in podsData) {
           // Use episode count from server response
           final episodeCount = podData['episodecount'] ?? 0;
-          
+
           // Create placeholder episodes to represent the count
-          final placeholderEpisodes = List.generate(episodeCount, (index) => 
-            Episode(
+          final placeholderEpisodes = List.generate(
+            episodeCount,
+            (index) => Episode(
               guid: 'placeholder_$index',
               podcast: podData['podcastname'] ?? '',
               title: 'Episode ${index + 1}',
-            )
+            ),
           );
-          
-          podcasts.add(Podcast(
-            id: podData['podcastid'],
-            title: podData['podcastname'] ?? '',
-            description: podData['description'] ?? '',
-            imageUrl: podData['artworkurl'] ?? '',
-            thumbImageUrl: podData['artworkurl'] ?? '',
-            url: podData['feedurl'] ?? '',
-            link: podData['websiteurl'] ?? '',
-            copyright: podData['author'] ?? '',
-            guid: podData['feedurl'] ?? '',
-            episodes: placeholderEpisodes,
-          ));
+
+          podcasts.add(
+            Podcast(
+              id: podData['podcastid'],
+              title: podData['podcastname'] ?? '',
+              description: podData['description'] ?? '',
+              imageUrl: podData['artworkurl'] ?? '',
+              thumbImageUrl: podData['artworkurl'] ?? '',
+              url: podData['feedurl'] ?? '',
+              link: podData['websiteurl'] ?? '',
+              copyright: podData['author'] ?? '',
+              guid: podData['feedurl'] ?? '',
+              episodes: placeholderEpisodes,
+            ),
+          );
         }
-        
+
         return podcasts;
       } else {
         throw Exception('Failed to get user podcasts: ${response.statusCode}');
@@ -191,16 +187,13 @@ class PinepodsService {
     try {
       final response = await http.get(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
         final responseText = response.body;
         final data = jsonDecode(responseText);
-        
+
         // Handle the response structure from the web implementation
         if (data is Map && data['episodes'] != null) {
           final episodesList = data['episodes'] as List;
@@ -216,7 +209,9 @@ class PinepodsService {
           return [];
         }
       } else {
-        throw Exception('Failed to fetch recent episodes: ${response.statusCode} ${response.reasonPhrase}');
+        throw Exception(
+          'Failed to fetch recent episodes: ${response.statusCode} ${response.reasonPhrase}',
+        );
       }
     } catch (e) {
       print('Error fetching recent episodes: $e');
@@ -237,13 +232,17 @@ class PinepodsService {
   String? get server => _server;
 
   // Check if episode exists in database
-  Future<bool> checkEpisodeInDb(int userId, String episodeTitle, String episodeUrl) async {
+  Future<bool> checkEpisodeInDb(
+    int userId,
+    String episodeTitle,
+    String episodeUrl,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
     final url = Uri.parse('$_server/api/data/check_episode_in_db');
-    
+
     try {
       final requestBody = jsonEncode({
         'user_id': userId,
@@ -253,10 +252,7 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
@@ -272,20 +268,22 @@ class PinepodsService {
   }
 
   // Get episode ID from title and URL
-  Future<int> getEpisodeId(int userId, String episodeTitle, String episodeUrl, bool isYoutube) async {
+  Future<int> getEpisodeId(
+    int userId,
+    String episodeTitle,
+    String episodeUrl,
+    bool isYoutube,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
-    final url = Uri.parse('$_server/api/data/get_episode_id_ep_name?user_id=$userId&episode_url=${Uri.encodeComponent(episodeUrl)}&episode_title=${Uri.encodeComponent(episodeTitle)}&is_youtube=$isYoutube');
-    
+    final url = Uri.parse(
+      '$_server/api/data/get_episode_id_ep_name?user_id=$userId&episode_url=${Uri.encodeComponent(episodeUrl)}&episode_title=${Uri.encodeComponent(episodeTitle)}&is_youtube=$isYoutube',
+    );
+
     try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Api-Key': _apiKey!,
-        },
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         // Parse the response as a plain integer
@@ -300,14 +298,19 @@ class PinepodsService {
   }
 
   // Add episode to history
-  Future<bool> addHistory(int episodeId, double episodePos, int userId, bool isYoutube) async {
+  Future<bool> addHistory(
+    int episodeId,
+    double episodePos,
+    int userId,
+    bool isYoutube,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
     final url = Uri.parse('$_server/api/data/record_podcast_history');
     print('Making API call to: $url');
-    
+
     try {
       final requestBody = jsonEncode({
         'episode_id': episodeId,
@@ -318,10 +321,7 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
@@ -341,7 +341,7 @@ class PinepodsService {
 
     final url = Uri.parse('$_server/api/data/queue_pod');
     print('Making API call to: $url');
-    
+
     try {
       final requestBody = jsonEncode({
         'episode_id': episodeId,
@@ -351,10 +351,7 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
@@ -374,16 +371,13 @@ class PinepodsService {
 
     final url = Uri.parse('$_server/api/data/increment_played/$userId');
     print('Making API call to: $url');
-    
-    try {
-      final response = await http.put(
-        url,
-        headers: {
-          'Api-Key': _apiKey!,
-        },
-      );
 
-      print('Increment played response: ${response.statusCode} - ${response.body}');
+    try {
+      final response = await http.put(url, headers: {'Api-Key': _apiKey!});
+
+      print(
+        'Increment played response: ${response.statusCode} - ${response.body}',
+      );
       return response.statusCode == 200;
     } catch (e) {
       print('Error incrementing played: $e');
@@ -392,20 +386,23 @@ class PinepodsService {
   }
 
   // Get podcast ID from episode
-  Future<int> getPodcastIdFromEpisode(int episodeId, int userId, bool isYoutube) async {
+  Future<int> getPodcastIdFromEpisode(
+    int episodeId,
+    int userId,
+    bool isYoutube,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
-    final url = Uri.parse('$_server/api/data/get_podcast_id_from_ep/$episodeId');
-    
+    final url = Uri.parse(
+      '$_server/api/data/get_podcast_id_from_ep/$episodeId',
+    );
+
     try {
       final response = await http.get(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -420,14 +417,18 @@ class PinepodsService {
   }
 
   // Get play episode details (playback speed, skip times)
-  Future<PlayEpisodeDetails> getPlayEpisodeDetails(int userId, int podcastId, bool isYoutube) async {
+  Future<PlayEpisodeDetails> getPlayEpisodeDetails(
+    int userId,
+    int podcastId,
+    bool isYoutube,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
     final url = Uri.parse('$_server/api/data/get_play_episode_details');
     print('Making API call to: $url');
-    
+
     try {
       final requestBody = jsonEncode({
         'user_id': userId,
@@ -437,14 +438,13 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
-      print('Play episode details response: ${response.statusCode} - ${response.body}');
+      print(
+        'Play episode details response: ${response.statusCode} - ${response.body}',
+      );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return PlayEpisodeDetails(
@@ -461,14 +461,19 @@ class PinepodsService {
   }
 
   // Record listen duration for episode
-  Future<bool> recordListenDuration(int episodeId, int userId, double listenDuration, bool isYoutube) async {
+  Future<bool> recordListenDuration(
+    int episodeId,
+    int userId,
+    double listenDuration,
+    bool isYoutube,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
     final url = Uri.parse('$_server/api/data/record_listen_duration');
     print('Making API call to: $url');
-    
+
     try {
       final requestBody = jsonEncode({
         'episode_id': episodeId,
@@ -479,14 +484,13 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
-      print('Record listen duration response: ${response.statusCode} - ${response.body}');
+      print(
+        'Record listen duration response: ${response.statusCode} - ${response.body}',
+      );
       return response.statusCode == 200;
     } catch (e) {
       print('Error recording listen duration: $e');
@@ -502,16 +506,13 @@ class PinepodsService {
 
     final url = Uri.parse('$_server/api/data/increment_listen_time/$userId');
     print('Making API call to: $url');
-    
-    try {
-      final response = await http.put(
-        url,
-        headers: {
-          'Api-Key': _apiKey!,
-        },
-      );
 
-      print('Increment listen time response: ${response.statusCode} - ${response.body}');
+    try {
+      final response = await http.put(url, headers: {'Api-Key': _apiKey!});
+
+      print(
+        'Increment listen time response: ${response.statusCode} - ${response.body}',
+      );
       return response.statusCode == 200;
     } catch (e) {
       print('Error incrementing listen time: $e');
@@ -527,7 +528,7 @@ class PinepodsService {
 
     final url = Uri.parse('$_server/api/data/save_episode');
     print('Making API call to: $url');
-    
+
     try {
       final requestBody = jsonEncode({
         'episode_id': episodeId,
@@ -537,10 +538,7 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
@@ -553,14 +551,18 @@ class PinepodsService {
   }
 
   // Remove saved episode
-  Future<bool> removeSavedEpisode(int episodeId, int userId, bool isYoutube) async {
+  Future<bool> removeSavedEpisode(
+    int episodeId,
+    int userId,
+    bool isYoutube,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
     final url = Uri.parse('$_server/api/data/remove_saved_episode');
     print('Making API call to: $url');
-    
+
     try {
       final requestBody = jsonEncode({
         'episode_id': episodeId,
@@ -570,14 +572,13 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
-      print('Remove saved episode response: ${response.statusCode} - ${response.body}');
+      print(
+        'Remove saved episode response: ${response.statusCode} - ${response.body}',
+      );
       return response.statusCode == 200;
     } catch (e) {
       print('Error removing saved episode: $e');
@@ -586,14 +587,18 @@ class PinepodsService {
   }
 
   // Download episode to server
-  Future<bool> downloadEpisode(int episodeId, int userId, bool isYoutube) async {
+  Future<bool> downloadEpisode(
+    int episodeId,
+    int userId,
+    bool isYoutube,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
     final url = Uri.parse('$_server/api/data/download_podcast');
     print('Making API call to: $url');
-    
+
     try {
       final requestBody = jsonEncode({
         'episode_id': episodeId,
@@ -603,14 +608,13 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
-      print('Download episode response: ${response.statusCode} - ${response.body}');
+      print(
+        'Download episode response: ${response.statusCode} - ${response.body}',
+      );
       return response.statusCode == 200;
     } catch (e) {
       print('Error downloading episode: $e');
@@ -626,7 +630,7 @@ class PinepodsService {
 
     final url = Uri.parse('$_server/api/data/delete_episode');
     print('Making API call to: $url');
-    
+
     try {
       final requestBody = jsonEncode({
         'episode_id': episodeId,
@@ -636,14 +640,13 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
-      print('Delete episode response: ${response.statusCode} - ${response.body}');
+      print(
+        'Delete episode response: ${response.statusCode} - ${response.body}',
+      );
       return response.statusCode == 200;
     } catch (e) {
       print('Error deleting episode: $e');
@@ -652,14 +655,18 @@ class PinepodsService {
   }
 
   // Mark episode as completed
-  Future<bool> markEpisodeCompleted(int episodeId, int userId, bool isYoutube) async {
+  Future<bool> markEpisodeCompleted(
+    int episodeId,
+    int userId,
+    bool isYoutube,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
     final url = Uri.parse('$_server/api/data/mark_episode_completed');
     print('Making API call to: $url');
-    
+
     try {
       final requestBody = jsonEncode({
         'episode_id': episodeId,
@@ -669,14 +676,13 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
-      print('Mark completed response: ${response.statusCode} - ${response.body}');
+      print(
+        'Mark completed response: ${response.statusCode} - ${response.body}',
+      );
       return response.statusCode == 200;
     } catch (e) {
       print('Error marking episode completed: $e');
@@ -685,14 +691,18 @@ class PinepodsService {
   }
 
   // Mark episode as uncompleted
-  Future<bool> markEpisodeUncompleted(int episodeId, int userId, bool isYoutube) async {
+  Future<bool> markEpisodeUncompleted(
+    int episodeId,
+    int userId,
+    bool isYoutube,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
     final url = Uri.parse('$_server/api/data/mark_episode_uncompleted');
     print('Making API call to: $url');
-    
+
     try {
       final requestBody = jsonEncode({
         'episode_id': episodeId,
@@ -702,14 +712,13 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
-      print('Mark uncompleted response: ${response.statusCode} - ${response.body}');
+      print(
+        'Mark uncompleted response: ${response.statusCode} - ${response.body}',
+      );
       return response.statusCode == 200;
     } catch (e) {
       print('Error marking episode uncompleted: $e');
@@ -717,15 +726,19 @@ class PinepodsService {
     }
   }
 
-  // Remove episode from queue  
-  Future<bool> removeQueuedEpisode(int episodeId, int userId, bool isYoutube) async {
+  // Remove episode from queue
+  Future<bool> removeQueuedEpisode(
+    int episodeId,
+    int userId,
+    bool isYoutube,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
     final url = Uri.parse('$_server/api/data/remove_queued_pod');
     print('Making API call to: $url');
-    
+
     try {
       final requestBody = jsonEncode({
         'episode_id': episodeId,
@@ -735,14 +748,13 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
-      print('Remove queued response: ${response.statusCode} - ${response.body}');
+      print(
+        'Remove queued response: ${response.statusCode} - ${response.body}',
+      );
       return response.statusCode == 200;
     } catch (e) {
       print('Error removing queued episode: $e');
@@ -758,21 +770,16 @@ class PinepodsService {
 
     final url = Uri.parse('$_server/api/data/user_history/$userId');
     print('Making API call to: $url');
-    
+
     try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Api-Key': _apiKey!,
-        },
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       print('User history response: ${response.statusCode} - ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final episodesList = data['data'] as List<dynamic>? ?? [];
-        
+
         return episodesList.map((episodeData) {
           return PinepodsEpisode(
             podcastName: episodeData['podcastname'] ?? '',
@@ -806,23 +813,22 @@ class PinepodsService {
       throw Exception('Not authenticated');
     }
 
-    final url = Uri.parse('$_server/api/data/get_queued_episodes?user_id=$userId');
+    final url = Uri.parse(
+      '$_server/api/data/get_queued_episodes?user_id=$userId',
+    );
     print('Making API call to: $url');
-    
+
     try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Api-Key': _apiKey!,
-        },
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+
+      print(
+        'Queued episodes response: ${response.statusCode} - ${response.body}',
       );
 
-      print('Queued episodes response: ${response.statusCode} - ${response.body}');
-      
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final episodesList = data['data'] as List<dynamic>? ?? [];
-        
+
         return episodesList.map((episodeData) {
           return PinepodsEpisode(
             podcastName: episodeData['podcastname'] ?? '',
@@ -836,13 +842,17 @@ class PinepodsService {
             episodeId: episodeData['episodeid'] ?? 0,
             completed: episodeData['completed'] ?? false,
             saved: episodeData['saved'] ?? false,
-            queued: episodeData['queued'] ?? true, // Should always be true for queued episodes
+            queued:
+                episodeData['queued'] ??
+                true, // Should always be true for queued episodes
             downloaded: episodeData['downloaded'] ?? false,
             isYoutube: episodeData['is_youtube'] ?? false,
           );
         }).toList();
       } else {
-        throw Exception('Failed to load queued episodes: ${response.statusCode}');
+        throw Exception(
+          'Failed to load queued episodes: ${response.statusCode}',
+        );
       }
     } catch (e) {
       print('Error getting queued episodes: $e');
@@ -858,21 +868,18 @@ class PinepodsService {
 
     final url = Uri.parse('$_server/api/data/saved_episode_list/$userId');
     print('Making API call to: $url');
-    
+
     try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Api-Key': _apiKey!,
-        },
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+
+      print(
+        'Saved episodes response: ${response.statusCode} - ${response.body}',
       );
 
-      print('Saved episodes response: ${response.statusCode} - ${response.body}');
-      
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final episodesList = data['saved_episodes'] as List<dynamic>? ?? [];
-        
+
         return episodesList.map((episodeData) {
           return PinepodsEpisode(
             podcastName: episodeData['podcastname'] ?? '',
@@ -885,14 +892,18 @@ class PinepodsService {
             listenDuration: episodeData['listenduration'] ?? 0,
             episodeId: episodeData['episodeid'] ?? 0,
             completed: episodeData['completed'] ?? false,
-            saved: episodeData['saved'] ?? true, // Should always be true for saved episodes
+            saved:
+                episodeData['saved'] ??
+                true, // Should always be true for saved episodes
             queued: episodeData['queued'] ?? false,
             downloaded: episodeData['downloaded'] ?? false,
             isYoutube: episodeData['is_youtube'] ?? false,
           );
         }).toList();
       } else {
-        throw Exception('Failed to load saved episodes: ${response.statusCode}');
+        throw Exception(
+          'Failed to load saved episodes: ${response.statusCode}',
+        );
       }
     } catch (e) {
       print('Error getting saved episodes: $e');
@@ -901,14 +912,19 @@ class PinepodsService {
   }
 
   // Get episode metadata
-  Future<PinepodsEpisode?> getEpisodeMetadata(int episodeId, int userId, {bool isYoutube = false, bool personEpisode = false}) async {
+  Future<PinepodsEpisode?> getEpisodeMetadata(
+    int episodeId,
+    int userId, {
+    bool isYoutube = false,
+    bool personEpisode = false,
+  }) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
     final url = Uri.parse('$_server/api/data/get_episode_metadata');
     print('Making API call to: $url');
-    
+
     try {
       final requestBody = jsonEncode({
         'episode_id': episodeId,
@@ -919,19 +935,18 @@ class PinepodsService {
 
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
-      print('Episode metadata response: ${response.statusCode} - ${response.body}');
-      
+      print(
+        'Episode metadata response: ${response.statusCode} - ${response.body}',
+      );
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final episodeData = data['episode'];
-        
+
         return PinepodsEpisode(
           podcastName: episodeData['podcastname'] ?? '',
           episodeTitle: episodeData['episodetitle'] ?? '',
@@ -963,23 +978,23 @@ class PinepodsService {
       throw Exception('Not authenticated');
     }
 
-    final url = Uri.parse('$_server/api/data/download_episode_list?user_id=$userId');
+    final url = Uri.parse(
+      '$_server/api/data/download_episode_list?user_id=$userId',
+    );
     print('Making API call to: $url');
-    
+
     try {
-      final response = await http.get(
-        url,
-        headers: {
-          'Api-Key': _apiKey!,
-        },
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+
+      print(
+        'Server downloads response: ${response.statusCode} - ${response.body}',
       );
 
-      print('Server downloads response: ${response.statusCode} - ${response.body}');
-      
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final episodesList = data['downloaded_episodes'] as List<dynamic>? ?? [];
-        
+        final episodesList =
+            data['downloaded_episodes'] as List<dynamic>? ?? [];
+
         return episodesList.map((episodeData) {
           return PinepodsEpisode(
             podcastName: episodeData['podcastname'] ?? '',
@@ -994,12 +1009,16 @@ class PinepodsService {
             completed: episodeData['completed'] ?? false,
             saved: episodeData['saved'] ?? false,
             queued: episodeData['queued'] ?? false,
-            downloaded: episodeData['downloaded'] ?? true, // Should always be true for downloaded episodes
+            downloaded:
+                episodeData['downloaded'] ??
+                true, // Should always be true for downloaded episodes
             isYoutube: episodeData['is_youtube'] ?? false,
           );
         }).toList();
       } else {
-        throw Exception('Failed to load server downloads: ${response.statusCode}');
+        throw Exception(
+          'Failed to load server downloads: ${response.statusCode}',
+        );
       }
     } catch (e) {
       print('Error getting server downloads: $e');
@@ -1008,7 +1027,12 @@ class PinepodsService {
   }
 
   // Get stream URL for episode
-  String getStreamUrl(int episodeId, int userId, {bool isYoutube = false, bool isLocal = false}) {
+  String getStreamUrl(
+    int episodeId,
+    int userId, {
+    bool isYoutube = false,
+    bool isLocal = false,
+  }) {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
@@ -1024,14 +1048,19 @@ class PinepodsService {
   }
 
   // Search for podcasts using PinePods search API
-  Future<PinepodsSearchResult> searchPodcasts(String query, SearchProvider provider) async {
+  Future<PinepodsSearchResult> searchPodcasts(
+    String query,
+    SearchProvider provider,
+  ) async {
     const searchApiUrl = 'https://search.pinepods.online';
-    final url = Uri.parse('$searchApiUrl/api/search?query=${Uri.encodeComponent(query)}&index=${provider.value}');
-    
+    final url = Uri.parse(
+      '$searchApiUrl/api/search?query=${Uri.encodeComponent(query)}&index=${provider.value}',
+    );
+
     try {
       print('Making search request to: $url');
       final response = await http.get(url);
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         print('Search response: ${response.body}');
@@ -1046,23 +1075,25 @@ class PinepodsService {
   }
 
   // Check if a podcast is already added to the server
-  Future<bool> checkPodcastExists(String podcastTitle, String podcastUrl, int userId) async {
+  Future<bool> checkPodcastExists(
+    String podcastTitle,
+    String podcastUrl,
+    int userId,
+  ) async {
     if (_server == null || _apiKey == null) {
       return false;
     }
 
-    final url = Uri.parse('$_server/api/data/check_podcast')
-        .replace(queryParameters: {
-      'user_id': userId.toString(),
-      'podcast_name': podcastTitle,
-      'podcast_url': podcastUrl,
-    });
+    final url = Uri.parse('$_server/api/data/check_podcast').replace(
+      queryParameters: {
+        'user_id': userId.toString(),
+        'podcast_name': podcastTitle,
+        'podcast_url': podcastUrl,
+      },
+    );
 
     try {
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': _apiKey!},
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1101,10 +1132,7 @@ class PinepodsService {
     try {
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode(body),
       );
 
@@ -1120,7 +1148,11 @@ class PinepodsService {
   }
 
   // Remove a podcast from the server
-  Future<bool> removePodcast(String podcastTitle, String podcastUrl, int userId) async {
+  Future<bool> removePodcast(
+    String podcastTitle,
+    String podcastUrl,
+    int userId,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
@@ -1135,10 +1167,7 @@ class PinepodsService {
     try {
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode(body),
       );
 
@@ -1167,27 +1196,28 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/get_podcast_details_dynamic')
-        .replace(queryParameters: {
-      'user_id': userId.toString(),
-      'podcast_title': podcastTitle,
-      'podcast_url': podcastUrl,
-      'podcast_index_id': podcastIndexId.toString(),
-      'added': added.toString(),
-      'display_only': displayOnly.toString(),
-    });
+        .replace(
+          queryParameters: {
+            'user_id': userId.toString(),
+            'podcast_title': podcastTitle,
+            'podcast_url': podcastUrl,
+            'podcast_index_id': podcastIndexId.toString(),
+            'added': added.toString(),
+            'display_only': displayOnly.toString(),
+          },
+        );
 
     try {
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': _apiKey!},
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         print('Podcast details response: ${response.body}');
         return PodcastDetailsData.fromJson(data);
       } else {
-        throw Exception('Failed to get podcast details: ${response.statusCode}');
+        throw Exception(
+          'Failed to get podcast details: ${response.statusCode}',
+        );
       }
     } catch (e) {
       print('Error getting podcast details: $e');
@@ -1196,30 +1226,33 @@ class PinepodsService {
   }
 
   // Get podcast details by podcast ID (for subscribed podcasts)
-  Future<Map<String, dynamic>?> getPodcastDetailsById(int podcastId, int userId) async {
+  Future<Map<String, dynamic>?> getPodcastDetailsById(
+    int podcastId,
+    int userId,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
-    final url = Uri.parse('$_server/api/data/get_podcast_details')
-        .replace(queryParameters: {
-      'podcast_id': podcastId.toString(),
-      'user_id': userId.toString(),
-    });
+    final url = Uri.parse('$_server/api/data/get_podcast_details').replace(
+      queryParameters: {
+        'podcast_id': podcastId.toString(),
+        'user_id': userId.toString(),
+      },
+    );
 
     try {
       print('Getting podcast details by ID from: $url');
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': _apiKey!},
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         print('Podcast details by ID response: ${response.body}');
         return data['details'];
       } else {
-        throw Exception('Failed to get podcast details: ${response.statusCode}');
+        throw Exception(
+          'Failed to get podcast details: ${response.statusCode}',
+        );
       }
     } catch (e) {
       print('Error getting podcast details by ID: $e');
@@ -1228,24 +1261,26 @@ class PinepodsService {
   }
 
   // Get podcast ID by feed URL and title
-  Future<int?> getPodcastId(int userId, String podcastFeed, String podcastTitle) async {
+  Future<int?> getPodcastId(
+    int userId,
+    String podcastFeed,
+    String podcastTitle,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
-    final url = Uri.parse('$_server/api/data/get_podcast_id')
-        .replace(queryParameters: {
-      'user_id': userId.toString(),
-      'podcast_feed': podcastFeed,
-      'podcast_title': podcastTitle,
-    });
+    final url = Uri.parse('$_server/api/data/get_podcast_id').replace(
+      queryParameters: {
+        'user_id': userId.toString(),
+        'podcast_feed': podcastFeed,
+        'podcast_title': podcastTitle,
+      },
+    );
 
     try {
       print('Getting podcast ID from: $url');
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': _apiKey!},
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1267,39 +1302,44 @@ class PinepodsService {
   }
 
   // Get episodes for an added podcast
-  Future<List<PinepodsEpisode>> getPodcastEpisodes(int userId, int podcastId) async {
+  Future<List<PinepodsEpisode>> getPodcastEpisodes(
+    int userId,
+    int podcastId,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
-    final url = Uri.parse('$_server/api/data/podcast_episodes')
-        .replace(queryParameters: {
-      'user_id': userId.toString(),
-      'podcast_id': podcastId.toString(),
-    });
+    final url = Uri.parse('$_server/api/data/podcast_episodes').replace(
+      queryParameters: {
+        'user_id': userId.toString(),
+        'podcast_id': podcastId.toString(),
+      },
+    );
 
     try {
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': _apiKey!},
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final episodes = data['episodes'] as List;
         return episodes.map((episodeData) {
-          print('Episode data: $episodeData');
           // Add default values for fields not provided by this endpoint
           final episodeWithDefaults = Map<String, dynamic>.from(episodeData);
-          episodeWithDefaults['saved'] = false; // Episodes from this endpoint don't have saved status
-          episodeWithDefaults['queued'] = false; // Episodes from this endpoint don't have queued status
-          episodeWithDefaults['downloaded'] = false; // Episodes from this endpoint don't have downloaded status
+          episodeWithDefaults['saved'] =
+              false; // Episodes from this endpoint don't have saved status
+          episodeWithDefaults['queued'] =
+              false; // Episodes from this endpoint don't have queued status
+          episodeWithDefaults['downloaded'] =
+              false; // Episodes from this endpoint don't have downloaded status
           episodeWithDefaults['is_youtube'] = false;
-          
+
           return PinepodsEpisode.fromJson(episodeWithDefaults);
         }).toList();
       } else {
-        throw Exception('Failed to get podcast episodes: ${response.statusCode}');
+        throw Exception(
+          'Failed to get podcast episodes: ${response.statusCode}',
+        );
       }
     } catch (e) {
       print('Error getting podcast episodes: $e');
@@ -1313,17 +1353,14 @@ class PinepodsService {
       throw Exception('Not authenticated');
     }
 
-    final url = Uri.parse('$_server/api/data/get_stats').replace(queryParameters: {
-      'user_id': userId.toString(),
-    });
+    final url = Uri.parse(
+      '$_server/api/data/get_stats',
+    ).replace(queryParameters: {'user_id': userId.toString()});
 
     try {
       final response = await http.get(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -1349,17 +1386,16 @@ class PinepodsService {
     try {
       final response = await http.get(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['data'] ?? 'Unknown';
       } else {
-        throw Exception('Failed to get PinePods version: ${response.statusCode}');
+        throw Exception(
+          'Failed to get PinePods version: ${response.statusCode}',
+        );
       }
     } catch (e) {
       print('Error getting PinePods version: $e');
@@ -1378,10 +1414,7 @@ class PinepodsService {
     try {
       final response = await http.get(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -1396,7 +1429,7 @@ class PinepodsService {
     }
   }
 
-  // Get user ID from API key  
+  // Get user ID from API key
   Future<int?> getUserIdFromApiKey() async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
@@ -1407,10 +1440,7 @@ class PinepodsService {
     try {
       final response = await http.get(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
 
       if (response.statusCode == 200) {
@@ -1433,18 +1463,17 @@ class PinepodsService {
 
     final url = Uri.parse('$_server/api/data/home_overview?user_id=$userId');
     print('Making API call to: $url');
-    
+
     try {
       final response = await http.get(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
 
-      print('Home overview response: ${response.statusCode} - ${response.body}');
-      
+      print(
+        'Home overview response: ${response.statusCode} - ${response.body}',
+      );
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return HomeOverview.fromJson(data);
@@ -1465,18 +1494,15 @@ class PinepodsService {
 
     final url = Uri.parse('$_server/api/data/get_playlists?user_id=$userId');
     print('Making API call to: $url');
-    
+
     try {
       final response = await http.get(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
 
       print('Playlists response: ${response.statusCode} - ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return PlaylistResponse.fromJson(data);
@@ -1497,18 +1523,15 @@ class PinepodsService {
 
     final url = Uri.parse('$_server/api/data/get_theme/$userId');
     print('Making API call to: $url');
-    
+
     try {
       final response = await http.get(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
 
       print('Get theme response: ${response.statusCode} - ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['theme'] as String?;
@@ -1529,24 +1552,18 @@ class PinepodsService {
 
     final url = Uri.parse('$_server/api/data/user/set_theme');
     print('Making API call to: $url');
-    
+
     try {
-      final requestBody = jsonEncode({
-        'user_id': userId,
-        'new_theme': theme,
-      });
+      final requestBody = jsonEncode({'user_id': userId, 'new_theme': theme});
 
       final response = await http.put(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
       );
 
       print('Set theme response: ${response.statusCode} - ${response.body}');
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data['message'] != null;
@@ -1569,22 +1586,21 @@ class PinepodsService {
     print('Making API call to: $url');
 
     try {
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': _apiKey!},
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print('Get playlists response: ${response.statusCode} - ${response.body}');
+      print(
+        'Get playlists response: ${response.statusCode} - ${response.body}',
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List<dynamic> playlistsData = data['playlists'] ?? [];
-        
+
         List<PlaylistData> playlists = [];
         for (var playlistData in playlistsData) {
           playlists.add(PlaylistData.fromJson(playlistData));
         }
-        
+
         return playlists;
       } else {
         throw Exception('Failed to get playlists: ${response.statusCode}');
@@ -1607,14 +1623,13 @@ class PinepodsService {
     try {
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode(request.toJson()),
       );
 
-      print('Create playlist response: ${response.statusCode} - ${response.body}');
+      print(
+        'Create playlist response: ${response.statusCode} - ${response.body}',
+      );
       return response.statusCode == 200;
     } catch (e) {
       print('Error creating playlist: $e');
@@ -1634,17 +1649,13 @@ class PinepodsService {
     try {
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'user_id': userId,
-          'playlist_id': playlistId,
-        }),
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode({'user_id': userId, 'playlist_id': playlistId}),
       );
 
-      print('Delete playlist response: ${response.statusCode} - ${response.body}');
+      print(
+        'Delete playlist response: ${response.statusCode} - ${response.body}',
+      );
       return response.statusCode == 200;
     } catch (e) {
       print('Error deleting playlist: $e');
@@ -1653,27 +1664,33 @@ class PinepodsService {
   }
 
   // Get playlist episodes
-  Future<PlaylistEpisodesResponse> getPlaylistEpisodes(int userId, int playlistId) async {
+  Future<PlaylistEpisodesResponse> getPlaylistEpisodes(
+    int userId,
+    int playlistId,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
-    final url = Uri.parse('$_server/api/data/get_playlist_episodes?user_id=$userId&playlist_id=$playlistId');
+    final url = Uri.parse(
+      '$_server/api/data/get_playlist_episodes?user_id=$userId&playlist_id=$playlistId',
+    );
     print('Making API call to: $url');
 
     try {
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': _apiKey!},
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print('Get playlist episodes response: ${response.statusCode} - ${response.body}');
+      print(
+        'Get playlist episodes response: ${response.statusCode} - ${response.body}',
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return PlaylistEpisodesResponse.fromJson(data);
       } else {
-        throw Exception('Failed to get playlist episodes: ${response.statusCode}');
+        throw Exception(
+          'Failed to get playlist episodes: ${response.statusCode}',
+        );
       }
     } catch (e) {
       print('Error getting playlist episodes: $e');
@@ -1693,16 +1710,13 @@ class PinepodsService {
     try {
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'episode_ids': episodeIds,
-        }),
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode({'episode_ids': episodeIds}),
       );
 
-      print('Reorder queue response: ${response.statusCode} - ${response.body}');
+      print(
+        'Reorder queue response: ${response.statusCode} - ${response.body}',
+      );
       return response.statusCode == 200;
     } catch (e) {
       print('Error reordering queue: $e');
@@ -1711,7 +1725,10 @@ class PinepodsService {
   }
 
   // Search episodes in user's subscriptions
-  Future<List<SearchEpisodeResult>> searchEpisodes(int userId, String searchTerm) async {
+  Future<List<SearchEpisodeResult>> searchEpisodes(
+    int userId,
+    String searchTerm,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
@@ -1722,27 +1739,23 @@ class PinepodsService {
     try {
       final response = await http.post(
         url,
-        headers: {
-          'Api-Key': _apiKey!,
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'search_term': searchTerm,
-          'user_id': userId,
-        }),
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode({'search_term': searchTerm, 'user_id': userId}),
       );
 
-      print('Search episodes response: ${response.statusCode} - ${response.body}');
+      print(
+        'Search episodes response: ${response.statusCode} - ${response.body}',
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List<dynamic> episodesData = data['data'] ?? [];
-        
+
         List<SearchEpisodeResult> episodes = [];
         for (var episodeData in episodesData) {
           episodes.add(SearchEpisodeResult.fromJson(episodeData));
         }
-        
+
         return episodes;
       } else {
         throw Exception('Failed to search episodes: ${response.statusCode}');
@@ -1754,26 +1767,29 @@ class PinepodsService {
   }
 
   // Fetch podcast 2.0 data for a specific episode
-  Future<Map<String, dynamic>?> fetchPodcasting2Data(int episodeId, int userId) async {
+  Future<Map<String, dynamic>?> fetchPodcasting2Data(
+    int episodeId,
+    int userId,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
-    final url = Uri.parse('$_server/api/data/fetch_podcasting_2_data')
-        .replace(queryParameters: {
-      'episode_id': episodeId.toString(),
-      'user_id': userId.toString(),
-    });
+    final url = Uri.parse('$_server/api/data/fetch_podcasting_2_data').replace(
+      queryParameters: {
+        'episode_id': episodeId.toString(),
+        'user_id': userId.toString(),
+      },
+    );
 
     print('Making API call to: $url');
 
     try {
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': _apiKey!},
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print('Podcast 2.0 data response: ${response.statusCode} - ${response.body}');
+      print(
+        'Podcast 2.0 data response: ${response.statusCode} - ${response.body}',
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1789,26 +1805,30 @@ class PinepodsService {
   }
 
   // Fetch podcast 2.0 data for a specific podcast
-  Future<Map<String, dynamic>?> fetchPodcasting2PodData(int podcastId, int userId) async {
+  Future<Map<String, dynamic>?> fetchPodcasting2PodData(
+    int podcastId,
+    int userId,
+  ) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
 
     final url = Uri.parse('$_server/api/data/fetch_podcasting_2_pod_data')
-        .replace(queryParameters: {
-      'podcast_id': podcastId.toString(),
-      'user_id': userId.toString(),
-    });
+        .replace(
+          queryParameters: {
+            'podcast_id': podcastId.toString(),
+            'user_id': userId.toString(),
+          },
+        );
 
     print('Making API call to: $url');
 
     try {
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': _apiKey!},
-      );
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print('Podcast 2.0 pod data response: ${response.statusCode} - ${response.body}');
+      print(
+        'Podcast 2.0 pod data response: ${response.statusCode} - ${response.body}',
+      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1934,8 +1954,8 @@ class PlaylistData {
       name: json['name'] ?? '',
       description: json['description'],
       isSystemPlaylist: json['is_system_playlist'] ?? false,
-      podcastIds: json['podcast_ids'] != null 
-          ? List<int>.from(json['podcast_ids']) 
+      podcastIds: json['podcast_ids'] != null
+          ? List<int>.from(json['podcast_ids'])
           : null,
       includeUnplayed: json['include_unplayed'] ?? true,
       includePartiallyPlayed: json['include_partially_played'] ?? true,
@@ -2113,7 +2133,7 @@ class SearchEpisodeResult {
       podcastName: json['podcastname'] ?? '',
       artworkUrl: json['artworkurl'] ?? '',
       author: json['author'] ?? '',
-      categories: json['categories'] ?? '',
+      categories: _parseCategories(json['categories']),
       description: json['description'] ?? '',
       episodeCount: json['episodecount'],
       feedUrl: json['feedurl'] ?? '',
@@ -2154,5 +2174,21 @@ class SearchEpisodeResult {
       downloaded: downloaded,
       isYoutube: isYoutube,
     );
+  }
+
+  /// Parse categories from either string or Map format
+  static String _parseCategories(dynamic categories) {
+    if (categories == null) return '';
+    
+    if (categories is String) {
+      // Old format - return as is
+      return categories;
+    } else if (categories is Map<String, dynamic>) {
+      // New format - convert map values to comma-separated string
+      if (categories.isEmpty) return '';
+      return categories.values.join(', ');
+    }
+    
+    return '';
   }
 }

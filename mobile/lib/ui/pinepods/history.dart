@@ -219,6 +219,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(_episodes[episodeIndex], saved: true);
+          _filterEpisodes(); // Update filtered list to reflect changes
         });
         _showSnackBar('Episode saved!', Colors.green);
       } else {
@@ -254,6 +255,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(_episodes[episodeIndex], saved: false);
+          _filterEpisodes(); // Update filtered list to reflect changes
         });
         _showSnackBar('Removed from saved episodes', Colors.orange);
       } else {
@@ -289,6 +291,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: true);
+          _filterEpisodes(); // Update filtered list to reflect changes
         });
         _showSnackBar('Episode download queued!', Colors.green);
       } else {
@@ -324,6 +327,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: false);
+          _filterEpisodes(); // Update filtered list to reflect changes
         });
         _showSnackBar('Episode deleted from server', Colors.orange);
       } else {
@@ -360,6 +364,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: false);
+            _filterEpisodes(); // Update filtered list to reflect changes
           });
           _showSnackBar('Removed from queue', Colors.orange);
         }
@@ -372,6 +377,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: true);
+            _filterEpisodes(); // Update filtered list to reflect changes
           });
           _showSnackBar('Added to queue!', Colors.green);
         }
@@ -411,6 +417,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: false);
+            _filterEpisodes(); // Update filtered list to reflect changes
           });
           _showSnackBar('Marked as incomplete', Colors.orange);
         }
@@ -423,6 +430,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: true);
+            _filterEpisodes(); // Update filtered list to reflect changes
           });
           _showSnackBar('Marked as complete!', Colors.green);
         }
@@ -479,6 +487,11 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
     // Show context menu as a modal overlay if needed
     if (_contextMenuEpisodeIndex != null) {
       final episodeIndex = _contextMenuEpisodeIndex!;
+      // Safety check to prevent crash
+      if (episodeIndex < 0 || episodeIndex >= _episodes.length) {
+        _contextMenuEpisodeIndex = null;
+        return const SizedBox.shrink();
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         showDialog(
           context: context,
@@ -712,9 +725,8 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
                 ),
               );
             },
-            onLongPress: () => _showContextMenu(originalIndex),
+            onLongPress: originalIndex >= 0 ? () => _showContextMenu(originalIndex) : null,
             onPlayPressed: () => _playEpisode(episode),
-            onDownloadPressed: () => _downloadEpisode(originalIndex),
           );
         },
         childCount: _filteredEpisodes.length + 1, // +1 for header

@@ -75,10 +75,23 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
   }
 
   Future<void> _launchUrl(String url) async {
+    // Use the same approach as episode descriptions that work on Android
     final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+    canLaunchUrl(uri).then((canLaunch) {
+      if (canLaunch) {
+        launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        // Show error if URL can't be launched
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Could not open link: $url'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    });
   }
 
   Widget _buildStatCard(String label, String value, {IconData? icon}) {
