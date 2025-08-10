@@ -12,6 +12,7 @@ import 'package:pinepods_mobile/ui/pinepods/downloads.dart';
 import 'package:pinepods_mobile/ui/pinepods/queue.dart';
 import 'package:pinepods_mobile/ui/pinepods/history.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlists.dart';
+import 'package:pinepods_mobile/ui/pinepods/playlist_episodes.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
@@ -1234,11 +1235,7 @@ class _PlaylistCard extends StatelessWidget {
       width: 200,
       child: Card(
         child: InkWell(
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Opening playlist: ${playlist.name}')),
-            );
-          },
+          onTap: () => _openPlaylist(context),
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -1281,6 +1278,57 @@ class _PlaylistCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openPlaylist(BuildContext context) async {
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    
+    if (settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null ||
+        settings.pinepodsUserId == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Not connected to PinePods server. Please connect in Settings.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final pinepodsService = PinepodsService();
+      pinepodsService.setCredentials(
+        settings.pinepodsServer!,
+        settings.pinepodsApiKey!,
+      );
+      
+      final userPlaylists = await pinepodsService.getUserPlaylists(settings.pinepodsUserId!);
+      final fullPlaylistData = userPlaylists.firstWhere(
+        (p) => p.playlistId == playlist.playlistId,
+        orElse: () => throw Exception('Playlist not found'),
+      );
+      
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PlaylistEpisodesPage(playlist: fullPlaylistData),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening playlist: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   IconData _getIconFromName(String iconName) {
