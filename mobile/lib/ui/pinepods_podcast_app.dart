@@ -68,6 +68,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:logging/logging.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pinepods_mobile/services/global_services.dart';
 
 var theme = Themes.lightTheme().themeData;
 
@@ -83,6 +84,8 @@ class PinepodsPodcastApp extends StatefulWidget {
   SettingsBloc? settingsBloc;
   MobileSettingsService mobileSettingsService;
   List<int> certificateAuthorityBytes;
+  late PinepodsAudioService pinepodsAudioService;
+  late PinepodsService pinepodsService;
 
   PinepodsPodcastApp({
     super.key,
@@ -114,8 +117,8 @@ class PinepodsPodcastApp extends StatefulWidget {
     settingsBloc = SettingsBloc(mobileSettingsService);
 
     // Create and connect PinepodsAudioService for listen duration tracking
-    final pinepodsService = PinepodsService();
-    final pinepodsAudioService = PinepodsAudioService(
+    pinepodsService = PinepodsService();
+    pinepodsAudioService = PinepodsAudioService(
       audioPlayerService!,
       pinepodsService,
       settingsBloc!,
@@ -124,6 +127,11 @@ class PinepodsPodcastApp extends StatefulWidget {
     // Connect the services for listen duration recording
     (audioPlayerService as DefaultAudioPlayerService).setPinepodsAudioService(pinepodsAudioService);
 
+    // Initialize global services for app-wide access
+    GlobalServices.initialize(
+      pinepodsAudioService: pinepodsAudioService,
+      pinepodsService: pinepodsService,
+    );
 
     podcastApi.addClientAuthorityBytes(certificateAuthorityBytes);
   }

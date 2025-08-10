@@ -8,9 +8,11 @@ class EpisodeContextMenu extends StatelessWidget {
   final VoidCallback? onRemoveSaved;
   final VoidCallback? onDownload;
   final VoidCallback? onLocalDownload;
+  final VoidCallback? onDeleteLocalDownload;
   final VoidCallback? onQueue;
   final VoidCallback? onMarkComplete;
   final VoidCallback? onDismiss;
+  final bool isDownloadedLocally;
 
   const EpisodeContextMenu({
     Key? key,
@@ -19,9 +21,11 @@ class EpisodeContextMenu extends StatelessWidget {
     this.onRemoveSaved,
     this.onDownload,
     this.onLocalDownload,
+    this.onDeleteLocalDownload,
     this.onQueue,
     this.onMarkComplete,
     this.onDismiss,
+    this.isDownloadedLocally = false,
   }) : super(key: key);
 
   @override
@@ -90,9 +94,9 @@ class EpisodeContextMenu extends StatelessWidget {
                     
                     _buildMenuOption(
                       context,
-                      icon: Icons.file_download_outlined,
-                      text: 'Download Locally',
-                      onTap: onLocalDownload,
+                      icon: isDownloadedLocally ? Icons.delete_forever_outlined : Icons.file_download_outlined,
+                      text: isDownloadedLocally ? 'Delete Local Download' : 'Download Locally',
+                      onTap: isDownloadedLocally ? onDeleteLocalDownload : onLocalDownload,
                     ),
                     
                     _buildMenuOption(

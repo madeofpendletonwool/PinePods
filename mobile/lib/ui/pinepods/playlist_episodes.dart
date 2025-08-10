@@ -4,6 +4,7 @@ import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
@@ -29,8 +30,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
   bool _isLoading = true;
   String? _errorMessage;
   
-  // Audio service and context menu state
-  PinepodsAudioService? _audioService;
+  // Use global audio service instead of creating local instance
   int? _contextMenuEpisodeIndex;
 
   @override
@@ -63,6 +63,7 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
         settings.pinepodsServer!,
         settings.pinepodsApiKey!,
       );
+      GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
       
       final response = await _pinepodsService.getPlaylistEpisodes(
         settings.pinepodsUserId!, 
@@ -132,27 +133,9 @@ class _PlaylistEpisodesPageState extends State<PlaylistEpisodesPage> {
     }
   }
 
-  void _initializeAudioService() {
-    if (_audioService != null) return; // Already initialized
-    
-    try {
-      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
-      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-      
-      _audioService = PinepodsAudioService(
-        audioPlayerService,
-        _pinepodsService,
-        settingsBloc,
-      );
-    } catch (e) {
-      // Provider not available - audio service will remain null
-    }
-  }
+  PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
 
   Future<void> _playEpisode(PinepodsEpisode episode) async {
-    // Try to initialize audio service if not already done
-    _initializeAudioService();
-    
     if (_audioService == null) {
       _showSnackBar('Audio service not available', Colors.red);
       return;

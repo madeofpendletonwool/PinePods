@@ -5,6 +5,7 @@ import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/login_service.dart';
 import 'package:pinepods_mobile/ui/widgets/restart_widget.dart';
+import 'package:pinepods_mobile/ui/settings/settings_section_label.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -208,16 +209,7 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 16.0, top: 16.0, bottom: 8.0),
-          child: Text(
-            'PinePods Server',
-            style: TextStyle(
-              fontSize: 14.0,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
+        SettingsDividerLabel(label: 'PinePods Server'),
         const Divider(),
         if (_isLoggedIn) ...[
           // Show connected status

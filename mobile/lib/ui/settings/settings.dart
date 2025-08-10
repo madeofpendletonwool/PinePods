@@ -13,6 +13,7 @@ import 'package:pinepods_mobile/ui/settings/settings_section_label.dart';
 import 'package:pinepods_mobile/ui/settings/bottom_bar_order.dart';
 import 'package:pinepods_mobile/ui/widgets/action_text.dart';
 import 'package:pinepods_mobile/ui/settings/pinepods_login.dart';
+import 'package:pinepods_mobile/ui/debug/debug_logs_page.dart';
 import 'package:pinepods_mobile/ui/themes.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
@@ -56,6 +57,7 @@ class _SettingsState extends State<Settings> {
           return ListView(
             children: [
               SettingsDividerLabel(label: L.of(context)!.settings_personalisation_divider_label),
+              const Divider(),
               MergeSemantics(
                 child: ListTile(
                   shape: const RoundedRectangleBorder(side: BorderSide.none),
@@ -102,7 +104,6 @@ class _SettingsState extends State<Settings> {
                   ),
                 ),
               ),
-              SettingsDividerLabel(label: L.of(context)!.settings_episodes_divider_label),
               sdcard
                   ? MergeSemantics(
                       child: ListTile(
@@ -128,6 +129,7 @@ class _SettingsState extends State<Settings> {
                       width: 0,
                     ),
               SettingsDividerLabel(label: 'Navigation'),
+              const Divider(),
               ListTile(
                 title: const Text('Reorganize Bottom Bar'),
                 subtitle: const Text('Customize the order of bottom navigation items'),
@@ -142,6 +144,7 @@ class _SettingsState extends State<Settings> {
                 },
               ),
               SettingsDividerLabel(label: L.of(context)!.settings_playback_divider_label),
+              const Divider(),
               MergeSemantics(
                 child: ListTile(
                   title: Text(L.of(context)!.settings_auto_open_now_playing),
@@ -152,7 +155,23 @@ class _SettingsState extends State<Settings> {
                 ),
               ),
               const SearchProviderWidget(),
+              SettingsDividerLabel(label: 'Debug'),
+              const Divider(),
+              ListTile(
+                title: const Text('App Logs'),
+                subtitle: const Text('View debug logs and device information'),
+                leading: const Icon(Icons.bug_report),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const DebugLogsPage(),
+                    ),
+                  );
+                },
+              ),
               const PinepodsLoginWidget(),
+              const _WebAppInfoWidget(),
             ],
           );
         });
@@ -239,5 +258,60 @@ class _SettingsState extends State<Settings> {
         sdcard = value;
       });
     });
+  }
+}
+
+class _WebAppInfoWidget extends StatelessWidget {
+  const _WebAppInfoWidget();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<SettingsBloc>(
+      builder: (context, settingsBloc, child) {
+        final settings = settingsBloc.currentSettings;
+        final serverUrl = settings.pinepodsServer;
+
+        // Only show if user is connected to a server
+        if (serverUrl == null || serverUrl.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.web,
+                        color: Theme.of(context).primaryColor,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Web App Settings',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Many more server side and user settings available from the PinePods web app. Please head to $serverUrl to adjust much more',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

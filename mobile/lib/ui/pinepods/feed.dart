@@ -5,12 +5,18 @@ import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/services/audio/default_audio_player_service.dart';
 import 'package:pinepods_mobile/services/download/download_service.dart';
+import 'package:pinepods_mobile/services/logging/app_logger.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
+import 'package:pinepods_mobile/entities/downloadable.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
+import 'package:pinepods_mobile/ui/utils/player_utils.dart';
+import 'package:pinepods_mobile/ui/utils/position_utils.dart';
+import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
 
 class PinepodsFeed extends StatefulWidget {
@@ -26,8 +32,9 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
   String _errorMessage = '';
   List<PinepodsEpisode> _episodes = [];
   final PinepodsService _pinepodsService = PinepodsService();
-  PinepodsAudioService? _audioService;
+  // Use global audio service instead of creating local instance
   int? _contextMenuEpisodeIndex; // Index of episode showing context menu
+  Map<String, bool> _localDownloadStatus = {}; // Cache for local download status
 
   @override
   void initState() {
@@ -35,22 +42,13 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
     _loadRecentEpisodes();
   }
 
-  void _initializeAudioService() {
-    if (_audioService != null) return; // Already initialized
-    
-    try {
-      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
-      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-      
-      _audioService = PinepodsAudioService(
-        audioPlayerService,
-        _pinepodsService,
-        settingsBloc,
-      );
-    } catch (e) {
-      // Provider not available - audio service will remain null
-      // This is fine, we'll handle it in the play method
+  PinepodsAudioService? get _audioService {
+    final service = GlobalServices.pinepodsAudioService;
+    if (service == null) {
+      final logger = AppLogger();
+      logger.error('Feed', 'Global audio service is null - this should not happen');
     }
+    return service;
   }
 
   Future<void> _loadRecentEpisodes() async {
@@ -73,18 +71,30 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
         return;
       }
 
-      // Set credentials in the service
+      // Set credentials in both local and global services
       _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+      GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
       // Use the stored user ID from login
       final userId = settings.pinepodsUserId!;
 
       final episodes = await _pinepodsService.getRecentEpisodes(userId);
       
+      // Enrich episodes with best available positions (local vs server)
+      final enrichedEpisodes = await PositionUtils.enrichEpisodesWithBestPositions(
+        context,
+        _pinepodsService,
+        episodes,
+        userId,
+      );
+      
       setState(() {
-        _episodes = episodes;
+        _episodes = enrichedEpisodes;
         _isLoading = false;
       });
+      
+      // After loading episodes, check their local download status
+      await _loadLocalDownloadStatuses();
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to load recent episodes: ${e.toString()}';
@@ -93,15 +103,68 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
     }
   }
 
+  // Proactively load local download status for all episodes
+  Future<void> _loadLocalDownloadStatuses() async {
+    final logger = AppLogger();
+    logger.debug('Feed', 'Loading local download statuses for ${_episodes.length} episodes');
+    
+    try {
+      final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
+      
+      // Get all downloaded episodes from repository
+      final allEpisodes = await podcastBloc.podcastService.repository.findAllEpisodes();
+      logger.debug('Feed', 'Found ${allEpisodes.length} total episodes in repository');
+      
+      // Filter to PinePods episodes only and log them
+      final pinepodsEpisodes = allEpisodes.where((ep) => ep.guid.startsWith('pinepods_')).toList();
+      logger.debug('Feed', 'Found ${pinepodsEpisodes.length} PinePods episodes in repository');
+      
+      for (final localEp in pinepodsEpisodes) {
+        logger.debug('Feed', 'Local episode: ${localEp.title} - GUID: ${localEp.guid} - Downloaded: ${localEp.downloaded} - State: ${localEp.downloadState}');
+      }
+      
+      // Now check each feed episode against the repository
+      for (final episode in _episodes) {
+        final guid = _generateEpisodeGuid(episode);
+        
+        // Look for episodes with either new format (pinepods_123) or old format (pinepods_123_timestamp)
+        final matchingEpisodes = allEpisodes.where((ep) => 
+          ep.guid == guid || ep.guid.startsWith('${guid}_')
+        ).toList();
+        
+        logger.debug('Feed', 'Looking for matches for $guid, found ${matchingEpisodes.length} episodes');
+        for (final match in matchingEpisodes) {
+          logger.debug('Feed', '  Match: ${match.guid} - Downloaded: ${match.downloaded} - State: ${match.downloadState}');
+        }
+        
+        // Consider downloaded if ANY matching episode is downloaded
+        final isDownloaded = matchingEpisodes.any((ep) => 
+          ep.downloaded || ep.downloadState == DownloadState.downloaded
+        );
+        
+        _localDownloadStatus[guid] = isDownloaded;
+        logger.debug('Feed', 'Episode ${episode.episodeTitle} ($guid): ${isDownloaded ? 'DOWNLOADED' : 'NOT DOWNLOADED'}');
+      }
+      
+      logger.debug('Feed', 'Cached ${_localDownloadStatus.length} download statuses');
+      
+    } catch (e) {
+      logger.error('Feed', 'Error loading local download statuses', e.toString());
+    }
+  }
+
   Future<void> _refresh() async {
+    // Clear local download status cache on refresh
+    _localDownloadStatus.clear();
     await _loadRecentEpisodes();
   }
 
   Future<void> _playEpisode(PinepodsEpisode episode) async {
-    // Try to initialize audio service if not already done
-    _initializeAudioService();
+    final logger = AppLogger();
+    logger.info('Feed', 'Attempting to play episode: ${episode.episodeTitle}');
     
     if (_audioService == null) {
+      logger.error('Feed', 'Audio service not available for episode: ${episode.episodeTitle}');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Audio service not available'),
@@ -131,11 +194,15 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       );
 
       // Start playing the episode with full PinePods integration
-      await _audioService!.playPinepodsEpisode(
-        pinepodsEpisode: episode,
+      await playPinepodsEpisodeWithOptionalFullScreen(
+        context,
+        _audioService!,
+        episode,
         resume: episode.isStarted, // Resume if episode was previously started
       );
 
+      logger.info('Feed', 'Successfully started playing episode: ${episode.episodeTitle}');
+      
       // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -145,6 +212,8 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
         ),
       );
     } catch (e) {
+      logger.error('Feed', 'Failed to play episode: ${episode.episodeTitle}', e.toString());
+      
       // Show error message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -156,10 +225,56 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
     }
   }
 
-  void _showContextMenu(int episodeIndex) {
-    setState(() {
-      _contextMenuEpisodeIndex = episodeIndex;
-    });
+  Future<void> _showContextMenu(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    final isDownloadedLocally = await _isEpisodeDownloadedLocally(episode);
+    
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.3),
+      builder: (context) => EpisodeContextMenu(
+        episode: episode,
+        isDownloadedLocally: isDownloadedLocally,
+        onSave: () {
+          Navigator.of(context).pop();
+          _saveEpisode(episodeIndex);
+        },
+        onRemoveSaved: () {
+          Navigator.of(context).pop();
+          _removeSavedEpisode(episodeIndex);
+        },
+        onDownload: episode.downloaded 
+          ? () {
+              Navigator.of(context).pop();
+              _deleteEpisode(episodeIndex);
+            }
+          : () {
+              Navigator.of(context).pop();
+              _downloadEpisode(episodeIndex);
+            },
+        onLocalDownload: () {
+          Navigator.of(context).pop();
+          _localDownloadEpisode(episodeIndex);
+        },
+        onDeleteLocalDownload: () {
+          Navigator.of(context).pop();
+          _deleteLocalDownload(episodeIndex);
+        },
+        onQueue: () {
+          Navigator.of(context).pop();
+          _toggleQueueEpisode(episodeIndex);
+        },
+        onMarkComplete: () {
+          Navigator.of(context).pop();
+          _toggleMarkComplete(episodeIndex);
+        },
+        onDismiss: () {
+          Navigator.of(context).pop();
+        },
+      ),
+    );
   }
 
   void _hideContextMenu() {
@@ -450,7 +565,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
     try {
       // Convert PinepodsEpisode to Episode for local download
       final localEpisode = Episode(
-        guid: 'pinepods_${episode.episodeId}_${DateTime.now().millisecondsSinceEpoch}',
+        guid: _generateEpisodeGuid(episode),
         pguid: 'pinepods_${episode.podcastName.replaceAll(' ', '_').toLowerCase()}',
         podcast: episode.podcastName,
         title: episode.episodeTitle,
@@ -467,32 +582,128 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
         chapters: [],
         transcriptUrls: [],
       );
-      
-      print('DEBUG: Created local episode with GUID: ${localEpisode.guid}');
-      print('DEBUG: Episode title: ${localEpisode.title}');
-      print('DEBUG: Episode URL: ${localEpisode.contentUrl}');
+      final logger = AppLogger();
+      logger.debug('Feed', 'Created local episode with GUID: ${localEpisode.guid}');
+      logger.debug('Feed', 'Episode title: ${localEpisode.title}');
+      logger.debug('Feed', 'Episode URL: ${localEpisode.contentUrl}');
       
       final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
       
       // First save the episode to the repository so it can be tracked
       await podcastBloc.podcastService.saveEpisode(localEpisode);
-      print('DEBUG: Episode saved to repository');
+      logger.debug('Feed', 'Episode saved to repository');
       
       // Use the download service from podcast bloc
       final success = await podcastBloc.downloadService.downloadEpisode(localEpisode);
-      print('DEBUG: Download service result: $success');
+      logger.debug('Feed', 'Download service result: $success');
       
       if (success) {
+        _updateLocalDownloadStatus(episode, true);
         _showSnackBar('Episode download started', Colors.green);
       } else {
         _showSnackBar('Failed to start download', Colors.red);
       }
     } catch (e) {
-      print('DEBUG: Error in local download: $e');
+      final logger = AppLogger();
+      logger.error('Feed', 'Error in local download for episode: ${episode.episodeTitle}', e.toString());
       _showSnackBar('Error starting local download: $e', Colors.red);
     }
 
     _hideContextMenu();
+  }
+
+  Future<void> _deleteLocalDownload(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    final logger = AppLogger();
+    
+    try {
+      final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
+      final guid = _generateEpisodeGuid(episode);
+      
+      // Get all episodes and find matches with both new and old GUID formats
+      final allEpisodes = await podcastBloc.podcastService.repository.findAllEpisodes();
+      final matchingEpisodes = allEpisodes.where((ep) => 
+        ep.guid == guid || ep.guid.startsWith('${guid}_')
+      ).toList();
+      
+      logger.debug('Feed', 'Found ${matchingEpisodes.length} episodes to delete for $guid');
+      
+      if (matchingEpisodes.isNotEmpty) {
+        // Delete ALL matching episodes (handles duplicates from old timestamp GUIDs)
+        for (final localEpisode in matchingEpisodes) {
+          logger.debug('Feed', 'Deleting episode: ${localEpisode.guid}');
+          await podcastBloc.podcastService.repository.deleteEpisode(localEpisode);
+        }
+        
+        // Update cache
+        _updateLocalDownloadStatus(episode, false);
+        
+        final deletedCount = matchingEpisodes.length;
+        _showSnackBar('Deleted $deletedCount local download${deletedCount > 1 ? 's' : ''}', Colors.orange);
+      } else {
+        _showSnackBar('Local download not found', Colors.red);
+      }
+    } catch (e) {
+      logger.error('Feed', 'Error deleting local download for episode: ${episode.episodeTitle}', e.toString());
+      _showSnackBar('Error deleting local download: $e', Colors.red);
+    }
+
+    _hideContextMenu();
+  }
+
+  // Generate consistent GUID for PinePods episodes for local downloads
+  String _generateEpisodeGuid(PinepodsEpisode episode) {
+    return 'pinepods_${episode.episodeId}';
+  }
+
+  // Check if episode is downloaded locally
+  Future<bool> _isEpisodeDownloadedLocally(PinepodsEpisode episode) async {
+    final guid = _generateEpisodeGuid(episode);
+    final logger = AppLogger();
+    logger.debug('Feed', 'Checking download status for episode: ${episode.episodeTitle}, GUID: $guid');
+    
+    // Check cache first
+    if (_localDownloadStatus.containsKey(guid)) {
+      logger.debug('Feed', 'Found cached status for $guid: ${_localDownloadStatus[guid]}');
+      return _localDownloadStatus[guid]!;
+    }
+    
+    try {
+      final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
+      
+      // Get all episodes and find matches with both new and old GUID formats
+      final allEpisodes = await podcastBloc.podcastService.repository.findAllEpisodes();
+      final matchingEpisodes = allEpisodes.where((ep) => 
+        ep.guid == guid || ep.guid.startsWith('${guid}_')
+      ).toList();
+      
+      logger.debug('Feed', 'Repository lookup for $guid: found ${matchingEpisodes.length} matching episodes');
+      
+      for (final match in matchingEpisodes) {
+        logger.debug('Feed', 'Match: ${match.guid} - downloaded: ${match.downloaded}, downloadState: ${match.downloadState}, downloadPercentage: ${match.downloadPercentage}');
+      }
+      
+      // Consider downloaded if ANY matching episode is downloaded
+      final isDownloaded = matchingEpisodes.any((ep) => 
+        ep.downloaded || ep.downloadState == DownloadState.downloaded
+      );
+      
+      logger.debug('Feed', 'Final download status for $guid: $isDownloaded');
+      
+      // Cache the result
+      _localDownloadStatus[guid] = isDownloaded;
+      return isDownloaded;
+    } catch (e) {
+      final logger = AppLogger();
+      logger.error('Feed', 'Error checking local download status for episode: ${episode.episodeTitle}', e.toString());
+      return false;
+    }
+  }
+
+  // Update local download status cache
+  void _updateLocalDownloadStatus(PinepodsEpisode episode, bool isDownloaded) {
+    final guid = _generateEpisodeGuid(episode);
+    _localDownloadStatus[guid] = isDownloaded;
   }
 
   // Helper method to update episode properties efficiently
@@ -540,55 +751,6 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
 
   @override
   Widget build(BuildContext context) {
-    // Show context menu as a modal overlay if needed
-    if (_contextMenuEpisodeIndex != null) {
-      final episodeIndex = _contextMenuEpisodeIndex!; // Store locally to avoid null issues
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        showDialog(
-          context: context,
-          barrierColor: Colors.black.withOpacity(0.3),
-          builder: (context) => EpisodeContextMenu(
-            episode: _episodes[episodeIndex],
-            onSave: () {
-              Navigator.of(context).pop();
-              _saveEpisode(episodeIndex);
-            },
-            onRemoveSaved: () {
-              Navigator.of(context).pop();
-              _removeSavedEpisode(episodeIndex);
-            },
-            onDownload: _episodes[episodeIndex].downloaded 
-              ? () {
-                  Navigator.of(context).pop();
-                  _deleteEpisode(episodeIndex);
-                }
-              : () {
-                  Navigator.of(context).pop();
-                  _downloadEpisode(episodeIndex);
-                },
-            onLocalDownload: () {
-              Navigator.of(context).pop();
-              _localDownloadEpisode(episodeIndex);
-            },
-            onQueue: () {
-              Navigator.of(context).pop();
-              _toggleQueueEpisode(episodeIndex);
-            },
-            onMarkComplete: () {
-              Navigator.of(context).pop();
-              _toggleMarkComplete(episodeIndex);
-            },
-            onDismiss: () {
-              Navigator.of(context).pop();
-              _hideContextMenu();
-            },
-          ),
-        );
-      });
-      // Reset the context menu index after storing it locally
-      _contextMenuEpisodeIndex = null;
-    }
-    
     if (_isLoading) {
       return const SliverFillRemaining(
         child: Center(

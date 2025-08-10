@@ -34,6 +34,7 @@ dependencies:
   logging: ^1.0.2
   meta: ^1.17.0
   mp3_info: ^0.2.0
+  package_info_plus: ^8.1.2
   path: ^1.8.3
   path_provider: ^2.1.4
   path_provider_platform_interface: ^2.0.4

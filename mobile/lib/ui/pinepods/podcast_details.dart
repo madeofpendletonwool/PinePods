@@ -9,6 +9,7 @@ import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/entities/person.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
+import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
@@ -17,6 +18,7 @@ import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
+import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:provider/provider.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 
@@ -44,7 +46,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   List<PinepodsEpisode> _episodes = [];
   List<PinepodsEpisode> _filteredEpisodes = [];
   int? _contextMenuEpisodeIndex;
-  PinepodsAudioService? _audioService;
+  // Use global audio service instead of creating local instance
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   List<Person> _hosts = [];
@@ -91,6 +93,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         settings.pinepodsServer!,
         settings.pinepodsApiKey!,
       );
+      GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
     }
   }
 
@@ -348,34 +351,19 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     });
   }
 
-  void _initializeAudioService() {
-    if (_audioService != null) return;
-    
-    try {
-      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
-      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-      
-      _audioService = PinepodsAudioService(
-        audioPlayerService,
-        _pinepodsService,
-        settingsBloc,
-      );
-    } catch (e) {
-      print('Error initializing audio service: $e');
-    }
-  }
+  PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
 
   Future<void> _playEpisode(PinepodsEpisode episode) async {
-    _initializeAudioService();
-    
     if (_audioService == null) {
       _showSnackBar('Audio service not available', Colors.red);
       return;
     }
 
     try {
-      await _audioService!.playPinepodsEpisode(
-        pinepodsEpisode: episode,
+      await playPinepodsEpisodeWithOptionalFullScreen(
+        context,
+        _audioService!,
+        episode,
         resume: episode.isStarted,
       );
     } catch (e) {

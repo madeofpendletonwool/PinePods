@@ -5,6 +5,7 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
@@ -33,8 +34,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   String? _errorMessage;
   String _currentQuery = '';
   
-  // Audio service and context menu state
-  PinepodsAudioService? _audioService;
+  // Use global audio service instead of creating local instance
   int? _contextMenuEpisodeIndex;
 
   // Animation controllers
@@ -87,32 +87,15 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
         settings.pinepodsServer!,
         settings.pinepodsApiKey!,
       );
+      GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
     }
 
     _searchController.addListener(_onSearchChanged);
   }
 
-  void _initializeAudioService() {
-    if (_audioService != null) return; // Already initialized
-    
-    try {
-      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
-      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-      
-      _audioService = PinepodsAudioService(
-        audioPlayerService,
-        _pinepodsService,
-        settingsBloc,
-      );
-    } catch (e) {
-      // Provider not available - audio service will remain null
-    }
-  }
+  PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
 
   Future<void> _playEpisode(PinepodsEpisode episode) async {
-    // Try to initialize audio service if not already done
-    _initializeAudioService();
-    
     if (_audioService == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

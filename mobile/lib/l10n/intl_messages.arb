@@ -469,7 +469,7 @@
     "type": "text",
     "placeholders": {}
   },
-  "settings_personalisation_divider_label": "PERSONALISATION",
+  "settings_personalisation_divider_label": "Personalisation",
   "@settings_personalisation_divider_label": {
     "description": "Settings divider label for personalisation",
     "type": "text",
@@ -481,7 +481,7 @@
     "type": "text",
     "placeholders": {}
   },
-  "settings_playback_divider_label": "PLAYBACK",
+  "settings_playback_divider_label": "Playback",
   "@settings_playback_divider_label": {
     "description": "Settings divider label for playback",
     "type": "text",
