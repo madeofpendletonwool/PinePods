@@ -862,7 +862,16 @@ async fn handle_gpodder_sync(state: &AppState, user_id: i32, sync_type: &str) ->
 // Internal functions for scheduler (no HTTP context needed)
 pub async fn refresh_pods_admin_internal(state: &AppState) -> AppResult<()> {
     tracing::info!("Starting internal podcast refresh (scheduler)");
-    refresh_all_podcasts_background(state).await
+    
+    // Run the main podcast refresh
+    refresh_all_podcasts_background(state).await?;
+    
+    // Also run Firewood server status checks during refresh (background database update)
+    if let Err(e) = crate::handlers::firewood::background_check_all_firewood_servers(state).await {
+        tracing::warn!("⚠️ Firewood server status check failed during refresh: {}", e);
+    }
+    
+    Ok(())
 }
 
 pub async fn refresh_gpodder_subscriptions_admin_internal(state: &AppState) -> AppResult<()> {

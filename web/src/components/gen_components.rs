@@ -1,4 +1,8 @@
 use crate::components::context::{AppState, UIState};
+use crate::components::setting_components::firewood_players::{
+    play_episode_on_firewood, FirewoodServer, PlayEpisodeRequest, start_firewood_status_polling,
+    set_active_firewood_server, get_firewood_server_by_id,
+};
 #[cfg(not(feature = "server_build"))]
 use crate::components::downloads_tauri::{
     download_file, remove_episode_from_local_db, update_local_database, update_podcast_database,
@@ -746,6 +750,15 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         .map(|ud| ud.server_name.clone());
     let dropdown_ref = use_node_ref();
     let button_ref = use_node_ref();
+    
+    // Firewood state
+    let firewood_submenu_open = use_state(|| false);
+    // Get Firewood servers from global state (database-backed)
+    let firewood_servers = if let Some(servers) = &post_state.firewood_servers {
+        servers.clone()
+    } else {
+        Vec::new()
+    };
 
     // Update dropdown_open if show_menu_only prop changes
     {
@@ -1517,6 +1530,142 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         })
     };
 
+    // Firewood handlers
+    let toggle_firewood_submenu = {
+        let firewood_submenu_open = firewood_submenu_open.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            firewood_submenu_open.set(!*firewood_submenu_open);
+        })
+    };
+
+    let on_play_on_firewood = {
+        let episode = props.episode.clone();
+        let post_dispatch = post_dispatch.clone();
+
+        Callback::from(move |server_id: i32| {
+            let episode = episode.clone();
+            let post_dispatch = post_dispatch.clone();
+            let post_call_state = post_state.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                // Extract episode information for Firewood
+                // Use downcasting to get episode URL since EpisodeTrait doesn't have this method
+                let episode_url = if let Some(ep) = episode.as_any().downcast_ref::<Episode>() {
+                    ep.episodeurl.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<QueuedEpisode>() {
+                    ep.episodeurl.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<SavedEpisode>() {
+                    ep.episodeurl.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<HistoryEpisode>() {
+                    ep.episodeurl.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<EpisodeDownload>() {
+                    ep.episodeurl.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<SearchEpisode>() {
+                    ep.episodeurl.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<SearchNewEpisode>() {
+                    ep.enclosure_url.clone().unwrap_or_default()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<PersonEpisode>() {
+                    ep.episodeurl.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<HomeEpisode>() {
+                    ep.episodeurl.clone()
+                } else {
+                    "Unknown URL".to_string()
+                };
+                
+                // Extract podcast name and duration with similar downcasting
+                let podcast_name = if let Some(ep) = episode.as_any().downcast_ref::<Episode>() {
+                    ep.podcastname.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<QueuedEpisode>() {
+                    ep.podcastname.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<SavedEpisode>() {
+                    ep.podcastname.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<HistoryEpisode>() {
+                    ep.podcastname.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<EpisodeDownload>() {
+                    ep.podcastname.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<SearchEpisode>() {
+                    ep.podcastname.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<SearchNewEpisode>() {
+                    // SearchNewEpisode episodes come from search results - no podcast name available
+                    format!("Search Result: {}", ep.title.clone().unwrap_or("Unknown Episode".to_string()))
+                } else if let Some(ep) = episode.as_any().downcast_ref::<PersonEpisode>() {
+                    ep.podcastname.clone()
+                } else if let Some(ep) = episode.as_any().downcast_ref::<HomeEpisode>() {
+                    ep.podcastname.clone()
+                } else {
+                    "Unknown Podcast".to_string()
+                };
+                
+                let episode_duration = if let Some(ep) = episode.as_any().downcast_ref::<Episode>() {
+                    ep.episodeduration
+                } else if let Some(ep) = episode.as_any().downcast_ref::<QueuedEpisode>() {
+                    ep.episodeduration
+                } else if let Some(ep) = episode.as_any().downcast_ref::<SavedEpisode>() {
+                    ep.episodeduration
+                } else if let Some(ep) = episode.as_any().downcast_ref::<HistoryEpisode>() {
+                    ep.episodeduration
+                } else if let Some(ep) = episode.as_any().downcast_ref::<EpisodeDownload>() {
+                    ep.episodeduration
+                } else if let Some(ep) = episode.as_any().downcast_ref::<SearchEpisode>() {
+                    ep.episodeduration
+                } else if let Some(ep) = episode.as_any().downcast_ref::<SearchNewEpisode>() {
+                    ep.duration.clone().unwrap_or("0".to_string()).parse::<i32>().unwrap_or(0)
+                } else if let Some(ep) = episode.as_any().downcast_ref::<PersonEpisode>() {
+                    ep.episodeduration
+                } else if let Some(ep) = episode.as_any().downcast_ref::<HomeEpisode>() {
+                    ep.episodeduration
+                } else {
+                    0
+                };
+                
+                let episode_request = PlayEpisodeRequest {
+                    episode_id: Some(episode.get_episode_id(Some(0)) as i64),
+                    episode_url,
+                    episode_title: episode.get_episode_title(),
+                    podcast_name,
+                    episode_duration: episode_duration as i64,
+                    episode_artwork: Some(episode.get_episode_artwork()),
+                    start_position: Some(0),
+                };
+                
+                // Get API details for backend call
+                if let Some(auth_details) = &post_call_state.auth_details {
+                    match play_episode_on_firewood(&auth_details.api_key, &auth_details.server_name, server_id, &episode_request).await {
+                        Ok(success_message) => {
+                            // Set this as the active Firewood server
+                            set_active_firewood_server(&post_dispatch, Some(server_id));
+                            
+                            // Find the server to get its address for status polling
+                            if let Some(servers) = &post_call_state.firewood_servers {
+                                if let Some(server) = get_firewood_server_by_id(servers, server_id) {
+                                    // Start continuous status polling for this server
+                                    start_firewood_status_polling(
+                                        server_id,
+                                        server.server_address.clone(),
+                                        post_dispatch.clone()
+                                    );
+                                }
+                            }
+                            
+                            post_dispatch.reduce_mut(|state| {
+                                state.info_message = Some(format!("Episode sent to Firewood: {}", success_message));
+                            });
+                        }
+                        Err(e) => {
+                            post_dispatch.reduce_mut(|state| {
+                                state.error_message = Some(format!("Failed to send to Firewood: {}", e));
+                            });
+                        }
+                    }
+                } else {
+                    post_dispatch.reduce_mut(|state| {
+                        state.error_message = Some("Authentication not available".to_string());
+                    });
+                }
+            });
+        })
+    };
+
     let close_dropdown = {
         let dropdown_open = dropdown_open.clone();
         let on_close = props.on_close.clone();
@@ -1578,6 +1727,48 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
     #[cfg(feature = "server_build")]
     let local_download_options = html! {};
 
+    // Firewood menu item - only show if servers are available
+    let firewood_menu_item = if !firewood_servers.is_empty() {
+        html! {
+            <li class="dropdown-option firewood-context-menu-item position-relative">
+                <button class="firewood-context-menu-item w-full" onclick={toggle_firewood_submenu.clone()}>
+                    <i class="ph ph-broadcast"></i>
+                    {"Play on Firewood"}
+                    <i class="ph ph-caret-right ml-auto"></i>
+                </button>
+                if *firewood_submenu_open {
+                    <div class="firewood-submenu absolute right-0 top-0 mr-2 min-w-max z-50">
+                        { for firewood_servers.iter().filter(|s| s.server_status == "online").map(|server| {
+                            let server_id = server.firewood_server_id;
+                            let on_select = {
+                                let on_play_on_firewood = on_play_on_firewood.clone();
+                                let dropdown_open = dropdown_open.clone();
+                                let firewood_submenu_open = firewood_submenu_open.clone();
+                                Callback::from(move |_: MouseEvent| {
+                                    on_play_on_firewood.emit(server_id);
+                                    dropdown_open.set(false);
+                                    firewood_submenu_open.set(false);
+                                })
+                            };
+                            
+                            html! {
+                                <button class="firewood-submenu-item w-full" onclick={on_select}>
+                                    <i class="ph ph-desktop"></i>
+                                    <div class="flex flex-col flex-1">
+                                        <span class="firewood-server-name">{&server.server_name}</span>
+                                        <span class="firewood-server-address">{&server.server_address}</span>
+                                    </div>
+                                </button>
+                            }
+                        }) }
+                    </div>
+                }
+            </li>
+        }
+    } else {
+        html! {}
+    };
+
     let action_buttons = match props.page_type.as_str() {
         "saved" => html! {
             <>
@@ -1594,6 +1785,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>
                     { if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }
                 </li>
+                { firewood_menu_item.clone() }
             </>
         },
         "queue" => html! {
@@ -1608,6 +1800,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     download_button.clone()
                 }
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                { firewood_menu_item.clone() }
             </>
         },
         "downloads" => html! {
@@ -1622,6 +1815,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     { if is_downloaded { "Remove Downloaded Episode" } else { "Download Episode" } }
                 </li>
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                { firewood_menu_item.clone() }
             </>
         },
         "local_downloads" => html! {
@@ -1641,6 +1835,7 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                     download_button.clone()
                 }
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
+                { firewood_menu_item.clone() }
             </>
         },
     };

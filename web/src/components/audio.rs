@@ -1,7 +1,12 @@
 use crate::components::context::{AppState, UIState};
 #[cfg(not(feature = "server_build"))]
 use crate::components::downloads_tauri::start_local_file_server;
+use crate::components::firewood_status::FirewoodStatus;
 use crate::components::gen_components::{EpisodeModal, FallbackImage};
+use crate::components::setting_components::firewood_players::{
+    play_episode_on_firewood, FirewoodServer, PlayEpisodeRequest, start_firewood_status_polling,
+    set_active_firewood_server, get_firewood_server_by_id,
+};
 use crate::components::gen_funcs::format_time_rm_hour;
 #[cfg(not(feature = "server_build"))]
 use crate::requests::pod_req::EpisodeDownload;
@@ -49,6 +54,7 @@ pub struct AudioPlayerProps {
     pub end_pos_sec: f64,
     pub offline: bool,
     pub is_youtube: bool,
+    pub podcast_name: String,
 }
 
 #[derive(Properties, PartialEq)]
@@ -166,6 +172,16 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let audio_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
+    
+    // Firewood state for full-screen player
+    let firewood_dropdown_open = use_state(|| false);
+    
+    // Get Firewood servers from global state (database-backed)
+    let firewood_servers = if let Some(servers) = &state.firewood_servers {
+        servers.clone()
+    } else {
+        Vec::new()
+    };
     let show_modal = use_state(|| false);
     let on_modal_close = {
         let show_modal = show_modal.clone();
@@ -857,6 +873,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                                 audio_state.clone(),
                                                 None,
                                                 Some(next_episode.is_youtube.clone()),
+                                                next_episode.podcastname.clone()
                                             )
                                             .emit(MouseEvent::new("click").unwrap());
                                         } else {
@@ -1181,6 +1198,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 audio_state.clone(),
                                 None,
                                 Some(next_episode.is_youtube.clone()),
+                                next_episode.podcastname.clone(),
                             )
                             .emit(MouseEvent::new("click").unwrap());
                         } else {
@@ -1507,6 +1525,111 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                         html! {}
                                     }
                                 }
+                                // Firewood Beaming Control - only show when servers are available
+                                {
+                                    if !firewood_servers.is_empty() {
+                                        let toggle_firewood_dropdown = {
+                                            let firewood_dropdown_open = firewood_dropdown_open.clone();
+                                            Callback::from(move |_: MouseEvent| {
+                                                firewood_dropdown_open.set(!*firewood_dropdown_open);
+                                            })
+                                        };
+                                        
+                                        html! {
+                                            <div class="firewood-player-controls position-relative">
+                                                <button onclick={toggle_firewood_dropdown} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
+                                                    <i class="ph ph-broadcast mr-2"></i>
+                                                    { "Beam to Firewood" }
+                                                </button>
+                                                if *firewood_dropdown_open {
+                                                    <div class="firewood-submenu absolute bottom-full mb-2 left-0 min-w-max z-50">
+                                                        { for firewood_servers.iter().filter(|s| s.server_status == "online").map(|server| {
+                                                            let server_id = server.firewood_server_id;
+                                                            let audio_props = audio_props.clone();
+                                                            let firewood_dropdown_open = firewood_dropdown_open.clone();
+                                                            let dispatch = _dispatch.clone();
+                                                            let audio_state = audio_state.clone();
+                                                            
+                                                            let state_beam = state.clone();
+                                                            let on_beam_click = Callback::from(move |_: MouseEvent| {
+                                                                let audio_props = audio_props.clone();
+                                                                let firewood_dropdown_open = firewood_dropdown_open.clone();
+                                                                let dispatch = dispatch.clone();
+                                                                let audio_state = audio_state.clone();
+                                                                let state = state_beam.clone();
+                                                                
+                                                                spawn_local(async move {
+                                                                    let episode_request = PlayEpisodeRequest {
+                                                                        episode_id: Some(audio_props.episode_id as i64),
+                                                                        episode_url: audio_props.src.clone(),
+                                                                        episode_title: audio_props.title.clone(),
+                                                                        podcast_name: audio_props.podcast_name.clone(),
+                                                                        episode_duration: audio_props.duration_sec as i64,
+                                                                        episode_artwork: Some(audio_props.artwork_url.clone()),
+                                                                        start_position: Some(audio_state.current_time_seconds as i64),
+                                                                    };
+                                                                    
+                                                                    // Get API details for backend call
+                                                                    if let Some(auth_details) = &state.auth_details {
+                                                                        match play_episode_on_firewood(&auth_details.api_key, &auth_details.server_name, server_id, &episode_request).await {
+                                                                            Ok(success_message) => {
+                                                                                firewood_dropdown_open.set(false);
+                                                                                
+                                                                                // Set this as the active Firewood server
+                                                                                set_active_firewood_server(&dispatch, Some(server_id));
+                                                                                
+                                                                                // Find the server to get its address for status polling
+                                                                                if let Some(servers) = &state.firewood_servers {
+                                                                                    if let Some(server) = get_firewood_server_by_id(servers, server_id) {
+                                                                                        // Start continuous status polling for this server
+                                                                                        start_firewood_status_polling(
+                                                                                            server_id,
+                                                                                            server.server_address.clone(),
+                                                                                            dispatch.clone()
+                                                                                        );
+                                                                                    }
+                                                                                }
+                                                                                
+                                                                                dispatch.reduce_mut(|state| {
+                                                                                    state.info_message = Some(format!("Episode sent to Firewood: {}", success_message));
+                                                                                });
+                                                                            }
+                                                                            Err(e) => {
+                                                                                dispatch.reduce_mut(|state| {
+                                                                                    state.error_message = Some(format!("Failed to send to Firewood: {}", e));
+                                                                                });
+                                                                            }
+                                                                        }
+                                                                    } else {
+                                                                        dispatch.reduce_mut(|state| {
+                                                                            state.error_message = Some("Authentication not available".to_string());
+                                                                        });
+                                                                    }
+                                                                });
+                                                            });
+                                                            
+                                                            html! {
+                                                                <button class="firewood-submenu-item w-full" onclick={on_beam_click}>
+                                                                    <i class="ph ph-device-mobile"></i>
+                                                                    <div class="flex flex-col flex-1">
+                                                                        <span class="firewood-server-name">{&server.server_name}</span>
+                                                                        <span class="firewood-server-address">{&server.server_address}</span>
+                                                                    </div>
+                                                                </button>
+                                                            }
+                                                        }) }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    } else {
+                                        html! {}
+                                    }
+                                }
+                                
+                                // Firewood Status Display - shows when there's an active Firewood server
+                                <FirewoodStatus show_compact={false} />
+                                
                                 </>
                             }
                         } else {
@@ -1654,6 +1777,7 @@ pub fn on_play_pause(
     audio_state: Rc<UIState>,
     is_local: Option<bool>,
     is_youtube_vid: Option<bool>,
+    podcast_name_for_closure: String,
 ) -> Callback<MouseEvent> {
     Callback::from(move |e: MouseEvent| {
         let episode_url_for_play = episode_url_for_closure.clone();
@@ -1703,6 +1827,7 @@ pub fn on_play_pause(
                 audio_state_play,
                 is_local,
                 is_youtube_vid,
+                podcast_name_for_closure.clone(),
             )
             .emit(e); // Pass the event instead of '_'
         }
@@ -1725,6 +1850,7 @@ pub fn on_play_click(
     _audio_state: Rc<UIState>,
     is_local: Option<bool>,
     is_youtube_vid: Option<bool>,
+    podcast_name_for_closure: String,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
         let episode_url_for_closure = episode_url_for_closure.clone();
@@ -1740,6 +1866,7 @@ pub fn on_play_click(
         let user_id = user_id.clone();
         let server_name = server_name.clone();
         let audio_dispatch = audio_dispatch.clone();
+        let podcast_name_for_wasm = podcast_name_for_closure.clone();
 
         let episode_pos: f32 = 0.0;
         let episode_id = episode_id_for_closure.clone();
@@ -2031,6 +2158,7 @@ pub fn on_play_click(
                                         end_pos_sec: end_pos_sec as f64,
                                         offline: false,
                                         is_youtube: episode_is_youtube.clone(),
+                                        podcast_name: podcast_name_for_wasm.clone(),
                                     });
                                     audio_state.set_audio_source(src.to_string());
                                     if let Some(audio) = &audio_state.audio_element {
@@ -2074,6 +2202,7 @@ pub fn on_play_click(
                         end_pos_sec: 0.0,
                         offline: false,
                         is_youtube: episode_is_youtube.clone(),
+                        podcast_name: podcast_name_for_wasm.clone(),
                     });
                     audio_state.set_audio_source(src.to_string());
                     if let Some(audio) = &audio_state.audio_element {
@@ -2300,6 +2429,7 @@ pub fn on_play_click_shared(
     episode_id: i32,
     audio_dispatch: Dispatch<UIState>,
     is_youtube_vid: bool,
+    podcast_name: String,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
         let episode_url = episode_url.clone();
@@ -2311,6 +2441,7 @@ pub fn on_play_click_shared(
         let episode_is_youtube = is_youtube_vid.clone();
         let episode_id = episode_id.clone();
         let audio_dispatch = audio_dispatch.clone();
+        let podcast_name_clone = podcast_name.clone();
 
         // NEW: Analyze duration before playing
         let audio_dispatch_for_duration = audio_dispatch.clone();
@@ -2409,6 +2540,7 @@ pub fn on_play_click_shared(
                     end_pos_sec: 0.0,
                     offline: true,
                     is_youtube: episode_is_youtube,
+                    podcast_name: podcast_name_clone.clone(),
                 });
                 audio_state.set_audio_source(episode_url.clone());
                 if let Some(audio) = &audio_state.audio_element {

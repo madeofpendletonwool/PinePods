@@ -278,6 +278,7 @@ pub fn subscribed_people() -> Html {
                             end_pos_sec={audio_props.end_pos_sec.clone()}
                             offline={audio_props.offline.clone()}
                             is_youtube={audio_props.is_youtube.clone()}
+                            podcast_name={audio_props.podcast_name.clone()}
                         />
                     }
                 } else {
@@ -369,6 +370,7 @@ fn render_host_with_episodes(
                             let listener_duration_for_closure = episode.listenduration.clone();
                             let episode_id_for_closure = episode.episodeid.clone();
                             let episode_is_youtube = Some(episode.is_youtube.clone());
+                            let podcast_name_for_closure = episode.podcastname.clone();
                             let _completed = false;
                             let user_id_play = user_id.clone();
                             let server_name_play = server_name.clone();
@@ -405,6 +407,7 @@ fn render_host_with_episodes(
                                 audio_state.clone(),
                                 None,
                                 episode_is_youtube.clone(),
+                                podcast_name_for_closure.clone(),
                             );
 
                             let on_shownotes_click = on_shownotes_click(

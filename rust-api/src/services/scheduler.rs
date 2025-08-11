@@ -103,6 +103,11 @@ impl BackgroundScheduler {
                 if let Err(e) = tasks::update_playlists_internal(&state).await {
                     warn!("⚠️ Playlist update failed during scheduled refresh: {}", e);
                 }
+                
+                // Also run Firewood server status checks
+                if let Err(e) = crate::handlers::firewood::background_check_all_firewood_servers(&state).await {
+                    warn!("⚠️ Firewood server status check failed during scheduled refresh: {}", e);
+                }
             }
             Err(e) => {
                 error!("❌ Podcast refresh failed: {}", e);

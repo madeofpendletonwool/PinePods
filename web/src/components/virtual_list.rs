@@ -178,6 +178,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 search_ui_state_clone.clone(),
                 None,
                 episode_is_youtube,
+                props.podcast_title.clone(),
             );
 
             let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;

@@ -1,6 +1,7 @@
 use sqlx::{MySql, Pool, Postgres, Row};
 use std::time::Duration;
 use crate::{config::Config, error::{AppError, AppResult}};
+use crate::models::{FirewoodServer, CreateFirewoodServerRequest, UpdateFirewoodServerRequest};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use bigdecimal::ToPrimitive;
@@ -18531,5 +18532,308 @@ impl DatabasePool {
             }
         }
         Ok(())
+    }
+
+    // Firewood Server database functions
+    
+    // Get all Firewood servers for a user
+    pub async fn get_user_firewood_servers(&self, user_id: i32) -> AppResult<Vec<FirewoodServer>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query_as::<_, FirewoodServer>(
+                    r#"SELECT firewoodserverid as firewood_server_id, userid as user_id, servername as server_name, 
+                       serveraddress as server_address, serverstatus as server_status, lastchecked as last_checked,
+                       createdat as created_at, updatedat as updated_at, isactive as is_active
+                       FROM "FirewoodServers" WHERE userid = $1 AND isactive = true ORDER BY servername"#
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+                
+                Ok(rows)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query_as::<_, FirewoodServer>(
+                    "SELECT FirewoodServerID as firewood_server_id, UserID as user_id, ServerName as server_name,
+                     ServerAddress as server_address, ServerStatus as server_status, LastChecked as last_checked,
+                     CreatedAt as created_at, UpdatedAt as updated_at, IsActive as is_active
+                     FROM FirewoodServers WHERE UserID = ? AND IsActive = true ORDER BY ServerName"
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+                
+                Ok(rows)
+            }
+        }
+    }
+
+    // Create a new Firewood server
+    pub async fn create_firewood_server(&self, user_id: i32, request: &CreateFirewoodServerRequest) -> AppResult<i32> {
+        let now = Utc::now();
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Check if server already exists for this user
+                let existing_count: i64 = sqlx::query_scalar(
+                    r#"SELECT COUNT(*) FROM "FirewoodServers" WHERE userid = $1 AND serveraddress = $2"#
+                )
+                .bind(user_id)
+                .bind(&request.server_address)
+                .fetch_one(pool)
+                .await?;
+
+                if existing_count > 0 {
+                    return Err(AppError::bad_request("A server with this address already exists"));
+                }
+
+                let server_id: i32 = sqlx::query_scalar(
+                    r#"INSERT INTO "FirewoodServers" (userid, servername, serveraddress, serverstatus, lastchecked, createdat, updatedat) 
+                       VALUES ($1, $2, $3, 'unknown', $4, $5, $6) RETURNING firewoodserverid"#
+                )
+                .bind(user_id)
+                .bind(&request.server_name)
+                .bind(&request.server_address)
+                .bind(now)
+                .bind(now)
+                .bind(now)
+                .fetch_one(pool)
+                .await?;
+
+                Ok(server_id)
+            }
+            DatabasePool::MySQL(pool) => {
+                // Check if server already exists for this user
+                let existing_count: i64 = sqlx::query_scalar(
+                    "SELECT COUNT(*) FROM FirewoodServers WHERE UserID = ? AND ServerAddress = ?"
+                )
+                .bind(user_id)
+                .bind(&request.server_address)
+                .fetch_one(pool)
+                .await?;
+
+                if existing_count > 0 {
+                    return Err(AppError::bad_request("A server with this address already exists"));
+                }
+
+                let result = sqlx::query(
+                    "INSERT INTO FirewoodServers (UserID, ServerName, ServerAddress, ServerStatus, LastChecked, CreatedAt, UpdatedAt) 
+                     VALUES (?, ?, ?, 'unknown', ?, ?, ?)"
+                )
+                .bind(user_id)
+                .bind(&request.server_name)
+                .bind(&request.server_address)
+                .bind(now)
+                .bind(now)
+                .bind(now)
+                .execute(pool)
+                .await?;
+
+                Ok(result.last_insert_id() as i32)
+            }
+        }
+    }
+
+    // Get a specific Firewood server by ID and user ID
+    pub async fn get_firewood_server_by_id(&self, server_id: i32, user_id: i32) -> AppResult<Option<FirewoodServer>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query_as::<_, FirewoodServer>(
+                    r#"SELECT firewoodserverid as firewood_server_id, userid as user_id, servername as server_name,
+                       serveraddress as server_address, serverstatus as server_status, lastchecked as last_checked,
+                       createdat as created_at, updatedat as updated_at, isactive as is_active
+                       FROM "FirewoodServers" WHERE firewoodserverid = $1 AND userid = $2"#
+                )
+                .bind(server_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+                
+                Ok(row)
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query_as::<_, FirewoodServer>(
+                    "SELECT FirewoodServerID as firewood_server_id, UserID as user_id, ServerName as server_name,
+                     ServerAddress as server_address, ServerStatus as server_status, LastChecked as last_checked,
+                     CreatedAt as created_at, UpdatedAt as updated_at, IsActive as is_active
+                     FROM FirewoodServers WHERE FirewoodServerID = ? AND UserID = ?"
+                )
+                .bind(server_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+                
+                Ok(row)
+            }
+        }
+    }
+
+    // Update a Firewood server
+    pub async fn update_firewood_server(&self, server_id: i32, user_id: i32, request: &UpdateFirewoodServerRequest) -> AppResult<()> {
+        let now = Utc::now();
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut update_query = String::from(r#"UPDATE "FirewoodServers" SET updatedat = $1"#);
+                let mut param_count = 1;
+                
+                if request.server_name.is_some() {
+                    param_count += 1;
+                    update_query.push_str(&format!(", servername = ${}", param_count));
+                }
+                
+                if request.server_address.is_some() {
+                    param_count += 1;
+                    update_query.push_str(&format!(", serveraddress = ${}", param_count));
+                }
+                
+                if request.is_active.is_some() {
+                    param_count += 1;
+                    update_query.push_str(&format!(", isactive = ${}", param_count));
+                }
+                
+                param_count += 1;
+                update_query.push_str(&format!(" WHERE firewoodserverid = ${} AND userid = ${}", param_count, param_count + 1));
+
+                let mut query = sqlx::query(&update_query).bind(now);
+                
+                if let Some(name) = &request.server_name {
+                    query = query.bind(name);
+                }
+                if let Some(address) = &request.server_address {
+                    query = query.bind(address);
+                }
+                if let Some(active) = request.is_active {
+                    query = query.bind(active);
+                }
+                
+                query = query.bind(server_id).bind(user_id);
+                
+                query.execute(pool).await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                // Build query dynamically but bind parameters directly
+                let mut update_parts = vec!["UPDATE FirewoodServers SET UpdatedAt = ?"];
+                
+                if request.server_name.is_some() {
+                    update_parts.push(", ServerName = ?");
+                }
+                if request.server_address.is_some() {
+                    update_parts.push(", ServerAddress = ?");
+                }
+                if request.is_active.is_some() {
+                    update_parts.push(", IsActive = ?");
+                }
+                update_parts.push(" WHERE FirewoodServerID = ? AND UserID = ?");
+                
+                let update_query = update_parts.join("");
+                let mut query = sqlx::query(&update_query).bind(now);
+                
+                if let Some(name) = &request.server_name {
+                    query = query.bind(name);
+                }
+                if let Some(address) = &request.server_address {
+                    query = query.bind(address);
+                }
+                if let Some(active) = request.is_active {
+                    query = query.bind(active);
+                }
+                
+                query = query.bind(server_id).bind(user_id);
+                query.execute(pool).await?;
+            }
+        }
+        
+        Ok(())
+    }
+
+    // Delete a Firewood server
+    pub async fn delete_firewood_server(&self, server_id: i32, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(
+                    r#"DELETE FROM "FirewoodServers" WHERE firewoodserverid = $1 AND userid = $2"#
+                )
+                .bind(server_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(
+                    "DELETE FROM FirewoodServers WHERE FirewoodServerID = ? AND UserID = ?"
+                )
+                .bind(server_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
+    // Update Firewood server status
+    pub async fn update_firewood_server_status(&self, server_id: i32, status: &str) -> AppResult<()> {
+        let now = Utc::now();
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    r#"UPDATE "FirewoodServers" SET serverstatus = $1, lastchecked = $2, updatedat = $3 WHERE firewoodserverid = $4"#
+                )
+                .bind(status)
+                .bind(now)
+                .bind(now)
+                .bind(server_id)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query(
+                    "UPDATE FirewoodServers SET ServerStatus = ?, LastChecked = ?, UpdatedAt = ? WHERE FirewoodServerID = ?"
+                )
+                .bind(status)
+                .bind(now)
+                .bind(now)
+                .bind(server_id)
+                .execute(pool)
+                .await?;
+            }
+        }
+        
+        Ok(())
+    }
+
+    // Get all active Firewood servers (for background status checking)
+    pub async fn get_all_active_firewood_servers(&self) -> AppResult<Vec<FirewoodServer>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query_as::<_, FirewoodServer>(
+                    r#"SELECT firewoodserverid as firewood_server_id, userid as user_id, servername as server_name,
+                       serveraddress as server_address, serverstatus as server_status, lastchecked as last_checked,
+                       createdat as created_at, updatedat as updated_at, isactive as is_active
+                       FROM "FirewoodServers" WHERE isactive = true"#
+                )
+                .fetch_all(pool)
+                .await?;
+                
+                Ok(rows)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query_as::<_, FirewoodServer>(
+                    "SELECT FirewoodServerID as firewood_server_id, UserID as user_id, ServerName as server_name,
+                     ServerAddress as server_address, ServerStatus as server_status, LastChecked as last_checked,
+                     CreatedAt as created_at, UpdatedAt as updated_at, IsActive as is_active
+                     FROM FirewoodServers WHERE IsActive = true"
+                )
+                .fetch_all(pool)
+                .await?;
+                
+                Ok(rows)
+            }
+        }
     }
 }

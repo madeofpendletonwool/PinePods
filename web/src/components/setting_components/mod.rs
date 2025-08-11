@@ -4,6 +4,7 @@ pub mod custom_feed;
 pub mod download_settings;
 pub mod email_settings;
 pub mod export_settings;
+pub mod firewood_players;
 pub mod guest_settings;
 pub mod import_options;
 pub mod mfa_settings;

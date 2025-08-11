@@ -172,6 +172,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                             episode_id_for_closure.clone(),
                             audio_dispatch.clone(),
                             episode_is_youtube.clone(),
+                            episode.episode.podcastname.clone(),
                         );
 
                         let datetime = parse_date(&episode.episode.episodepubdate, &state.user_tz);
@@ -308,7 +309,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
             }
         {
             if let Some(audio_props) = &audio_state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
+                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} podcast_name={audio_props.podcast_name.clone()} /> }
             } else {
                 html! {}
             }

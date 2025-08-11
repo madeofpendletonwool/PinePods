@@ -147,6 +147,7 @@ fn create_app(state: AppState) -> Router {
         .nest("/api/episodes", create_episode_routes())
         .nest("/api/playlists", create_playlist_routes())
         .nest("/api/tasks", create_task_routes())
+        .nest("/api/firewood", create_firewood_routes())
         .nest("/api/async", create_async_routes())
         .nest("/api/proxy", create_proxy_routes())
         .nest("/api/gpodder", create_gpodder_routes())
@@ -400,6 +401,16 @@ fn create_auth_routes() -> Router<AppState> {
     Router::new()
         .route("/store_state", post(handlers::auth::store_oidc_state))
         .route("/callback", get(handlers::auth::oidc_callback))
+}
+
+fn create_firewood_routes() -> Router<AppState> {
+    Router::new()
+        .route("/servers", get(handlers::firewood::get_user_firewood_servers))
+        .route("/servers", post(handlers::firewood::create_firewood_server))
+        .route("/servers/{server_id}", put(handlers::firewood::update_firewood_server))
+        .route("/servers/{server_id}", delete(handlers::firewood::delete_firewood_server))
+        .route("/servers/refresh", post(handlers::firewood::refresh_firewood_server_status))
+        .route("/servers/{server_id}/beam", post(handlers::firewood::beam_episode_to_firewood_server))
 }
 
 async fn shutdown_signal() {

@@ -13,6 +13,7 @@ pub mod sync;
 pub mod youtube;
 pub mod tasks;
 pub mod feed;
+pub mod firewood;
 
 // Common handler utilities
 use axum::{

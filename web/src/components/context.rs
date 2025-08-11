@@ -13,6 +13,8 @@ use crate::requests::pod_req::{
     PodrollItem, QueuedEpisodesResponse, RecentEps, RefreshProgress, SavedEpisodesResponse,
     SharedEpisodeResponse, Transcript, Value,
 };
+use crate::components::setting_components::firewood_players::{FirewoodServer, FirewoodPlaybackStatus};
+use std::collections::HashMap;
 use crate::requests::search_pods::{
     PeopleFeedResult, PodcastFeedResult, PodcastSearchResult, SearchResponse, YouTubeChannel,
     YouTubeSearchResults,
@@ -153,6 +155,10 @@ pub struct AppState {
     pub current_playlist_info: Option<PlaylistInfo>,
     pub current_playlist_episodes: Option<Vec<Episode>>,
     pub active_tasks: Option<Vec<TaskProgress>>,
+    pub firewood_servers: Option<Vec<FirewoodServer>>,
+    // Firewood status tracking - maps server_id to (server_address, playback_status)
+    pub firewood_status: Option<HashMap<i32, (String, FirewoodPlaybackStatus)>>,
+    pub active_firewood_server: Option<i32>, // Currently controlled Firewood server ID
 }
 
 #[derive(Default, Deserialize, Clone, PartialEq, Store, Debug)]
@@ -258,12 +264,17 @@ impl AppState {
                 let auth_state = json!({"auth_details": self.auth_details}).to_string();
                 let server_key = "serverState";
                 let server_state = json!({"server_details":self.server_details}).to_string();
+                let firewood_key = "firewoodPlayers";
+                // Firewood servers are now database-backed, no localStorage needed
                 let _ = local_storage.set_item(user_key, &user_state);
                 let _ = local_storage.set_item(auth_key, &auth_state);
                 let _ = local_storage.set_item(server_key, &server_state);
+                // Firewood localStorage removed - now database-backed
             }
         }
     }
+    
+    // Firewood servers are now database-backed - no localStorage loading needed
 }
 
 #[derive(Default, Clone, PartialEq, Store, Debug)]

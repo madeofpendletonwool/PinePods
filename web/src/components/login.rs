@@ -3,6 +3,7 @@ use crate::components::gen_components::{AdminSetupData, FirstAdminModal};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{encode_password, validate_user_input, ValidationError};
 use crate::components::notification_center::ToastNotification;
+use crate::components::setting_components::firewood_players::{load_firewood_servers_into_state, start_background_firewood_polling};
 use crate::components::setting_components::theme_options::initialize_default_theme;
 use crate::requests::login_requests::{self, call_check_mfa_enabled, call_create_first_admin};
 use crate::requests::login_requests::{call_add_login_user, AddUserRequest};
@@ -243,6 +244,9 @@ pub fn login() -> Html {
                                                                                 server_name.clone();
                                                                             let time_api =
                                                                                 api_key.clone();
+                                                                            let firewood_dispatch = effect_displatch.clone();
+                                                                            let firewood_server = server_name.clone();  
+                                                                            let firewood_api = api_key.clone();
                                                                             wasm_bindgen_futures::spawn_local(async move {
                                                                             match call_get_time_info(time_server, time_api, &wasm_user_id).await{
                                                                                 Ok(tz_response) => {
@@ -256,6 +260,16 @@ pub fn login() -> Html {
                                                                                     // console::log_1(&format!("Error getting theme: {:?}", e).into());
                                                                                 }
                                                                             }
+                                                                            
+                                                                            // Load Firewood servers into global state for app-wide access
+                                                                            load_firewood_servers_into_state(
+                                                                                &Some(firewood_api),
+                                                                                &firewood_server,
+                                                                                &firewood_dispatch
+                                                                            ).await;
+                                                                            
+                                                                            // Start background polling for all Firewood servers
+                                                                            start_background_firewood_polling(firewood_dispatch.clone());
                                                                         });
                                                                             // let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
                                                                             // effect_loading

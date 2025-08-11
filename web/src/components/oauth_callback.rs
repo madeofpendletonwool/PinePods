@@ -1,4 +1,5 @@
 use crate::components::context::AppState;
+use crate::components::setting_components::firewood_players::{load_firewood_servers_into_state, start_background_firewood_polling};
 use crate::requests::login_requests::{
     call_first_login_done, call_get_api_config, call_get_time_info, call_get_user_details,
     call_get_user_id, call_setup_timezone_info, call_verify_key, LoginServerRequest, TimeZoneInfo,
@@ -267,8 +268,8 @@ pub fn oauth_callback() -> Html {
 
                                                                     if let Ok(tz_response) =
                                                                         call_get_time_info(
-                                                                            server_name,
-                                                                            api_key,
+                                                                            server_name.clone(),
+                                                                            api_key.clone(),
                                                                             &user_id,
                                                                         )
                                                                         .await
@@ -283,6 +284,16 @@ pub fn oauth_callback() -> Html {
                                                                             );
                                                                         });
                                                                     }
+                                                                    
+                                                                    // Load Firewood servers into global state for app-wide access
+                                                                    load_firewood_servers_into_state(
+                                                                        &Some(api_key),
+                                                                        &server_name,
+                                                                        &dispatch
+                                                                    ).await;
+                                                                    
+                                                                    // Start background polling for all Firewood servers
+                                                                    start_background_firewood_polling(dispatch.clone());
 
                                                                     history.push("/home");
                                                                 });

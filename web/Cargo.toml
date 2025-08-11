@@ -52,6 +52,9 @@ web-sys = { version = "0.3.77", features = [
     "MouseEvent",
     "MouseEventInit",
     "CustomEvent",
+    "RtcPeerConnection",
+    "RtcConfiguration",
+    "RtcIceServer",
 ] }
 log = "0.4.27"
 wasm-bindgen = "0.2.100"

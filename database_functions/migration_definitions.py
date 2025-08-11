@@ -1958,6 +1958,111 @@ def migration_018_gpodder_sync_timestamp(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("019", "create_firewood_servers", "Create FirewoodServers table for managing remote Firewood players", requires=["001"])
+def migration_019_create_firewood_servers(conn, db_type: str):
+    """Create FirewoodServers table for managing remote Firewood players"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            # Check if table already exists (PostgreSQL)
+            cursor.execute("""
+                SELECT table_name FROM information_schema.tables 
+                WHERE table_name = 'FirewoodServers'
+                AND table_schema = 'public'
+            """)
+            table_exists = cursor.fetchone() is not None
+            
+            if not table_exists:
+                cursor.execute("""
+                    CREATE TABLE "FirewoodServers" (
+                        FirewoodServerID SERIAL PRIMARY KEY,
+                        UserID INT NOT NULL,
+                        ServerName VARCHAR(255) NOT NULL,
+                        ServerAddress VARCHAR(255) NOT NULL,
+                        ServerStatus VARCHAR(50) DEFAULT 'unknown',
+                        LastChecked TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        CreatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        UpdatedAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        IsActive BOOLEAN DEFAULT TRUE,
+                        FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                        UNIQUE(UserID, ServerAddress)
+                    )
+                """)
+                
+                # Create index for efficient queries
+                cursor.execute("""
+                    CREATE INDEX idx_firewood_servers_userid
+                    ON "FirewoodServers"(UserID)
+                """)
+                
+                cursor.execute("""
+                    CREATE INDEX idx_firewood_servers_status
+                    ON "FirewoodServers"(ServerStatus, IsActive)
+                """)
+                
+                logger.info("Created FirewoodServers table with indexes (PostgreSQL)")
+        
+        else:
+            # Check if table already exists (MySQL)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.tables
+                WHERE table_name = 'FirewoodServers'
+                AND table_schema = DATABASE()
+            """)
+            table_exists = cursor.fetchone()[0] > 0
+            
+            if not table_exists:
+                cursor.execute("""
+                    CREATE TABLE FirewoodServers (
+                        FirewoodServerID INT AUTO_INCREMENT PRIMARY KEY,
+                        UserID INT NOT NULL,
+                        ServerName VARCHAR(255) NOT NULL,
+                        ServerAddress VARCHAR(255) NOT NULL,
+                        ServerStatus VARCHAR(50) DEFAULT 'unknown',
+                        LastChecked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        IsActive BOOLEAN DEFAULT TRUE,
+                        FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                        UNIQUE(UserID, ServerAddress)
+                    )
+                """)
+                
+                # Create indexes for efficient queries
+                try:
+                    cursor.execute("""
+                        CREATE INDEX idx_firewood_servers_userid
+                        ON FirewoodServers(UserID)
+                    """)
+                    logger.info("Created index idx_firewood_servers_userid")
+                except Exception as e:
+                    if "Duplicate key name" in str(e) or "1061" in str(e):
+                        logger.info("Index idx_firewood_servers_userid already exists, skipping")
+                    else:
+                        raise
+                
+                try:
+                    cursor.execute("""
+                        CREATE INDEX idx_firewood_servers_status
+                        ON FirewoodServers(ServerStatus, IsActive)
+                    """)
+                    logger.info("Created index idx_firewood_servers_status")
+                except Exception as e:
+                    if "Duplicate key name" in str(e) or "1061" in str(e):
+                        logger.info("Index idx_firewood_servers_status already exists, skipping")
+                    else:
+                        raise
+                
+                logger.info("Created FirewoodServers table with indexes (MySQL)")
+        
+        logger.info("FirewoodServers table migration completed successfully")
+        
+    finally:
+        cursor.close()
+
+
 def register_all_migrations():
     """Register all migrations with the migration manager"""
     # Migrations are auto-registered via decorators

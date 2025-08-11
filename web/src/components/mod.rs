@@ -27,6 +27,7 @@ pub(crate) mod desc_impl;
 pub mod downloads;
 pub(crate) mod episode;
 pub(crate) mod episodes_layout;
+pub(crate) mod firewood_status;
 pub(crate) mod gen_components;
 pub mod gen_funcs;
 #[cfg(feature = "server_build")]

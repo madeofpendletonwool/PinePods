@@ -464,3 +464,53 @@ impl<T> PaginatedResponse<T> {
         }
     }
 }
+
+// Firewood Server models
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct FirewoodServer {
+    pub firewood_server_id: i32,
+    pub user_id: i32,
+    pub server_name: String,
+    pub server_address: String,
+    pub server_status: String,
+    pub last_checked: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateFirewoodServerRequest {
+    pub server_name: String,
+    pub server_address: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateFirewoodServerRequest {
+    pub server_name: Option<String>,
+    pub server_address: Option<String>,
+    pub is_active: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FirewoodServerStatusResponse {
+    pub firewood_server_id: i32,
+    pub server_name: String,
+    pub server_address: String,
+    pub server_status: String,
+    pub last_checked: DateTime<Utc>,
+    pub is_active: bool,
+}
+
+impl From<FirewoodServer> for FirewoodServerStatusResponse {
+    fn from(server: FirewoodServer) -> Self {
+        Self {
+            firewood_server_id: server.firewood_server_id,
+            server_name: server.server_name,
+            server_address: server.server_address,
+            server_status: server.server_status,
+            last_checked: server.last_checked,
+            is_active: server.is_active,
+        }
+    }
+}

@@ -145,6 +145,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                         end_pos_sec={audio_props.end_pos_sec.clone()}
                         offline={audio_props.offline.clone()}
                         is_youtube={audio_props.is_youtube.clone()}
+                        podcast_name={audio_props.podcast_name.clone()}
                     />
                 }
             </div>
