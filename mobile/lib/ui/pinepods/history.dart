@@ -43,7 +43,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
   @override
   void dispose() {
     _searchController.dispose();
-    _audioService?.dispose();
+    // Don't dispose global audio service - it should persist across pages
     super.dispose();
   }
 

@@ -957,7 +957,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
 
   @override
   void dispose() {
-    _audioService?.dispose();
+    // Don't dispose global audio service - it should persist across pages
     super.dispose();
   }
 }
