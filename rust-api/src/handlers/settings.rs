@@ -1659,6 +1659,7 @@ pub async fn delete_mfa(
 // Request struct for initiate_nextcloud_login
 #[derive(Deserialize)]
 pub struct InitiateNextcloudLoginRequest {
+    pub user_id: i32,
     pub nextcloud_url: String,
 }
 
@@ -1671,20 +1672,25 @@ pub async fn initiate_nextcloud_login(
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
-    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let login_data = state.db_pool.initiate_nextcloud_login(user_id, &request.nextcloud_url).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    // Allow the action only if the API key belongs to the user
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You are not authorized to initiate this action."));
+    }
+
+    let login_data = state.db_pool.initiate_nextcloud_login(request.user_id, &request.nextcloud_url).await?;
     
-    Ok(Json(serde_json::json!({
-        "login": login_data.login_url,
-        "token": login_data.token
-    })))
+    Ok(Json(login_data.raw_response))
 }
 
 // Request struct for add_nextcloud_server
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct AddNextcloudServerRequest {
-    pub nextcloud_url: String,
+    pub user_id: i32,
     pub token: String,
+    pub poll_endpoint: String,
+    pub nextcloud_url: String,
 }
 
 // Add Nextcloud server - matches Python add_nextcloud_server function exactly
@@ -1696,14 +1702,178 @@ pub async fn add_nextcloud_server(
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
-    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let success = state.db_pool.add_nextcloud_server(user_id, &request.nextcloud_url, &request.token).await?;
-    
-    if success {
-        Ok(Json(serde_json::json!({ "status": "success" })))
-    } else {
-        Err(AppError::internal("Failed to add Nextcloud server"))
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    // Allow the action only if the API key belongs to the user
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You are not authorized to access these user details"));
     }
+
+    // Reset gPodder settings to default like Python version
+    state.db_pool.remove_podcast_sync(request.user_id).await?;
+
+    // Create a task for the Nextcloud authentication polling  
+    let task_id = state.task_manager.create_task("nextcloud_auth".to_string(), request.user_id).await?;
+    
+    // Start background polling task using TaskManager
+    let state_clone = state.clone();
+    let request_clone = request.clone();
+    let task_id_clone = task_id.clone();
+    tokio::spawn(async move {
+        poll_for_auth_completion_background(state_clone, request_clone, task_id_clone).await;
+    });
+
+    // Return 200 status code before starting to poll (like Python version)
+    Ok(Json(serde_json::json!({ "status": "polling", "task_id": task_id })))
+}
+
+// Background task for polling Nextcloud auth completion
+async fn poll_for_auth_completion_background(state: AppState, request: AddNextcloudServerRequest, task_id: String) {
+    // Update task to indicate polling has started
+    if let Err(e) = state.task_manager.update_task_progress(&task_id, 10.0, Some("Starting Nextcloud authentication polling...".to_string())).await {
+        eprintln!("Failed to update task progress: {}", e);
+    }
+
+    match poll_for_auth_completion(&request.poll_endpoint, &request.token, &state.task_manager, &task_id).await {
+        Ok(credentials) => {
+            println!("Nextcloud authentication successful: {:?}", credentials);
+            
+            // Update task progress
+            if let Err(e) = state.task_manager.update_task_progress(&task_id, 90.0, Some("Authentication successful, saving credentials...".to_string())).await {
+                eprintln!("Failed to update task progress: {}", e);
+            }
+            
+            // Extract credentials from the response
+            if let (Some(app_password), Some(login_name)) = (
+                credentials.get("appPassword").and_then(|v| v.as_str()),
+                credentials.get("loginName").and_then(|v| v.as_str())
+            ) {
+                // Save the real credentials using the database method
+                match state.db_pool.save_nextcloud_credentials(request.user_id, &request.nextcloud_url, app_password, login_name).await {
+                    Ok(_) => {
+                        println!("Successfully added Nextcloud settings for user {}", request.user_id);
+                        if let Err(e) = state.task_manager.complete_task(&task_id, 
+                            Some(serde_json::json!({"status": "success", "message": "Nextcloud authentication completed"})), 
+                            Some("Nextcloud authentication completed successfully".to_string())).await {
+                            eprintln!("Failed to complete task: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to add Nextcloud settings: {}", e);
+                        if let Err(e) = state.task_manager.fail_task(&task_id, format!("Failed to save Nextcloud settings: {}", e)).await {
+                            eprintln!("Failed to fail task: {}", e);
+                        }
+                    }
+                }
+            } else {
+                eprintln!("Missing appPassword or loginName in credentials");
+                if let Err(e) = state.task_manager.fail_task(&task_id, "Missing credentials in Nextcloud response".to_string()).await {
+                    eprintln!("Failed to fail task: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Nextcloud authentication failed: {}", e);
+            if let Err(e) = state.task_manager.fail_task(&task_id, format!("Authentication failed: {}", e)).await {
+                eprintln!("Failed to fail task: {}", e);
+            }
+        }
+    }
+}
+
+// Poll for auth completion - matches Python poll_for_auth_completion function
+async fn poll_for_auth_completion(
+    endpoint: &str, 
+    token: &str, 
+    task_manager: &crate::services::task_manager::TaskManager,
+    task_id: &str
+) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>> {
+    let client = reqwest::Client::new();
+    let payload = serde_json::json!({ "token": token });
+    let timeout = std::time::Duration::from_secs(20 * 60); // 20 minutes timeout
+    let start_time = std::time::Instant::now();
+
+    let mut poll_count = 0;
+    while start_time.elapsed() < timeout {
+        poll_count += 1;
+        
+        // Update progress based on time elapsed (up to 80% during polling)
+        let elapsed_secs = start_time.elapsed().as_secs();
+        let progress = 10.0 + ((elapsed_secs as f64 / (20.0 * 60.0)) * 70.0).min(70.0);
+        let message = format!("Waiting for user to complete authentication... (attempt {})", poll_count);
+        
+        if let Err(e) = task_manager.update_task_progress(task_id, progress, Some(message)).await {
+            eprintln!("Failed to update task progress during polling: {}", e);
+        }
+        
+        match client
+            .post(endpoint)
+            .json(&payload)
+            .header("Content-Type", "application/json")
+            .send()
+            .await
+        {
+            Ok(response) => {
+                match response.status().as_u16() {
+                    200 => {
+                        let credentials = response.json::<serde_json::Value>().await?;
+                        println!("Authentication successful: {:?}", credentials);
+                        return Ok(credentials);
+                    }
+                    404 => {
+                        // User hasn't completed auth yet, continue polling
+                        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    }
+                    status => {
+                        println!("Polling failed with status code {}", status);
+                        return Err(format!("Polling for Nextcloud authentication failed with status {}", status).into());
+                    }
+                }
+            }
+            Err(e) => {
+                println!("Connection error, retrying: {}", e);
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        }
+    }
+
+    Err("Polling timeout reached".into())
+}
+
+// Helper function to save Nextcloud credentials directly to database
+async fn save_nextcloud_credentials(
+    db_pool: &crate::database::DatabasePool,
+    user_id: i32,
+    nextcloud_url: &str,
+    app_password: &str,
+    login_name: &str
+) -> crate::error::AppResult<()> {
+    // Encrypt the app password
+    let encrypted_password = db_pool.encrypt_password(app_password).await?;
+    
+    // Store Nextcloud credentials
+    match db_pool {
+        crate::database::DatabasePool::Postgres(pool) => {
+            sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'nextcloud' WHERE userid = $4"#)
+                .bind(nextcloud_url)
+                .bind(login_name)
+                .bind(&encrypted_password)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+        }
+        crate::database::DatabasePool::MySQL(pool) => {
+            sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'nextcloud' WHERE UserID = ?")
+                .bind(nextcloud_url)
+                .bind(login_name)
+                .bind(&encrypted_password)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+        }
+    }
+    
+    Ok(())
 }
 
 // Request struct for verify_gpodder_auth
@@ -1773,7 +1943,7 @@ pub async fn get_gpodder_settings(
 
     let settings = state.db_pool.get_gpodder_settings(user_id).await?;
     match settings {
-        Some(settings) => Ok(Json(settings)),
+        Some(settings) => Ok(Json(serde_json::json!({ "data": settings }))),
         None => Err(AppError::not_found("gPodder settings not found")),
     }
 }
@@ -1783,7 +1953,7 @@ pub async fn check_gpodder_settings(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
     headers: HeaderMap,
-) -> Result<Json<bool>, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
@@ -1796,7 +1966,7 @@ pub async fn check_gpodder_settings(
     }
 
     let has_settings = state.db_pool.check_gpodder_settings(user_id).await?;
-    Ok(Json(has_settings))
+    Ok(Json(serde_json::json!({ "data": has_settings })))
 }
 
 
@@ -2101,8 +2271,13 @@ pub async fn test_notification(
 
     // Get notification settings and send test notification
     let settings = state.db_pool.get_notification_settings(request.user_id).await?;
-    let settings_json = serde_json::to_value(&settings)?;
-    let success = state.notification_manager.send_test_notification(request.user_id, &request.platform, &settings_json).await?;
+    
+    // Find settings for the specific platform
+    let platform_settings = settings.iter()
+        .find(|s| s.get("platform").and_then(|p| p.as_str()) == Some(&request.platform))
+        .ok_or_else(|| AppError::bad_request(&format!("No settings found for platform: {}", request.platform)))?;
+    
+    let success = state.notification_manager.send_test_notification(request.user_id, &request.platform, platform_settings).await?;
     
     if success {
         Ok(Json(serde_json::json!({ "detail": "Test notification sent successfully" })))

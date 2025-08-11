@@ -9213,8 +9213,7 @@ pub struct PublicOidcProvider {
 // Nextcloud login data structure
 #[derive(Debug, Clone)]
 pub struct NextcloudLoginData {
-    pub login_url: String,
-    pub token: String,
+    pub raw_response: serde_json::Value,
 }
 
 // Sync result structure
@@ -9709,14 +9708,9 @@ impl DatabasePool {
         let json: serde_json::Value = response.json().await
             .map_err(|e| AppError::internal(&format!("Failed to parse Nextcloud response: {}", e)))?;
         
-        let poll_token = json["poll"]["token"].as_str()
-            .ok_or_else(|| AppError::internal("Missing poll token in Nextcloud response"))?;
-        let login_url = json["login"].as_str()
-            .ok_or_else(|| AppError::internal("Missing login URL in Nextcloud response"))?;
-        
+        // Return the raw JSON response from Nextcloud to match Python behavior
         Ok(NextcloudLoginData {
-            login_url: login_url.to_string(),
-            token: poll_token.to_string(),
+            raw_response: json,
         })
     }
     
@@ -9774,6 +9768,36 @@ impl DatabasePool {
         
         Ok(true)
     }
+
+    // Save Nextcloud credentials - helper method for background polling
+    pub async fn save_nextcloud_credentials(&self, user_id: i32, nextcloud_url: &str, app_password: &str, login_name: &str) -> AppResult<()> {
+        // Encrypt the app password
+        let encrypted_password = self.encrypt_password(app_password).await?;
+        
+        // Store Nextcloud credentials
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'nextcloud' WHERE userid = $4"#)
+                    .bind(nextcloud_url)
+                    .bind(login_name)
+                    .bind(&encrypted_password)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'nextcloud' WHERE UserID = ?")
+                    .bind(nextcloud_url)
+                    .bind(login_name)
+                    .bind(&encrypted_password)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        
+        Ok(())
+    }
     
     // Verify gPodder authentication - matches Python verify_gpodder_auth function exactly
     pub async fn verify_gpodder_auth(&self, gpodder_url: &str, username: &str, password: &str) -> AppResult<bool> {
@@ -9823,7 +9847,7 @@ impl DatabasePool {
     }
     
     // Encrypt password using Fernet - matches Python encryption
-    async fn encrypt_password(&self, password: &str) -> AppResult<String> {
+    pub async fn encrypt_password(&self, password: &str) -> AppResult<String> {
         use fernet::Fernet;
         
         // Get encryption key from app settings
@@ -9844,8 +9868,13 @@ impl DatabasePool {
                     .await?;
                 
                 if let Some(row) = row {
-                    let key: Option<String> = row.try_get("encryptionkey")?;
-                    key.ok_or_else(|| AppError::internal("Encryption key not found"))
+                    let key_bytes: Option<Vec<u8>> = row.try_get("encryptionkey")?;
+                    if let Some(bytes) = key_bytes {
+                        String::from_utf8(bytes)
+                            .map_err(|e| AppError::internal(&format!("Invalid UTF-8 in encryption key: {}", e)))
+                    } else {
+                        Err(AppError::internal("Encryption key not found"))
+                    }
                 } else {
                     Err(AppError::internal("App settings not found"))
                 }
@@ -9881,8 +9910,8 @@ impl DatabasePool {
                     
                     if url.is_some() && username.is_some() {
                         Ok(Some(serde_json::json!({
-                            "gpodder_url": url.unwrap_or_default(),
-                            "gpodder_username": username.unwrap_or_default(),
+                            "gpodderurl": url.unwrap_or_default(),
+                            "gpoddertoken": "", // Frontend expects this field but it's not used for display
                             "sync_type": sync_type.unwrap_or_default()
                         })))
                     } else {
@@ -9905,8 +9934,8 @@ impl DatabasePool {
                     
                     if url.is_some() && username.is_some() {
                         Ok(Some(serde_json::json!({
-                            "gpodder_url": url.unwrap_or_default(),
-                            "gpodder_username": username.unwrap_or_default(),
+                            "gpodderurl": url.unwrap_or_default(),
+                            "gpoddertoken": "", // Frontend expects this field but it's not used for display
                             "sync_type": sync_type.unwrap_or_default()
                         })))
                     } else {
@@ -11027,6 +11056,7 @@ impl DatabasePool {
                     SELECT userid FROM "Users" 
                     WHERE pod_sync_type IS NOT NULL 
                     AND pod_sync_type != 'None' 
+                    AND pod_sync_type != 'nextcloud'
                     AND gpodderurl IS NOT NULL 
                     AND gpodderloginname IS NOT NULL 
                     AND gpoddertoken IS NOT NULL
@@ -11046,6 +11076,7 @@ impl DatabasePool {
                     SELECT UserID FROM Users 
                     WHERE Pod_Sync_Type IS NOT NULL 
                     AND Pod_Sync_Type != 'None' 
+                    AND Pod_Sync_Type != 'nextcloud'
                     AND GpodderUrl IS NOT NULL 
                     AND GpodderLoginName IS NOT NULL 
                     AND GpodderToken IS NOT NULL

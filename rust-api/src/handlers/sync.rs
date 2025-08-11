@@ -242,7 +242,23 @@ pub async fn gpodder_test_connection(
     }
 
     let verified = state.db_pool.verify_gpodder_auth(gpodder_url, gpodder_username, gpodder_password).await?;
-    Ok(Json(serde_json::json!({ "verified": verified })))
+    
+    if verified {
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "message": "Successfully connected to GPodder server and verified access.",
+            "data": {
+                "auth_type": "session",
+                "has_devices": true
+            }
+        })))
+    } else {
+        Ok(Json(serde_json::json!({
+            "success": false,
+            "message": "Failed to connect to GPodder server",
+            "data": null
+        })))
+    }
 }
 
 // Get default gPodder device - matches Python get_default_device function exactly

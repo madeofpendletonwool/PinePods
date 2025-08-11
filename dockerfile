@@ -38,7 +38,7 @@ COPY ./gpodder-api/config ./config
 COPY ./gpodder-api/internal ./internal
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o gpodder-api ./cmd/server/
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o gpodder-api ./cmd/server/
 
 # Python builder stage for database setup
 FROM python:3.11-alpine AS python-builder
@@ -90,7 +90,7 @@ ENV OPENSSL_LIB_DIR=/usr/lib
 ENV OPENSSL_INCLUDE_DIR=/usr/include
 
 # Build the Rust API
-RUN cargo build --release
+RUN cargo build --release && strip target/release/pinepods-api
 
 # Final stage for setting up runtime environment
 FROM alpine
@@ -99,10 +99,12 @@ LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 # Install runtime dependencies (removed python3, py3-pip, cronie, and openrc)
 RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg supervisor wget jq
 
+
 # Download and install latest yt-dlp binary
 RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r .tag_name) && \
     wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${LATEST_VERSION}/yt-dlp_linux" && \
     chmod +x /usr/local/bin/yt-dlp
+
 ENV TZ=UTC
 # Copy compiled database setup binary (replaces Python dependency)
 COPY --from=python-builder /build/dist/pinepods-db-setup /usr/local/bin/

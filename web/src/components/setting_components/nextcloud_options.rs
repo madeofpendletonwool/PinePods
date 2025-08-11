@@ -1078,9 +1078,20 @@ pub fn sync_options() -> Html {
                             call_sync_type.set("gpodder".to_string());
                             sync_config.set(true);
                         } else {
-                            next_url.set(String::from("Not currently syncing with any server"));
-                            call_sync_type.set("None".to_string());
-                            sync_config.set(false);
+                            // Check if there's other sync active (like Nextcloud)
+                            call_sync_type.set(status.sync_type.clone());
+                            if status.sync_type != "None" {
+                                // There's some sync active, just not internal GPodder
+                                if status.sync_type == "nextcloud" {
+                                    next_url.set(status.external_url.unwrap_or("Nextcloud server".to_string()));
+                                } else {
+                                    next_url.set(status.external_url.unwrap_or("External sync server".to_string()));
+                                }
+                                sync_config.set(true);
+                            } else {
+                                next_url.set(String::from("Not currently syncing with any server"));
+                                sync_config.set(false);
+                            }
                         }
 
                         let message = if status.gpodder_enabled {
@@ -1617,38 +1628,42 @@ pub fn sync_options() -> Html {
 
             <br/>
 
-            // Internal Gpodder API Section
+            // Internal Gpodder API Section - hide when Nextcloud is active
             {
-                html! {
-                    <div class="mb-6 p-4 border rounded-lg">
-                            <h3 class="item_container-text text-md font-bold mb-4">{"Internal Gpodder API"}</h3>
-                            <p class="item_container-text text-sm mb-4">
-                                {"Enable the internal gpodder API to synchronize podcasts between Pinepods and other gpodder-compatible clients. This will disable external sync options while enabled."}
-                            </p>
-                            <div class="flex items-center">
-                                <label class="relative inline-flex items-center cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        class="sr-only peer"
-                                        checked={*is_internal_gpodder_enabled}
-                                        disabled={*is_toggling_gpodder}
-                                        onclick={on_toggle_internal_gpodder}
-                                    />
-                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                                    <span class="ml-3 text-sm font-medium text-gray-900 dark:text-gray-300">
-                                        {
-                                            if *is_toggling_gpodder {
-                                                html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Processing..."}</span> }
-                                            } else if *is_internal_gpodder_enabled {
-                                                html! { "Enabled" }
-                                            } else {
-                                                html! { "Disabled" }
+                if !should_hide_sync_options {
+                    html! {
+                        <div class="mb-6 p-4 border rounded-lg">
+                                <h3 class="item_container-text text-md font-bold mb-4">{"Internal Gpodder API"}</h3>
+                                <p class="item_container-text text-sm mb-4">
+                                    {"Enable the internal gpodder API to synchronize podcasts between Pinepods and other gpodder-compatible clients. This will disable external sync options while enabled."}
+                                </p>
+                                <div class="flex items-center">
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            class="sr-only peer"
+                                            checked={*is_internal_gpodder_enabled}
+                                            disabled={*is_toggling_gpodder}
+                                            onclick={on_toggle_internal_gpodder}
+                                        />
+                                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                        <span class="ml-3 text-sm font-medium text-gray-900 dark:text-gray-300">
+                                            {
+                                                if *is_toggling_gpodder {
+                                                    html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Processing..."}</span> }
+                                                } else if *is_internal_gpodder_enabled {
+                                                    html! { "Enabled" }
+                                                } else {
+                                                    html! { "Disabled" }
+                                                }
                                             }
-                                        }
-                                    </span>
-                                </label>
-                            </div>
-                    </div>
+                                        </span>
+                                    </label>
+                                </div>
+                        </div>
+                    }
+                } else {
+                    html! {}
                 }
             }
 
@@ -1858,9 +1873,9 @@ pub fn sync_options() -> Html {
                 }
             }
 
-            // GPodder Statistics Dropdown - show when any sync is enabled
+            // GPodder Statistics Dropdown - show when any sync is enabled EXCEPT Nextcloud
             {
-                if *is_internal_gpodder_enabled || *is_sync_configured {
+                if (*is_internal_gpodder_enabled || *is_sync_configured) && *sync_type != "nextcloud" {
                     html! { <GpodderStatisticsDropdown /> }
                 } else {
                     html! {}
