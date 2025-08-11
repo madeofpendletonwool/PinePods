@@ -159,15 +159,33 @@ pub async fn refresh_gpodder_subscriptions_admin(
 
 // Background refresh function that matches Python refresh_pods exactly - NO WebSocket
 async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
-    println!("refresh begin");
+    println!("Running refresh");
     
     // Get ALL podcasts from ALL users - matches Python exactly
     // Handle the different database types properly
+    let total_podcasts = match &state.db_pool {
+        crate::database::DatabasePool::Postgres(pool) => {
+            let count_row = sqlx::query(r#"SELECT COUNT(*) as total FROM "Podcasts""#)
+                .fetch_one(pool)
+                .await?;
+            count_row.try_get::<i64, _>("total")? as usize
+        }
+        crate::database::DatabasePool::MySQL(pool) => {
+            let count_row = sqlx::query("SELECT COUNT(*) as total FROM Podcasts")
+                .fetch_one(pool)
+                .await?;
+            count_row.try_get::<i64, _>("total")? as usize
+        }
+    };
+    
+    println!("Running refresh for {total_podcasts} podcasts");
+    let mut current_podcast = 0;
+    
     match &state.db_pool {
         crate::database::DatabasePool::Postgres(pool) => {
             let rows = sqlx::query(
                 r#"SELECT podcastid, feedurl, artworkurl, autodownload, username, password,
-                          isyoutubechannel, userid, COALESCE(feedurl, '') as channel_id, feedcutoffdays
+                          isyoutubechannel, userid, COALESCE(feedurl, '') as channel_id, feedcutoffdays, podcastname
                    FROM "Podcasts""#
             )
             .fetch_all(pool)
@@ -184,7 +202,11 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                 let user_id: i32 = result.try_get("userid")?;
                 let feed_cutoff: Option<i32> = result.try_get("feedcutoffdays").ok();
                 
-                println!("Running for: {}", podcast_id);
+                current_podcast += 1;
+                
+                // Get podcast name for better logging
+                let podcast_name = result.try_get::<String, _>("podcastname").unwrap_or_else(|_| format!("Podcast {}", podcast_id));
+                println!("Running refresh for podcast {}/{}: {}", current_podcast, total_podcasts, podcast_name);
                 
                 if is_youtube {
                     // Handle YouTube channel refresh
@@ -260,7 +282,7 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
         crate::database::DatabasePool::MySQL(pool) => {
             let rows = sqlx::query(
                 "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
-                        IsYouTubeChannel, UserID, COALESCE(FeedURL, '') as channel_id, FeedCutoffDays
+                        IsYouTubeChannel, UserID, COALESCE(FeedURL, '') as channel_id, FeedCutoffDays, PodcastName
                  FROM Podcasts"
             )
             .fetch_all(pool)
@@ -277,7 +299,11 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                 let user_id: i32 = result.try_get("UserID")?;
                 let feed_cutoff: Option<i32> = result.try_get("FeedCutoffDays").ok();
                 
-                println!("Running for: {}", podcast_id);
+                current_podcast += 1;
+                
+                // Get podcast name for better logging
+                let podcast_name = result.try_get::<String, _>("PodcastName").unwrap_or_else(|_| format!("Podcast {}", podcast_id));
+                println!("Running refresh for podcast {}/{}: {}", current_podcast, total_podcasts, podcast_name);
                 
                 if is_youtube {
                     // Handle YouTube channel refresh
@@ -352,7 +378,7 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
         }
     }
     
-    println!("Background refresh completed");
+    println!("Refresh completed");
     Ok(())
 }
 

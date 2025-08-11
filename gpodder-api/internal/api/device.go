@@ -154,8 +154,6 @@ func updateDeviceData(database *db.Database) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[DEBUG] All URL parameters: %v", c.Params)
-
 		// Get device name from URL with fix for .json suffix
 		deviceName := c.Param("deviceid")
 		// Also try alternative parameter name if needed

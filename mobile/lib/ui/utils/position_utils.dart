@@ -42,20 +42,9 @@ class PositionUtils {
     }
   }
 
-  /// Get server position for episode
+  /// Get server position for episode (use existing data from feed)
   static Future<double?> getServerPosition(PinepodsService pinepodsService, PinepodsEpisode episode, int userId) async {
-    try {
-      final episodeMetadata = await pinepodsService.getEpisodeMetadata(
-        episode.episodeId,
-        userId,
-        isYoutube: episode.isYoutube,
-      );
-      
-      return episodeMetadata?.listenDuration?.toDouble();
-    } catch (e) {
-      _logger.error('PositionUtils', 'Error getting server position for episode: ${episode.episodeTitle}', e.toString());
-      return null;
-    }
+    return episode.listenDuration?.toDouble();
   }
 
   /// Get the best available position (furthest of local vs server)
@@ -77,10 +66,6 @@ class PositionUtils {
     final bestPosition = localPosition > serverPosition ? localPosition : serverPosition;
     final isLocal = localPosition >= serverPosition;
     
-    _logger.debug('PositionUtils', 
-      'Best position for ${episode.episodeTitle}: ${bestPosition}s '
-      '(local: ${localPosition}s, server: ${serverPosition}s, using: ${isLocal ? 'local' : 'server'})'
-    );
     
     return PositionInfo(
       position: bestPosition,

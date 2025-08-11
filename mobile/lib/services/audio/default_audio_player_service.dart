@@ -195,7 +195,6 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     
     // Return the furthest position
     final bestPosition = localPosition > serverPosition ? localPosition : serverPosition;
-    log.info('Best position for ${episode.title}: ${bestPosition}ms (local: ${localPosition}ms, server: ${serverPosition}ms)');
     return bestPosition;
   }
 

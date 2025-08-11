@@ -30,7 +30,6 @@ type argon2Params struct {
 // AuthMiddleware creates a middleware for authentication
 func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Printf("[DEBUG] AuthMiddleware processing request: %s %s", c.Request.Method, c.Request.URL.Path)
 
 		// Get the username from the URL parameters
 		username := c.Param("username")
@@ -41,12 +40,9 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 			return
 		}
 
-		log.Printf("[DEBUG] AuthMiddleware: Processing request for username: %s", username)
-
 		// Check if this is an internal API call via X-GPodder-Token
 		gpodderTokenHeader := c.GetHeader("X-GPodder-Token")
 		if gpodderTokenHeader != "" {
-			log.Printf("[DEBUG] AuthMiddleware: Found X-GPodder-Token header")
 
 			// Get user data
 			var userID int
@@ -76,7 +72,6 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 
 			// For internal calls with X-GPodder-Token header, validate token directly
 			if gpodderToken.Valid && gpodderToken.String == gpodderTokenHeader {
-				log.Printf("[DEBUG] AuthMiddleware: X-GPodder-Token validated for user: %s", username)
 				c.Set("userID", userID)
 				c.Set("username", username)
 				c.Next()
@@ -176,13 +171,11 @@ func AuthMiddleware(db *db.PostgresDB) gin.HandlerFunc {
 		// Check if this is a gpodder token authentication
 		// Check if this is a gpodder token authentication
 		if gpodderToken.Valid && (gpodderToken.String == password || gpodderToken.String == gpodderTokenHeader) {
-			log.Printf("[DEBUG] AuthMiddleware: User authenticated with gpodder token: %s", username)
 			authenticated = true
 		}
 
 		// If token auth didn't succeed, try password authentication
 		if !authenticated && verifyPassword(password, hashedPassword) {
-			log.Printf("[DEBUG] AuthMiddleware: User authenticated with password: %s", username)
 			authenticated = true
 		}
 

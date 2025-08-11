@@ -923,7 +923,6 @@ class PinepodsService {
     }
 
     final url = Uri.parse('$_server/api/data/get_episode_metadata');
-    print('Making API call to: $url');
 
     try {
       final requestBody = jsonEncode({
@@ -937,10 +936,6 @@ class PinepodsService {
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: requestBody,
-      );
-
-      print(
-        'Episode metadata response: ${response.statusCode} - ${response.body}',
       );
 
       if (response.statusCode == 200) {
@@ -985,10 +980,6 @@ class PinepodsService {
 
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
-
-      print(
-        'Server downloads response: ${response.statusCode} - ${response.body}',
-      );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1470,10 +1461,6 @@ class PinepodsService {
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
 
-      print(
-        'Home overview response: ${response.statusCode} - ${response.body}',
-      );
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return HomeOverview.fromJson(data);
@@ -1741,10 +1728,6 @@ class PinepodsService {
         url,
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
         body: jsonEncode({'search_term': searchTerm, 'user_id': userId}),
-      );
-
-      print(
-        'Search episodes response: ${response.statusCode} - ${response.body}',
       );
 
       if (response.statusCode == 200) {
@@ -2179,7 +2162,7 @@ class SearchEpisodeResult {
   /// Parse categories from either string or Map format
   static String _parseCategories(dynamic categories) {
     if (categories == null) return '';
-    
+
     if (categories is String) {
       // Old format - return as is
       return categories;
@@ -2188,7 +2171,7 @@ class SearchEpisodeResult {
       if (categories.isEmpty) return '';
       return categories.values.join(', ');
     }
-    
+
     return '';
   }
 }

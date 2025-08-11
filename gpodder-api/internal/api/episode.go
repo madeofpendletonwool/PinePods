@@ -18,7 +18,6 @@ import (
 // getEpisodeActions handles GET /api/2/episodes/{username}.json
 func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Printf("[DEBUG] getEpisodeActions handling request: %s %s", c.Request.Method, c.Request.URL.Path)
 
 		// Get user ID from middleware
 		userID, exists := c.Get("userID")
@@ -33,9 +32,6 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 		podcastURL := c.Query("podcast")
 		deviceName := c.Query("device")
 		aggregated := c.Query("aggregated") == "true"
-
-		log.Printf("[DEBUG] getEpisodeActions: Parameters - since=%s, podcast=%s, device=%s, aggregated=%v",
-			sinceStr, podcastURL, deviceName, aggregated)
 
 		// Get device ID if provided
 		var deviceID *int
@@ -343,9 +339,6 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			// Continue with what we've got so far
 		}
 
-		log.Printf("[DEBUG] getEpisodeActions: Returning %d actions with timestamp %d",
-			len(actions), latestTimestamp)
-
 		// Return response in gpodder format
 		c.JSON(http.StatusOK, models.EpisodeActionsResponse{
 			Actions:   actions,
@@ -357,7 +350,6 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 // uploadEpisodeActions handles POST /api/2/episodes/{username}.json
 func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		log.Printf("[DEBUG] uploadEpisodeActions handling request: %s %s", c.Request.Method, c.Request.URL.Path)
 
 		// Get user ID from middleware
 		userID, exists := c.Get("userID")
@@ -383,8 +375,6 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 			}
 			actions = wrappedActions.Actions
 		}
-
-		log.Printf("[DEBUG] uploadEpisodeActions: Received %d actions to process", len(actions))
 
 		// Begin transaction
 		tx, err := database.Begin()
@@ -447,7 +437,6 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 				if err != nil {
 					if err == sql.ErrNoRows {
 						// Create the device if it doesn't exist
-						log.Printf("[DEBUG] uploadEpisodeActions: Creating new device: %s", action.Device)
 
 						if database.IsPostgreSQLDB() {
 							query = `
@@ -527,8 +516,6 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 								if parsedTime, err := time.Parse(format, t); err == nil {
 									actionTimestamp = parsedTime.Unix()
 									parsed = true
-									log.Printf("[DEBUG] uploadEpisodeActions: Parsed timestamp '%s' with format '%s' to Unix timestamp %d",
-										t, format, actionTimestamp)
 									break
 								}
 							}
@@ -672,8 +659,6 @@ func uploadEpisodeActions(database *db.Database) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to commit changes"})
 			return
 		}
-
-		log.Printf("[DEBUG] uploadEpisodeActions: Successfully processed %d actions", len(actions))
 
 		// Return response
 		c.JSON(http.StatusOK, models.EpisodeActionResponse{

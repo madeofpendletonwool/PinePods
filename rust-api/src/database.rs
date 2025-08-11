@@ -4851,7 +4851,6 @@ impl DatabasePool {
                 
                 // Skip empty values
                 if !title_str.is_empty() && !duration_str.is_empty() {
-                    println!("🕐 Raw iTunes duration extracted: title='{}' duration='{}'", title_str, duration_str);
                     raw_durations.insert(title_str.to_string(), duration_str.to_string());
                 }
             }
@@ -4869,13 +4868,11 @@ impl DatabasePool {
                 
                 // Only add if not already found and both values are non-empty
                 if !title_str.is_empty() && !duration_str.is_empty() && !raw_durations.contains_key(title_str) {
-                    println!("🕐 Raw iTunes duration extracted (reverse): title='{}' duration='{}'", title_str, duration_str);
                     raw_durations.insert(title_str.to_string(), duration_str.to_string());
                 }
             }
         }
         
-        println!("🕐 Total raw iTunes durations extracted: {}", raw_durations.len());
         raw_durations
     }
 
@@ -4898,22 +4895,7 @@ impl DatabasePool {
         
         let mut episodes = Vec::new();
         
-        println!("🔍 Feed parsed successfully, found {} entries", feed.entries.len());
         
-        for (i, entry) in feed.entries.iter().enumerate() {
-            println!("🔍 Entry {}: title={:?}", i, entry.title.as_ref().map(|t| &t.content));
-            println!("🔍 Entry {}: links count={}", i, entry.links.len());
-            for (j, link) in entry.links.iter().enumerate() {
-                println!("🔍 Entry {} Link {}: href={}, media_type={:?}, rel={:?}", i, j, link.href, link.media_type, link.rel);
-            }
-            println!("🔍 Entry {}: media count={}", i, entry.media.len());
-            for (j, media) in entry.media.iter().enumerate() {
-                println!("🔍 Entry {} Media {}: content count={}", i, j, media.content.len());
-                for (k, content) in media.content.iter().enumerate() {
-                    println!("🔍 Entry {} Media {} Content {}: url={:?}, content_type={:?}", i, j, k, content.url, content.content_type);
-                }
-            }
-        }
         
         for entry in feed.entries {
             // EXACT Python replication: if not all(hasattr(entry, attr) for attr in ["title", "summary", "enclosures"]): continue
@@ -4971,7 +4953,6 @@ impl DatabasePool {
             // Media extensions
             for media in &entry.media {
                 if let Some(duration) = &media.duration {
-                    println!("🕐 Found media duration: {} seconds", duration.as_secs());
                     episode_data.insert("duration".to_string(), duration.as_secs().to_string());
                     // Don't use feed_rs processed duration for iTunes - we'll use raw values
                 }
@@ -4979,7 +4960,6 @@ impl DatabasePool {
                 // Check if we have a raw iTunes duration for this episode title
                 if let Some(title) = &entry.title {
                     if let Some(raw_duration) = raw_durations.get(&title.content) {
-                        println!("🕐 Using raw iTunes duration: '{}' for episode '{}'", raw_duration, title.content);
                         episode_data.insert("itunes:duration".to_string(), raw_duration.clone());
                     }
                 }
@@ -5009,10 +4989,6 @@ impl DatabasePool {
             }
             
             // Debug what we're passing to duration parsing
-            println!("🕐 Episode '{}' duration data: itunes:duration={:?}, duration={:?}", 
-                episode_data.get("title").unwrap_or(&"NO TITLE".to_string()),
-                episode_data.get("itunes:duration"),
-                episode_data.get("duration"));
             
             // Apply all the Python-style parsing logic with ALL fallbacks
             self.apply_python_style_parsing(&mut episode, &episode_data, artwork_url);
@@ -5033,7 +5009,6 @@ impl DatabasePool {
         }
         // Skip episodes without titles - this is critical like Python version
         if episode.title.is_empty() {
-            println!("⚠️  Skipping episode with no title");
             return;
         }
         
@@ -5044,10 +5019,6 @@ impl DatabasePool {
         episode.url = self.parse_audio_url_comprehensive(data);
         
         // Debug logging for episode URL extraction
-        println!("🎵 Episode URL extraction: title='{}', enclosure_url={:?}, final_url='{}'", 
-            episode.title, 
-            data.get("enclosure_url"), 
-            episode.url);
         
         // Artwork with comprehensive fallbacks and validation like Python
         episode.artwork_url = self.parse_artwork_comprehensive(data, default_artwork);
@@ -5057,7 +5028,6 @@ impl DatabasePool {
         
         // Duration parsing with extensive fallbacks like Python
         episode.duration = self.parse_duration_comprehensive(data);
-        println!("🕐 Final parsed duration for '{}': {} seconds", episode.title, episode.duration);
     }
     
     // Clean and normalize titles like Python version
@@ -5125,13 +5095,11 @@ impl DatabasePool {
         for candidate in artwork_candidates.iter().flatten() {
             if !candidate.trim().is_empty() && self.is_valid_image_url(candidate) {
                 let cleaned_url = self.validate_and_clean_url(candidate);
-                println!("🎨 Using artwork: {}", cleaned_url);
                 return cleaned_url;
             }
         }
         
         // Use default podcast artwork as fallback
-        println!("🎨 Using default podcast artwork: {}", default_artwork);
         default_artwork.to_string()
     }
     
