@@ -96,14 +96,21 @@ RUN cargo build --release && strip target/release/pinepods-api
 FROM alpine
 # Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
-# Install runtime dependencies (removed python3, py3-pip, cronie, and openrc)
-RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg supervisor wget jq
+# Install runtime dependencies
+RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg wget jq
 
 
 # Download and install latest yt-dlp binary
 RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r .tag_name) && \
     wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${LATEST_VERSION}/yt-dlp_linux" && \
     chmod +x /usr/local/bin/yt-dlp
+
+# Download and install Horust (x86_64)
+RUN wget -O /tmp/horust.tar.gz "https://github.com/FedericoPonzi/Horust/releases/download/v0.1.7/horust-x86_64-unknown-linux-musl.tar.gz" && \
+    cd /tmp && tar -xzf horust.tar.gz && \
+    mv horust /usr/local/bin/ && \
+    chmod +x /usr/local/bin/horust && \
+    rm -f /tmp/horust.tar.gz
 
 ENV TZ=UTC
 # Copy compiled database setup binary (replaces Python dependency)
@@ -121,7 +128,7 @@ COPY startup/startup.sh /startup.sh
 RUN chmod +x /startup.sh
 # Copy Pinepods runtime files
 RUN mkdir -p /pinepods
-RUN mkdir -p /var/log/supervisor/
+RUN mkdir -p /var/log/pinepods/ && mkdir -p /etc/horust/services/
 COPY startup/ /pinepods/startup/
 # Legacy cron scripts removed - background tasks now handled by internal Rust scheduler
 COPY clients/ /pinepods/clients/
