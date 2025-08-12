@@ -1971,20 +1971,37 @@ pub async fn check_gpodder_settings(
 
 
 // Remove podcast sync - matches Python remove_podcast_sync function exactly
+#[derive(Debug, serde::Deserialize)]
+pub struct RemoveSyncRequest {
+    pub user_id: i32,
+}
+
 pub async fn remove_podcast_sync(
     State(state): State<AppState>,
     headers: HeaderMap,
+    Json(request): Json<RemoveSyncRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
-    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let success = state.db_pool.remove_podcast_sync(user_id).await?;
+    // Check if the user has permission to modify this user's data
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if request.user_id != user_id_from_api_key && !is_web_key {
+        return Err(AppError::forbidden("You are not authorized to modify these user settings"));
+    }
+
+    // Remove the sync settings
+    let success = state.db_pool.remove_gpodder_settings(request.user_id).await?;
     
     if success {
-        Ok(Json(serde_json::json!({ "status": "success" })))
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "message": "Podcast sync settings removed successfully"
+        })))
     } else {
-        Err(AppError::internal("Failed to remove podcast sync"))
+        Err(AppError::internal("Failed to remove podcast sync settings"))
     }
 }
 

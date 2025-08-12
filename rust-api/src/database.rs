@@ -18567,4 +18567,64 @@ impl DatabasePool {
         }
         Ok(())
     }
+
+    // Remove GPodder sync settings for a user - matches Python remove_gpodder_settings function exactly
+    pub async fn remove_gpodder_settings(&self, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // First delete any device records
+                sqlx::query(r#"DELETE FROM "GpodderDevices" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                sqlx::query(r#"DELETE FROM "GpodderSyncState" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                // Then clear GPodder settings from user record
+                sqlx::query(r#"
+                    UPDATE "Users"
+                    SET gpodderurl = '', gpodderloginname = '', gpoddertoken = '', pod_sync_type = 'None'
+                    WHERE userid = $1
+                "#)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+                Ok(true)
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // First delete any device records
+                sqlx::query("DELETE FROM GpodderDevices WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                sqlx::query("DELETE FROM GpodderSyncState WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                // Then clear GPodder settings from user record
+                sqlx::query(r#"
+                    UPDATE Users
+                    SET GpodderUrl = '', GpodderLoginName = '', GpodderToken = '', Pod_Sync_Type = 'None'
+                    WHERE UserID = ?
+                "#)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+                Ok(true)
+            }
+        }
+    }
 }
