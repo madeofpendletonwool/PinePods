@@ -10035,38 +10035,27 @@ impl DatabasePool {
 
     // Get gPodder devices for user - matches Python get_devices function exactly with remote device support
     pub async fn gpodder_get_user_devices(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
-        // Get local devices
-        let mut local_devices = self.get_local_devices(user_id).await?;
-        
-        // Get remote devices if sync is configured
+        // Check what type of sync is configured
         if let Some(sync_settings) = self.get_user_sync_settings(user_id).await? {
-            if sync_settings.sync_type != "None" && sync_settings.sync_type != "nextcloud" {
-                let remote_devices = self.fetch_remote_devices(&sync_settings).await.unwrap_or_default();
-                
-                // Merge remote devices with local, handling conflicts
-                for remote_device in remote_devices {
-                    let existing_local = local_devices.iter().find(|d| 
-                        d["name"].as_str() == Some(&remote_device.device_name)
-                    );
-                    
-                    if existing_local.is_none() {
-                        // Add remote device with negative ID to indicate it's remote
-                        local_devices.push(serde_json::json!({
-                            "id": -(remote_device.device_id.abs()), // Negative for remote
-                            "name": remote_device.device_name,
-                            "type": remote_device.device_type,
-                            "caption": remote_device.device_caption,
-                            "last_sync": Option::<String>::None,
-                            "is_active": true,
-                            "is_default": false, // Remote devices are never default locally
-                            "is_remote": true
-                        }));
-                    }
+            match sync_settings.sync_type.as_str() {
+                "gpodder" | "external" => {
+                    // Both internal and external use HTTP API calls to GPodder server
+                    // Internal: http://localhost:8042, External: user's configured URL
+                    self.fetch_devices_from_gpodder_api(&sync_settings).await
+                }
+                "nextcloud" => {
+                    // Nextcloud doesn't have device concept like GPodder
+                    Ok(vec![])
+                }
+                _ => {
+                    // No sync configured - return empty list
+                    Ok(vec![])
                 }
             }
+        } else {
+            // No sync settings found - return empty list
+            Ok(vec![])
         }
-        
-        Ok(local_devices)
     }
 
     // Get local devices only - internal helper
@@ -10117,46 +10106,70 @@ impl DatabasePool {
         }
     }
 
-    // Fetch remote devices from gPodder server - matches Python remote device fetching
-    async fn fetch_remote_devices(&self, settings: &UserSyncSettings) -> AppResult<Vec<GpodderDevice>> {
-        let session = self.create_gpodder_session(settings).await?;
+    // Fetch devices from GPodder API server - works for both internal and external
+    async fn fetch_devices_from_gpodder_api(&self, settings: &UserSyncSettings) -> AppResult<Vec<serde_json::Value>> {
+        // For internal GPodder API, use X-GPodder-Token header
+        // For external GPodder API, use session auth with basic auth fallback
+        let (client, auth_headers) = if settings.url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token
+            let client = reqwest::Client::new();
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert("X-GPodder-Token", settings.token.parse().unwrap());
+            (client, Some(headers))
+        } else {
+            // External GPodder API - decrypt password and use session auth  
+            let decrypted_password = self.decrypt_password(&settings.token).await?;
+            let session = self.create_gpodder_session_with_password(&settings.url, &settings.username, &decrypted_password).await?;
+            (session.client, None)
+        };
         
         let devices_url = format!("{}/api/2/devices/{}.json", 
             settings.url.trim_end_matches('/'), settings.username);
         
-        let response = session.client
-            .get(&devices_url)
+        let mut request = client.get(&devices_url);
+        
+        // Add authentication headers if needed
+        if let Some(headers) = auth_headers {
+            request = request.headers(headers);
+        } else {
+            // External server with session auth - if session failed, fall back to basic auth
+            let decrypted_password = self.decrypt_password(&settings.token).await?;
+            request = request.basic_auth(&settings.username, Some(&decrypted_password));
+        }
+        
+        let response = request
             .send()
             .await
-            .map_err(|e| AppError::internal(&format!("Failed to fetch remote devices: {}", e)))?;
+            .map_err(|e| AppError::internal(&format!("Failed to fetch devices from GPodder API: {}", e)))?;
         
         if response.status().is_success() {
             let devices_data: serde_json::Value = response.json().await
-                .map_err(|e| AppError::internal(&format!("Failed to parse remote devices: {}", e)))?;
+                .map_err(|e| AppError::internal(&format!("Failed to parse devices from GPodder API: {}", e)))?;
             
-            let mut remote_devices = Vec::new();
+            let mut devices = Vec::new();
             
             if let Some(devices_array) = devices_data.as_array() {
                 for (index, device) in devices_array.iter().enumerate() {
-                    if let (Some(device_name), Some(device_type)) = (
-                        device["id"].as_str(),
-                        device["type"].as_str()
-                    ) {
-                        remote_devices.push(GpodderDevice {
-                            device_id: -(index as i32 + 1000), // Negative ID for remote devices
-                            device_name: device_name.to_string(),
-                            device_type: device_type.to_string(),
-                            device_caption: device["caption"].as_str().map(|s| s.to_string()),
-                            is_default: false,
-                            is_remote: true,
-                            user_id: 0, // Remote devices don't have local user_id
-                        });
+                    if let Some(device_id) = device["id"].as_str() {
+                        // Convert GPodder API response to Pinepods device format
+                        devices.push(serde_json::json!({
+                            "id": index as i32 + 1, // Use positive IDs for GPodder devices
+                            "name": device_id,
+                            "type": device["type"].as_str().unwrap_or("other"),
+                            "caption": device["caption"].as_str().unwrap_or(device_id),
+                            "last_sync": Option::<String>::None,
+                            "is_active": true,
+                            "is_default": false, // GPodder devices are not local defaults
+                            "is_remote": true,
+                            "subscriptions": device["subscriptions"].as_i64().unwrap_or(0)
+                        }));
                     }
                 }
             }
             
-            Ok(remote_devices)
+            Ok(devices)
         } else {
+            tracing::warn!("Failed to fetch devices from GPodder API: {}", response.status());
             Ok(Vec::new())
         }
     }
@@ -10251,7 +10264,7 @@ impl DatabasePool {
         
         match settings.sync_type.as_str() {
             "gpodder" => {
-                // Internal gPodder API on localhost:8042 - use encrypted token directly
+                // Internal gPodder API on localhost:8042 - use unencrypted token directly
                 self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, true).await
             }
             "nextcloud" => {
@@ -10310,9 +10323,6 @@ impl DatabasePool {
 
     // Call gPodder service for sync - matches Python API calls exactly with enhanced error handling
     async fn call_gpodder_service_sync(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str, device_name: &str, force: bool) -> AppResult<bool> {
-        // Create session directly with the already-decrypted password to avoid double decryption
-        let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
-        
         // Step 1: Get subscriptions from gPodder service with proper timestamp handling for incremental sync
         let since_timestamp = self.get_last_sync_timestamp(user_id).await?;
         let subscriptions_url = if let Some(since) = since_timestamp {
@@ -10323,19 +10333,31 @@ impl DatabasePool {
                 gpodder_url.trim_end_matches('/'), username, device_name)
         };
         
-        let response = if session.authenticated {
-            // Use session cookies (no additional auth needed)
-            session.client
-                .get(&subscriptions_url)
+        // Use correct authentication based on internal vs external
+        let response = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            client.get(&subscriptions_url)
+                .header("X-GPodder-Token", password)
                 .send()
                 .await
         } else {
-            // Fallback to basic auth
-            session.client
-                .get(&subscriptions_url)
-                .basic_auth(username, Some(password))
-                .send()
-                .await
+            // External GPodder API - use session auth with basic fallback
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                // Use session cookies (no additional auth needed)
+                session.client
+                    .get(&subscriptions_url)
+                    .send()
+                    .await
+            } else {
+                // Fallback to basic auth
+                session.client
+                    .get(&subscriptions_url)
+                    .basic_auth(username, Some(password))
+                    .send()
+                    .await
+            }
         };
         
         match response {
@@ -10365,7 +10387,7 @@ impl DatabasePool {
                 if since_timestamp.is_none() || !subscriptions.is_empty() {
                     // Only upload if this is initial sync (since_timestamp is None) or we got new subscriptions
                     let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
-                    self.upload_subscriptions_to_gpodder_with_session(&session, gpodder_url, username, password, device_name, &local_subscriptions).await?;
+                    self.upload_subscriptions_to_gpodder(gpodder_url, username, password, device_name, &local_subscriptions).await?;
                 } else {
                     tracing::info!("Skipping subscription upload - no changes detected in incremental sync");
                 }
@@ -10453,29 +10475,54 @@ impl DatabasePool {
 
     // Upload local subscriptions to gPodder service - matches Python PUT /api/2/subscriptions/{username}/{device}.json
     async fn upload_subscriptions_to_gpodder(&self, gpodder_url: &str, username: &str, password: &str, device_name: &str, subscriptions: &[String]) -> AppResult<()> {
-        let client = reqwest::Client::new();
         let upload_url = format!("{}/api/2/subscriptions/{}/{}.json", gpodder_url.trim_end_matches('/'), username, device_name);
         
-        let response = client
-            .put(&upload_url)
-            .basic_auth(username, Some(password))
-            .json(subscriptions)
-            .send()
-            .await
-            .map_err(|e| AppError::internal(&format!("Failed to upload subscriptions: {}", e)))?;
+        // Use correct authentication based on internal vs external
+        let response = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            client.put(&upload_url)
+                .header("X-GPodder-Token", password)
+                .json(subscriptions)
+                .send()
+                .await
+        } else {
+            // External GPodder API - use session auth with basic fallback
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                session.client
+                    .put(&upload_url)
+                    .json(subscriptions)
+                    .send()
+                    .await
+            } else {
+                session.client
+                    .put(&upload_url)
+                    .basic_auth(username, Some(password))
+                    .json(subscriptions)
+                    .send()
+                    .await
+            }
+        };
         
-        if !response.status().is_success() {
-            tracing::warn!("Failed to upload subscriptions to gPodder service: {}", response.status());
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                tracing::info!("Successfully uploaded {} subscriptions to gPodder service", subscriptions.len());
+                Ok(())
+            }
+            Ok(resp) => {
+                tracing::warn!("Failed to upload subscriptions to gPodder service: {}", resp.status());
+                Ok(()) // Don't fail sync for upload failures
+            }
+            Err(e) => {
+                tracing::warn!("Failed to upload subscriptions: {}", e);
+                Ok(()) // Don't fail sync for upload failures
+            }
         }
-        
-        Ok(())
     }
 
     // Sync episode actions with gPodder service - matches Python episode actions sync with timestamp support
     async fn sync_episode_actions_with_gpodder(&self, gpodder_url: &str, username: &str, password: &str, _device_name: &str, user_id: i32) -> AppResult<()> {
-        // Create session directly with the already-decrypted password to avoid double decryption
-        let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
-        
         // Get last sync timestamp for incremental sync (BETTER than Python - follows GPodder spec)
         let since_timestamp = self.get_last_sync_timestamp(user_id).await?;
         
@@ -10490,21 +10537,34 @@ impl DatabasePool {
         if !local_actions.is_empty() {
             let upload_url = format!("{}/api/2/episodes/{}.json", gpodder_url.trim_end_matches('/'), username);
             
-            let response = if session.authenticated {
-                // Use session-based authentication
-                session.client
-                    .post(&upload_url)
+            // Use correct authentication based on internal vs external
+            let response = if gpodder_url == "http://localhost:8042" {
+                // Internal GPodder API - use X-GPodder-Token header
+                let client = reqwest::Client::new();
+                client.post(&upload_url)
+                    .header("X-GPodder-Token", password)
                     .json(&local_actions)
                     .send()
                     .await
             } else {
-                // Fallback to basic auth
-                session.client
-                    .post(&upload_url)
-                    .basic_auth(username, Some(password))
-                    .json(&local_actions)
-                    .send()
-                    .await
+                // External GPodder API - use session auth with basic fallback
+                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+                if session.authenticated {
+                    // Use session-based authentication
+                    session.client
+                        .post(&upload_url)
+                        .json(&local_actions)
+                        .send()
+                        .await
+                } else {
+                    // Fallback to basic auth
+                    session.client
+                        .post(&upload_url)
+                        .basic_auth(username, Some(password))
+                        .json(&local_actions)
+                        .send()
+                        .await
+                }
             };
             
             match response {
@@ -10528,17 +10588,29 @@ impl DatabasePool {
             download_url = format!("{}?since={}", download_url, since.timestamp());
         }
         
-        let response = if session.authenticated {
-            session.client
-                .get(&download_url)
+        // Use correct authentication based on internal vs external for download
+        let response = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            client.get(&download_url)
+                .header("X-GPodder-Token", password)
                 .send()
                 .await
         } else {
-            session.client
-                .get(&download_url)
-                .basic_auth(username, Some(password))
-                .send()
-                .await
+            // External GPodder API - use session auth with basic fallback
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                session.client
+                    .get(&download_url)
+                    .send()
+                    .await
+            } else {
+                session.client
+                    .get(&download_url)
+                    .basic_auth(username, Some(password))
+                    .send()
+                    .await
+            }
         };
         
         match response {
@@ -17608,20 +17680,36 @@ impl DatabasePool {
         use reqwest;
         use serde_json;
         
-        let client = reqwest::Client::new();
+        // Use correct authentication based on internal vs external
+        let (client, auth_method) = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            (client, "internal")
+        } else {
+            // External GPodder API - use session auth with basic fallback
+            let decrypted_password = self.decrypt_password(token).await?;
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, &decrypted_password).await?;
+            (session.client, "external")
+        };
         
         // First, check if device already exists
         let device_list_url = format!("{}/api/2/devices/{}.json", gpodder_url.trim_end_matches('/'), username);
         
-        let auth = reqwest::header::HeaderValue::from_str(&format!("Basic {}", 
-            base64::encode(format!("{}:{}", username, token))
-        )).map_err(|e| AppError::internal(&format!("Failed to create auth header: {}", e)))?;
+        let response = if auth_method == "internal" {
+            client.get(&device_list_url)
+                .header("X-GPodder-Token", token)
+                .send()
+                .await
+        } else {
+            // External - session auth with basic fallback handled by session client
+            let decrypted_password = self.decrypt_password(token).await?;
+            client.get(&device_list_url)
+                .basic_auth(username, Some(&decrypted_password))
+                .send()
+                .await
+        };
         
-        match client.get(&device_list_url)
-            .header(reqwest::header::AUTHORIZATION, auth.clone())
-            .send()
-            .await
-        {
+        match response {
             Ok(response) if response.status().is_success() => {
                 if let Ok(devices) = response.json::<Vec<serde_json::Value>>().await {
                     for device in devices {
@@ -17647,11 +17735,22 @@ impl DatabasePool {
             "type": "server"
         });
         
-        match client.post(&device_url)
-            .header(reqwest::header::AUTHORIZATION, auth)
-            .json(&device_data)
-            .send()
-            .await
+        let create_response = if auth_method == "internal" {
+            client.post(&device_url)
+                .header("X-GPodder-Token", token)
+                .json(&device_data)
+                .send()
+                .await
+        } else {
+            let decrypted_password = self.decrypt_password(token).await?;
+            client.post(&device_url)
+                .basic_auth(username, Some(&decrypted_password))
+                .json(&device_data)
+                .send()
+                .await
+        };
+        
+        match create_response
         {
             Ok(response) if response.status().is_success() => {
                 tracing::info!("Created device with ID: {}", device_name);
@@ -17686,7 +17785,7 @@ impl DatabasePool {
         // Call the appropriate sync method based on sync type
         match settings.sync_type.as_str() {
             "gpodder" => {
-                // Internal GPodder API
+                // Internal GPodder API - token is already unencrypted for internal use
                 self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await
             }
             "external" => {
