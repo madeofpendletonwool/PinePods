@@ -1893,8 +1893,29 @@ pub async fn verify_gpodder_auth(
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
-    let verified = state.db_pool.verify_gpodder_auth(&request.gpodder_url, &request.gpodder_username, &request.gpodder_password).await?;
-    Ok(Json(serde_json::json!({ "verified": verified })))
+    // Direct HTTP call to match Python implementation exactly
+    let client = reqwest::Client::new();
+    let auth_url = format!("{}/api/2/auth/{}/login.json", 
+                          request.gpodder_url.trim_end_matches('/'), 
+                          request.gpodder_username);
+    
+    match client
+        .post(&auth_url)
+        .basic_auth(&request.gpodder_username, Some(&request.gpodder_password))
+        .send()
+        .await
+    {
+        Ok(response) => {
+            if response.status().is_success() {
+                Ok(Json(serde_json::json!({"status": "success", "message": "Logged in!"})))
+            } else {
+                Err(AppError::unauthorized("Authentication failed"))
+            }
+        }
+        Err(_) => {
+            Err(AppError::internal("Internal Server Error"))
+        }
+    }
 }
 
 // Request struct for add_gpodder_server

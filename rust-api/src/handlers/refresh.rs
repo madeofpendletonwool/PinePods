@@ -894,6 +894,10 @@ pub async fn refresh_pods_admin_internal(state: &AppState) -> AppResult<()> {
 pub async fn refresh_gpodder_subscriptions_admin_internal(state: &AppState) -> AppResult<()> {
     tracing::info!("Starting internal GPodder sync (scheduler)");
     
+    // Wait for GPodder service to be ready (5 second delay on startup)
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    tracing::info!("GPodder service startup delay completed");
+    
     // Get all users who have gPodder sync enabled (internal, external, both - NOT nextcloud)
     let gpodder_users = state.db_pool.get_all_users_with_gpodder_sync().await?;
     tracing::info!("Found {} users with GPodder sync enabled", gpodder_users.len());

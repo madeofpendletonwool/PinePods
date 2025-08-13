@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use bigdecimal::ToPrimitive;
 use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
+use base64;
 
 // Global temporary MFA secrets storage (matches Python temp_mfa_secrets)
 lazy_static! {
@@ -9799,22 +9800,6 @@ impl DatabasePool {
         Ok(())
     }
     
-    // Verify gPodder authentication - matches Python verify_gpodder_auth function exactly
-    pub async fn verify_gpodder_auth(&self, gpodder_url: &str, username: &str, password: &str) -> AppResult<bool> {
-        let client = reqwest::Client::new();
-        
-        // Test authentication with gPodder API
-        let auth_url = format!("{}/api/2/auth/{}/login.json", gpodder_url.trim_end_matches('/'), username);
-        
-        let response = client
-            .post(&auth_url)
-            .basic_auth(username, Some(password))
-            .send()
-            .await
-            .map_err(|e| AppError::internal(&format!("Failed to verify gPodder auth: {}", e)))?;
-        
-        Ok(response.status().is_success())
-    }
     
     // Add gPodder server - matches Python add_gpodder_server function exactly
     pub async fn add_gpodder_server(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str) -> AppResult<bool> {
@@ -9850,7 +9835,7 @@ impl DatabasePool {
     pub async fn encrypt_password(&self, password: &str) -> AppResult<String> {
         use fernet::Fernet;
         
-        // Get encryption key from app settings
+        // Get encryption key from app settings (base64 string)
         let encryption_key = self.get_encryption_key().await?;
         let fernet = Fernet::new(&encryption_key)
             .ok_or_else(|| AppError::internal("Failed to create Fernet cipher"))?;
@@ -9863,11 +9848,17 @@ impl DatabasePool {
     async fn get_encryption_key(&self) -> AppResult<String> {
         match self {
             DatabasePool::Postgres(pool) => {
+                // Try as string first (new format), fallback to bytes (old format)
                 let row = sqlx::query(r#"SELECT encryptionkey FROM "AppSettings" LIMIT 1"#)
                     .fetch_optional(pool)
                     .await?;
                 
                 if let Some(row) = row {
+                    // Try string first
+                    if let Ok(key_string) = row.try_get::<String, _>("encryptionkey") {
+                        return Ok(key_string);
+                    }
+                    // Fallback to bytes and convert to string
                     let key_bytes: Option<Vec<u8>> = row.try_get("encryptionkey")?;
                     if let Some(bytes) = key_bytes {
                         String::from_utf8(bytes)
@@ -10212,6 +10203,42 @@ impl DatabasePool {
         })
     }
 
+    // Create gPodder session with already-decrypted password (avoids double decryption)
+    async fn create_gpodder_session_with_password(&self, gpodder_url: &str, username: &str, password: &str) -> AppResult<GpodderSession> {
+        let jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
+        let client = reqwest::Client::builder()
+            .cookie_provider(jar)
+            .build()
+            .map_err(|e| AppError::internal(&format!("Failed to create HTTP client: {}", e)))?;
+        
+        // Try session-based authentication first - matches Python login flow
+        let login_url = format!("{}/api/2/auth/{}/login.json", 
+            gpodder_url.trim_end_matches('/'), username);
+        
+        let login_response = client
+            .post(&login_url)
+            .basic_auth(username, Some(password))
+            .send()
+            .await;
+        
+        let session_authenticated = match login_response {
+            Ok(response) if response.status().is_success() => {
+                tracing::info!("gPodder session authentication successful");
+                true
+            }
+            _ => {
+                tracing::warn!("gPodder session authentication failed, will use basic auth");
+                false
+            }
+        };
+        
+        Ok(GpodderSession {
+            client,
+            session_id: None,
+            authenticated: session_authenticated,
+        })
+    }
+
     // gPodder force sync - calls Go gPodder service exactly like Python force_full_sync_to_gpodder
     pub async fn gpodder_force_sync(&self, user_id: i32) -> AppResult<bool> {
         let sync_settings = self.get_user_sync_settings(user_id).await?;
@@ -10255,48 +10282,55 @@ impl DatabasePool {
         let settings = sync_settings.unwrap();
         let device_name = self.get_or_create_default_device(user_id).await?;
         
-        match settings.sync_type.as_str() {
+        let success = match settings.sync_type.as_str() {
             "gpodder" => {
-                self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?;
-                Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
+                self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?
             }
             "nextcloud" => {
-                self.sync_with_nextcloud(user_id, &settings, false).await?;
-                Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
+                self.sync_with_nextcloud(user_id, &settings, false).await?
             }
             "external" => {
                 let decrypted_token = self.decrypt_password(&settings.token).await?;
-                self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?;
-                Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
+                self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?
             }
             "both" => {
-                self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?;
+                let internal_success = self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?;
                 let decrypted_token = self.decrypt_password(&settings.token).await?;
-                self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?;
-                Ok(SyncResult { synced_podcasts: 2, synced_episodes: 0 })
+                let external_success = self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?;
+                internal_success || external_success
             }
-            _ => Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
-        }
+            _ => false
+        };
+        
+        Ok(SyncResult { 
+            synced_podcasts: if success { 1 } else { 0 }, 
+            synced_episodes: 0 
+        })
     }
 
     // Call gPodder service for sync - matches Python API calls exactly with enhanced error handling
     async fn call_gpodder_service_sync(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str, device_name: &str, force: bool) -> AppResult<bool> {
-        let session = self.create_gpodder_session(&UserSyncSettings {
-            url: gpodder_url.to_string(),
-            username: username.to_string(),
-            token: password.to_string(),
-            sync_type: if gpodder_url == "http://localhost:8042" { "gpodder".to_string() } else { "external".to_string() },
-        }).await?;
+        // Create session directly with the already-decrypted password to avoid double decryption
+        let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
         
-        // Step 1: Get subscriptions from gPodder service with session or basic auth fallback
-        let subscriptions_url = format!("{}/api/2/subscriptions/{}/{}.json", gpodder_url.trim_end_matches('/'), username, device_name);
+        // Step 1: Get subscriptions from gPodder service with proper timestamp handling for incremental sync
+        let since_timestamp = self.get_last_sync_timestamp(user_id).await?;
+        let subscriptions_url = if let Some(since) = since_timestamp {
+            format!("{}/api/2/subscriptions/{}/{}.json?since={}", 
+                gpodder_url.trim_end_matches('/'), username, device_name, since.timestamp())
+        } else {
+            format!("{}/api/2/subscriptions/{}/{}.json?since=0", 
+                gpodder_url.trim_end_matches('/'), username, device_name)
+        };
         
         let response = if session.authenticated {
+            // Use session cookies (no additional auth needed)
             session.client
                 .get(&subscriptions_url)
                 .send()
                 .await
         } else {
+            // Fallback to basic auth
             session.client
                 .get(&subscriptions_url)
                 .basic_auth(username, Some(password))
@@ -10306,17 +10340,35 @@ impl DatabasePool {
         
         match response {
             Ok(resp) if resp.status().is_success() => {
-                let subscriptions: Vec<String> = resp.json().await
-                    .map_err(|e| AppError::internal(&format!("Failed to parse gPodder subscriptions: {}", e)))?;
+                // Parse response properly - GPodder API returns either Vec<String> or structured response with timestamp
+                let response_text = resp.text().await
+                    .map_err(|e| AppError::internal(&format!("Failed to get response text: {}", e)))?;
+                
+                // Parse structured response {add: [], remove: [], timestamp: N} - Go API always returns this format when using ?since=
+                let sync_response: serde_json::Value = serde_json::from_str(&response_text)
+                    .map_err(|e| AppError::internal(&format!("Failed to parse gPodder sync response: {}", e)))?;
+                
+                let subscriptions = sync_response["add"].as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<String>>();
+                
+                // For now, we only handle additions. Remove functionality would require more complex logic.
                 
                 tracing::info!("Downloaded {} subscriptions from gPodder service", subscriptions.len());
                 
                 // Step 2: Process subscriptions and add missing podcasts
                 self.process_gpodder_subscriptions(user_id, &subscriptions).await?;
                 
-                // Step 3: Upload local subscriptions to gPodder service
-                let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
-                self.upload_subscriptions_to_gpodder_with_session(&session, gpodder_url, username, password, device_name, &local_subscriptions).await?;
+                // Step 3: Upload local subscriptions to gPodder service (only if needed)
+                if since_timestamp.is_none() || !subscriptions.is_empty() {
+                    // Only upload if this is initial sync (since_timestamp is None) or we got new subscriptions
+                    let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+                    self.upload_subscriptions_to_gpodder_with_session(&session, gpodder_url, username, password, device_name, &local_subscriptions).await?;
+                } else {
+                    tracing::info!("Skipping subscription upload - no changes detected in incremental sync");
+                }
                 
                 // Step 4: Sync episode actions (listening progress) with enhanced error handling
                 if let Err(e) = self.sync_episode_actions_with_gpodder(gpodder_url, username, password, device_name, user_id).await {
@@ -10324,7 +10376,7 @@ impl DatabasePool {
                     // Don't fail the entire sync if episode actions fail
                 }
                 
-                // Step 5: Update last sync timestamp for next incremental sync (BETTER than Python)
+                // Step 5: Update last sync timestamp for next incremental sync
                 self.update_last_sync_timestamp(user_id).await?;
                 
                 Ok(true)
@@ -10421,12 +10473,8 @@ impl DatabasePool {
 
     // Sync episode actions with gPodder service - matches Python episode actions sync with timestamp support
     async fn sync_episode_actions_with_gpodder(&self, gpodder_url: &str, username: &str, password: &str, _device_name: &str, user_id: i32) -> AppResult<()> {
-        let session = self.create_gpodder_session(&UserSyncSettings {
-            url: gpodder_url.to_string(),
-            username: username.to_string(),
-            token: password.to_string(),
-            sync_type: "external".to_string(),
-        }).await?;
+        // Create session directly with the already-decrypted password to avoid double decryption
+        let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
         
         // Get last sync timestamp for incremental sync (BETTER than Python - follows GPodder spec)
         let since_timestamp = self.get_last_sync_timestamp(user_id).await?;
@@ -10869,7 +10917,13 @@ impl DatabasePool {
     async fn create_gpodder_device(&self, user_id: i32, device_name: &str, device_type: &str, is_default: bool) -> AppResult<()> {
         match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"INSERT INTO "GpodderDevices" (userid, devicename, devicetype, isdefault) VALUES ($1, $2, $3, $4)"#)
+                // Use INSERT ... ON CONFLICT to handle existing devices
+                sqlx::query(r#"
+                    INSERT INTO "GpodderDevices" (userid, devicename, devicetype, isdefault) 
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (userid, devicename) 
+                    DO UPDATE SET devicetype = EXCLUDED.devicetype, isdefault = EXCLUDED.isdefault
+                "#)
                     .bind(user_id)
                     .bind(device_name)
                     .bind(device_type)
@@ -10878,7 +10932,12 @@ impl DatabasePool {
                     .await?;
             }
             DatabasePool::MySQL(pool) => {
-                sqlx::query("INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsDefault) VALUES (?, ?, ?, ?)")
+                // Use INSERT ... ON DUPLICATE KEY UPDATE to handle existing devices
+                sqlx::query("
+                    INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsDefault) 
+                    VALUES (?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE DeviceType = VALUES(DeviceType), IsDefault = VALUES(IsDefault)
+                ")
                     .bind(user_id)
                     .bind(device_name)
                     .bind(device_type)
@@ -11009,12 +11068,13 @@ impl DatabasePool {
     async fn decrypt_password(&self, encrypted_password: &str) -> AppResult<String> {
         use fernet::Fernet;
         
+        // Get encryption key from app settings (base64 string)
         let encryption_key = self.get_encryption_key().await?;
         let fernet = Fernet::new(&encryption_key)
             .ok_or_else(|| AppError::internal("Failed to create Fernet cipher"))?;
         
         let decrypted = fernet.decrypt(encrypted_password)
-            .map_err(|e| AppError::internal(&format!("Failed to decrypt password: {}", e)))?;
+            .map_err(|e| AppError::internal(&format!("Failed to decrypt password: Fernet decryption error")))?;
         
         String::from_utf8(decrypted)
             .map_err(|e| AppError::internal(&format!("Invalid UTF-8 in decrypted password: {}", e)))
@@ -17739,13 +17799,8 @@ impl DatabasePool {
             }
         };
 
-        // Create GPodder session using the same method as sync operations
-        let session = self.create_gpodder_session(&UserSyncSettings {
-            url: gpodder_url.clone(),
-            username: username.clone(),
-            token: password.clone(),
-            sync_type: settings.sync_type.clone(),
-        }).await?;
+        // Create GPodder session directly with already-decrypted password to avoid double decryption
+        let session = self.create_gpodder_session_with_password(&gpodder_url, &username, &password).await?;
 
         let mut api_endpoints_tested = Vec::new();
         let mut server_devices = Vec::new();
@@ -17811,10 +17866,10 @@ impl DatabasePool {
             }
         }
 
-        // Test 2: Get subscriptions from GPodder API
-        let default_device = server_devices.first().map(|d| d.id.clone()).unwrap_or_else(|| "default".to_string());
+        // Test 2: Get subscriptions from GPodder API - use the user's actual default device
+        let device_name = self.get_or_create_default_device(user_id).await?;
         let subscriptions_url = format!("{}/api/2/subscriptions/{}/{}.json", 
-            gpodder_url.trim_end_matches('/'), username, default_device);
+            gpodder_url.trim_end_matches('/'), username, device_name);
         let start = Instant::now();
 
         let subscriptions_response = if session.authenticated {

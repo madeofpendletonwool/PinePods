@@ -923,7 +923,8 @@ pub fn sync_options() -> Html {
                 wasm_bindgen_futures::spawn_local(async move {
                     match call_get_gpodder_api_status(&server_name, &api_key.unwrap()).await {
                         Ok(status) => {
-                            is_internal_gpodder_enabled.set(status.gpodder_enabled);
+                            // Internal GPodder is only enabled if sync_type is "gpodder" or "both", not "external"
+                            is_internal_gpodder_enabled.set(status.sync_type == "gpodder" || status.sync_type == "both");
                             // Set the sync type from the API response
                             sync_type.set(status.sync_type.clone());
                             // Set sync configured if any sync type is active
@@ -996,6 +997,7 @@ pub fn sync_options() -> Html {
                             && server != "Not currently syncing with Nextcloud server"
                             && server != "Not currently syncing with any server"
                         {
+                            let server_clone = server.clone();
                             nextcloud_url.set(server);
                             is_sync_configured.set(true);
 
@@ -1005,15 +1007,14 @@ pub fn sync_options() -> Html {
                                 (server_name.clone(), api_key.clone())
                             {
                                 wasm_bindgen_futures::spawn_local(async move {
-                                    // This would be a new API call to get the sync type
-                                    // For now, we'll assume we know it's either "gpodder" or "nextcloud"
-                                    // This would be replaced with the actual API call
-
-                                    // Placeholder logic - replace with actual API call
-                                    if nextcloud_url.contains("nextcloud") {
-                                        sync_type_clone.set("nextcloud".to_string());
-                                    } else {
-                                        sync_type_clone.set("gpodder".to_string());
+                                    // Only set sync type if it's not already set from the API status call
+                                    if *sync_type_clone == "None" {
+                                        // Placeholder logic - replace with actual API call
+                                        if server_clone.contains("nextcloud") {
+                                            sync_type_clone.set("nextcloud".to_string());
+                                        } else {
+                                            sync_type_clone.set("external".to_string());
+                                        }
                                     }
                                 });
                             }
@@ -1288,6 +1289,7 @@ pub fn sync_options() -> Html {
         let is_sync_configured = is_sync_configured.clone();
         let is_loading = is_loading.clone();
         let sync_type = sync_type.clone();
+        let is_internal_gpodder_enabled = is_internal_gpodder_enabled.clone();
 
         Callback::from(move |_| {
             let dispatch = dispatch.clone();
@@ -1298,6 +1300,7 @@ pub fn sync_options() -> Html {
             let is_sync_configured = is_sync_configured.clone();
             let is_loading = is_loading.clone();
             let sync_type = sync_type.clone();
+            let is_internal_gpodder_enabled = is_internal_gpodder_enabled.clone();
 
             is_loading.set(true);
 
@@ -1315,6 +1318,7 @@ pub fn sync_options() -> Html {
                                 .set(String::from("Not currently syncing with any server"));
                             is_sync_configured.set(false);
                             sync_type.set("None".to_string());
+                            is_internal_gpodder_enabled.set(false);
                             dispatch.reduce_mut(|state| {
                                 state.info_message =
                                     Some("Podcast sync settings removed successfully".to_string());
@@ -1445,7 +1449,7 @@ pub fn sync_options() -> Html {
                         gpodder_username: server_user_check_deref,
                         gpodder_password: server_pass_check_deref,
                     };
-                    match call_verify_gpodder_auth(&server_name.clone().unwrap(), check_request)
+                    match call_verify_gpodder_auth(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), check_request)
                         .await
                     {
                         Ok(auth_response) => {
@@ -1570,7 +1574,7 @@ pub fn sync_options() -> Html {
         } else if *sync_type == "nextcloud" && *is_sync_configured {
             // Nextcloud sync is configured
             "nextcloud" 
-        } else if *sync_type == "gpodder" && *is_sync_configured {
+        } else if (*sync_type == "external" || *sync_type == "gpodder") && *is_sync_configured {
             // External gpodder server sync is configured
             "external_gpodder"
         } else {
@@ -1579,8 +1583,8 @@ pub fn sync_options() -> Html {
         }
     };
 
-    // Determine if sync options should be hidden
-    let should_hide_sync_options = *is_internal_gpodder_enabled || *sync_type == "nextcloud";
+    // Determine if sync options should be hidden (hide when ANY sync is configured)
+    let should_hide_sync_options = *is_internal_gpodder_enabled || *is_sync_configured;
 
     html! {
         <div class="p-4">
@@ -1594,6 +1598,8 @@ pub fn sync_options() -> Html {
                         if *is_internal_gpodder_enabled {
                             "Internal GPodder API".to_string()
                         } else if *sync_type == "nextcloud" {
+                            (*nextcloud_url).clone()
+                        } else if *sync_type == "external" && *is_sync_configured {
                             (*nextcloud_url).clone()
                         } else if *sync_type == "gpodder" && *is_sync_configured {
                             (*nextcloud_url).clone()
@@ -1873,9 +1879,9 @@ pub fn sync_options() -> Html {
                 }
             }
 
-            // GPodder Statistics Dropdown - show when any sync is enabled EXCEPT Nextcloud
+            // GPodder Statistics Dropdown - show when any sync is enabled
             {
-                if (*is_internal_gpodder_enabled || *is_sync_configured) && *sync_type != "nextcloud" {
+                if *is_internal_gpodder_enabled || *is_sync_configured {
                     html! { <GpodderStatisticsDropdown /> }
                 } else {
                     html! {}
@@ -1884,7 +1890,7 @@ pub fn sync_options() -> Html {
 
             {
                 // Show advanced options toggle for internal gpodder or external gpodder (but not nextcloud)
-                if *is_internal_gpodder_enabled || (*is_sync_configured && *sync_type == "gpodder") {
+                if *is_internal_gpodder_enabled || (*is_sync_configured && (*sync_type == "gpodder" || *sync_type == "external")) {
                     html! {
                         <div class="mt-6">
                             <button

@@ -1958,6 +1958,70 @@ def migration_018_gpodder_sync_timestamp(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("019", "fix_encryption_key_storage", "Convert EncryptionKey from binary to text format for consistency", requires=["001"])
+def migration_019_fix_encryption_key_storage(conn, db_type: str):
+    """Convert EncryptionKey storage from binary to text format"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            # First, get the current encryption key value as bytes
+            cursor.execute('SELECT encryptionkey FROM "AppSettings" WHERE appsettingsid = 1')
+            result = cursor.fetchone()
+            
+            if result and result[0]:
+                # Convert bytes to string
+                key_bytes = result[0]
+                if isinstance(key_bytes, bytes):
+                    key_string = key_bytes.decode('utf-8')
+                else:
+                    key_string = str(key_bytes)
+                
+                # Drop and recreate column as TEXT
+                cursor.execute('ALTER TABLE "AppSettings" DROP COLUMN encryptionkey')
+                cursor.execute('ALTER TABLE "AppSettings" ADD COLUMN encryptionkey TEXT')
+                
+                # Insert the key back as text
+                cursor.execute('UPDATE "AppSettings" SET encryptionkey = %s WHERE appsettingsid = 1', (key_string,))
+                logger.info("Converted PostgreSQL encryptionkey from BYTEA to TEXT")
+            else:
+                # No existing key, just change the column type
+                cursor.execute('ALTER TABLE "AppSettings" DROP COLUMN encryptionkey')
+                cursor.execute('ALTER TABLE "AppSettings" ADD COLUMN encryptionkey TEXT')
+                logger.info("Changed PostgreSQL encryptionkey column to TEXT (no existing data)")
+        
+        else:  # MySQL
+            # First, get the current encryption key value
+            cursor.execute('SELECT EncryptionKey FROM AppSettings WHERE AppSettingsID = 1')
+            result = cursor.fetchone()
+            
+            if result and result[0]:
+                # Convert binary to string
+                key_data = result[0]
+                if isinstance(key_data, bytes):
+                    # Remove null padding and decode
+                    key_string = key_data.rstrip(b'\x00').decode('utf-8')
+                else:
+                    key_string = str(key_data)
+                
+                # Change column type and update value
+                cursor.execute('ALTER TABLE AppSettings MODIFY EncryptionKey VARCHAR(255)')
+                cursor.execute('UPDATE AppSettings SET EncryptionKey = %s WHERE AppSettingsID = 1', (key_string,))
+                logger.info("Converted MySQL EncryptionKey from BINARY to VARCHAR")
+            else:
+                # No existing key, just change the column type  
+                cursor.execute('ALTER TABLE AppSettings MODIFY EncryptionKey VARCHAR(255)')
+                logger.info("Changed MySQL EncryptionKey column to VARCHAR (no existing data)")
+        
+        logger.info("Encryption key storage migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in encryption key migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 def register_all_migrations():
     """Register all migrations with the migration manager"""
     # Migrations are auto-registered via decorators

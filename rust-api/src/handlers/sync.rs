@@ -123,7 +123,7 @@ pub async fn gpodder_status(
     
     Ok(Json(serde_json::json!({
         "sync_type": status.sync_type,
-        "gpodder_enabled": status.sync_type == "gpodder" || status.sync_type == "both",
+        "gpodder_enabled": status.sync_type == "gpodder" || status.sync_type == "both" || status.sync_type == "external",
         "external_enabled": status.sync_type == "external" || status.sync_type == "both",
         "external_url": status.gpodder_url,
         "api_url": "http://localhost:8042" 
@@ -246,7 +246,21 @@ pub async fn gpodder_test_connection(
         return Err(AppError::forbidden("You can only test connections for yourself!"));
     }
 
-    let verified = state.db_pool.verify_gpodder_auth(gpodder_url, gpodder_username, gpodder_password).await?;
+    // Direct HTTP call to match Python implementation exactly
+    let client = reqwest::Client::new();
+    let auth_url = format!("{}/api/2/auth/{}/login.json", 
+                          gpodder_url.trim_end_matches('/'), 
+                          gpodder_username);
+    
+    let verified = match client
+        .post(&auth_url)
+        .basic_auth(gpodder_username, Some(gpodder_password))
+        .send()
+        .await
+    {
+        Ok(response) => response.status().is_success(),
+        Err(_) => false,
+    };
     
     if verified {
         Ok(Json(serde_json::json!({

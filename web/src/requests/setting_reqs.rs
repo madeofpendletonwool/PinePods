@@ -1347,12 +1347,14 @@ pub struct GpodderCheckResponse {
 
 pub async fn call_verify_gpodder_auth(
     server_name: &String,
+    api_key: &String,
     auth_request: GpodderCheckRequest,
 ) -> Result<GpodderCheckResponse, Error> {
     let url = format!("{}/api/data/verify_gpodder_auth", server_name);
     let request_body = serde_json::to_string(&auth_request)?;
 
     let response = Request::post(&url)
+        .header("Api-Key", api_key)
         .header("Content-Type", "application/json")
         .body(request_body)?
         .send()
