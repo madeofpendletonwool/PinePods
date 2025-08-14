@@ -1436,14 +1436,14 @@ pub async fn call_get_default_gpodder_device(
 pub async fn call_set_default_gpodder_device(
     server_name: &str,
     api_key: &str,
-    device_id: i32,
+    device_id: String,
     device_name: Option<String>,
     is_remote: bool,
 ) -> Result<ApiResponse<()>, gloo::net::Error> {
     let mut url = format!("{}/api/gpodder/set_default/{}", server_name, device_id);
 
     // Add query parameters for remote devices
-    if device_id < 0 || is_remote {
+    if is_remote {
         if let Some(name) = &device_name {
             url = format!(
                 "{}?device_name={}&is_remote=true",
@@ -1469,7 +1469,7 @@ pub async fn call_set_default_gpodder_device(
 // API structures
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GpodderDevice {
-    pub id: i32,
+    pub id: String,  // GPodder API uses string device IDs, not integers
     pub name: String,
     pub r#type: String, // Using r# prefix because "type" is a reserved keyword
     pub caption: Option<String>,
@@ -1490,7 +1490,7 @@ pub struct CreateDeviceRequest {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SyncRequest {
     pub user_id: i32,
-    pub device_id: Option<i32>,
+    pub device_id: Option<String>,
     pub device_name: Option<String>,
     pub is_remote: bool,
 }
@@ -1545,7 +1545,7 @@ pub async fn call_force_full_sync(
     server_name: &str,
     api_key: &str,
     user_id: i32,
-    device_id: Option<i32>,
+    device_id: Option<String>,
     device_name: Option<String>,
     is_remote: bool,
 ) -> Result<ApiResponse<()>, gloo::net::Error> {
@@ -1575,7 +1575,7 @@ pub async fn call_sync_with_gpodder(
     server_name: &str,
     api_key: &str,
     user_id: i32,
-    device_id: Option<i32>,
+    device_id: Option<String>,
     device_name: Option<String>,
     is_remote: bool,
 ) -> Result<ApiResponse<()>, gloo::net::Error> {

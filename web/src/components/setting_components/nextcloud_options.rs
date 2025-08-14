@@ -43,10 +43,10 @@ pub fn gpodder_advanced_options() -> Html {
     let is_setting_default = use_state(|| false);
 
     // Selected device for operations
-    let selected_device_id = use_state(|| None::<i32>);
+    let selected_device_id = use_state(|| None::<String>);
 
     // Add a state to store selected device info for operations
-    let selected_device_info = use_state(|| None::<(i32, String, bool)>); // (id, name, is_remote)
+    let selected_device_info = use_state(|| None::<(String, String, bool)>); // (id, name, is_remote)
 
     // Add state for default device
     let default_device = use_state(|| None::<GpodderDevice>);
@@ -119,9 +119,9 @@ pub fn gpodder_advanced_options() -> Html {
                                 .find(|d| d.is_default.unwrap_or(false))
                             {
                                 // If a default device exists, select it
-                                selected_device_id.set(Some(default.id));
+                                selected_device_id.set(Some(default.id.clone()));
                                 selected_device_info.set(Some((
-                                    default.id,
+                                    default.id.clone(),
                                     default.name.clone(),
                                     default.is_remote.unwrap_or(false),
                                 )));
@@ -132,10 +132,10 @@ pub fn gpodder_advanced_options() -> Html {
                             // Otherwise, if devices exist, select the first one by default
                             else if !fetched_devices.is_empty() {
                                 let first_device = &fetched_devices[0];
-                                selected_device_id.set(Some(first_device.id));
+                                selected_device_id.set(Some(first_device.id.clone()));
                                 // Also store the device name and remote status
                                 selected_device_info.set(Some((
-                                    first_device.id,
+                                    first_device.id.clone(),
                                     first_device.name.clone(),
                                     first_device.is_remote.unwrap_or(false),
                                 )));
@@ -207,32 +207,28 @@ pub fn gpodder_advanced_options() -> Html {
                     selected_device_info.set(None);
                 } else {
                     // Parse the device ID
-                    if let Ok(id) = value.parse::<i32>() {
-                        // Find the selected device in the devices list
-                        if let Some(device) = devices.iter().find(|d| d.id == id) {
-                            web_sys::console::log_1(
-                                &format!(
-                                    "Selected device: {} (ID: {}, remote: {:?})",
-                                    device.name, id, device.is_remote
-                                )
-                                .into(),
-                            );
+                    // Device IDs are now strings, so use the value directly
+                    let id = value;
+                    // Find the selected device in the devices list
+                    if let Some(device) = devices.iter().find(|d| d.id == id) {
+                        web_sys::console::log_1(
+                            &format!(
+                                "Selected device: {} (ID: {}, remote: {:?})",
+                                device.name, id, device.is_remote
+                            )
+                            .into(),
+                        );
 
-                            // Update both state variables
-                            selected_device_id.set(Some(id));
-                            selected_device_info.set(Some((
-                                id,
-                                device.name.clone(),
-                                device.is_remote.unwrap_or(false),
-                            )));
-                        } else {
-                            web_sys::console::log_1(
-                                &format!("Could not find device with ID: {}", id).into(),
-                            );
-                        }
+                        // Update both state variables
+                        selected_device_id.set(Some(id.clone()));
+                        selected_device_info.set(Some((
+                            id,
+                            device.name.clone(),
+                            device.is_remote.unwrap_or(false),
+                        )));
                     } else {
                         web_sys::console::log_1(
-                            &format!("Failed to parse device ID: {}", value).into(),
+                            &format!("Could not find device with ID: {}", id).into(),
                         );
                     }
                 }
@@ -270,12 +266,13 @@ pub fn gpodder_advanced_options() -> Html {
                     .into(),
                 );
 
+                let device_id_clone = device_id.clone();
                 spawn_local(async move {
                     // Pass device name and is_remote status for remote devices (negative IDs)
                     match call_set_default_gpodder_device(
                         &server_name,
                         &api_key.unwrap(),
-                        device_id,
+                        device_id_clone.clone(),
                         Some(device_name.clone()),
                         is_remote,
                     )
@@ -286,7 +283,7 @@ pub fn gpodder_advanced_options() -> Html {
                                 &format!("Successfully set device as default").into(),
                             );
                             // Find the device in our list and set it as default
-                            if let Some(device) = devices_clone.iter().find(|d| d.id == device_id) {
+                            if let Some(device) = devices_clone.iter().find(|d| d.id == device_id_clone) {
                                 let mut device_clone = device.clone();
                                 device_clone.is_default = Some(true);
                                 default_device_clone.set(Some(device_clone));
@@ -539,7 +536,7 @@ pub fn gpodder_advanced_options() -> Html {
                             }
                             Err(e) => {
                                 let error_msg =
-                                    format!("Failed to push podcasts to GPodder: {}", e);
+                                    format!("Failed to perform initial sync with GPodder: {}", e);
                                 dispatch_clone.reduce_mut(|state| {
                                     state.error_message = Some(error_msg);
                                 });
@@ -551,7 +548,7 @@ pub fn gpodder_advanced_options() -> Html {
                     // Display error if no device is selected
                     dispatch.reduce_mut(|state| {
                         state.error_message =
-                            Some("No device selected for pushing podcasts".to_string());
+                            Some("No device selected for initial sync".to_string());
                     });
                 }
             }
@@ -560,8 +557,8 @@ pub fn gpodder_advanced_options() -> Html {
 
     // Determine if the currently selected device is the default
     let is_selected_device_default = {
-        if let (Some(device_id), Some(default)) = (*selected_device_id, default_device.as_ref()) {
-            device_id == default.id
+        if let (Some(device_id), Some(default)) = (selected_device_id.as_ref(), default_device.as_ref()) {
+            *device_id == default.id
         } else {
             false
         }
@@ -604,8 +601,8 @@ pub fn gpodder_advanced_options() -> Html {
                                                     Some(c) => format!(" ({})", c),
                                                     None => String::new()
                                                 };
-                                                let selected = match *selected_device_id {
-                                                    Some(id) if id == device.id => true,
+                                                let selected = match selected_device_id.as_ref() {
+                                                    Some(id) if *id == device.id => true,
                                                     _ => false
                                                 };
                                                 let is_default = if let Some(default) = default_device.as_ref() {
@@ -620,7 +617,7 @@ pub fn gpodder_advanced_options() -> Html {
                                                 };
 
                                                 html! {
-                                                    <option value={device.id.to_string()} selected={selected}>
+                                                    <option value={device.id.clone()} selected={selected}>
                                                         {device_label}
                                                     </option>
                                                 }
@@ -639,7 +636,7 @@ pub fn gpodder_advanced_options() -> Html {
                                             if *is_syncing {
                                                 html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Syncing..."}</span> }
                                             } else {
-                                                html! { <span class="flex items-center"><i class="ph ph-arrow-down-from-line mr-2"></i>{"Sync from GPodder"}</span> }
+                                                html! { <span class="flex items-center"><i class="ph ph-arrows-clockwise mr-2"></i>{"Sync GPodder"}</span> }
                                             }
                                         }
                                     </button>
@@ -651,9 +648,9 @@ pub fn gpodder_advanced_options() -> Html {
                                     >
                                         {
                                             if *is_pushing {
-                                                html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Pushing..."}</span> }
+                                                html! { <span class="flex items-center"><i class="ph ph-spinner animate-spin mr-2"></i>{"Initial Syncing..."}</span> }
                                             } else {
-                                                html! { <span class="flex items-center"><i class="ph ph-arrow-up-from-line mr-2"></i>{"Push to GPodder"}</span> }
+                                                html! { <span class="flex items-center"><i class="ph ph-arrow-clockwise mr-2"></i>{"Initial Sync GPodder"}</span> }
                                             }
                                         }
                                     </button>
@@ -673,6 +670,27 @@ pub fn gpodder_advanced_options() -> Html {
                                             }
                                         }
                                     </button>
+                                </div>
+
+                                // Sync button explanations
+                                <div class="mb-6 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                                    <h4 class="text-sm font-bold mb-2 text-blue-800 dark:text-blue-200">{"Sync Options:"}</h4>
+                                    <div class="text-sm text-blue-700 dark:text-blue-300 space-y-1">
+                                        <div class="flex items-start">
+                                            <i class="ph ph-arrows-clockwise mr-2 mt-0.5 flex-shrink-0"></i>
+                                            <div>
+                                                <strong>{"Sync GPodder:"}</strong>
+                                                {" Regular incremental sync that downloads only new changes since last sync. Use this for daily syncing to get new subscriptions and episode progress."}
+                                            </div>
+                                        </div>
+                                        <div class="flex items-start">
+                                            <i class="ph ph-arrow-clockwise mr-2 mt-0.5 flex-shrink-0"></i>
+                                            <div>
+                                                <strong>{"Initial Sync GPodder:"}</strong>
+                                                {" Full reset sync that downloads ALL data from scratch, ignoring timestamps. Use when setting up sync or if regular sync isn't working properly."}
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <div class="mb-4">

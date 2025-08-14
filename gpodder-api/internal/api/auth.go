@@ -582,17 +582,33 @@ func AuthenticationMiddleware(database *db.Database) gin.HandlerFunc {
 		log.Printf("[DEBUG] AuthenticationMiddleware processing request: %s %s",
 			c.Request.Method, c.Request.URL.Path)
 
-		if strings.Contains(c.Request.URL.Path, "/episodes/") && strings.HasSuffix(c.Request.URL.Path, ".json") {
-			// Extract username from URL path for episode actions
+		// Handle GPodder API standard .json suffix patterns
+		if strings.HasSuffix(c.Request.URL.Path, ".json") {
 			parts := strings.Split(c.Request.URL.Path, "/")
-			if len(parts) >= 3 {
-				// The path format is /episodes/username.json
+			var username string
+			
+			// Handle /episodes/username.json pattern
+			if strings.Contains(c.Request.URL.Path, "/episodes/") && len(parts) >= 3 {
 				usernameWithExt := parts[len(parts)-1]
-				// Remove .json extension
-				username := strings.TrimSuffix(usernameWithExt, ".json")
-				// Set it as the username parameter
-				c.Params = append(c.Params, gin.Param{Key: "username", Value: username})
+				username = strings.TrimSuffix(usernameWithExt, ".json")
 				log.Printf("[DEBUG] AuthenticationMiddleware: Extracted username '%s' from episode actions URL", username)
+			}
+			
+			// Handle /devices/username.json pattern  
+			if strings.Contains(c.Request.URL.Path, "/devices/") {
+				for i, part := range parts {
+					if part == "devices" && i+1 < len(parts) {
+						usernameWithExt := parts[i+1]
+						username = strings.TrimSuffix(usernameWithExt, ".json")
+						log.Printf("[DEBUG] AuthenticationMiddleware: Extracted username '%s' from devices URL", username)
+						break
+					}
+				}
+			}
+			
+			// Set username parameter if extracted
+			if username != "" {
+				c.Params = append(c.Params, gin.Param{Key: "username", Value: username})
 			}
 		}
 

@@ -2022,6 +2022,31 @@ def migration_019_fix_encryption_key_storage(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("020", "add_default_gpodder_device", "Add DefaultGpodderDevice column to Users table for tracking user's selected GPodder device", requires=["001"])
+def migration_020_add_default_gpodder_device(conn, db_type: str):
+    """Add DefaultGpodderDevice column to Users table"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            # Add defaultgpodderdevice column to Users table
+            safe_execute_sql(cursor, 'ALTER TABLE "Users" ADD COLUMN defaultgpodderdevice VARCHAR(255)')
+            logger.info("Added defaultgpodderdevice column to Users table (PostgreSQL)")
+        
+        else:  # MySQL
+            # Add DefaultGpodderDevice column to Users table
+            safe_execute_sql(cursor, 'ALTER TABLE Users ADD COLUMN DefaultGpodderDevice VARCHAR(255)')
+            logger.info("Added DefaultGpodderDevice column to Users table (MySQL)")
+        
+        logger.info("Default GPodder device column migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in default GPodder device migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 def register_all_migrations():
     """Register all migrations with the migration manager"""
     # Migrations are auto-registered via decorators

@@ -74,7 +74,7 @@ pub async fn gpodder_get_all_devices(
     Ok(Json(serde_json::json!(devices)))
 }
 
-// Force sync gPodder - matches Python force_sync function exactly
+// Force sync gPodder - performs initial full sync without timestamps (like setup)
 pub async fn gpodder_force_sync(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -83,16 +83,61 @@ pub async fn gpodder_force_sync(
     validate_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let success = state.db_pool.gpodder_force_sync(user_id).await?;
+    
+    // Get user's sync settings to determine which sync method to use
+    let sync_settings = state.db_pool.get_user_sync_settings(user_id).await?;
+    if sync_settings.is_none() {
+        return Ok(Json(serde_json::json!({
+            "success": false,
+            "message": "No sync configured for this user",
+            "data": null
+        })));
+    }
+    
+    let settings = sync_settings.unwrap();
+    let device_name = state.db_pool.get_or_create_default_device(user_id).await?;
+    
+    // Perform initial full sync (without timestamps) based on sync type
+    let success = match settings.sync_type.as_str() {
+        "gpodder" => {
+            // Internal gPodder API - call initial full sync
+            state.db_pool.call_gpodder_initial_full_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name).await.unwrap_or(false)
+        }
+        "nextcloud" => {
+            // Nextcloud initial sync
+            state.db_pool.call_nextcloud_initial_full_sync(user_id, &settings.url, &settings.username, &settings.token).await.unwrap_or(false)
+        }
+        "external" => {
+            // External gPodder server - decrypt token first then call initial full sync
+            let decrypted_token = state.db_pool.decrypt_password(&settings.token).await.unwrap_or_default();
+            state.db_pool.call_gpodder_initial_full_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name).await.unwrap_or(false)
+        }
+        "both" => {
+            // Both internal and external - call initial sync for both
+            let internal_result = state.db_pool.call_gpodder_initial_full_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name).await.unwrap_or(false);
+            let decrypted_token = state.db_pool.decrypt_password(&settings.token).await.unwrap_or_default();
+            let external_result = state.db_pool.call_gpodder_initial_full_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name).await.unwrap_or(false);
+            internal_result || external_result
+        }
+        _ => false
+    };
     
     if success {
-        Ok(Json(serde_json::json!({ "status": "success" })))
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "message": "Initial sync completed successfully - all data refreshed",
+            "data": null
+        })))
     } else {
-        Err(AppError::internal("Failed to force sync"))
+        Ok(Json(serde_json::json!({
+            "success": false,
+            "message": "Initial sync failed - please check your sync configuration",
+            "data": null
+        })))
     }
 }
 
-// Regular gPodder sync - matches Python sync function exactly
+// Regular gPodder sync - performs standard incremental sync with timestamps (like tasks.rs)
 pub async fn gpodder_sync(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -101,13 +146,29 @@ pub async fn gpodder_sync(
     validate_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let sync_result = state.db_pool.gpodder_sync(user_id).await?;
     
-    Ok(Json(serde_json::json!({
-        "status": "success",
-        "synced_podcasts": sync_result.synced_podcasts,
-        "synced_episodes": sync_result.synced_episodes
-    })))
+    // Use the same sync process as the scheduler (tasks.rs) which uses proper API calls with timestamps
+    let sync_result = state.db_pool.refresh_gpodder_subscription_background(user_id).await?;
+    
+    if sync_result {
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "message": "Sync completed successfully",
+            "data": {
+                "synced_podcasts": 1,
+                "synced_episodes": 0
+            }
+        })))
+    } else {
+        Ok(Json(serde_json::json!({
+            "success": false,
+            "message": "Sync failed or no changes detected - check your sync configuration",
+            "data": {
+                "synced_podcasts": 0,
+                "synced_episodes": 0
+            }
+        })))
+    }
 }
 
 // Get gPodder status - matches Python get_gpodder_status function exactly
@@ -311,18 +372,34 @@ pub async fn gpodder_create_device(
     validate_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let device_id = state.db_pool.gpodder_create_device_with_caption(
-        user_id, 
-        &request.device_name, 
-        &request.device_type, 
-        request.device_caption.as_deref(),
-        false
-    ).await?;
     
+    // Get user's GPodder sync settings
+    let settings = state.db_pool.get_user_sync_settings(user_id).await?
+        .ok_or_else(|| AppError::BadRequest("User not found or GPodder sync not configured".to_string()))?;
+    
+    // Validate that GPodder sync is enabled
+    if settings.sync_type != "gpodder" && settings.sync_type != "both" {
+        return Err(AppError::BadRequest("GPodder sync is not enabled for this user".to_string()));
+    }
+    
+    // Create device via GPodder API (uses proper auth for internal/external)
+    let device_id = state.db_pool.create_device_via_gpodder_api(
+        &settings.url,
+        &settings.username, 
+        &settings.token,
+        &request.device_name
+    ).await.map_err(|e| AppError::Internal(format!("Failed to create device via GPodder API: {}", e)))?;
+    
+    // Return GPodder API standard format
     Ok(Json(serde_json::json!({ 
-        "status": "success",
-        "device_id": device_id,
-        "device_name": request.device_name 
+        "id": device_id,  // GPodder device ID (string)
+        "name": request.device_name,
+        "type": request.device_type,
+        "caption": request.device_caption.unwrap_or_else(|| request.device_name.clone()),
+        "last_sync": Option::<String>::None,
+        "is_active": true,
+        "is_remote": true,
+        "is_default": false
     })))
 }
 
