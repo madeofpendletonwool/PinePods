@@ -1315,15 +1315,14 @@ class PinepodsService {
         final data = jsonDecode(response.body);
         final episodes = data['episodes'] as List;
         return episodes.map((episodeData) {
-          // Add default values for fields not provided by this endpoint
+          // Add default values only for fields not provided by this endpoint
           final episodeWithDefaults = Map<String, dynamic>.from(episodeData);
-          episodeWithDefaults['saved'] =
-              false; // Episodes from this endpoint don't have saved status
-          episodeWithDefaults['queued'] =
-              false; // Episodes from this endpoint don't have queued status
-          episodeWithDefaults['downloaded'] =
-              false; // Episodes from this endpoint don't have downloaded status
-          episodeWithDefaults['is_youtube'] = false;
+          
+          // Only add defaults if these fields are not present in the API response
+          episodeWithDefaults['saved'] ??= false;
+          episodeWithDefaults['queued'] ??= false;
+          episodeWithDefaults['downloaded'] ??= false;
+          episodeWithDefaults['is_youtube'] ??= false;
 
           return PinepodsEpisode.fromJson(episodeWithDefaults);
         }).toList();

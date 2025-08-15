@@ -325,6 +325,7 @@ class _PinepodsSavedState extends State<PinepodsSaved> {
         // REMOVE the episode from the list since it's no longer saved
         setState(() {
           _episodes.removeAt(episodeIndex);
+          _filterEpisodes(); // Update filtered list after removal
         });
         _showSnackBar('Removed from saved episodes', Colors.orange);
       } else {

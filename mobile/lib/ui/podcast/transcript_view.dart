@@ -200,25 +200,15 @@ class _TranscriptViewState extends State<TranscriptView> {
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Text(
-                              L.of(context)!.no_transcript_available_label,
+                              'Transcript Error',
                               style: Theme.of(context).textTheme.titleLarge,
                               textAlign: TextAlign.center,
                             ),
-                            Padding(
-                              padding: const EdgeInsets.only(top: 32.0, bottom: 32.0),
-                              child: OutlinedButton(
-                                  onPressed: () {
-                                    final uri = Uri.parse(L.of(context)!.transcript_why_not_url);
-
-                                    unawaited(
-                                      canLaunchUrl(uri).then((value) => launchUrl(uri)),
-                                    );
-                                  },
-                                  child: Text(
-                                    L.of(context)!.transcript_why_not_label,
-                                    style: Theme.of(context).textTheme.titleSmall,
-                                    textAlign: TextAlign.center,
-                                  )),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Failed to load transcript. The episode has transcript support but there was an error retrieving or parsing the transcript data.',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                              textAlign: TextAlign.center,
                             ),
                           ],
                         ),

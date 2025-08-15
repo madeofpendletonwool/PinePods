@@ -19,6 +19,7 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
+import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:provider/provider.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 
@@ -339,10 +340,57 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   }
 
 
-  void _showEpisodeContextMenu(int episodeIndex) {
-    setState(() {
-      _contextMenuEpisodeIndex = episodeIndex;
-    });
+  Future<void> _showEpisodeContextMenu(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    final isDownloadedLocally = await LocalDownloadUtils.isEpisodeDownloadedLocally(context, episode);
+    
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.3),
+      builder: (context) => EpisodeContextMenu(
+        episode: episode,
+        isDownloadedLocally: isDownloadedLocally,
+        onSave: () {
+          Navigator.of(context).pop();
+          _saveEpisode(episodeIndex);
+        },
+        onRemoveSaved: () {
+          Navigator.of(context).pop();
+          _removeSavedEpisode(episodeIndex);
+        },
+        onDownload: episode.downloaded 
+          ? () {
+              Navigator.of(context).pop();
+              _deleteEpisode(episodeIndex);
+            }
+          : () {
+              Navigator.of(context).pop();
+              _downloadEpisode(episodeIndex);
+            },
+        onLocalDownload: () {
+          Navigator.of(context).pop();
+          _localDownloadEpisode(episodeIndex);
+        },
+        onDeleteLocalDownload: () {
+          Navigator.of(context).pop();
+          _deleteLocalDownload(episodeIndex);
+        },
+        onQueue: () {
+          Navigator.of(context).pop();
+          _queueEpisode(episodeIndex);
+        },
+        onMarkComplete: () {
+          Navigator.of(context).pop();
+          _markEpisodeComplete(episodeIndex);
+        },
+        onDismiss: () {
+          Navigator.of(context).pop();
+          _hideEpisodeContextMenu();
+        },
+      ),
+    );
   }
 
   void _hideEpisodeContextMenu() {
@@ -371,27 +419,312 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // Show context menu if needed
-    if (_contextMenuEpisodeIndex != null) {
-      final episodeIndex = _contextMenuEpisodeIndex!;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        showDialog(
-          context: context,
-          barrierColor: Colors.black.withOpacity(0.3),
-          builder: (context) => EpisodeContextMenu(
-            episode: _episodes[episodeIndex],
-            onDismiss: () {
-              Navigator.of(context).pop();
-              _hideEpisodeContextMenu();
-            },
-          ),
-        );
-      });
-      _contextMenuEpisodeIndex = null;
+  Future<void> _saveEpisode(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+
+    if (userId == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return;
     }
 
+    _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+    try {
+      final success = await _pinepodsService.saveEpisode(
+        episode.episodeId,
+        userId,
+        episode.isYoutube,
+      );
+
+      if (success) {
+        setState(() {
+          _episodes[episodeIndex] = _updateEpisodeProperty(episode, saved: true);
+          _filteredEpisodes = _episodes.where((e) => 
+            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
+          ).toList();
+        });
+        _showSnackBar('Episode saved!', Colors.green);
+      } else {
+        _showSnackBar('Failed to save episode', Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar('Error saving episode: $e', Colors.red);
+    }
+
+    _hideEpisodeContextMenu();
+  }
+
+  Future<void> _removeSavedEpisode(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+
+    if (userId == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return;
+    }
+
+    _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+    try {
+      final success = await _pinepodsService.removeSavedEpisode(
+        episode.episodeId,
+        userId,
+        episode.isYoutube,
+      );
+
+      if (success) {
+        setState(() {
+          _episodes[episodeIndex] = _updateEpisodeProperty(episode, saved: false);
+          _filteredEpisodes = _episodes.where((e) => 
+            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
+          ).toList();
+        });
+        _showSnackBar('Removed from saved episodes', Colors.orange);
+      } else {
+        _showSnackBar('Failed to remove saved episode', Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar('Error removing saved episode: $e', Colors.red);
+    }
+
+    _hideEpisodeContextMenu();
+  }
+
+  Future<void> _downloadEpisode(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+
+    if (userId == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return;
+    }
+
+    _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+    try {
+      final success = await _pinepodsService.downloadEpisode(
+        episode.episodeId,
+        userId,
+        episode.isYoutube,
+      );
+
+      if (success) {
+        setState(() {
+          _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: true);
+          _filteredEpisodes = _episodes.where((e) => 
+            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
+          ).toList();
+        });
+        _showSnackBar('Episode download started!', Colors.green);
+      } else {
+        _showSnackBar('Failed to download episode', Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar('Error downloading episode: $e', Colors.red);
+    }
+
+    _hideEpisodeContextMenu();
+  }
+
+  Future<void> _deleteEpisode(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+
+    if (userId == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return;
+    }
+
+    _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+    try {
+      final success = await _pinepodsService.deleteEpisode(
+        episode.episodeId,
+        userId,
+        episode.isYoutube,
+      );
+
+      if (success) {
+        setState(() {
+          _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: false);
+          _filteredEpisodes = _episodes.where((e) => 
+            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
+          ).toList();
+        });
+        _showSnackBar('Episode deleted from server', Colors.orange);
+      } else {
+        _showSnackBar('Failed to delete episode', Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar('Error deleting episode: $e', Colors.red);
+    }
+
+    _hideEpisodeContextMenu();
+  }
+
+  Future<void> _queueEpisode(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+
+    if (userId == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return;
+    }
+
+    _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+    try {
+      bool success;
+      if (episode.queued) {
+        success = await _pinepodsService.removeQueuedEpisode(
+          episode.episodeId,
+          userId,
+          episode.isYoutube,
+        );
+        if (success) {
+          setState(() {
+            _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: false);
+            _filteredEpisodes = _episodes.where((e) => 
+              e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
+            ).toList();
+          });
+          _showSnackBar('Removed from queue', Colors.orange);
+        }
+      } else {
+        success = await _pinepodsService.queueEpisode(
+          episode.episodeId,
+          userId,
+          episode.isYoutube,
+        );
+        if (success) {
+          setState(() {
+            _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: true);
+            _filteredEpisodes = _episodes.where((e) => 
+              e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
+            ).toList();
+          });
+          _showSnackBar('Added to queue!', Colors.green);
+        }
+      }
+
+      if (!success) {
+        _showSnackBar('Failed to update queue', Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar('Error updating queue: $e', Colors.red);
+    }
+
+    _hideEpisodeContextMenu();
+  }
+
+  Future<void> _markEpisodeComplete(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    final userId = settings.pinepodsUserId;
+
+    if (userId == null) {
+      _showSnackBar('Not logged in', Colors.red);
+      return;
+    }
+
+    _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+    try {
+      final success = await _pinepodsService.markEpisodeCompleted(
+        episode.episodeId,
+        userId,
+        episode.isYoutube,
+      );
+
+      if (success) {
+        setState(() {
+          _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: true);
+          _filteredEpisodes = _episodes.where((e) => 
+            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
+          ).toList();
+        });
+        _showSnackBar('Episode marked as complete', Colors.green);
+      } else {
+        _showSnackBar('Failed to mark episode complete', Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar('Error marking episode complete: $e', Colors.red);
+    }
+
+    _hideEpisodeContextMenu();
+  }
+
+  Future<void> _localDownloadEpisode(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    
+    final success = await LocalDownloadUtils.localDownloadEpisode(context, episode);
+    
+    if (success) {
+      _showSnackBar('Episode download started', Colors.green);
+    } else {
+      _showSnackBar('Failed to start download', Colors.red);
+    }
+
+    _hideEpisodeContextMenu();
+  }
+
+  Future<void> _deleteLocalDownload(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    
+    final deletedCount = await LocalDownloadUtils.deleteLocalDownload(context, episode);
+    
+    if (deletedCount > 0) {
+      _showSnackBar(
+        'Deleted $deletedCount local download${deletedCount > 1 ? 's' : ''}', 
+        Colors.orange
+      );
+    } else {
+      _showSnackBar('Local download not found', Colors.red);
+    }
+
+    _hideEpisodeContextMenu();
+  }
+
+  PinepodsEpisode _updateEpisodeProperty(
+    PinepodsEpisode episode, {
+    bool? saved,
+    bool? downloaded,
+    bool? queued,
+    bool? completed,
+  }) {
+    return PinepodsEpisode(
+      podcastName: episode.podcastName,
+      episodeTitle: episode.episodeTitle,
+      episodePubDate: episode.episodePubDate,
+      episodeDescription: episode.episodeDescription,
+      episodeArtwork: episode.episodeArtwork,
+      episodeUrl: episode.episodeUrl,
+      episodeDuration: episode.episodeDuration,
+      listenDuration: episode.listenDuration,
+      episodeId: episode.episodeId,
+      completed: completed ?? episode.completed,
+      saved: saved ?? episode.saved,
+      queued: queued ?? episode.queued,
+      downloaded: downloaded ?? episode.downloaded,
+      isYoutube: episode.isYoutube,
+      podcastId: episode.podcastId,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       body: Column(
         children: [
