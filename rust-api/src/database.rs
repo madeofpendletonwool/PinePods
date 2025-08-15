@@ -18885,7 +18885,9 @@ impl DatabasePool {
 
                     match resp.json::<serde_json::Value>().await {
                         Ok(subs_data) => {
+                            tracing::info!("Nextcloud subscriptions response: {:?}", subs_data);
                             if let Some(subs_array) = subs_data.as_array() {
+                                tracing::info!("Found {} subscriptions in Nextcloud array", subs_array.len());
                                 for sub in subs_array {
                                     if let Some(url) = sub.as_str() {
                                         server_subscriptions.push(ServerSubscription {
@@ -18895,6 +18897,8 @@ impl DatabasePool {
                                         });
                                     }
                                 }
+                            } else {
+                                tracing::warn!("Nextcloud subscriptions response is not an array: {:?}", subs_data);
                             }
                         }
                         Err(e) => {
