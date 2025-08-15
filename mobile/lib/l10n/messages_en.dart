@@ -52,7 +52,7 @@ class MessageLookup extends MessageLookupByLibrary {
             MessageLookupByLibrary.simpleMessage('Clear search text'),
         'close_button_label': MessageLookupByLibrary.simpleMessage('Close'),
         'consent_message': MessageLookupByLibrary.simpleMessage(
-            'This funding link will take you to an external site where you will be able to directly support the show. Links are provided by the podcast authors and is not controlled by Anytime.'),
+            'This funding link will take you to an external site where you will be able to directly support the show. Links are provided by the podcast authors and is not controlled by Pinepods.'),
         'continue_button_label':
             MessageLookupByLibrary.simpleMessage('Continue'),
         'delete_button_label': MessageLookupByLibrary.simpleMessage('Delete'),
@@ -339,7 +339,7 @@ class MessageLookup extends MessageLookupByLibrary {
         'transcript_why_not_label':
             MessageLookupByLibrary.simpleMessage('Why not?'),
         'transcript_why_not_url': MessageLookupByLibrary.simpleMessage(
-            'https://anytimeplayer.app/docs/anytime_transcript_support_en.html'),
+            'https://www.pinepods.online/docs/Features/Transcript'),
         'unsubscribe_button_label':
             MessageLookupByLibrary.simpleMessage('Unfollow'),
         'unsubscribe_label': MessageLookupByLibrary.simpleMessage('Unfollow'),

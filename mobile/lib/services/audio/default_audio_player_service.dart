@@ -864,6 +864,8 @@ class DefaultAudioPlayerService extends AudioPlayerService {
         var sub = _currentEpisode!.transcriptUrls.firstWhereOrNull((element) => element.type == TranscriptFormat.json);
 
         sub ??= _currentEpisode!.transcriptUrls.firstWhereOrNull((element) => element.type == TranscriptFormat.subrip);
+        
+        sub ??= _currentEpisode!.transcriptUrls.firstWhereOrNull((element) => element.type == TranscriptFormat.html);
 
         if (sub != null) {
           _updateTranscriptState(state: TranscriptLoadingState());

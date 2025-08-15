@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 enum TranscriptFormat {
   json,
   subrip,
+  html,
   unsupported,
 }
 
@@ -39,8 +40,11 @@ class TranscriptUrl {
       case TranscriptFormat.json:
         t = 1;
         break;
-      case TranscriptFormat.unsupported:
+      case TranscriptFormat.html:
         t = 2;
+        break;
+      case TranscriptFormat.unsupported:
+        t = 3;
         break;
     }
 
@@ -65,6 +69,9 @@ class TranscriptUrl {
         t = TranscriptFormat.json;
         break;
       case 2:
+        t = TranscriptFormat.html;
+        break;
+      case 3:
         t = TranscriptFormat.unsupported;
         break;
     }

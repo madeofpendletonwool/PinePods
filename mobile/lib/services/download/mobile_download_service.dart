@@ -62,6 +62,8 @@ class MobileDownloadService extends DownloadService {
           var sub = episode.transcriptUrls.firstWhereOrNull((element) => element.type == TranscriptFormat.json);
 
           sub ??= episode.transcriptUrls.firstWhereOrNull((element) => element.type == TranscriptFormat.subrip);
+          
+          sub ??= episode.transcriptUrls.firstWhereOrNull((element) => element.type == TranscriptFormat.html);
 
           if (sub != null) {
             var transcript = await podcastService.loadTranscriptByUrl(transcriptUrl: sub);

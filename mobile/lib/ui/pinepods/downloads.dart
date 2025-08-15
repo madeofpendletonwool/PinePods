@@ -270,6 +270,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
           setState(() {
             _serverDownloads.removeWhere((e) => e.episodeId == episode.episodeId);
             _serverDownloadsByPodcast = _groupEpisodesByPodcast(_serverDownloads);
+            _filterDownloads(); // Update filtered lists after removal
           });
         } else {
           _showErrorSnackBar('Failed to delete episode from server');

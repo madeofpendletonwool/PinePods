@@ -338,7 +338,7 @@ class MessageLookup extends MessageLookupByLibrary {
         'transcript_why_not_label':
             MessageLookupByLibrary.simpleMessage('Why not?'),
         'transcript_why_not_url': MessageLookupByLibrary.simpleMessage(
-            'https://anytimeplayer.app/docs/anytime_transcript_support_en.html'),
+            'https://www.pinepods.online/docs/Features/Transcript'),
         'unsubscribe_button_label':
             MessageLookupByLibrary.simpleMessage('Unfollow'),
         'unsubscribe_label': MessageLookupByLibrary.simpleMessage('Unfollow'),

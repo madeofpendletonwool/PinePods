@@ -28,6 +28,7 @@ dependencies:
   flutter_launcher_icons: ^0.14.2
   flutter_spinkit: ^5.0.0
   html: ^0.15.0
+  http: ^1.2.2
   intl: ^0.20.2
   intl_translation: ^0.20.0
   just_audio: ^0.10.4

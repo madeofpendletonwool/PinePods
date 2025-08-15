@@ -406,6 +406,11 @@ class PinepodsAudioService {
                        url.toLowerCase().contains('subrip')) {
               format = TranscriptFormat.subrip;
               log.info('Detected SubRip transcript format');
+            } else if (url.toLowerCase().contains('transcript') || 
+                       mimeType.toLowerCase().contains('html') || 
+                       type.toLowerCase().contains('html')) {
+              format = TranscriptFormat.html;
+              log.info('Detected HTML transcript format');
             } else {
               log.warning('Transcript format not recognized: mimeType=$mimeType, type=$type');
             }
