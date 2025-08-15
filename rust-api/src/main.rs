@@ -294,7 +294,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/add_gpodder_server", post(handlers::settings::add_gpodder_server))
         .route("/get_gpodder_settings/{user_id}", get(handlers::settings::get_gpodder_settings))
         .route("/check_gpodder_settings/{user_id}", get(handlers::settings::check_gpodder_settings))
-        .route("/remove_podcast_sync", post(handlers::settings::remove_podcast_sync))
+        .route("/remove_podcast_sync", delete(handlers::settings::remove_podcast_sync))
         .route("/gpodder/status", get(handlers::sync::gpodder_status))
         .route("/gpodder/toggle", post(handlers::sync::gpodder_toggle))
         .route("/refresh_pods", get(handlers::refresh::refresh_pods_admin))

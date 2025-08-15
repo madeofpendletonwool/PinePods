@@ -22,7 +22,7 @@ bigdecimal = "0.4.8"
 redis = { version = "0.32.4", features = ["aio", "tokio-comp"] }
 
 # HTTP Client
-reqwest = { version = "0.12.22", features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.12.22", features = ["json", "rustls-tls", "stream", "cookies"] }
 
 # Configuration and Environment
 config = "0.15.13"

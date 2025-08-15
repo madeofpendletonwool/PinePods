@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use bigdecimal::ToPrimitive;
 use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
+use base64;
 
 // Global temporary MFA secrets storage (matches Python temp_mfa_secrets)
 lazy_static! {
@@ -9213,8 +9214,7 @@ pub struct PublicOidcProvider {
 // Nextcloud login data structure
 #[derive(Debug, Clone)]
 pub struct NextcloudLoginData {
-    pub login_url: String,
-    pub token: String,
+    pub raw_response: serde_json::Value,
 }
 
 // Sync result structure
@@ -9709,14 +9709,9 @@ impl DatabasePool {
         let json: serde_json::Value = response.json().await
             .map_err(|e| AppError::internal(&format!("Failed to parse Nextcloud response: {}", e)))?;
         
-        let poll_token = json["poll"]["token"].as_str()
-            .ok_or_else(|| AppError::internal("Missing poll token in Nextcloud response"))?;
-        let login_url = json["login"].as_str()
-            .ok_or_else(|| AppError::internal("Missing login URL in Nextcloud response"))?;
-        
+        // Return the raw JSON response from Nextcloud to match Python behavior
         Ok(NextcloudLoginData {
-            login_url: login_url.to_string(),
-            token: poll_token.to_string(),
+            raw_response: json,
         })
     }
     
@@ -9772,46 +9767,35 @@ impl DatabasePool {
             }
         }
         
+        // Perform initial full sync for Nextcloud to get ALL user subscriptions
+        if let Err(e) = self.call_nextcloud_initial_full_sync(user_id, nextcloud_url, login_name, app_password).await {
+            tracing::warn!("Initial Nextcloud full sync failed during setup: {}", e);
+            // Don't fail setup if initial sync fails
+        }
+        
         Ok(true)
     }
-    
-    // Verify gPodder authentication - matches Python verify_gpodder_auth function exactly
-    pub async fn verify_gpodder_auth(&self, gpodder_url: &str, username: &str, password: &str) -> AppResult<bool> {
-        let client = reqwest::Client::new();
+
+    // Save Nextcloud credentials - helper method for background polling
+    pub async fn save_nextcloud_credentials(&self, user_id: i32, nextcloud_url: &str, app_password: &str, login_name: &str) -> AppResult<()> {
+        // Encrypt the app password
+        let encrypted_password = self.encrypt_password(app_password).await?;
         
-        // Test authentication with gPodder API
-        let auth_url = format!("{}/api/2/auth/{}/login.json", gpodder_url.trim_end_matches('/'), username);
-        
-        let response = client
-            .post(&auth_url)
-            .basic_auth(username, Some(password))
-            .send()
-            .await
-            .map_err(|e| AppError::internal(&format!("Failed to verify gPodder auth: {}", e)))?;
-        
-        Ok(response.status().is_success())
-    }
-    
-    // Add gPodder server - matches Python add_gpodder_server function exactly
-    pub async fn add_gpodder_server(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str) -> AppResult<bool> {
-        // Encrypt the password
-        let encrypted_password = self.encrypt_password(password).await?;
-        
-        // Store gPodder credentials
+        // Store Nextcloud credentials
         match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'external' WHERE userid = $4"#)
-                    .bind(gpodder_url)
-                    .bind(username)
+                sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'nextcloud' WHERE userid = $4"#)
+                    .bind(nextcloud_url)
+                    .bind(login_name)
                     .bind(&encrypted_password)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
             }
             DatabasePool::MySQL(pool) => {
-                sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'external' WHERE UserID = ?")
-                    .bind(gpodder_url)
-                    .bind(username)
+                sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'nextcloud' WHERE UserID = ?")
+                    .bind(nextcloud_url)
+                    .bind(login_name)
                     .bind(&encrypted_password)
                     .bind(user_id)
                     .execute(pool)
@@ -9819,14 +9803,120 @@ impl DatabasePool {
             }
         }
         
+        Ok(())
+    }
+    
+    
+    // Add gPodder server - matches Python add_gpodder_server function exactly
+    pub async fn add_gpodder_server(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str) -> AppResult<bool> {
+        // Encrypt the password
+        let encrypted_password = self.encrypt_password(password).await?;
+        
+        // Try to get devices from the external server to set a default device
+        let default_device_name = match self.get_first_device_from_server(gpodder_url, username, password).await {
+            Ok(device_name) => Some(device_name),
+            Err(e) => {
+                tracing::warn!("Could not get default device from external GPodder server: {}", e);
+                None
+            }
+        };
+        
+        // Store gPodder credentials
+        match self {
+            DatabasePool::Postgres(pool) => {
+                if let Some(device_name) = &default_device_name {
+                    sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'external', defaultgpodderdevice = $5 WHERE userid = $4"#)
+                        .bind(gpodder_url)
+                        .bind(username)
+                        .bind(&encrypted_password)
+                        .bind(user_id)
+                        .bind(device_name)
+                        .execute(pool)
+                        .await?;
+                } else {
+                    sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'external' WHERE userid = $4"#)
+                        .bind(gpodder_url)
+                        .bind(username)
+                        .bind(&encrypted_password)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                if let Some(device_name) = &default_device_name {
+                    sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'external', DefaultGpodderDevice = ? WHERE UserID = ?")
+                        .bind(gpodder_url)
+                        .bind(username)
+                        .bind(&encrypted_password)
+                        .bind(device_name)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                } else {
+                    sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'external' WHERE UserID = ?")
+                        .bind(gpodder_url)
+                        .bind(username)
+                        .bind(&encrypted_password)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+        }
+        
+        // Perform initial full sync for external GPodder server to get ALL user subscriptions
+        if let Some(device_name) = &default_device_name {
+            if let Err(e) = self.call_gpodder_initial_full_sync(user_id, gpodder_url, username, password, device_name).await {
+                tracing::warn!("Initial GPodder full sync failed during external server setup: {}", e);
+                // Don't fail setup if initial sync fails
+            }
+        }
+        
         Ok(true)
     }
     
+    // Helper function to get first device from external GPodder server
+    async fn get_first_device_from_server(&self, gpodder_url: &str, username: &str, password: &str) -> AppResult<String> {
+        let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+        
+        let devices_url = format!("{}/api/2/devices/{}.json", gpodder_url.trim_end_matches('/'), username);
+        
+        let response = if session.authenticated {
+            session.client.get(&devices_url).send().await
+        } else {
+            session.client.get(&devices_url).basic_auth(username, Some(password)).send().await
+        };
+        
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                let devices_data: serde_json::Value = resp.json().await
+                    .map_err(|e| AppError::internal(&format!("Failed to parse devices: {}", e)))?;
+                    
+                if let Some(devices_array) = devices_data.as_array() {
+                    if let Some(first_device) = devices_array.first() {
+                        if let Some(device_id) = first_device.get("id").and_then(|v| v.as_str()) {
+                            return Ok(device_id.to_string());
+                        }
+                    }
+                }
+                
+                Err(AppError::internal("No devices found on external GPodder server"))
+            }
+            Ok(resp) => {
+                Err(AppError::internal(&format!("Failed to get devices from external server: {}", resp.status())))
+            }
+            Err(e) => {
+                Err(AppError::internal(&format!("Error connecting to external server: {}", e)))
+            }
+        }
+    }
+    
     // Encrypt password using Fernet - matches Python encryption
-    async fn encrypt_password(&self, password: &str) -> AppResult<String> {
+    pub async fn encrypt_password(&self, password: &str) -> AppResult<String> {
         use fernet::Fernet;
         
-        // Get encryption key from app settings
+        // Get encryption key from app settings (base64 string)
         let encryption_key = self.get_encryption_key().await?;
         let fernet = Fernet::new(&encryption_key)
             .ok_or_else(|| AppError::internal("Failed to create Fernet cipher"))?;
@@ -9839,13 +9929,24 @@ impl DatabasePool {
     async fn get_encryption_key(&self) -> AppResult<String> {
         match self {
             DatabasePool::Postgres(pool) => {
+                // Try as string first (new format), fallback to bytes (old format)
                 let row = sqlx::query(r#"SELECT encryptionkey FROM "AppSettings" LIMIT 1"#)
                     .fetch_optional(pool)
                     .await?;
                 
                 if let Some(row) = row {
-                    let key: Option<String> = row.try_get("encryptionkey")?;
-                    key.ok_or_else(|| AppError::internal("Encryption key not found"))
+                    // Try string first
+                    if let Ok(key_string) = row.try_get::<String, _>("encryptionkey") {
+                        return Ok(key_string);
+                    }
+                    // Fallback to bytes and convert to string
+                    let key_bytes: Option<Vec<u8>> = row.try_get("encryptionkey")?;
+                    if let Some(bytes) = key_bytes {
+                        String::from_utf8(bytes)
+                            .map_err(|e| AppError::internal(&format!("Invalid UTF-8 in encryption key: {}", e)))
+                    } else {
+                        Err(AppError::internal("Encryption key not found"))
+                    }
                 } else {
                     Err(AppError::internal("App settings not found"))
                 }
@@ -9881,8 +9982,8 @@ impl DatabasePool {
                     
                     if url.is_some() && username.is_some() {
                         Ok(Some(serde_json::json!({
-                            "gpodder_url": url.unwrap_or_default(),
-                            "gpodder_username": username.unwrap_or_default(),
+                            "gpodderurl": url.unwrap_or_default(),
+                            "gpoddertoken": "", // Frontend expects this field but it's not used for display
                             "sync_type": sync_type.unwrap_or_default()
                         })))
                     } else {
@@ -9905,8 +10006,8 @@ impl DatabasePool {
                     
                     if url.is_some() && username.is_some() {
                         Ok(Some(serde_json::json!({
-                            "gpodder_url": url.unwrap_or_default(),
-                            "gpodder_username": username.unwrap_or_default(),
+                            "gpodderurl": url.unwrap_or_default(),
+                            "gpoddertoken": "", // Frontend expects this field but it's not used for display
                             "sync_type": sync_type.unwrap_or_default()
                         })))
                     } else {
@@ -10015,38 +10116,60 @@ impl DatabasePool {
 
     // Get gPodder devices for user - matches Python get_devices function exactly with remote device support
     pub async fn gpodder_get_user_devices(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
-        // Get local devices
-        let mut local_devices = self.get_local_devices(user_id).await?;
-        
-        // Get remote devices if sync is configured
+        // Check what type of sync is configured
         if let Some(sync_settings) = self.get_user_sync_settings(user_id).await? {
-            if sync_settings.sync_type != "None" && sync_settings.sync_type != "nextcloud" {
-                let remote_devices = self.fetch_remote_devices(&sync_settings).await.unwrap_or_default();
-                
-                // Merge remote devices with local, handling conflicts
-                for remote_device in remote_devices {
-                    let existing_local = local_devices.iter().find(|d| 
-                        d["name"].as_str() == Some(&remote_device.device_name)
-                    );
+            match sync_settings.sync_type.as_str() {
+                "gpodder" | "external" => {
+                    // Both internal and external use HTTP API calls to GPodder server
+                    // Internal: http://localhost:8042, External: user's configured URL
+                    let mut devices = self.fetch_devices_from_gpodder_api(&sync_settings).await?;
                     
-                    if existing_local.is_none() {
-                        // Add remote device with negative ID to indicate it's remote
-                        local_devices.push(serde_json::json!({
-                            "id": -(remote_device.device_id.abs()), // Negative for remote
-                            "name": remote_device.device_name,
-                            "type": remote_device.device_type,
-                            "caption": remote_device.device_caption,
-                            "last_sync": Option::<String>::None,
-                            "is_active": true,
-                            "is_default": false, // Remote devices are never default locally
-                            "is_remote": true
-                        }));
+                    // Get the default device name from Users table to mark the correct device
+                    let default_device_name = match self {
+                        DatabasePool::Postgres(pool) => {
+                            let row = sqlx::query(r#"SELECT defaultgpodderdevice FROM "Users" WHERE userid = $1"#)
+                                .bind(user_id)
+                                .fetch_optional(pool)
+                                .await?;
+                            
+                            row.and_then(|r| r.try_get::<Option<String>, _>("defaultgpodderdevice").ok().flatten())
+                        }
+                        DatabasePool::MySQL(pool) => {
+                            let row = sqlx::query("SELECT DefaultGpodderDevice FROM Users WHERE UserID = ?")
+                                .bind(user_id)
+                                .fetch_optional(pool)
+                                .await?;
+                            
+                            row.and_then(|r| r.try_get::<Option<String>, _>("DefaultGpodderDevice").ok().flatten())
+                        }
+                    };
+                    
+                    // Mark the default device
+                    if let Some(default_name) = default_device_name {
+                        for device in &mut devices {
+                            if device.get("name").and_then(|v| v.as_str()) == Some(&default_name) {
+                                device["is_default"] = serde_json::Value::Bool(true);
+                                device["is_remote"] = serde_json::Value::Bool(false); // Default device is treated as local
+                                break;
+                            }
+                        }
                     }
+                    
+                    Ok(devices)
+                }
+                "nextcloud" => {
+                    // Nextcloud doesn't have device concept like GPodder
+                    Ok(vec![])
+                }
+                _ => {
+                    // No sync configured - return empty list
+                    Ok(vec![])
                 }
             }
+        } else {
+            // No sync settings found - return empty list
+            Ok(vec![])
         }
-        
-        Ok(local_devices)
     }
 
     // Get local devices only - internal helper
@@ -10097,46 +10220,70 @@ impl DatabasePool {
         }
     }
 
-    // Fetch remote devices from gPodder server - matches Python remote device fetching
-    async fn fetch_remote_devices(&self, settings: &UserSyncSettings) -> AppResult<Vec<GpodderDevice>> {
-        let session = self.create_gpodder_session(settings).await?;
+    // Fetch devices from GPodder API server - works for both internal and external
+    async fn fetch_devices_from_gpodder_api(&self, settings: &UserSyncSettings) -> AppResult<Vec<serde_json::Value>> {
+        // For internal GPodder API, use X-GPodder-Token header
+        // For external GPodder API, use session auth with basic auth fallback
+        let (client, auth_headers) = if settings.url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token
+            let client = reqwest::Client::new();
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert("X-GPodder-Token", settings.token.parse().unwrap());
+            (client, Some(headers))
+        } else {
+            // External GPodder API - decrypt password and use session auth  
+            let decrypted_password = self.decrypt_password(&settings.token).await?;
+            let session = self.create_gpodder_session_with_password(&settings.url, &settings.username, &decrypted_password).await?;
+            (session.client, None)
+        };
         
         let devices_url = format!("{}/api/2/devices/{}.json", 
             settings.url.trim_end_matches('/'), settings.username);
         
-        let response = session.client
-            .get(&devices_url)
+        let mut request = client.get(&devices_url);
+        
+        // Add authentication headers if needed
+        if let Some(headers) = auth_headers {
+            request = request.headers(headers);
+        } else {
+            // External server with session auth - if session failed, fall back to basic auth
+            let decrypted_password = self.decrypt_password(&settings.token).await?;
+            request = request.basic_auth(&settings.username, Some(&decrypted_password));
+        }
+        
+        let response = request
             .send()
             .await
-            .map_err(|e| AppError::internal(&format!("Failed to fetch remote devices: {}", e)))?;
+            .map_err(|e| AppError::internal(&format!("Failed to fetch devices from GPodder API: {}", e)))?;
         
         if response.status().is_success() {
             let devices_data: serde_json::Value = response.json().await
-                .map_err(|e| AppError::internal(&format!("Failed to parse remote devices: {}", e)))?;
+                .map_err(|e| AppError::internal(&format!("Failed to parse devices from GPodder API: {}", e)))?;
             
-            let mut remote_devices = Vec::new();
+            let mut devices = Vec::new();
             
             if let Some(devices_array) = devices_data.as_array() {
-                for (index, device) in devices_array.iter().enumerate() {
-                    if let (Some(device_name), Some(device_type)) = (
-                        device["id"].as_str(),
-                        device["type"].as_str()
-                    ) {
-                        remote_devices.push(GpodderDevice {
-                            device_id: -(index as i32 + 1000), // Negative ID for remote devices
-                            device_name: device_name.to_string(),
-                            device_type: device_type.to_string(),
-                            device_caption: device["caption"].as_str().map(|s| s.to_string()),
-                            is_default: false,
-                            is_remote: true,
-                            user_id: 0, // Remote devices don't have local user_id
-                        });
+                for device in devices_array.iter() {
+                    if let Some(device_id) = device["id"].as_str() {
+                        // Convert GPodder API response to Pinepods device format
+                        devices.push(serde_json::json!({
+                            "id": device_id,  // Use actual GPodder device ID (string)
+                            "name": device_id,
+                            "type": device["type"].as_str().unwrap_or("other"),
+                            "caption": device["caption"].as_str().unwrap_or(device_id),
+                            "last_sync": Option::<String>::None,
+                            "is_active": true,
+                            "is_default": false, // GPodder devices are not local defaults
+                            "is_remote": true,
+                            "subscriptions": device["subscriptions"].as_i64().unwrap_or(0)
+                        }));
                     }
                 }
             }
             
-            Ok(remote_devices)
+            Ok(devices)
         } else {
+            tracing::warn!("Failed to fetch devices from GPodder API: {}", response.status());
             Ok(Vec::new())
         }
     }
@@ -10183,6 +10330,42 @@ impl DatabasePool {
         })
     }
 
+    // Create gPodder session with already-decrypted password (avoids double decryption)
+    async fn create_gpodder_session_with_password(&self, gpodder_url: &str, username: &str, password: &str) -> AppResult<GpodderSession> {
+        let jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
+        let client = reqwest::Client::builder()
+            .cookie_provider(jar)
+            .build()
+            .map_err(|e| AppError::internal(&format!("Failed to create HTTP client: {}", e)))?;
+        
+        // Try session-based authentication first - matches Python login flow
+        let login_url = format!("{}/api/2/auth/{}/login.json", 
+            gpodder_url.trim_end_matches('/'), username);
+        
+        let login_response = client
+            .post(&login_url)
+            .basic_auth(username, Some(password))
+            .send()
+            .await;
+        
+        let session_authenticated = match login_response {
+            Ok(response) if response.status().is_success() => {
+                tracing::info!("gPodder session authentication successful");
+                true
+            }
+            _ => {
+                tracing::warn!("gPodder session authentication failed, will use basic auth");
+                false
+            }
+        };
+        
+        Ok(GpodderSession {
+            client,
+            session_id: None,
+            authenticated: session_authenticated,
+        })
+    }
+
     // gPodder force sync - calls Go gPodder service exactly like Python force_full_sync_to_gpodder
     pub async fn gpodder_force_sync(&self, user_id: i32) -> AppResult<bool> {
         let sync_settings = self.get_user_sync_settings(user_id).await?;
@@ -10195,7 +10378,7 @@ impl DatabasePool {
         
         match settings.sync_type.as_str() {
             "gpodder" => {
-                // Internal gPodder API on localhost:8042 - use encrypted token directly
+                // Internal gPodder API on localhost:8042 - use unencrypted token directly
                 self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, true).await
             }
             "nextcloud" => {
@@ -10226,98 +10409,657 @@ impl DatabasePool {
         let settings = sync_settings.unwrap();
         let device_name = self.get_or_create_default_device(user_id).await?;
         
-        match settings.sync_type.as_str() {
+        let success = match settings.sync_type.as_str() {
             "gpodder" => {
-                self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?;
-                Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
+                self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?
             }
             "nextcloud" => {
-                self.sync_with_nextcloud(user_id, &settings, false).await?;
-                Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
+                self.sync_with_nextcloud(user_id, &settings, false).await?
             }
             "external" => {
                 let decrypted_token = self.decrypt_password(&settings.token).await?;
-                self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?;
-                Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
+                self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?
             }
             "both" => {
-                self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?;
+                let internal_success = self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?;
                 let decrypted_token = self.decrypt_password(&settings.token).await?;
-                self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?;
-                Ok(SyncResult { synced_podcasts: 2, synced_episodes: 0 })
+                let external_success = self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?;
+                internal_success || external_success
             }
-            _ => Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
-        }
+            _ => false
+        };
+        
+        Ok(SyncResult { 
+            synced_podcasts: if success { 1 } else { 0 }, 
+            synced_episodes: 0 
+        })
     }
 
     // Call gPodder service for sync - matches Python API calls exactly with enhanced error handling
     async fn call_gpodder_service_sync(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str, device_name: &str, force: bool) -> AppResult<bool> {
-        let session = self.create_gpodder_session(&UserSyncSettings {
-            url: gpodder_url.to_string(),
-            username: username.to_string(),
-            token: password.to_string(),
-            sync_type: if gpodder_url == "http://localhost:8042" { "gpodder".to_string() } else { "external".to_string() },
-        }).await?;
+        // Step 1: Get ALL devices first (critical for detecting changes from external devices like AntennaPod)
+        let devices_url = format!("{}/api/2/devices/{}.json", 
+            gpodder_url.trim_end_matches('/'), username);
         
-        // Step 1: Get subscriptions from gPodder service with session or basic auth fallback
-        let subscriptions_url = format!("{}/api/2/subscriptions/{}/{}.json", gpodder_url.trim_end_matches('/'), username, device_name);
-        
-        let response = if session.authenticated {
-            session.client
-                .get(&subscriptions_url)
+        // Use correct authentication based on internal vs external
+        let devices_response = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            client.get(&devices_url)
+                .header("X-GPodder-Token", password)
                 .send()
                 .await
         } else {
-            session.client
-                .get(&subscriptions_url)
-                .basic_auth(username, Some(password))
+            // External GPodder API - use session auth with basic fallback
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                session.client
+                    .get(&devices_url)
+                    .send()
+                    .await
+            } else {
+                session.client
+                    .get(&devices_url)
+                    .basic_auth(username, Some(password))
+                    .send()
+                    .await
+            }
+        };
+        
+        let devices = match devices_response {
+            Ok(resp) if resp.status().is_success() => {
+                let devices_data: serde_json::Value = resp.json().await
+                    .map_err(|e| AppError::internal(&format!("Failed to parse devices: {}", e)))?;
+                
+                if let Some(devices_array) = devices_data.as_array() {
+                    let device_names: Vec<String> = devices_array.iter()
+                        .filter_map(|device| device.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                        .collect();
+                    
+                    tracing::info!("Found {} devices for user: {:?}", device_names.len(), device_names);
+                    device_names
+                } else {
+                    tracing::warn!("No devices found for user");
+                    vec![]
+                }
+            }
+            Ok(resp) => {
+                tracing::warn!("Failed to get devices: {}", resp.status());
+                if force {
+                    return Err(AppError::internal(&format!("Force sync failed to get devices: {}", resp.status())));
+                } else {
+                    return Ok(false);
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to connect to get devices: {}", e);
+                if force {
+                    return Err(AppError::internal(&format!("Force sync connection failed: {}", e)));
+                } else {
+                    return Ok(false);
+                }
+            }
+        };
+        
+        tracing::info!("Found {} devices to sync from: {:?}", devices.len(), devices);
+        
+        // Step 2: Get subscriptions from ALL devices with timestamps (like AntennaPod sync)
+        let since_timestamp = self.get_last_sync_timestamp(user_id).await?;
+        let mut all_subscriptions = std::collections::HashSet::new();
+        let mut all_removals = std::collections::HashSet::new();
+        
+        for device_id in &devices {
+            tracing::info!("Getting subscriptions from device: {}", device_id);
+            
+            let subscriptions_url = if let Some(since) = since_timestamp {
+                format!("{}/api/2/subscriptions/{}/{}.json?since={}", 
+                    gpodder_url.trim_end_matches('/'), username, device_id, since.timestamp())
+            } else {
+                format!("{}/api/2/subscriptions/{}/{}.json?since=0", 
+                    gpodder_url.trim_end_matches('/'), username, device_id)
+            };
+            
+            let device_response = if gpodder_url == "http://localhost:8042" {
+                let client = reqwest::Client::new();
+                client.get(&subscriptions_url)
+                    .header("X-GPodder-Token", password)
+                    .send()
+                    .await
+            } else {
+                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+                if session.authenticated {
+                    session.client
+                        .get(&subscriptions_url)
+                        .send()
+                        .await
+                } else {
+                    session.client
+                        .get(&subscriptions_url)
+                        .basic_auth(username, Some(password))
+                        .send()
+                        .await
+                }
+            };
+            
+            match device_response {
+                Ok(resp) if resp.status().is_success() => {
+                    let response_text = resp.text().await
+                        .map_err(|e| AppError::internal(&format!("Failed to get response text: {}", e)))?;
+                    
+                    let sync_response: serde_json::Value = serde_json::from_str(&response_text)
+                        .map_err(|e| AppError::internal(&format!("Failed to parse gPodder sync response: {}", e)))?;
+                    
+                    let device_subscriptions = sync_response["add"].as_array()
+                        .unwrap_or(&vec![])
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<String>>();
+                    
+                    let device_removals = sync_response["remove"].as_array()
+                        .unwrap_or(&vec![])
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<String>>();
+                    
+                    tracing::info!("Device {} has {} subscriptions and {} removals", device_id, device_subscriptions.len(), device_removals.len());
+                    
+                    // Add to combined sets (HashSet automatically deduplicates)
+                    for subscription in device_subscriptions {
+                        all_subscriptions.insert(subscription);
+                    }
+                    
+                    for removal in device_removals {
+                        all_removals.insert(removal);
+                    }
+                }
+                Ok(resp) => {
+                    tracing::warn!("Device {} returned error: {}", device_id, resp.status());
+                    // Continue with other devices instead of failing
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to get subscriptions from device {}: {}", device_id, e);
+                    // Continue with other devices instead of failing
+                }
+            }
+        }
+        
+        tracing::info!("Downloaded {} unique subscriptions and {} unique removals from ALL devices", all_subscriptions.len(), all_removals.len());
+        
+        // Step 3: Get episode actions from ALL devices with timestamps
+        let mut all_episode_actions = Vec::new();
+        
+        for device_id in &devices {
+            tracing::info!("Getting episode actions from device: {}", device_id);
+            
+            let episode_actions_url = if let Some(since) = since_timestamp {
+                format!("{}/api/2/episodes/{}.json?since={}&device={}", 
+                    gpodder_url.trim_end_matches('/'), username, since.timestamp(), device_id)
+            } else {
+                format!("{}/api/2/episodes/{}.json?since=0&device={}", 
+                    gpodder_url.trim_end_matches('/'), username, device_id)
+            };
+            
+            let device_response = if gpodder_url == "http://localhost:8042" {
+                let client = reqwest::Client::new();
+                client.get(&episode_actions_url)
+                    .header("X-GPodder-Token", password)
+                    .send()
+                    .await
+            } else {
+                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+                if session.authenticated {
+                    session.client
+                        .get(&episode_actions_url)
+                        .send()
+                        .await
+                } else {
+                    session.client
+                        .get(&episode_actions_url)
+                        .basic_auth(username, Some(password))
+                        .send()
+                        .await
+                }
+            };
+            
+            match device_response {
+                Ok(resp) if resp.status().is_success() => {
+                    let response_text = resp.text().await
+                        .map_err(|e| AppError::internal(&format!("Failed to get episode actions response text: {}", e)))?;
+                    
+                    let episode_actions: serde_json::Value = serde_json::from_str(&response_text)
+                        .map_err(|e| AppError::internal(&format!("Failed to parse episode actions response: {}", e)))?;
+                    
+                    if let Some(actions_array) = episode_actions["actions"].as_array() {
+                        let device_actions_count = actions_array.len();
+                        tracing::info!("Device {} has {} episode actions", device_id, device_actions_count);
+                        
+                        for action in actions_array {
+                            all_episode_actions.push(action.clone());
+                        }
+                    }
+                }
+                Ok(resp) => {
+                    tracing::warn!("Device {} episode actions returned error: {}", device_id, resp.status());
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to get episode actions from device {}: {}", device_id, e);
+                }
+            }
+        }
+        
+        tracing::info!("Downloaded {} episode actions from ALL devices", all_episode_actions.len());
+        
+        // Step 4: Process all subscriptions (additions)
+        let subscriptions_vec: Vec<String> = all_subscriptions.into_iter().collect();
+        self.process_gpodder_subscriptions(user_id, &subscriptions_vec).await?;
+        
+        // Step 5: Process all subscription removals
+        let removals_vec: Vec<String> = all_removals.into_iter().collect();
+        if !removals_vec.is_empty() {
+            self.process_gpodder_subscription_removals(user_id, &removals_vec).await?;
+        }
+        
+        // Step 6: Process all episode actions
+        if !all_episode_actions.is_empty() {
+            if let Err(e) = self.apply_remote_episode_actions(user_id, &all_episode_actions).await {
+                tracing::warn!("Episode actions processing failed but continuing: {}", e);
+            }
+        }
+        
+        // Step 7: Upload local subscriptions to gPodder service (to default device)
+        if since_timestamp.is_none() || !subscriptions_vec.is_empty() || !removals_vec.is_empty() {
+            let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+            self.upload_subscriptions_to_gpodder(gpodder_url, username, password, device_name, &local_subscriptions).await?;
+        } else {
+            tracing::info!("Skipping subscription upload - no changes detected in incremental sync");
+        }
+        
+        // Step 8: Upload local episode actions to gPodder service (to default device)
+        if let Err(e) = self.sync_episode_actions_with_gpodder(gpodder_url, username, password, device_name, user_id).await {
+            tracing::warn!("Episode actions sync failed but continuing: {}", e);
+        }
+        
+        // Step 9: Update last sync timestamp for next incremental sync
+        self.update_last_sync_timestamp(user_id).await?;
+        
+        Ok(true)
+    }
+
+    // Initial full sync for GPodder - gets ALL user subscriptions from ALL devices
+    pub async fn call_gpodder_initial_full_sync(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str, device_name: &str) -> AppResult<bool> {
+        tracing::info!("Starting initial full GPodder sync for user {} from {}", user_id, gpodder_url);
+        
+        // Step 1: Get ALL devices first (this is how AntennaPod and other apps do it)
+        let devices_url = format!("{}/api/2/devices/{}.json", 
+            gpodder_url.trim_end_matches('/'), username);
+        
+        let devices_response = if gpodder_url == "http://localhost:8042" {
+            let client = reqwest::Client::new();
+            client.get(&devices_url).header("X-GPodder-Token", password).send().await
+        } else {
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                session.client.get(&devices_url).send().await
+            } else {
+                session.client.get(&devices_url).basic_auth(username, Some(password)).send().await
+            }
+        };
+        
+        let devices = match devices_response {
+            Ok(resp) if resp.status().is_success() => {
+                let devices_data: serde_json::Value = resp.json().await
+                    .map_err(|e| AppError::internal(&format!("Failed to parse devices: {}", e)))?;
+                
+                if let Some(devices_array) = devices_data.as_array() {
+                    let device_names: Vec<String> = devices_array.iter()
+                        .filter_map(|device| device.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                        .collect();
+                    
+                    tracing::info!("Found {} devices for user: {:?}", device_names.len(), device_names);
+                    device_names
+                } else {
+                    tracing::warn!("No devices found for user");
+                    vec![]
+                }
+            }
+            Ok(resp) => {
+                tracing::error!("Failed to get devices: {}", resp.status());
+                return Ok(false);
+            }
+            Err(e) => {
+                tracing::error!("Failed to connect for devices: {}", e);
+                return Ok(false);
+            }
+        };
+        
+        // Step 2: Get subscriptions from ALL devices (like AntennaPod does)
+        let mut all_subscriptions = std::collections::HashSet::new();
+        
+        for device_id in &devices {
+            tracing::info!("Getting subscriptions from device: {}", device_id);
+            
+            let subscriptions_url = format!("{}/api/2/subscriptions/{}/{}.json?since=0", 
+                gpodder_url.trim_end_matches('/'), username, device_id);
+            
+            let response = if gpodder_url == "http://localhost:8042" {
+                let client = reqwest::Client::new();
+                client.get(&subscriptions_url).header("X-GPodder-Token", password).send().await
+            } else {
+                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+                if session.authenticated {
+                    session.client.get(&subscriptions_url).send().await
+                } else {
+                    session.client.get(&subscriptions_url).basic_auth(username, Some(password)).send().await
+                }
+            };
+            
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    let response_text = resp.text().await
+                        .map_err(|e| AppError::internal(&format!("Failed to get response text: {}", e)))?;
+                    
+                    let sync_response: serde_json::Value = serde_json::from_str(&response_text)
+                        .map_err(|e| AppError::internal(&format!("Failed to parse gPodder sync response: {}", e)))?;
+                    
+                    let device_subscriptions = sync_response["add"].as_array()
+                        .unwrap_or(&vec![])
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<String>>();
+                    
+                    tracing::info!("Device {} has {} subscriptions", device_id, device_subscriptions.len());
+                    
+                    // Add all subscriptions to our set (deduplicates automatically)
+                    for subscription in device_subscriptions {
+                        all_subscriptions.insert(subscription);
+                    }
+                }
+                Ok(resp) => {
+                    tracing::warn!("Failed to get subscriptions from device {}: {}", device_id, resp.status());
+                    // Continue with other devices
+                }
+                Err(e) => {
+                    tracing::warn!("Error getting subscriptions from device {}: {}", device_id, e);
+                    // Continue with other devices
+                }
+            }
+        }
+        
+        let all_subscriptions: Vec<String> = all_subscriptions.into_iter().collect();
+        tracing::info!("Total unique subscriptions from all devices: {}", all_subscriptions.len());
+        
+        // Step 2: Get episode actions from ALL devices (like subscription sync)
+        let mut all_episode_actions = Vec::new();
+        
+        for device_id in &devices {
+            tracing::info!("Getting episode actions from device: {}", device_id);
+            
+            let episode_actions_url = format!("{}/api/2/episodes/{}.json?since=0&device={}", 
+                gpodder_url.trim_end_matches('/'), username, device_id);
+            
+            let response = if gpodder_url == "http://localhost:8042" {
+                let client = reqwest::Client::new();
+                client.get(&episode_actions_url).header("X-GPodder-Token", password).send().await
+            } else {
+                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+                if session.authenticated {
+                    session.client.get(&episode_actions_url).send().await
+                } else {
+                    session.client.get(&episode_actions_url).basic_auth(username, Some(password)).send().await
+                }
+            };
+            
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    let episode_data: serde_json::Value = resp.json().await
+                        .map_err(|e| AppError::internal(&format!("Failed to parse episode actions for device {}: {}", device_id, e)))?;
+                    
+                    if let Some(actions) = episode_data.get("actions").and_then(|v| v.as_array()) {
+                        tracing::info!("Device {} has {} episode actions", device_id, actions.len());
+                        
+                        // Add all episode actions from this device
+                        for action in actions {
+                            all_episode_actions.push(action.clone());
+                        }
+                    }
+                }
+                Ok(resp) => {
+                    tracing::warn!("Failed to get episode actions from device {}: {}", device_id, resp.status());
+                    // Continue with other devices
+                }
+                Err(e) => {
+                    tracing::warn!("Error getting episode actions from device {}: {}", device_id, e);
+                    // Continue with other devices
+                }
+            }
+        }
+        
+        tracing::info!("Total episode actions from all devices: {}", all_episode_actions.len());
+        
+        // Process all episode actions and apply them locally
+        if !all_episode_actions.is_empty() {
+            if let Err(e) = self.apply_remote_episode_actions(user_id, &all_episode_actions).await {
+                tracing::warn!("Failed to apply remote episode actions: {}", e);
+            }
+        }
+        
+        // Step 3: Process all subscriptions and add missing podcasts
+        self.process_gpodder_subscriptions(user_id, &all_subscriptions).await?;
+        
+        // Step 4: Upload local subscriptions to GPodder service
+        let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+        self.upload_subscriptions_to_gpodder(gpodder_url, username, password, device_name, &local_subscriptions).await?;
+        
+        // Step 5: Upload local episode actions to GPodder service
+        let local_episode_actions = self.get_user_episode_actions(user_id).await?;
+        if !local_episode_actions.is_empty() {
+            if let Err(e) = self.upload_episode_actions_to_gpodder(gpodder_url, username, password, &local_episode_actions).await {
+                tracing::warn!("Failed to upload local episode actions to GPodder: {}", e);
+                // Don't fail the sync if episode actions upload fails
+            }
+        }
+        
+        // Step 5: Clear any existing sync timestamp to start fresh for incremental syncs
+        self.clear_last_sync_timestamp(user_id).await?;
+        
+        tracing::info!("Initial full GPodder sync completed for user {}", user_id);
+        Ok(true)
+    }
+    
+    // Initial full sync for Nextcloud - gets ALL user subscriptions 
+    pub async fn call_nextcloud_initial_full_sync(&self, user_id: i32, nextcloud_url: &str, username: &str, password: &str) -> AppResult<bool> {
+        tracing::info!("Starting initial full Nextcloud sync for user {} from {}", user_id, nextcloud_url);
+        
+        let client = reqwest::Client::new();
+        
+        // Get ALL subscriptions from Nextcloud gPodder Sync app
+        let subscriptions_url = format!("{}/index.php/apps/gpoddersync/subscriptions", nextcloud_url.trim_end_matches('/'));
+        
+        let response = client
+            .get(&subscriptions_url)
+            .basic_auth(username, Some(password))
+            .send()
+            .await
+            .map_err(|e| AppError::internal(&format!("Failed to get Nextcloud subscriptions: {}", e)))?;
+        
+        if !response.status().is_success() {
+            tracing::error!("Failed to get Nextcloud subscriptions: {}", response.status());
+            return Ok(false);
+        }
+        
+        let subscriptions: serde_json::Value = response.json().await
+            .map_err(|e| AppError::internal(&format!("Failed to parse Nextcloud subscriptions: {}", e)))?;
+        
+        // Process subscriptions - Nextcloud returns array of feed URLs
+        let feed_urls = if let Some(feeds) = subscriptions.as_array() {
+            let urls: Vec<String> = feeds.iter()
+                .filter_map(|f| f.as_str().map(|s| s.to_string()))
+                .collect();
+            
+            tracing::info!("Downloaded {} subscriptions from Nextcloud", urls.len());
+            urls
+        } else {
+            tracing::warn!("No subscriptions found in Nextcloud response");
+            vec![]
+        };
+        
+        // Get ALL episode actions from Nextcloud
+        let episode_actions_url = format!("{}/index.php/apps/gpoddersync/episode_action", nextcloud_url.trim_end_matches('/'));
+        
+        let episode_response = client
+            .get(&episode_actions_url)
+            .basic_auth(username, Some(password))
+            .send()
+            .await;
+        
+        let mut all_episode_actions = Vec::new();
+        
+        match episode_response {
+            Ok(resp) if resp.status().is_success() => {
+                let episode_data: serde_json::Value = resp.json().await
+                    .map_err(|e| AppError::internal(&format!("Failed to parse Nextcloud episode actions: {}", e)))?;
+                
+                if let Some(actions) = episode_data.get("actions").and_then(|v| v.as_array()) {
+                    tracing::info!("Downloaded {} episode actions from Nextcloud", actions.len());
+                    
+                    // Add all episode actions
+                    for action in actions {
+                        all_episode_actions.push(action.clone());
+                    }
+                }
+            }
+            Ok(resp) => {
+                tracing::warn!("Failed to get Nextcloud episode actions: {}", resp.status());
+                // Continue even if episode actions fail
+            }
+            Err(e) => {
+                tracing::warn!("Error getting Nextcloud episode actions: {}", e);
+                // Continue even if episode actions fail
+            }
+        }
+        
+        // Process all episode actions and apply them locally
+        if !all_episode_actions.is_empty() {
+            if let Err(e) = self.apply_remote_episode_actions(user_id, &all_episode_actions).await {
+                tracing::warn!("Failed to apply remote episode actions from Nextcloud: {}", e);
+            }
+        }
+        
+        // Process all subscriptions and add missing podcasts
+        self.process_gpodder_subscriptions(user_id, &feed_urls).await?;
+        
+        // Upload local subscriptions to Nextcloud
+        let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+        self.upload_subscriptions_to_nextcloud(nextcloud_url, username, password, &local_subscriptions).await?;
+        
+        // Upload local episode actions to Nextcloud
+        let local_episode_actions = self.get_user_episode_actions(user_id).await?;
+        if !local_episode_actions.is_empty() {
+            if let Err(e) = self.upload_episode_actions_to_nextcloud(nextcloud_url, username, password, &local_episode_actions).await {
+                tracing::warn!("Failed to upload local episode actions to Nextcloud: {}", e);
+                // Don't fail the sync if episode actions upload fails
+            }
+        }
+        
+        // Clear any existing sync timestamp to start fresh for incremental syncs
+        self.clear_last_sync_timestamp(user_id).await?;
+        
+        tracing::info!("Initial full Nextcloud sync completed for user {}", user_id);
+        Ok(true)
+    }
+    
+    // Upload episode actions to GPodder server for initial sync
+    async fn upload_episode_actions_to_gpodder(&self, gpodder_url: &str, username: &str, password: &str, episode_actions: &[serde_json::Value]) -> AppResult<()> {
+        let upload_url = format!("{}/api/2/episodes/{}.json", gpodder_url.trim_end_matches('/'), username);
+        
+        // Use correct authentication based on internal vs external
+        let response = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            client.post(&upload_url)
+                .header("X-GPodder-Token", password)
+                .json(episode_actions)
                 .send()
                 .await
+        } else {
+            // External GPodder API - use session auth with basic fallback
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                // Use session-based authentication
+                session.client
+                    .post(&upload_url)
+                    .json(episode_actions)
+                    .send()
+                    .await
+            } else {
+                // Fallback to basic auth
+                session.client
+                    .post(&upload_url)
+                    .basic_auth(username, Some(password))
+                    .json(episode_actions)
+                    .send()
+                    .await
+            }
         };
         
         match response {
             Ok(resp) if resp.status().is_success() => {
-                let subscriptions: Vec<String> = resp.json().await
-                    .map_err(|e| AppError::internal(&format!("Failed to parse gPodder subscriptions: {}", e)))?;
-                
-                tracing::info!("Downloaded {} subscriptions from gPodder service", subscriptions.len());
-                
-                // Step 2: Process subscriptions and add missing podcasts
-                self.process_gpodder_subscriptions(user_id, &subscriptions).await?;
-                
-                // Step 3: Upload local subscriptions to gPodder service
-                let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
-                self.upload_subscriptions_to_gpodder_with_session(&session, gpodder_url, username, password, device_name, &local_subscriptions).await?;
-                
-                // Step 4: Sync episode actions (listening progress) with enhanced error handling
-                if let Err(e) = self.sync_episode_actions_with_gpodder(gpodder_url, username, password, device_name, user_id).await {
-                    tracing::warn!("Episode actions sync failed but continuing: {}", e);
-                    // Don't fail the entire sync if episode actions fail
-                }
-                
-                // Step 5: Update last sync timestamp for next incremental sync (BETTER than Python)
-                self.update_last_sync_timestamp(user_id).await?;
-                
-                Ok(true)
+                tracing::info!("Successfully uploaded {} episode actions to GPodder", episode_actions.len());
+                Ok(())
             }
             Ok(resp) => {
-                tracing::warn!("gPodder service returned error: {}", resp.status());
-                if force {
-                    // For force sync, treat non-success as failure
-                    Err(AppError::internal(&format!("Force sync failed with status: {}", resp.status())))
-                } else {
-                    // For regular sync, continue gracefully
-                    Ok(false)
-                }
+                tracing::warn!("Failed to upload episode actions to GPodder: {}", resp.status());
+                Ok(()) // Don't fail the whole sync if upload fails
             }
             Err(e) => {
-                tracing::error!("Failed to connect to gPodder service: {}", e);
-                if force {
-                    Err(AppError::internal(&format!("Force sync connection failed: {}", e)))
-                } else {
-                    Ok(false)
-                }
+                Err(AppError::internal(&format!("Failed to upload episode actions to GPodder: {}", e)))
             }
+        }
+    }
+    
+    // Upload subscriptions to Nextcloud using the gPodder Sync app endpoint
+    async fn upload_subscriptions_to_nextcloud(&self, nextcloud_url: &str, username: &str, password: &str, subscriptions: &[String]) -> AppResult<()> {
+        let client = reqwest::Client::new();
+        // Nextcloud gPodder Sync app uses the subscription_change endpoint
+        let upload_url = format!("{}/index.php/apps/gpoddersync/subscription_change/upload", nextcloud_url.trim_end_matches('/'));
+        
+        let response = client
+            .post(&upload_url)
+            .basic_auth(username, Some(password))
+            .json(subscriptions)
+            .send()
+            .await
+            .map_err(|e| AppError::internal(&format!("Failed to upload subscriptions to Nextcloud: {}", e)))?;
+        
+        if response.status().is_success() {
+            tracing::info!("Successfully uploaded {} subscriptions to Nextcloud", subscriptions.len());
+            Ok(())
+        } else {
+            tracing::warn!("Failed to upload subscriptions to Nextcloud: {}", response.status());
+            Ok(()) // Don't fail the whole sync if upload fails
+        }
+    }
+    
+    // Upload episode actions to Nextcloud using the gPodder Sync app endpoint
+    async fn upload_episode_actions_to_nextcloud(&self, nextcloud_url: &str, username: &str, password: &str, episode_actions: &[serde_json::Value]) -> AppResult<()> {
+        let client = reqwest::Client::new();
+        // Nextcloud gPodder Sync app uses the episode_action endpoint  
+        let upload_url = format!("{}/index.php/apps/gpoddersync/episode_action/create", nextcloud_url.trim_end_matches('/'));
+        
+        let response = client
+            .post(&upload_url)
+            .basic_auth(username, Some(password))
+            .json(episode_actions)
+            .send()
+            .await
+            .map_err(|e| AppError::internal(&format!("Failed to upload episode actions to Nextcloud: {}", e)))?;
+        
+        if response.status().is_success() {
+            tracing::info!("Successfully uploaded {} episode actions to Nextcloud", episode_actions.len());
+            Ok(())
+        } else {
+            tracing::warn!("Failed to upload episode actions to Nextcloud: {}", response.status());
+            Ok(()) // Don't fail the whole sync if upload fails
         }
     }
     
@@ -10325,17 +11067,23 @@ impl DatabasePool {
     async fn upload_subscriptions_to_gpodder_with_session(&self, session: &GpodderSession, gpodder_url: &str, username: &str, password: &str, device_name: &str, subscriptions: &[String]) -> AppResult<()> {
         let upload_url = format!("{}/api/2/subscriptions/{}/{}.json", gpodder_url.trim_end_matches('/'), username, device_name);
         
+        // Format subscription changes according to GPodder API spec
+        let subscription_changes = serde_json::json!({
+            "add": subscriptions,
+            "remove": []
+        });
+        
         let response = if session.authenticated {
             session.client
-                .put(&upload_url)
-                .json(subscriptions)
+                .post(&upload_url)
+                .json(&subscription_changes)
                 .send()
                 .await
         } else {
             session.client
-                .put(&upload_url)
+                .post(&upload_url)
                 .basic_auth(username, Some(password))
-                .json(subscriptions)
+                .json(&subscription_changes)
                 .send()
                 .await
         };
@@ -10360,45 +11108,155 @@ impl DatabasePool {
 
     // Process gPodder subscriptions and add missing podcasts
     async fn process_gpodder_subscriptions(&self, user_id: i32, subscriptions: &[String]) -> AppResult<()> {
+        let mut added = 0;
+        let mut skipped = 0;
+        let mut failed = 0;
+        
         for feed_url in subscriptions {
-            let exists = self.podcast_exists_for_user(user_id, feed_url).await?;
-            if !exists {
-                // Add new podcast - this would call the actual add_podcast function
-                tracing::info!("Would add podcast {} for user {}", feed_url, user_id);
+            tracing::info!("Processing podcast {} for user {}", feed_url, user_id);
+            
+            // Use the existing add_podcast_from_url function which handles duplicates and fetching
+            match self.add_podcast_from_url(user_id, feed_url, None).await {
+                Ok(_) => {
+                    added += 1;
+                    tracing::info!("Successfully added podcast: {}", feed_url);
+                }
+                Err(e) => {
+                    // Check if it failed because it already exists
+                    if self.podcast_exists_for_user(user_id, feed_url).await.unwrap_or(false) {
+                        skipped += 1;
+                        tracing::debug!("Podcast {} already exists for user {}", feed_url, user_id);
+                    } else {
+                        failed += 1;
+                        tracing::warn!("Failed to add podcast {}: {}", feed_url, e);
+                    }
+                }
             }
         }
+        
+        tracing::info!("GPodder subscription sync completed: {} added, {} skipped, {} failed", added, skipped, failed);
         Ok(())
     }
 
-    // Upload local subscriptions to gPodder service - matches Python PUT /api/2/subscriptions/{username}/{device}.json
-    async fn upload_subscriptions_to_gpodder(&self, gpodder_url: &str, username: &str, password: &str, device_name: &str, subscriptions: &[String]) -> AppResult<()> {
-        let client = reqwest::Client::new();
-        let upload_url = format!("{}/api/2/subscriptions/{}/{}.json", gpodder_url.trim_end_matches('/'), username, device_name);
+    // Process subscription removals from gPodder service
+    async fn process_gpodder_subscription_removals(&self, user_id: i32, removals: &[String]) -> AppResult<()> {
+        let mut removed = 0;
+        let mut not_found = 0;
+        let mut failed = 0;
         
-        let response = client
-            .put(&upload_url)
-            .basic_auth(username, Some(password))
-            .json(subscriptions)
-            .send()
-            .await
-            .map_err(|e| AppError::internal(&format!("Failed to upload subscriptions: {}", e)))?;
-        
-        if !response.status().is_success() {
-            tracing::warn!("Failed to upload subscriptions to gPodder service: {}", response.status());
+        for feed_url in removals {
+            tracing::info!("Processing podcast removal {} for user {}", feed_url, user_id);
+            
+            // Check if the podcast exists locally first
+            if self.podcast_exists_for_user(user_id, feed_url).await.unwrap_or(false) {
+                // Remove the podcast using existing function
+                match self.remove_podcast_by_url(user_id, feed_url).await {
+                    Ok(_) => {
+                        removed += 1;
+                        tracing::info!("Successfully removed podcast: {}", feed_url);
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        tracing::warn!("Failed to remove podcast {}: {}", feed_url, e);
+                    }
+                }
+            } else {
+                not_found += 1;
+                tracing::debug!("Podcast {} not found locally for user {} (already removed)", feed_url, user_id);
+            }
         }
         
+        tracing::info!("GPodder subscription removal completed: {} removed, {} not found, {} failed", removed, not_found, failed);
         Ok(())
+    }
+
+    // Detect and remove orphaned local podcasts that are not in the remote subscription list
+    async fn sync_local_podcast_removals(&self, user_id: i32, remote_subscriptions: &[String]) -> AppResult<Vec<String>> {
+        let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+        let remote_set: std::collections::HashSet<String> = remote_subscriptions.iter().cloned().collect();
+        
+        let mut removed_podcasts = Vec::new();
+        
+        // Find podcasts that exist locally but not in remote subscriptions
+        for local_feed in &local_subscriptions {
+            if !remote_set.contains(local_feed) {
+                tracing::info!("Local podcast {} not found in remote subscriptions, removing", local_feed);
+                
+                match self.remove_podcast_by_url(user_id, local_feed).await {
+                    Ok(_) => {
+                        removed_podcasts.push(local_feed.clone());
+                        tracing::info!("Successfully removed orphaned local podcast: {}", local_feed);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to remove orphaned local podcast {}: {}", local_feed, e);
+                    }
+                }
+            }
+        }
+        
+        if !removed_podcasts.is_empty() {
+            tracing::info!("Removed {} orphaned local podcasts", removed_podcasts.len());
+        }
+        
+        Ok(removed_podcasts)
+    }
+
+    // Upload local subscriptions to gPodder service - matches GPodder API spec POST /api/2/subscriptions/{username}/{device}.json
+    async fn upload_subscriptions_to_gpodder(&self, gpodder_url: &str, username: &str, password: &str, device_name: &str, subscriptions: &[String]) -> AppResult<()> {
+        let upload_url = format!("{}/api/2/subscriptions/{}/{}.json", gpodder_url.trim_end_matches('/'), username, device_name);
+        
+        // Format subscription changes according to GPodder API spec
+        let subscription_changes = serde_json::json!({
+            "add": subscriptions,
+            "remove": []
+        });
+        
+        // Use correct authentication based on internal vs external
+        let response = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            client.post(&upload_url)
+                .header("X-GPodder-Token", password)
+                .json(&subscription_changes)
+                .send()
+                .await
+        } else {
+            // External GPodder API - use session auth with basic fallback
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                session.client
+                    .post(&upload_url)
+                    .json(&subscription_changes)
+                    .send()
+                    .await
+            } else {
+                session.client
+                    .post(&upload_url)
+                    .basic_auth(username, Some(password))
+                    .json(&subscription_changes)
+                    .send()
+                    .await
+            }
+        };
+        
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                tracing::info!("Successfully uploaded {} subscriptions to gPodder service", subscriptions.len());
+                Ok(())
+            }
+            Ok(resp) => {
+                tracing::warn!("Failed to upload subscriptions to gPodder service: {}", resp.status());
+                Ok(()) // Don't fail sync for upload failures
+            }
+            Err(e) => {
+                tracing::warn!("Failed to upload subscriptions: {}", e);
+                Ok(()) // Don't fail sync for upload failures
+            }
+        }
     }
 
     // Sync episode actions with gPodder service - matches Python episode actions sync with timestamp support
-    async fn sync_episode_actions_with_gpodder(&self, gpodder_url: &str, username: &str, password: &str, _device_name: &str, user_id: i32) -> AppResult<()> {
-        let session = self.create_gpodder_session(&UserSyncSettings {
-            url: gpodder_url.to_string(),
-            username: username.to_string(),
-            token: password.to_string(),
-            sync_type: "external".to_string(),
-        }).await?;
-        
+    async fn sync_episode_actions_with_gpodder(&self, gpodder_url: &str, username: &str, password: &str, device_name: &str, user_id: i32) -> AppResult<()> {
         // Get last sync timestamp for incremental sync (BETTER than Python - follows GPodder spec)
         let since_timestamp = self.get_last_sync_timestamp(user_id).await?;
         
@@ -10413,21 +11271,34 @@ impl DatabasePool {
         if !local_actions.is_empty() {
             let upload_url = format!("{}/api/2/episodes/{}.json", gpodder_url.trim_end_matches('/'), username);
             
-            let response = if session.authenticated {
-                // Use session-based authentication
-                session.client
-                    .post(&upload_url)
+            // Use correct authentication based on internal vs external
+            let response = if gpodder_url == "http://localhost:8042" {
+                // Internal GPodder API - use X-GPodder-Token header
+                let client = reqwest::Client::new();
+                client.post(&upload_url)
+                    .header("X-GPodder-Token", password)
                     .json(&local_actions)
                     .send()
                     .await
             } else {
-                // Fallback to basic auth
-                session.client
-                    .post(&upload_url)
-                    .basic_auth(username, Some(password))
-                    .json(&local_actions)
-                    .send()
-                    .await
+                // External GPodder API - use session auth with basic fallback
+                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+                if session.authenticated {
+                    // Use session-based authentication
+                    session.client
+                        .post(&upload_url)
+                        .json(&local_actions)
+                        .send()
+                        .await
+                } else {
+                    // Fallback to basic auth
+                    session.client
+                        .post(&upload_url)
+                        .basic_auth(username, Some(password))
+                        .json(&local_actions)
+                        .send()
+                        .await
+                }
             };
             
             match response {
@@ -10443,25 +11314,38 @@ impl DatabasePool {
             }
         }
         
-        // Download remote actions from gPodder service with timestamp support
-        let mut download_url = format!("{}/api/2/episodes/{}.json", gpodder_url.trim_end_matches('/'), username);
+        // Download remote actions from gPodder service with timestamp support - use same format as working sync
+        let download_url = if let Some(since) = since_timestamp {
+            format!("{}/api/2/episodes/{}.json?since={}&device={}", 
+                gpodder_url.trim_end_matches('/'), username, since.timestamp(), device_name)
+        } else {
+            format!("{}/api/2/episodes/{}.json?since=0&device={}", 
+                gpodder_url.trim_end_matches('/'), username, device_name)
+        };
         
-        // Add since parameter for incremental sync
-        if let Some(since) = since_timestamp {
-            download_url = format!("{}?since={}", download_url, since.timestamp());
-        }
-        
-        let response = if session.authenticated {
-            session.client
-                .get(&download_url)
+        // Use correct authentication based on internal vs external for download
+        let response = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            client.get(&download_url)
+                .header("X-GPodder-Token", password)
                 .send()
                 .await
         } else {
-            session.client
-                .get(&download_url)
-                .basic_auth(username, Some(password))
-                .send()
-                .await
+            // External GPodder API - use session auth with basic fallback
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                session.client
+                    .get(&download_url)
+                    .send()
+                    .await
+            } else {
+                session.client
+                    .get(&download_url)
+                    .basic_auth(username, Some(password))
+                    .send()
+                    .await
+            }
         };
         
         match response {
@@ -10738,7 +11622,7 @@ impl DatabasePool {
     }
 
     // Helper function to get user sync settings
-    async fn get_user_sync_settings(&self, user_id: i32) -> AppResult<Option<UserSyncSettings>> {
+    pub async fn get_user_sync_settings(&self, user_id: i32) -> AppResult<Option<UserSyncSettings>> {
         match self {
             DatabasePool::Postgres(pool) => {
                 let row = sqlx::query(r#"SELECT gpodderurl, gpodderloginname, gpoddertoken, pod_sync_type FROM "Users" WHERE userid = $1"#)
@@ -10820,27 +11704,85 @@ impl DatabasePool {
     }
 
     // Get or create default device - matches Python device handling
-    async fn get_or_create_default_device(&self, user_id: i32) -> AppResult<String> {
-        let devices = self.gpodder_get_user_devices(user_id).await?;
+    pub async fn get_or_create_default_device(&self, user_id: i32) -> AppResult<String> {
+        // Get the default device name from Users table - this is where PinePods tracks user preferences
+        let default_device_name = match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT defaultgpodderdevice FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                row.and_then(|r| r.try_get::<Option<String>, _>("defaultgpodderdevice").ok().flatten())
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT DefaultGpodderDevice FROM Users WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                row.and_then(|r| r.try_get::<Option<String>, _>("DefaultGpodderDevice").ok().flatten())
+            }
+        };
         
-        for device in &devices {
-            if device["is_default"].as_bool().unwrap_or(false) {
-                return Ok(device["name"].as_str().unwrap_or("pinepods").to_string());
+        // If we have a default device name from Users table, use it
+        if let Some(device_name) = default_device_name {
+            return Ok(device_name);
+        }
+        
+        // Fallback: check sync settings to determine appropriate default
+        if let Some(sync_settings) = self.get_user_sync_settings(user_id).await? {
+            match sync_settings.sync_type.as_str() {
+                "external" => {
+                    // For external servers, we should not create devices - they must exist on the external server
+                    return Err(AppError::BadRequest("No default device configured for external GPodder sync. Please configure a default device.".to_string()));
+                }
+                "gpodder" | "both" => {
+                    // For internal sync, create a default internal device
+                    let device_name = format!("pinepods-internal-{}", user_id);
+                    let device_type = "server";
+                    self.create_gpodder_device(user_id, &device_name, device_type, true).await?;
+                    
+                    // Set this as the default in Users table
+                    match self {
+                        DatabasePool::Postgres(pool) => {
+                            sqlx::query(r#"UPDATE "Users" SET defaultgpodderdevice = $1 WHERE userid = $2"#)
+                                .bind(&device_name)
+                                .bind(user_id)
+                                .execute(pool)
+                                .await?;
+                        }
+                        DatabasePool::MySQL(pool) => {
+                            sqlx::query("UPDATE Users SET DefaultGpodderDevice = ? WHERE UserID = ?")
+                                .bind(&device_name)
+                                .bind(user_id)
+                                .execute(pool)
+                                .await?;
+                        }
+                    }
+                    
+                    return Ok(device_name);
+                }
+                _ => {
+                    return Err(AppError::BadRequest("GPodder sync not properly configured".to_string()));
+                }
             }
         }
         
-        // Create default device if none exists - matches Python device creation logic
-        let device_name = format!("pinepods-internal-{}", user_id);
-        let device_type = "server";
-        self.create_gpodder_device(user_id, &device_name, device_type, true).await?;
-        Ok(device_name)
+        Err(AppError::BadRequest("No GPodder sync configured".to_string()))
     }
 
     // Create gPodder device - matches Python device creation
     async fn create_gpodder_device(&self, user_id: i32, device_name: &str, device_type: &str, is_default: bool) -> AppResult<()> {
         match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"INSERT INTO "GpodderDevices" (userid, devicename, devicetype, isdefault) VALUES ($1, $2, $3, $4)"#)
+                // Use INSERT ... ON CONFLICT to handle existing devices
+                sqlx::query(r#"
+                    INSERT INTO "GpodderDevices" (userid, devicename, devicetype, isdefault) 
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (userid, devicename) 
+                    DO UPDATE SET devicetype = EXCLUDED.devicetype, isdefault = EXCLUDED.isdefault
+                "#)
                     .bind(user_id)
                     .bind(device_name)
                     .bind(device_type)
@@ -10849,7 +11791,12 @@ impl DatabasePool {
                     .await?;
             }
             DatabasePool::MySQL(pool) => {
-                sqlx::query("INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsDefault) VALUES (?, ?, ?, ?)")
+                // Use INSERT ... ON DUPLICATE KEY UPDATE to handle existing devices
+                sqlx::query("
+                    INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsDefault) 
+                    VALUES (?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE DeviceType = VALUES(DeviceType), IsDefault = VALUES(IsDefault)
+                ")
                     .bind(user_id)
                     .bind(device_name)
                     .bind(device_type)
@@ -10896,50 +11843,42 @@ impl DatabasePool {
     
     // Get default gPodder device - matches Python get_default_device function exactly
     pub async fn gpodder_get_default_device(&self, user_id: i32) -> AppResult<Option<serde_json::Value>> {
-        match self {
+        // Get the default device name from Users table
+        let default_device_name = match self {
             DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT deviceid, devicename, devicetype, devicecaption FROM "GpodderDevices" WHERE userid = $1 AND isdefault = true LIMIT 1"#)
+                let row = sqlx::query(r#"SELECT defaultgpodderdevice FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
                 
-                if let Some(row) = row {
-                    Ok(Some(serde_json::json!({
-                        "id": row.try_get::<i32, _>("deviceid")?,
-                        "name": row.try_get::<String, _>("devicename")?,
-                        "type": row.try_get::<String, _>("devicetype")?,
-                        "caption": row.try_get::<Option<String>, _>("devicecaption")?,
-                        "last_sync": None::<Option<String>>,
-                        "is_active": true,
-                        "is_remote": false,
-                        "is_default": true
-                    })))
-                } else {
-                    Ok(None)
-                }
+                row.and_then(|r| r.try_get::<Option<String>, _>("defaultgpodderdevice").ok().flatten())
             }
             DatabasePool::MySQL(pool) => {
-                let row = sqlx::query("SELECT DeviceID, DeviceName, DeviceType, DeviceCaption FROM GpodderDevices WHERE UserID = ? AND IsDefault = 1 LIMIT 1")
+                let row = sqlx::query("SELECT DefaultGpodderDevice FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
                 
-                if let Some(row) = row {
-                    Ok(Some(serde_json::json!({
-                        "id": row.try_get::<i32, _>("DeviceID")?,
-                        "name": row.try_get::<String, _>("DeviceName")?,
-                        "type": row.try_get::<String, _>("DeviceType")?,
-                        "caption": row.try_get::<Option<String>, _>("DeviceCaption")?,
-                        "last_sync": None::<Option<String>>,
-                        "is_active": true,
-                        "is_remote": false,
-                        "is_default": true
-                    })))
-                } else {
-                    Ok(None)
+                row.and_then(|r| r.try_get::<Option<String>, _>("DefaultGpodderDevice").ok().flatten())
+            }
+        };
+        
+        if let Some(device_name) = default_device_name {
+            // Get all devices from GPodder API and find the one with matching name
+            let devices = self.gpodder_get_user_devices(user_id).await?;
+            
+            for device in devices {
+                if device.get("name").and_then(|v| v.as_str()) == Some(&device_name) {
+                    // Mark this device as default and return it
+                    let mut default_device = device;
+                    default_device["is_default"] = serde_json::Value::Bool(true);
+                    return Ok(Some(default_device));
                 }
             }
         }
+        
+        // If no default device found, return None
+        Ok(None)
     }
 
 
@@ -10948,8 +11887,18 @@ impl DatabasePool {
         let client = reqwest::Client::new();
         let decrypted_password = self.decrypt_password(&settings.token).await?;
         
-        // Get subscriptions from Nextcloud gPodder Sync app
-        let subscriptions_url = format!("{}/index.php/apps/gpoddersync/subscriptions", settings.url.trim_end_matches('/'));
+        // Step 1: Get last sync timestamp for incremental sync
+        let since_timestamp = self.get_last_sync_timestamp(user_id).await?;
+        
+        // Step 2: Get subscriptions from Nextcloud gPodder Sync app with timestamp
+        let subscriptions_url = if let Some(since) = since_timestamp {
+            format!("{}/index.php/apps/gpoddersync/subscription_changes/{}?since={}", 
+                settings.url.trim_end_matches('/'), since.timestamp(), since.timestamp())
+        } else {
+            format!("{}/index.php/apps/gpoddersync/subscriptions", settings.url.trim_end_matches('/'))
+        };
+        
+        tracing::info!("Getting Nextcloud subscriptions from: {}", subscriptions_url);
         
         let response = client
             .get(&subscriptions_url)
@@ -10958,34 +11907,147 @@ impl DatabasePool {
             .await
             .map_err(|e| AppError::internal(&format!("Failed to sync with Nextcloud: {}", e)))?;
         
+        let mut subscriptions_processed = false;
+        
         if response.status().is_success() {
-            let subscriptions: serde_json::Value = response.json().await
+            let subscriptions_response: serde_json::Value = response.json().await
                 .map_err(|e| AppError::internal(&format!("Failed to parse Nextcloud subscriptions: {}", e)))?;
             
-            // Process subscriptions and add missing podcasts
-            if let Some(feeds) = subscriptions.as_array() {
-                let feed_urls: Vec<String> = feeds.iter()
+            // Handle both subscription change format and direct subscription list
+            let (subscriptions, removals) = if since_timestamp.is_some() {
+                // Incremental sync - expect {add: [], remove: [], timestamp: N} format
+                let adds = subscriptions_response["add"].as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
                     .filter_map(|f| f.as_str().map(|s| s.to_string()))
-                    .collect();
-                self.process_gpodder_subscriptions(user_id, &feed_urls).await?;
+                    .collect::<Vec<String>>();
+                
+                let removes = subscriptions_response["remove"].as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .filter_map(|f| f.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<String>>();
+                
+                (adds, removes)
+            } else {
+                // Full sync - expect direct array of subscription URLs, no removals in this format
+                let adds = subscriptions_response.as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .filter_map(|f| f.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<String>>();
+                
+                (adds, Vec::new())
+            };
+            
+            tracing::info!("Downloaded {} subscriptions and {} removals from Nextcloud", subscriptions.len(), removals.len());
+            
+            // Process subscriptions and add missing podcasts
+            if !subscriptions.is_empty() {
+                self.process_gpodder_subscriptions(user_id, &subscriptions).await?;
+                subscriptions_processed = true;
             }
             
-            Ok(true)
-        } else {
-            Ok(false)
+            // Process subscription removals
+            if !removals.is_empty() {
+                self.process_gpodder_subscription_removals(user_id, &removals).await?;
+                subscriptions_processed = true; // Mark as processed since we did work
+            }
         }
+        
+        // Step 3: Get episode actions from Nextcloud with timestamp
+        let episode_actions_url = if let Some(since) = since_timestamp {
+            format!("{}/index.php/apps/gpoddersync/episode_action?since={}", 
+                settings.url.trim_end_matches('/'), since.timestamp())
+        } else {
+            format!("{}/index.php/apps/gpoddersync/episode_action", settings.url.trim_end_matches('/'))
+        };
+        
+        tracing::info!("Getting Nextcloud episode actions from: {}", episode_actions_url);
+        
+        let episode_response = client
+            .get(&episode_actions_url)
+            .basic_auth(&settings.username, Some(&decrypted_password))
+            .send()
+            .await;
+        
+        let mut episode_actions_processed = false;
+        
+        if let Ok(resp) = episode_response {
+            if resp.status().is_success() {
+                let episode_actions: serde_json::Value = resp.json().await
+                    .map_err(|e| AppError::internal(&format!("Failed to parse Nextcloud episode actions: {}", e)))?;
+                
+                if let Some(actions_array) = episode_actions["actions"].as_array() {
+                    tracing::info!("Downloaded {} episode actions from Nextcloud", actions_array.len());
+                    
+                    if !actions_array.is_empty() {
+                        if let Err(e) = self.apply_remote_episode_actions(user_id, actions_array).await {
+                            tracing::warn!("Nextcloud episode actions processing failed but continuing: {}", e);
+                        } else {
+                            episode_actions_processed = true;
+                        }
+                    }
+                } else if let Some(actions_array) = episode_actions.as_array() {
+                    // Some Nextcloud implementations return direct array
+                    tracing::info!("Downloaded {} episode actions from Nextcloud (direct)", actions_array.len());
+                    
+                    if !actions_array.is_empty() {
+                        if let Err(e) = self.apply_remote_episode_actions(user_id, actions_array).await {
+                            tracing::warn!("Nextcloud episode actions processing failed but continuing: {}", e);
+                        } else {
+                            episode_actions_processed = true;
+                        }
+                    }
+                }
+            } else {
+                tracing::warn!("Nextcloud episode actions returned error: {}", resp.status());
+            }
+        } else {
+            tracing::warn!("Failed to get episode actions from Nextcloud");
+        }
+        
+        // Step 4: Upload local subscriptions to Nextcloud (if needed)
+        if since_timestamp.is_none() || subscriptions_processed {
+            let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+            if let Err(e) = self.upload_subscriptions_to_nextcloud(&settings.url, &settings.username, &decrypted_password, &local_subscriptions).await {
+                tracing::warn!("Failed to upload subscriptions to Nextcloud: {}", e);
+            } else {
+                tracing::info!("Successfully uploaded {} subscriptions to Nextcloud", local_subscriptions.len());
+            }
+        } else {
+            tracing::info!("Skipping subscription upload to Nextcloud - no changes detected");
+        }
+        
+        // Step 5: Upload local episode actions to Nextcloud
+        let local_episode_actions = self.get_user_episode_actions(user_id).await?;
+        if !local_episode_actions.is_empty() {
+            if let Err(e) = self.upload_episode_actions_to_nextcloud(&settings.url, &settings.username, &decrypted_password, &local_episode_actions).await {
+                tracing::warn!("Failed to upload episode actions to Nextcloud: {}", e);
+            } else {
+                tracing::info!("Successfully uploaded {} episode actions to Nextcloud", local_episode_actions.len());
+            }
+        } else {
+            tracing::info!("No local episode actions to upload to Nextcloud");
+        }
+        
+        // Step 6: Update last sync timestamp for next incremental sync
+        self.update_last_sync_timestamp(user_id).await?;
+        
+        Ok(subscriptions_processed || episode_actions_processed)
     }
 
     // Decrypt password using Fernet - matches Python encryption
-    async fn decrypt_password(&self, encrypted_password: &str) -> AppResult<String> {
+    pub async fn decrypt_password(&self, encrypted_password: &str) -> AppResult<String> {
         use fernet::Fernet;
         
+        // Get encryption key from app settings (base64 string)
         let encryption_key = self.get_encryption_key().await?;
         let fernet = Fernet::new(&encryption_key)
             .ok_or_else(|| AppError::internal("Failed to create Fernet cipher"))?;
         
         let decrypted = fernet.decrypt(encrypted_password)
-            .map_err(|e| AppError::internal(&format!("Failed to decrypt password: {}", e)))?;
+            .map_err(|e| AppError::internal(&format!("Failed to decrypt password: Fernet decryption error")))?;
         
         String::from_utf8(decrypted)
             .map_err(|e| AppError::internal(&format!("Invalid UTF-8 in decrypted password: {}", e)))
@@ -11027,6 +12089,7 @@ impl DatabasePool {
                     SELECT userid FROM "Users" 
                     WHERE pod_sync_type IS NOT NULL 
                     AND pod_sync_type != 'None' 
+                    AND pod_sync_type != 'nextcloud'
                     AND gpodderurl IS NOT NULL 
                     AND gpodderloginname IS NOT NULL 
                     AND gpoddertoken IS NOT NULL
@@ -11046,6 +12109,7 @@ impl DatabasePool {
                     SELECT UserID FROM Users 
                     WHERE Pod_Sync_Type IS NOT NULL 
                     AND Pod_Sync_Type != 'None' 
+                    AND Pod_Sync_Type != 'nextcloud'
                     AND GpodderUrl IS NOT NULL 
                     AND GpodderLoginName IS NOT NULL 
                     AND GpodderToken IS NOT NULL
@@ -17342,10 +18406,13 @@ impl DatabasePool {
 
                 let local_gpodder_url = "http://localhost:8042";
 
-                // Update user with internal gpodder settings
+                // Create default device name
+                let default_device_name = format!("pinepods-internal-{}", user_id);
+
+                // Update user with internal gpodder settings and set default device
                 sqlx::query(r#"
                     UPDATE "Users" 
-                    SET gpodderurl = $1, gpoddertoken = $2, gpodderloginname = $3, pod_sync_type = $4
+                    SET gpodderurl = $1, gpoddertoken = $2, gpodderloginname = $3, pod_sync_type = $4, defaultgpodderdevice = $6
                     WHERE userid = $5
                 "#)
                 .bind(local_gpodder_url)
@@ -17353,31 +18420,37 @@ impl DatabasePool {
                 .bind(&username)
                 .bind(new_sync_type)
                 .bind(user_id)
+                .bind(&default_device_name)
                 .execute(pool)
                 .await?;
-
-                // Create default device name
-                let default_device_name = format!("pinepods-internal-{}", user_id);
                 
                 // Create device via gPodder API (matches Python version exactly)
-                match self.create_device_via_gpodder_api(local_gpodder_url, &username, &internal_token, &default_device_name).await {
+                let device_result = match self.create_device_via_gpodder_api(local_gpodder_url, &username, &internal_token, &default_device_name).await {
                     Ok(device_id) => {
-                        Ok(serde_json::json!({
+                        serde_json::json!({
                             "device_name": default_device_name,
                             "device_id": device_id,
                             "success": true
-                        }))
+                        })
                     }
                     Err(e) => {
                         tracing::warn!("Failed to create device via API: {}, continuing anyway", e);
                         // Even if device creation fails, still return success (matches Python behavior)
-                        Ok(serde_json::json!({
+                        serde_json::json!({
                             "device_name": default_device_name,
                             "device_id": user_id,
                             "success": true
-                        }))
+                        })
                     }
+                };
+                
+                // Perform initial full sync to get ALL user subscriptions from all devices
+                if let Err(e) = self.call_gpodder_initial_full_sync(user_id, local_gpodder_url, &username, &internal_token, &default_device_name).await {
+                    tracing::warn!("Initial GPodder full sync failed during setup: {}", e);
+                    // Don't fail setup if initial sync fails
                 }
+                
+                Ok(device_result)
             }
             DatabasePool::MySQL(pool) => {
                 // Get the username and current sync type
@@ -17411,42 +18484,51 @@ impl DatabasePool {
 
                 let local_gpodder_url = "http://localhost:8042";
 
-                // Update user with internal gpodder settings
+                // Create default device name
+                let default_device_name = format!("pinepods-internal-{}", user_id);
+
+                // Update user with internal gpodder settings and set default device
                 sqlx::query("
                     UPDATE Users 
-                    SET GpodderUrl = ?, GpodderToken = ?, GpodderLoginName = ?, Pod_Sync_Type = ?
+                    SET GpodderUrl = ?, GpodderToken = ?, GpodderLoginName = ?, Pod_Sync_Type = ?, DefaultGpodderDevice = ?
                     WHERE UserID = ?
                 ")
                 .bind(local_gpodder_url)
                 .bind(&internal_token)
                 .bind(&username)
                 .bind(new_sync_type)
+                .bind(&default_device_name)
                 .bind(user_id)
                 .execute(pool)
                 .await?;
-
-                // Create default device name
-                let default_device_name = format!("pinepods-internal-{}", user_id);
                 
                 // Create device via gPodder API (matches Python version exactly)
-                match self.create_device_via_gpodder_api(local_gpodder_url, &username, &internal_token, &default_device_name).await {
+                let device_result = match self.create_device_via_gpodder_api(local_gpodder_url, &username, &internal_token, &default_device_name).await {
                     Ok(device_id) => {
-                        Ok(serde_json::json!({
+                        serde_json::json!({
                             "device_name": default_device_name,
                             "device_id": device_id,
                             "success": true
-                        }))
+                        })
                     }
                     Err(e) => {
                         tracing::warn!("Failed to create device via API: {}, continuing anyway", e);
                         // Even if device creation fails, still return success (matches Python behavior)
-                        Ok(serde_json::json!({
+                        serde_json::json!({
                             "device_name": default_device_name,
                             "device_id": user_id,
                             "success": true
-                        }))
+                        })
                     }
+                };
+                
+                // Perform initial full sync to get ALL user subscriptions from all devices
+                if let Err(e) = self.call_gpodder_initial_full_sync(user_id, local_gpodder_url, &username, &internal_token, &default_device_name).await {
+                    tracing::warn!("Initial GPodder full sync failed during setup: {}", e);
+                    // Don't fail setup if initial sync fails
                 }
+                
+                Ok(device_result)
             }
         }
     }
@@ -17513,24 +18595,40 @@ impl DatabasePool {
     }
 
     // Helper function to create device via gPodder API - matches Python create device logic exactly
-    async fn create_device_via_gpodder_api(&self, gpodder_url: &str, username: &str, token: &str, device_name: &str) -> AppResult<String> {
+    pub async fn create_device_via_gpodder_api(&self, gpodder_url: &str, username: &str, token: &str, device_name: &str) -> AppResult<String> {
         use reqwest;
         use serde_json;
         
-        let client = reqwest::Client::new();
+        // Use correct authentication based on internal vs external
+        let (client, auth_method) = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            (client, "internal")
+        } else {
+            // External GPodder API - use session auth with basic fallback
+            let decrypted_password = self.decrypt_password(token).await?;
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, &decrypted_password).await?;
+            (session.client, "external")
+        };
         
         // First, check if device already exists
         let device_list_url = format!("{}/api/2/devices/{}.json", gpodder_url.trim_end_matches('/'), username);
         
-        let auth = reqwest::header::HeaderValue::from_str(&format!("Basic {}", 
-            base64::encode(format!("{}:{}", username, token))
-        )).map_err(|e| AppError::internal(&format!("Failed to create auth header: {}", e)))?;
+        let response = if auth_method == "internal" {
+            client.get(&device_list_url)
+                .header("X-GPodder-Token", token)
+                .send()
+                .await
+        } else {
+            // External - session auth with basic fallback handled by session client
+            let decrypted_password = self.decrypt_password(token).await?;
+            client.get(&device_list_url)
+                .basic_auth(username, Some(&decrypted_password))
+                .send()
+                .await
+        };
         
-        match client.get(&device_list_url)
-            .header(reqwest::header::AUTHORIZATION, auth.clone())
-            .send()
-            .await
-        {
+        match response {
             Ok(response) if response.status().is_success() => {
                 if let Ok(devices) = response.json::<Vec<serde_json::Value>>().await {
                     for device in devices {
@@ -17556,11 +18654,22 @@ impl DatabasePool {
             "type": "server"
         });
         
-        match client.post(&device_url)
-            .header(reqwest::header::AUTHORIZATION, auth)
-            .json(&device_data)
-            .send()
-            .await
+        let create_response = if auth_method == "internal" {
+            client.post(&device_url)
+                .header("X-GPodder-Token", token)
+                .json(&device_data)
+                .send()
+                .await
+        } else {
+            let decrypted_password = self.decrypt_password(token).await?;
+            client.post(&device_url)
+                .basic_auth(username, Some(&decrypted_password))
+                .json(&device_data)
+                .send()
+                .await
+        };
+        
+        match create_response
         {
             Ok(response) if response.status().is_success() => {
                 tracing::info!("Created device with ID: {}", device_name);
@@ -17595,7 +18704,7 @@ impl DatabasePool {
         // Call the appropriate sync method based on sync type
         match settings.sync_type.as_str() {
             "gpodder" => {
-                // Internal GPodder API
+                // Internal GPodder API - token is already unencrypted for internal use
                 self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await
             }
             "external" => {
@@ -17708,13 +18817,8 @@ impl DatabasePool {
             }
         };
 
-        // Create GPodder session using the same method as sync operations
-        let session = self.create_gpodder_session(&UserSyncSettings {
-            url: gpodder_url.clone(),
-            username: username.clone(),
-            token: password.clone(),
-            sync_type: settings.sync_type.clone(),
-        }).await?;
+        // Create GPodder session directly with already-decrypted password to avoid double decryption
+        let session = self.create_gpodder_session_with_password(&gpodder_url, &username, &password).await?;
 
         let mut api_endpoints_tested = Vec::new();
         let mut server_devices = Vec::new();
@@ -17780,10 +18884,10 @@ impl DatabasePool {
             }
         }
 
-        // Test 2: Get subscriptions from GPodder API
-        let default_device = server_devices.first().map(|d| d.id.clone()).unwrap_or_else(|| "default".to_string());
+        // Test 2: Get subscriptions from GPodder API - use the user's actual default device
+        let device_name = self.get_or_create_default_device(user_id).await?;
         let subscriptions_url = format!("{}/api/2/subscriptions/{}/{}.json", 
-            gpodder_url.trim_end_matches('/'), username, default_device);
+            gpodder_url.trim_end_matches('/'), username, device_name);
         let start = Instant::now();
 
         let subscriptions_response = if session.authenticated {
@@ -18063,6 +19167,26 @@ impl DatabasePool {
             DatabasePool::MySQL(pool) => {                
                 sqlx::query("UPDATE Users SET LastSyncTime = ? WHERE UserID = ?")
                     .bind(now)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        
+        Ok(())
+    }
+
+    // Clear last sync timestamp - for initial full sync to start fresh
+    async fn clear_last_sync_timestamp(&self, user_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {                
+                sqlx::query(r#"UPDATE "Users" SET lastsynctime = NULL WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {                
+                sqlx::query("UPDATE Users SET LastSyncTime = NULL WHERE UserID = ?")
                     .bind(user_id)
                     .execute(pool)
                     .await?;
@@ -18535,5 +19659,65 @@ impl DatabasePool {
             }
         }
         Ok(())
+    }
+
+    // Remove GPodder sync settings for a user - matches Python remove_gpodder_settings function exactly
+    pub async fn remove_gpodder_settings(&self, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // First delete any device records
+                sqlx::query(r#"DELETE FROM "GpodderDevices" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                sqlx::query(r#"DELETE FROM "GpodderSyncState" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                // Then clear GPodder settings from user record
+                sqlx::query(r#"
+                    UPDATE "Users"
+                    SET gpodderurl = '', gpodderloginname = '', gpoddertoken = '', pod_sync_type = 'None'
+                    WHERE userid = $1
+                "#)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+                Ok(true)
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // First delete any device records
+                sqlx::query("DELETE FROM GpodderDevices WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                sqlx::query("DELETE FROM GpodderSyncState WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                // Then clear GPodder settings from user record
+                sqlx::query(r#"
+                    UPDATE Users
+                    SET GpodderUrl = '', GpodderLoginName = '', GpodderToken = '', Pod_Sync_Type = 'None'
+                    WHERE UserID = ?
+                "#)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+                Ok(true)
+            }
+        }
     }
 }
