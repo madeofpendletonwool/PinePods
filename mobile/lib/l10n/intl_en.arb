@@ -1,7 +1,7 @@
 {
   "@@last_modified": "2020-02-20T12:15:52.645497",
   "@@locale": "en",
-  "app_title": "Anytime Podcast Player",
+  "app_title": "PinePods Podcast Player",
   "@app_title": {
     "description": "Full title for the application",
     "type": "text",
@@ -325,7 +325,7 @@
     "type": "text",
     "placeholders": {}
   },
-  "consent_message": "This funding link will take you to an external site where you will be able to directly support the show. Links are provided by the podcast authors and is not controlled by Anytime.",
+  "consent_message": "This funding link will take you to an external site where you will be able to directly support the show. Links are provided by the podcast authors and is not controlled by PinePods.",
   "@consent_message": {
     "description": "Display when first accessing external funding link",
     "type": "text",
@@ -658,7 +658,7 @@
     "placeholders_order": [],
     "placeholders": {}
   },
-  "transcript_why_not_url": "https://anytimeplayer.app/docs/anytime_transcript_support_en.html",
+  "transcript_why_not_url": "https://www.pinepods.online/docs/Features/Transcript",
   "@transcript_why_not_url": {
     "description": "Language specific link",
     "type": "text",

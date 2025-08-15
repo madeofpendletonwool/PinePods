@@ -36,7 +36,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
 
                 <data android:pathPrefix="/subscribe" />
-                <data android:scheme="anytime-subscribe" />
+                <data android:scheme="pinepods-subscribe" />
             </intent-filter>
 
             <intent-filter android:autoVerify="true">
@@ -45,7 +45,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
 
-                <data android:host="anytimeplayer.app" />
+                <data android:host="pinepods.online" />
                 <data android:pathPrefix="/subscribe" />
                 <data android:scheme="https" />
                 <data android:scheme="http" />
