@@ -856,6 +856,35 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                     ],
                   ),
                 ),
+                const SizedBox(width: 12),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _errorMessage = null;
+                    });
+                    _loadDownloads();
+                  },
+                  icon: Icon(
+                    Icons.refresh,
+                    size: 16,
+                    color: Colors.orange[800],
+                  ),
+                  label: Text(
+                    'Retry',
+                    style: TextStyle(
+                      color: Colors.orange[800],
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange[50],
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
               ],
             ),
           ),

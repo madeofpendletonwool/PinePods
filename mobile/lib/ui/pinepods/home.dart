@@ -21,6 +21,8 @@ import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
+import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
+import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
@@ -81,8 +83,8 @@ class _PinepodsHomeState extends State<PinepodsHome> {
       ]);
 
       setState(() {
-        _homeData = futures[0] as HomeOverview?;
-        _playlistData = futures[1] as PlaylistResponse?;
+        _homeData = futures[0] as HomeOverview;
+        _playlistData = futures[1] as PlaylistResponse;
         _isLoading = false;
       });
     } catch (e) {
@@ -613,36 +615,15 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             ),
           )
         else if (_errorMessage.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Card(
-              color: Theme.of(context).colorScheme.errorContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: Theme.of(context).colorScheme.onErrorContainer,
-                      size: 48,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _errorMessage,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onErrorContainer,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: _loadHomeContent,
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          ServerErrorPage(
+            errorMessage: _errorMessage.isServerConnectionError 
+              ? null 
+              : _errorMessage,
+            onRetry: _loadHomeContent,
+            title: 'Home Unavailable',
+            subtitle: _errorMessage.isServerConnectionError
+              ? 'Unable to connect to the PinePods server'
+              : 'Failed to load home content',
           )
         else if (_homeData != null)
           Padding(

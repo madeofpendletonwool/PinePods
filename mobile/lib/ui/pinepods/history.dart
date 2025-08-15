@@ -11,6 +11,8 @@ import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/utils/position_utils.dart';
+import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
+import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
 import 'package:sliver_tools/sliver_tools.dart';
@@ -576,35 +578,15 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
     }
 
     if (_errorMessage.isNotEmpty) {
-      return SliverFillRemaining(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  color: Theme.of(context).colorScheme.error,
-                  size: 48,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  _errorMessage,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _refresh,
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
-          ),
-        ),
+      return SliverServerErrorPage(
+        errorMessage: _errorMessage.isServerConnectionError 
+          ? null 
+          : _errorMessage,
+        onRetry: _refresh,
+        title: 'History Unavailable',
+        subtitle: _errorMessage.isServerConnectionError
+          ? 'Unable to connect to the PinePods server'
+          : 'Failed to load listening history',
       );
     }
 

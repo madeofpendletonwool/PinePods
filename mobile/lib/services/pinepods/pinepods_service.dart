@@ -1447,7 +1447,7 @@ class PinepodsService {
   }
 
   // Get home overview data
-  Future<HomeOverview?> getHomeOverview(int userId) async {
+  Future<HomeOverview> getHomeOverview(int userId) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
@@ -1469,12 +1469,12 @@ class PinepodsService {
       }
     } catch (e) {
       print('Error getting home overview: $e');
-      return null;
+      rethrow;
     }
   }
 
   // Get playlists
-  Future<PlaylistResponse?> getPlaylists(int userId) async {
+  Future<PlaylistResponse> getPlaylists(int userId) async {
     if (_server == null || _apiKey == null) {
       throw Exception('Not authenticated');
     }
@@ -1498,7 +1498,7 @@ class PinepodsService {
       }
     } catch (e) {
       print('Error getting playlists: $e');
-      return null;
+      rethrow;
     }
   }
 
