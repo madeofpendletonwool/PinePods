@@ -15,6 +15,7 @@ import 'package:pinepods_mobile/state/transcript_state_event.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:extended_image/extended_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_html/flutter_html.dart';
 import 'package:logging/logging.dart';
 import 'package:provider/provider.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
@@ -43,6 +44,7 @@ class _TranscriptViewState extends State<TranscriptView> {
   bool forceTranscriptUpdate = false;
   bool first = true;
   bool scrolling = false;
+  bool isHtmlTranscript = false;
   String speaker = '';
   RegExp exp = RegExp(r'(^)(\[?)(?<speaker>[A-Za-z0-9\s]+)(\]?)(\s?)(:)');
 
@@ -65,7 +67,7 @@ class _TranscriptViewState extends State<TranscriptView> {
     // Listen to playback position updates and scroll to the correct items in the transcript
     // if we have auto scroll enabled.
     _positionSubscription = audioBloc.playPosition!.listen((event) {
-      if (_itemScrollController.isAttached) {
+      if (_itemScrollController.isAttached && !isHtmlTranscript) {
         var transcript = event.episode?.transcript;
 
         if (transcript != null && transcript.subtitles.isNotEmpty) {
@@ -216,6 +218,24 @@ class _TranscriptViewState extends State<TranscriptView> {
                     );
                   } else {
                     final items = transcriptSnapshot.data!.transcript?.subtitles ?? <Subtitle>[];
+                    
+                    // Detect if this is an HTML transcript (single item with HTMLFULL marker)
+                    final isLikelyHtmlTranscript = items.length == 1 && 
+                        items.first.data != null && 
+                        items.first.data!.startsWith('{{HTMLFULL}}');
+                    
+                    // Update the state flag for HTML transcript detection
+                    if (isLikelyHtmlTranscript != isHtmlTranscript) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        setState(() {
+                          isHtmlTranscript = isLikelyHtmlTranscript;
+                          if (isHtmlTranscript) {
+                            autoScroll = false;
+                            autoScrollEnabled = false;
+                          }
+                        });
+                      });
+                    }
 
                     return Column(
                       children: [
@@ -256,31 +276,33 @@ class _TranscriptViewState extends State<TranscriptView> {
                             }),
                           ),
                         ),
-                        Padding(
-                          padding: const EdgeInsets.only(left: 8.0, right: 8.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Text(L.of(context)!.auto_scroll_transcript_label),
-                              Switch(
-                                value: autoScroll,
-                                onChanged: autoScrollEnabled
-                                    ? (bool enableAutoScroll) {
-                                        setState(() {
-                                          autoScroll = enableAutoScroll;
+                        if (!isHtmlTranscript)
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8.0, right: 8.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Text(L.of(context)!.auto_scroll_transcript_label),
+                                Switch(
+                                  value: autoScroll,
+                                  onChanged: autoScrollEnabled
+                                      ? (bool enableAutoScroll) {
+                                          setState(() {
+                                            autoScroll = enableAutoScroll;
 
-                                          if (enableAutoScroll) {
-                                            forceTranscriptUpdate = true;
-                                          }
-                                        });
-                                      }
-                                    : null,
-                              ),
-                            ],
+                                            if (enableAutoScroll) {
+                                              forceTranscriptUpdate = true;
+                                            }
+                                          });
+                                        }
+                                      : null,
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        if (queueSnapshot.hasData &&
+                        if (!isHtmlTranscript &&
+                            queueSnapshot.hasData &&
                             queueSnapshot.data?.playing != null &&
                             queueSnapshot.data!.playing!.persons.isNotEmpty)
                           Container(
@@ -375,12 +397,23 @@ class SubtitleWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final audioBloc = Provider.of<AudioBloc>(context, listen: false);
+    final data = subtitle.data ?? '';
+    final isFullHtmlTranscript = data.startsWith('{{HTMLFULL}}');
 
+    // For full HTML transcripts, render as a simple container without timing or clickability
+    if (isFullHtmlTranscript) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16.0),
+        child: _buildSubtitleContent(context),
+      );
+    }
+
+    // For timed transcripts (JSON, SRT, chunked HTML), render with timing and clickability
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () {
         final p = subtitle.start + margin;
-
         audioBloc.transitionPosition(p.inSeconds.toDouble());
       },
       child: Container(
@@ -397,15 +430,96 @@ class SubtitleWidget extends StatelessWidget {
                   : '${_formatDuration(subtitle.start)} - ${subtitle.speaker}',
               style: Theme.of(context).textTheme.titleSmall,
             ),
-            Text(
-              subtitle.data!,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            _buildSubtitleContent(context),
             const Padding(padding: EdgeInsets.fromLTRB(0.0, 0.0, 0.0, 16.0))
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildSubtitleContent(BuildContext context) {
+    final data = subtitle.data ?? '';
+    
+    // Check if this is full HTML content (single document)
+    if (data.startsWith('{{HTMLFULL}}')) {
+      final htmlContent = data.substring(12); // Remove '{{HTMLFULL}}' marker
+      
+      return Html(
+        data: htmlContent,
+        style: {
+          'body': Style(
+            margin: Margins.zero,
+            padding: HtmlPaddings.zero,
+            fontSize: FontSize(Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14),
+            color: Theme.of(context).textTheme.bodyMedium?.color,
+            fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily,
+            lineHeight: const LineHeight(1.5),
+          ),
+          'a': Style(
+            color: Theme.of(context).primaryColor,
+            textDecoration: TextDecoration.underline,
+          ),
+          'p': Style(
+            margin: Margins.only(bottom: 12),
+            padding: HtmlPaddings.zero,
+          ),
+          'h1, h2, h3, h4, h5, h6': Style(
+            margin: Margins.only(top: 16, bottom: 8),
+            fontWeight: FontWeight.bold,
+          ),
+          'strong, b': Style(
+            fontWeight: FontWeight.bold,
+          ),
+          'em, i': Style(
+            fontStyle: FontStyle.italic,
+          ),
+        },
+        onLinkTap: (url, attributes, element) {
+          if (url != null) {
+            final uri = Uri.parse(url);
+            launchUrl(uri);
+          }
+        },
+      );
+    } 
+    // Check if this is chunked HTML content (legacy)
+    else if (data.startsWith('{{HTML}}')) {
+      final htmlContent = data.substring(8); // Remove '{{HTML}}' marker
+      
+      return Html(
+        data: htmlContent,
+        style: {
+          'body': Style(
+            margin: Margins.zero,
+            padding: HtmlPaddings.zero,
+            fontSize: FontSize(Theme.of(context).textTheme.titleMedium?.fontSize ?? 16),
+            color: Theme.of(context).textTheme.titleMedium?.color,
+            fontFamily: Theme.of(context).textTheme.titleMedium?.fontFamily,
+          ),
+          'a': Style(
+            color: Theme.of(context).primaryColor,
+            textDecoration: TextDecoration.underline,
+          ),
+          'p': Style(
+            margin: Margins.zero,
+            padding: HtmlPaddings.zero,
+          ),
+        },
+        onLinkTap: (url, attributes, element) {
+          if (url != null) {
+            final uri = Uri.parse(url);
+            launchUrl(uri);
+          }
+        },
+      );
+    } else {
+      // Render as plain text for non-HTML content
+      return Text(
+        data,
+        style: Theme.of(context).textTheme.titleMedium,
+      );
+    }
   }
 
   String _formatDuration(Duration duration) {
