@@ -1,0 +1,16 @@
+command = "nginx -g 'daemon off;'"
+start-after = ["gpodder-api.toml"]
+stdout = "${HORUST_STDOUT_MODE}"
+stderr = "${HORUST_STDERR_MODE}"
+
+[restart]
+strategy = "always"
+backoff = "1s"
+attempts = 0
+
+[environment]
+keep-env = true
+
+[termination]
+signal = "TERM"
+wait = "5s"

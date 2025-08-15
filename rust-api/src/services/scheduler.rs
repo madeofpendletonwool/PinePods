@@ -75,13 +75,6 @@ impl BackgroundScheduler {
         Ok(())
     }
 
-    pub async fn stop(&mut self) -> AppResult<()> {
-        info!("🛑 Stopping background task scheduler...");
-        self.scheduler.shutdown().await?;
-        info!("✅ Background task scheduler stopped");
-        Ok(())
-    }
-
     // Direct function calls instead of HTTP requests
     async fn run_refresh_pods(state: Arc<AppState>) -> AppResult<()> {
         // Call refresh_pods function directly

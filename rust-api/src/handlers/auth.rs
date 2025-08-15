@@ -10,7 +10,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use crate::{
     error::{AppError, AppResult},
     handlers::{extract_api_key, validate_api_key, check_user_or_admin_access},
-    services::auth::{hash_password, verify_password},
+    services::auth::verify_password,
     database::{SelfServiceStatus, PublicOidcProvider},
     AppState,
 };

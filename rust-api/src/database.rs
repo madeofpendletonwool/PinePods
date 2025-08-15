@@ -11409,6 +11409,10 @@ impl DatabasePool {
 
     // Apply remote episode actions locally - matches Python apply_episode_actions function exactly
     async fn apply_remote_episode_actions(&self, user_id: i32, actions: &[serde_json::Value]) -> AppResult<()> {
+        tracing::info!("Processing {} episode actions for user {}", actions.len(), user_id);
+        let mut applied_count = 0;
+        let mut not_found_count = 0;
+        
         for action in actions {
             if let (Some(episode_url), Some(action_type)) = (
                 action["episode"].as_str(),
@@ -11422,10 +11426,39 @@ impl DatabasePool {
                         ) {
                             // Find local episode by URL
                             if let Some(episode_id) = self.find_episode_by_url(user_id, episode_url).await? {
-                                // Parse timestamp
-                                if let Ok(timestamp) = chrono::DateTime::parse_from_rfc3339(timestamp_str) {
-                                    self.update_episode_progress(user_id, episode_id, position as i32, timestamp.naive_utc()).await?;
+                                // Parse timestamp - handle both RFC3339 and simple datetime formats
+                                let timestamp = if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(timestamp_str) {
+                                    parsed.naive_utc()
+                                } else if let Ok(parsed) = chrono::NaiveDateTime::parse_from_str(timestamp_str, "%Y-%m-%dT%H:%M:%S") {
+                                    parsed
+                                } else {
+                                    tracing::warn!("Failed to parse timestamp for episode action: {}", timestamp_str);
+                                    continue;
+                                };
+                                
+                                // Get episode duration to check if it should be marked as complete
+                                if let Ok(episode_duration) = self.get_episode_duration(episode_id).await {
+                                    if episode_duration > 0 && (episode_duration - position as i32) <= 120 {
+                                        // Within 2 minutes of completion - mark as complete
+                                        // GPodder sync only handles regular podcast episodes, never YouTube videos
+                                        self.mark_episode_completed(episode_id, user_id, false).await?;
+                                        applied_count += 1;
+                                        tracing::debug!("Marked episode as completed: {} ({}s of {}s)", episode_url, position, episode_duration);
+                                    } else {
+                                        // Update progress normally
+                                        self.update_episode_progress(user_id, episode_id, position as i32, timestamp).await?;
+                                        applied_count += 1;
+                                        tracing::debug!("Applied episode action: {} -> position {}", episode_url, position);
+                                    }
+                                } else {
+                                    // Fallback to normal progress update if duration unavailable
+                                    self.update_episode_progress(user_id, episode_id, position as i32, timestamp).await?;
+                                    applied_count += 1;
+                                    tracing::debug!("Applied episode action (no duration): {} -> position {}", episode_url, position);
                                 }
+                            } else {
+                                not_found_count += 1;
+                                tracing::debug!("Episode not found in local database: {}", episode_url);
                             }
                         }
                     }
@@ -11443,6 +11476,9 @@ impl DatabasePool {
                 }
             }
         }
+        
+        tracing::info!("Episode actions processing complete: {} applied, {} not found in local database", 
+                      applied_count, not_found_count);
         Ok(())
     }
     
@@ -18817,17 +18853,150 @@ impl DatabasePool {
             }
         };
 
-        // Create GPodder session directly with already-decrypted password to avoid double decryption
-        let session = self.create_gpodder_session_with_password(&gpodder_url, &username, &password).await?;
-
         let mut api_endpoints_tested = Vec::new();
         let mut server_devices = Vec::new();
         let mut server_subscriptions = Vec::new();
         let mut recent_episode_actions = Vec::new();
 
-        // Test 1: Get devices from GPodder API
-        let devices_url = format!("{}/api/2/devices/{}.json", gpodder_url.trim_end_matches('/'), username);
-        let start = Instant::now();
+        // Handle Nextcloud differently from standard GPodder API
+        if settings.sync_type == "nextcloud" {
+            // Nextcloud uses different endpoints and doesn't have devices concept
+            let client = reqwest::Client::new();
+            
+            // Test 1: Get subscriptions from Nextcloud
+            let subscriptions_url = format!("{}/index.php/apps/gpoddersync/subscriptions", gpodder_url.trim_end_matches('/'));
+            let start = Instant::now();
+            
+            let subscriptions_response = client
+                .get(&subscriptions_url)
+                .basic_auth(&username, Some(&password))
+                .send()
+                .await;
+            
+            match subscriptions_response {
+                Ok(resp) if resp.status().is_success() => {
+                    let duration = start.elapsed().as_millis() as i64;
+                    api_endpoints_tested.push(EndpointTest {
+                        endpoint: "GET /index.php/apps/gpoddersync/subscriptions".to_string(),
+                        status: "success".to_string(),
+                        response_time_ms: Some(duration),
+                        error: None,
+                    });
+
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(subs_data) => {
+                            if let Some(subs_array) = subs_data.as_array() {
+                                for sub in subs_array {
+                                    if let Some(url) = sub.as_str() {
+                                        server_subscriptions.push(ServerSubscription {
+                                            url: url.to_string(),
+                                            title: None,
+                                            description: None,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to parse Nextcloud subscriptions response: {}", e);
+                        }
+                    }
+                }
+                Ok(resp) => {
+                    let duration = start.elapsed().as_millis() as i64;
+                    api_endpoints_tested.push(EndpointTest {
+                        endpoint: "GET /index.php/apps/gpoddersync/subscriptions".to_string(),
+                        status: "failed".to_string(),
+                        response_time_ms: Some(duration),
+                        error: Some(format!("HTTP {}", resp.status())),
+                    });
+                }
+                Err(e) => {
+                    let duration = start.elapsed().as_millis() as i64;
+                    api_endpoints_tested.push(EndpointTest {
+                        endpoint: "GET /index.php/apps/gpoddersync/subscriptions".to_string(),
+                        status: "failed".to_string(),
+                        response_time_ms: Some(duration),
+                        error: Some(e.to_string()),
+                    });
+                }
+            }
+
+            // Test 2: Get episode actions from Nextcloud
+            let episode_actions_url = format!("{}/index.php/apps/gpoddersync/episode_action", gpodder_url.trim_end_matches('/'));
+            let start = Instant::now();
+
+            let episode_response = client
+                .get(&episode_actions_url)
+                .basic_auth(&username, Some(&password))
+                .send()
+                .await;
+
+            match episode_response {
+                Ok(resp) if resp.status().is_success() => {
+                    let duration = start.elapsed().as_millis() as i64;
+                    api_endpoints_tested.push(EndpointTest {
+                        endpoint: "GET /index.php/apps/gpoddersync/episode_action".to_string(),
+                        status: "success".to_string(),
+                        response_time_ms: Some(duration),
+                        error: None,
+                    });
+
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(episode_data) => {
+                            if let Some(actions) = episode_data.get("actions").and_then(|v| v.as_array()) {
+                                for action in actions.iter().take(10) { // Show last 10 actions
+                                    recent_episode_actions.push(ServerEpisodeAction {
+                                        podcast: action["podcast"].as_str().unwrap_or("").to_string(),
+                                        episode: action["episode"].as_str().unwrap_or("").to_string(),
+                                        action: action["action"].as_str().unwrap_or("").to_string(),
+                                        timestamp: action["timestamp"].as_str().unwrap_or("").to_string(),
+                                        position: action["position"].as_i64().map(|p| p as i32),
+                                        device: Some("nextcloud".to_string()),
+                                    });
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to parse Nextcloud episode actions response: {}", e);
+                        }
+                    }
+                }
+                Ok(resp) => {
+                    let duration = start.elapsed().as_millis() as i64;
+                    api_endpoints_tested.push(EndpointTest {
+                        endpoint: "GET /index.php/apps/gpoddersync/episode_action".to_string(),
+                        status: "failed".to_string(),
+                        response_time_ms: Some(duration),
+                        error: Some(format!("HTTP {}", resp.status())),
+                    });
+                }
+                Err(e) => {
+                    let duration = start.elapsed().as_millis() as i64;
+                    api_endpoints_tested.push(EndpointTest {
+                        endpoint: "GET /index.php/apps/gpoddersync/episode_action".to_string(),
+                        status: "failed".to_string(),
+                        response_time_ms: Some(duration),
+                        error: Some(e.to_string()),
+                    });
+                }
+            }
+
+            // Nextcloud doesn't have devices concept, so add a fake device entry
+            server_devices.push(ServerDevice {
+                id: "nextcloud".to_string(),
+                caption: "Nextcloud gPodder Sync".to_string(),
+                device_type: "cloud".to_string(),
+                subscriptions: server_subscriptions.len() as i32,
+            });
+        } else {
+            // Standard GPodder API (internal or external)
+            // Create GPodder session directly with already-decrypted password to avoid double decryption
+            let session = self.create_gpodder_session_with_password(&gpodder_url, &username, &password).await?;
+
+            // Test 1: Get devices from GPodder API
+            let devices_url = format!("{}/api/2/devices/{}.json", gpodder_url.trim_end_matches('/'), username);
+            let start = Instant::now();
         
         let devices_response = if session.authenticated {
             session.client.get(&devices_url).send().await
@@ -18886,7 +19055,7 @@ impl DatabasePool {
 
         // Test 2: Get subscriptions from GPodder API - use the user's actual default device
         let device_name = self.get_or_create_default_device(user_id).await?;
-        let subscriptions_url = format!("{}/api/2/subscriptions/{}/{}.json", 
+        let subscriptions_url = format!("{}/api/2/subscriptions/{}/{}.json?since=0", 
             gpodder_url.trim_end_matches('/'), username, device_name);
         let start = Instant::now();
 
@@ -18901,7 +19070,7 @@ impl DatabasePool {
             Ok(resp) if resp.status().is_success() => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/subscriptions/{username}/{device}.json".to_string(),
+                    endpoint: "GET /api/2/subscriptions/{username}/{device}.json?since=0".to_string(),
                     status: "success".to_string(),
                     response_time_ms: Some(duration),
                     error: None,
@@ -18909,8 +19078,9 @@ impl DatabasePool {
 
                 match resp.json::<serde_json::Value>().await {
                     Ok(subs_data) => {
-                        if let Some(subs_array) = subs_data.as_array() {
-                            for sub in subs_array {
+                        // GPodder API returns subscriptions in format: {"add": ["url1", "url2"], "remove": ["url3"]}
+                        if let Some(add_array) = subs_data["add"].as_array() {
+                            for sub in add_array {
                                 if let Some(url) = sub.as_str() {
                                     server_subscriptions.push(ServerSubscription {
                                         url: url.to_string(),
@@ -18929,7 +19099,7 @@ impl DatabasePool {
             Ok(resp) => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/subscriptions/{username}/{device}.json".to_string(),
+                    endpoint: "GET /api/2/subscriptions/{username}/{device}.json?since=0".to_string(),
                     status: "failed".to_string(),
                     response_time_ms: Some(duration),
                     error: Some(format!("HTTP {}", resp.status())),
@@ -18938,7 +19108,7 @@ impl DatabasePool {
             Err(e) => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/subscriptions/{username}/{device}.json".to_string(),
+                    endpoint: "GET /api/2/subscriptions/{username}/{device}.json?since=0".to_string(),
                     status: "failed".to_string(),
                     response_time_ms: Some(duration),
                     error: Some(e.to_string()),
@@ -18947,7 +19117,8 @@ impl DatabasePool {
         }
 
         // Test 3: Get episode actions from GPodder API  
-        let episodes_url = format!("{}/api/2/episodes/{}.json", gpodder_url.trim_end_matches('/'), username);
+        let episodes_url = format!("{}/api/2/episodes/{}.json?since=0&device={}", 
+            gpodder_url.trim_end_matches('/'), username, device_name);
         let start = Instant::now();
 
         let episodes_response = if session.authenticated {
@@ -18961,7 +19132,7 @@ impl DatabasePool {
             Ok(resp) if resp.status().is_success() => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/episodes/{username}.json".to_string(),
+                    endpoint: "GET /api/2/episodes/{username}.json?since=0&device={device}".to_string(),
                     status: "success".to_string(),
                     response_time_ms: Some(duration),
                     error: None,
@@ -18990,7 +19161,7 @@ impl DatabasePool {
             Ok(resp) => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/episodes/{username}.json".to_string(),
+                    endpoint: "GET /api/2/episodes/{username}.json?since=0&device={device}".to_string(),
                     status: "failed".to_string(),
                     response_time_ms: Some(duration),
                     error: Some(format!("HTTP {}", resp.status())),
@@ -18999,12 +19170,13 @@ impl DatabasePool {
             Err(e) => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/episodes/{username}.json".to_string(),
+                    endpoint: "GET /api/2/episodes/{username}.json?since=0&device={device}".to_string(),
                     status: "failed".to_string(),
                     response_time_ms: Some(duration),
                     error: Some(e.to_string()),
                 });
             }
+        }
         }
 
         // Get sync status
@@ -19225,11 +19397,16 @@ impl DatabasePool {
                 
                 let mut actions = Vec::new();
                 for row in rows {
+                    // Handle PostgreSQL TIMESTAMP (not TIMESTAMPTZ) column
+                    let naive_timestamp: chrono::NaiveDateTime = row.try_get("timestamp")?;
+                    let utc_timestamp = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive_timestamp, chrono::Utc);
+                    let timestamp_str = utc_timestamp.to_rfc3339();
+                    
                     actions.push(serde_json::json!({
                         "podcast": row.try_get::<String, _>("podcast")?,
                         "episode": row.try_get::<String, _>("episode")?,
                         "action": row.try_get::<String, _>("action")?,
-                        "timestamp": row.try_get::<chrono::DateTime<chrono::Utc>, _>("timestamp")?.to_rfc3339(),
+                        "timestamp": timestamp_str,
                         "position": row.try_get::<Option<i32>, _>("position").unwrap_or(None)
                     }));
                 }
@@ -19264,11 +19441,16 @@ impl DatabasePool {
                 
                 let mut actions = Vec::new();
                 for row in rows {
+                    // Handle MySQL DATETIME column 
+                    let naive_timestamp: chrono::NaiveDateTime = row.try_get("timestamp")?;
+                    let utc_timestamp = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive_timestamp, chrono::Utc);
+                    let timestamp_str = utc_timestamp.to_rfc3339();
+                    
                     actions.push(serde_json::json!({
                         "podcast": row.try_get::<String, _>("podcast")?,
                         "episode": row.try_get::<String, _>("episode")?,
                         "action": row.try_get::<String, _>("action")?,
-                        "timestamp": row.try_get::<chrono::DateTime<chrono::Utc>, _>("timestamp")?.to_rfc3339(),
+                        "timestamp": timestamp_str,
                         "position": row.try_get::<Option<i32>, _>("position").unwrap_or(None)
                     }));
                 }

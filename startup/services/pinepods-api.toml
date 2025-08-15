@@ -1,0 +1,16 @@
+command = "/usr/local/bin/pinepods-api"
+stdout = "${HORUST_STDOUT_MODE}"
+stderr = "${HORUST_STDERR_MODE}"
+
+[restart]
+strategy = "always"
+backoff = "1s"
+attempts = 0
+
+[environment]
+keep-env = true
+additional = { DB_USER = "${DB_USER}", DB_PASSWORD = "${DB_PASSWORD}", DB_HOST = "${DB_HOST}", DB_NAME = "${DB_NAME}", DB_PORT = "${DB_PORT}", DB_TYPE = "${DB_TYPE}", FULLNAME = "${FULLNAME}", USERNAME = "${USERNAME}", EMAIL = "${EMAIL}", PASSWORD = "${PASSWORD}", REVERSE_PROXY = "${REVERSE_PROXY}", SEARCH_API_URL = "${SEARCH_API_URL}", PEOPLE_API_URL = "${PEOPLE_API_URL}", PINEPODS_PORT = "${PINEPODS_PORT}", PROXY_PROTOCOL = "${PROXY_PROTOCOL}", DEBUG_MODE = "${DEBUG_MODE}", VALKEY_HOST = "${VALKEY_HOST}", VALKEY_PORT = "${VALKEY_PORT}" }
+
+[termination]
+signal = "TERM"
+wait = "5s"

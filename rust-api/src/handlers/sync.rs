@@ -98,28 +98,51 @@ pub async fn gpodder_force_sync(
     let device_name = state.db_pool.get_or_create_default_device(user_id).await?;
     
     // Perform initial full sync (without timestamps) based on sync type
-    let success = match settings.sync_type.as_str() {
+    let sync_result = match settings.sync_type.as_str() {
         "gpodder" => {
             // Internal gPodder API - call initial full sync
-            state.db_pool.call_gpodder_initial_full_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name).await.unwrap_or(false)
+            state.db_pool.call_gpodder_initial_full_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name).await
         }
         "nextcloud" => {
             // Nextcloud initial sync
-            state.db_pool.call_nextcloud_initial_full_sync(user_id, &settings.url, &settings.username, &settings.token).await.unwrap_or(false)
+            state.db_pool.call_nextcloud_initial_full_sync(user_id, &settings.url, &settings.username, &settings.token).await
         }
         "external" => {
             // External gPodder server - decrypt token first then call initial full sync
             let decrypted_token = state.db_pool.decrypt_password(&settings.token).await.unwrap_or_default();
-            state.db_pool.call_gpodder_initial_full_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name).await.unwrap_or(false)
+            state.db_pool.call_gpodder_initial_full_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name).await
         }
         "both" => {
             // Both internal and external - call initial sync for both
-            let internal_result = state.db_pool.call_gpodder_initial_full_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name).await.unwrap_or(false);
+            let internal_result = state.db_pool.call_gpodder_initial_full_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name).await;
             let decrypted_token = state.db_pool.decrypt_password(&settings.token).await.unwrap_or_default();
-            let external_result = state.db_pool.call_gpodder_initial_full_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name).await.unwrap_or(false);
-            internal_result || external_result
+            let external_result = state.db_pool.call_gpodder_initial_full_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name).await;
+            
+            match (internal_result, external_result) {
+                (Ok(internal_success), Ok(external_success)) => Ok(internal_success || external_success),
+                (Ok(internal_success), Err(external_err)) => {
+                    tracing::warn!("External sync failed: {}, but internal sync succeeded: {}", external_err, internal_success);
+                    Ok(internal_success)
+                }
+                (Err(internal_err), Ok(external_success)) => {
+                    tracing::warn!("Internal sync failed: {}, but external sync succeeded: {}", internal_err, external_success);
+                    Ok(external_success)
+                }
+                (Err(internal_err), Err(external_err)) => {
+                    tracing::error!("Both internal and external sync failed: internal={}, external={}", internal_err, external_err);
+                    Err(internal_err)
+                }
+            }
         }
-        _ => false
+        _ => Ok(false)
+    };
+    
+    let (success, error_message) = match sync_result {
+        Ok(result) => (result, None),
+        Err(e) => {
+            tracing::error!("Sync failed with error: {}", e);
+            (false, Some(e.to_string()))
+        }
     };
     
     if success {
@@ -129,9 +152,10 @@ pub async fn gpodder_force_sync(
             "data": null
         })))
     } else {
+        let message = error_message.unwrap_or_else(|| "Initial sync failed - please check your sync configuration".to_string());
         Ok(Json(serde_json::json!({
             "success": false,
-            "message": "Initial sync failed - please check your sync configuration",
+            "message": format!("Initial sync failed: {}", message),
             "data": null
         })))
     }
@@ -154,19 +178,13 @@ pub async fn gpodder_sync(
         Ok(Json(serde_json::json!({
             "success": true,
             "message": "Sync completed successfully",
-            "data": {
-                "synced_podcasts": 1,
-                "synced_episodes": 0
-            }
+            "data": null
         })))
     } else {
         Ok(Json(serde_json::json!({
             "success": false,
             "message": "Sync failed or no changes detected - check your sync configuration",
-            "data": {
-                "synced_podcasts": 0,
-                "synced_episodes": 0
-            }
+            "data": null
         })))
     }
 }
@@ -486,34 +504,4 @@ pub async fn gpodder_get_statistics(
     let statistics = state.db_pool.get_gpodder_server_statistics(user_id).await?;
     
     Ok(Json(statistics))
-}
-
-// Remove podcast sync settings - matches Python remove_podcast_sync function exactly
-pub async fn remove_podcast_sync(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(request): Json<RemoveSyncRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    // Check if the user has permission to modify this user's data
-    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-
-    if request.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You are not authorized to modify these user settings"));
-    }
-
-    // Remove the sync settings
-    let success = state.db_pool.remove_gpodder_settings(request.user_id).await?;
-    
-    if success {
-        Ok(Json(serde_json::json!({
-            "success": true,
-            "message": "Podcast sync settings removed successfully"
-        })))
-    } else {
-        Err(AppError::internal("Failed to remove podcast sync settings"))
-    }
 }
