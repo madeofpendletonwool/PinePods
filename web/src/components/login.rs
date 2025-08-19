@@ -1742,13 +1742,14 @@ pub fn login() -> Html {
                                                                 let server_name_clone = server_name.clone();
 
                                                                 wasm_bindgen_futures::spawn_local(async move {
+                                                                    let origin = window.location().origin().unwrap();
                                                                     match call_store_oidc_state(
                                                                         server_name_clone,
                                                                         state_clone.clone(),
                                                                         client_id_clone.clone(),
+                                                                        Some(origin.clone()),
                                                                     ).await {
                                                                         Ok(_) => {
-                                                                            let origin = window.location().origin().unwrap();
                                                                             let redirect_uri = format!("{}/api/auth/callback", origin);
                                                                             let auth_url = format!(
                                                                                 "{}?client_id={}&redirect_uri={}&scope={}&response_type=code&state={}",

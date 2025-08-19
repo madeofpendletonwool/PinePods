@@ -165,6 +165,7 @@ fn create_app(state: AppState) -> Router {
                             .level(tracing::Level::INFO))
                 )
                 .layer(CompressionLayer::new())
+                .layer(axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024 * 1024)) // 2GB limit for massive backup files
         )
         .with_state(state)
 }

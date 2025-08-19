@@ -1101,9 +1101,12 @@ async fn backup_server_streaming(
                .arg("--port").arg(&port)
                .arg("--user").arg(&username)
                .arg(format!("--password={}", database_pass))
+               .arg("--skip-ssl")
+               .arg("--default-auth=mysql_native_password")
                .arg("--single-transaction")
-               .arg("--no-create-info")
-               .arg("--disable-keys")
+               .arg("--routines")
+               .arg("--triggers")
+               .arg("--complete-insert")
                .arg(&database);
             
             cmd
@@ -1117,18 +1120,36 @@ async fn backup_server_streaming(
 
     let stdout = child.stdout.take()
         .ok_or("Failed to get stdout from backup process")?;
+    
+    let stderr = child.stderr.take()
+        .ok_or("Failed to get stderr from backup process")?;
 
     let stream = ReaderStream::new(stdout);
     let body = Body::from_stream(stream);
 
     // Spawn a task to wait for the process and handle errors
     tokio::spawn(async move {
+        // Read stderr to capture error messages
+        let mut stderr_reader = tokio::io::BufReader::new(stderr);
+        let mut stderr_output = String::new();
+        use tokio::io::AsyncBufReadExt;
+        
+        // Read stderr line by line
+        let mut lines = stderr_reader.lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            stderr_output.push_str(&line);
+            stderr_output.push('\n');
+        }
+        
         match child.wait().await {
             Ok(status) if status.success() => {
                 println!("Backup process completed successfully");
             }
             Ok(status) => {
                 println!("Backup process failed with status: {}", status);
+                if !stderr_output.is_empty() {
+                    println!("Mysqldump stderr output: {}", stderr_output);
+                }
             }
             Err(e) => {
                 println!("Failed to wait for backup process: {}", e);

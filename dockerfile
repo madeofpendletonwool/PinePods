@@ -97,7 +97,7 @@ FROM alpine
 # Metadata
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 # Install runtime dependencies
-RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg wget jq
+RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg wget jq mariadb-connector-c-dev
 
 
 # Download and install latest yt-dlp binary

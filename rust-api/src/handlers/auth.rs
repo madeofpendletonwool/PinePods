@@ -1065,21 +1065,36 @@ async fn get_podcast_values_from_url(url: &str) -> Result<crate::handlers::podca
 
 // OIDC Authentication Flow Endpoints
 
-// Store OIDC state - matches Python /api/auth/store_state endpoint
+// Store OIDC state - enhanced to capture user's current URL
 #[derive(Deserialize)]
 pub struct StoreStateRequest {
     pub state: String,
     pub client_id: String,
+    pub origin_url: Option<String>, // URL user was on when they clicked OIDC login
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredOidcState {
+    client_id: String,
+    origin_url: Option<String>,
 }
 
 pub async fn store_oidc_state(
     State(state): State<crate::AppState>,
     Json(request): Json<StoreStateRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    // Store state in Redis with 10-minute expiration (matches Python implementation)
+    // Store state in Redis with 10-minute expiration
     let state_key = format!("oidc_state:{}", request.state);
     
-    state.redis_client.set_ex(&state_key, &request.client_id, 600).await
+    let stored_state = StoredOidcState {
+        client_id: request.client_id,
+        origin_url: request.origin_url,
+    };
+    
+    let state_json = serde_json::to_string(&stored_state)
+        .map_err(|e| AppError::internal(&format!("Failed to serialize OIDC state: {}", e)))?;
+    
+    state.redis_client.set_ex(&state_key, &state_json, 600).await
         .map_err(|e| AppError::internal(&format!("Failed to store OIDC state: {}", e)))?;
     
     Ok(Json(serde_json::json!({ "status": "success" })))
@@ -1101,29 +1116,55 @@ pub async fn oidc_callback(
 ) -> Result<axum::response::Redirect, AppError> {
     // Construct base URL from request like Python version - EXACT match
     let base_url = construct_base_url_from_request(&headers)?;
-    let frontend_base = base_url.replace("/api", "");
+    let default_frontend_base = base_url.replace("/api", "");
     
     // Handle OAuth errors first - EXACT match to Python
     if let Some(error) = query.error {
         let error_desc = query.error_description.unwrap_or_else(|| "Unknown error".to_string());
         tracing::error!("OIDC provider error: {} - {}", error, error_desc);
         return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=provider_error&description={}", 
-            frontend_base, urlencoding::encode(&error_desc))));
+            default_frontend_base, urlencoding::encode(&error_desc))));
     }
 
     // Validate required parameters - EXACT match to Python
     let auth_code = query.code.ok_or_else(|| AppError::bad_request("Missing authorization code"))?;
     let state_param = query.state.ok_or_else(|| AppError::bad_request("Missing state parameter"))?;
 
-    // Get client_id from state - EXACT match to Python oidc_state_manager.get_client_id
-    let client_id = match state.redis_client.get_del(&format!("oidc_state:{}", state_param)).await {
-        Ok(Some(client_id)) => client_id,
+    // Get client_id and origin_url from state
+    let (client_id, stored_origin_url) = match state.redis_client.get_del(&format!("oidc_state:{}", state_param)).await {
+        Ok(Some(state_json)) => {
+            // Try to parse as new JSON format first
+            if let Ok(stored_state) = serde_json::from_str::<StoredOidcState>(&state_json) {
+                (stored_state.client_id, stored_state.origin_url)
+            } else {
+                // Fallback to old format (just client_id string) for backwards compatibility
+                (state_json, None)
+            }
+        },
         Ok(None) => {
-            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=invalid_state", frontend_base)));
+            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=invalid_state", default_frontend_base)));
         }
         Err(_) => {
-            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=internal_error", frontend_base)));
+            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=internal_error", default_frontend_base)));
         }
+    };
+
+    // Use stored origin URL if available, otherwise fall back to constructed URL
+    let frontend_base = if let Some(ref origin_url) = stored_origin_url {
+        // Extract just the base part (scheme + host + port) from the stored origin URL
+        // Simple string parsing to avoid adding url dependency
+        if let Some(protocol_end) = origin_url.find("://") {
+            let after_protocol = &origin_url[protocol_end + 3..];
+            if let Some(path_start) = after_protocol.find('/') {
+                origin_url[..protocol_end + 3 + path_start].to_string()
+            } else {
+                origin_url.clone()
+            }
+        } else {
+            origin_url.clone()
+        }
+    } else {
+        default_frontend_base.clone()
     };
 
     let registered_redirect_uri = format!("{}/api/auth/callback", base_url);
@@ -1188,7 +1229,14 @@ pub async fn oidc_callback(
     };
 
     // Extract email with GitHub special handling - EXACT match to Python
-    let mut email = userinfo_response.get(email_claim.as_deref().unwrap_or("email")).and_then(|v| v.as_str()).map(|s| s.to_string());
+    let email_field = email_claim
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("email");
+    
+    tracing::info!("OIDC Debug - email_claim: {:?}, email_field: {}, userinfo_response: {:?}", email_claim, email_field, userinfo_response);
+    
+    let mut email = userinfo_response.get(email_field).and_then(|v| v.as_str()).map(|s| s.to_string());
     
     // GitHub email handling - EXACT match to Python
     if email.is_none() && userinfo_url.contains("api.github.com") {
@@ -1229,7 +1277,7 @@ pub async fn oidc_callback(
     };
 
     // Role verification - EXACT match to Python
-    if let (Some(roles_claim), Some(user_role)) = (roles_claim.as_ref(), user_role.as_ref()) {
+    if let (Some(roles_claim), Some(user_role)) = (roles_claim.as_ref().filter(|s| !s.is_empty()), user_role.as_ref().filter(|s| !s.is_empty())) {
         if let Some(roles) = userinfo_response.get(roles_claim).and_then(|v| v.as_array()) {
             let has_user_role = roles.iter().any(|r| r.as_str() == Some(user_role));
             let has_admin_role = admin_role.as_ref().map_or(false, |admin_role| {
@@ -1247,19 +1295,27 @@ pub async fn oidc_callback(
     // Check if user exists - EXACT match to Python
     let existing_user = state.db_pool.get_user_by_email(&email).await?;
     
-    let fullname = userinfo_response.get(name_claim.as_deref().unwrap_or("name"))
+    let name_field = name_claim
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("name");
+    let fullname = userinfo_response.get(name_field)
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
 
     // Username claim validation - EXACT match to Python
-    if let Some(username_claim) = username_claim.as_ref() {
+    if let Some(username_claim) = username_claim.as_ref().filter(|s| !s.is_empty()) {
         if !userinfo_response.get(username_claim).is_some() {
             return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=user_creation_failed&details=username_claim_missing", frontend_base)));
         }
     }
 
-    let username = userinfo_response.get(username_claim.as_deref().unwrap_or("preferred_username"))
+    let username_field = username_claim
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("preferred_username");
+    let username = userinfo_response.get(username_field)
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
@@ -1274,7 +1330,7 @@ pub async fn oidc_callback(
         state.db_pool.set_fullname(user_id, &fullname).await?;
 
         // Update username if changed - EXACT match to Python
-        if let (Some(username_claim), Some(new_username)) = (username_claim.as_ref(), username.as_ref()) {
+        if let (Some(username_claim), Some(new_username)) = (username_claim.as_ref().filter(|s| !s.is_empty()), username.as_ref()) {
             if Some(new_username) != current_username.as_ref() {
                 if !state.db_pool.check_usernames(new_username).await? {
                     state.db_pool.set_username(user_id, new_username).await?;
@@ -1283,7 +1339,7 @@ pub async fn oidc_callback(
         }
 
         // Update admin role - EXACT match to Python
-        if let (Some(roles_claim), Some(admin_role)) = (roles_claim.as_ref(), admin_role.as_ref()) {
+        if let (Some(roles_claim), Some(admin_role)) = (roles_claim.as_ref().filter(|s| !s.is_empty()), admin_role.as_ref().filter(|s| !s.is_empty())) {
             if let Some(roles) = userinfo_response.get(roles_claim).and_then(|v| v.as_array()) {
                 let is_admin = roles.iter().any(|r| r.as_str() == Some(admin_role));
                 state.db_pool.set_isadmin(user_id, is_admin).await?;
@@ -1319,7 +1375,7 @@ pub async fn oidc_callback(
                 let api_key = state.db_pool.create_api_key(user_id).await?;
                 
                 // Set admin role for new user - EXACT match to Python
-                if let (Some(roles_claim), Some(admin_role)) = (roles_claim.as_ref(), admin_role.as_ref()) {
+                if let (Some(roles_claim), Some(admin_role)) = (roles_claim.as_ref().filter(|s| !s.is_empty()), admin_role.as_ref().filter(|s| !s.is_empty())) {
                     if let Some(roles) = userinfo_response.get(roles_claim).and_then(|v| v.as_array()) {
                         let is_admin = roles.iter().any(|r| r.as_str() == Some(admin_role));
                         state.db_pool.set_isadmin(user_id, is_admin).await?;
@@ -1517,6 +1573,14 @@ fn construct_base_url_from_request(headers: &HeaderMap) -> Result<String, AppErr
         .unwrap_or("http");
 
     let mut base_url = format!("{}://{}", scheme, host);
+    
+    tracing::info!("OIDC Debug - Headers: Host={}, X-Forwarded-Proto={:?}, X-Forwarded-Host={:?}, X-Forwarded-Port={:?}, constructed base_url={}", 
+        host, 
+        headers.get("x-forwarded-proto").and_then(|v| v.to_str().ok()),
+        headers.get("x-forwarded-host").and_then(|v| v.to_str().ok()),
+        headers.get("x-forwarded-port").and_then(|v| v.to_str().ok()),
+        base_url
+    );
 
     // Force HTTPS if running in production (not localhost)
     if !base_url.starts_with("http://localhost") && base_url.starts_with("http:") {
