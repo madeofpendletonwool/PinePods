@@ -4852,7 +4852,14 @@ impl DatabasePool {
                 
                 // Skip empty values
                 if !title_str.is_empty() && !duration_str.is_empty() {
-                    raw_durations.insert(title_str.to_string(), duration_str.to_string());
+                    // Decode HTML entities in title to match feed-rs parsed titles
+                    let decoded_title = title_str
+                        .replace("&apos;", "'")
+                        .replace("&quot;", "\"")
+                        .replace("&amp;", "&")
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">");
+                    raw_durations.insert(decoded_title, duration_str.to_string());
                 }
             }
         }
@@ -4868,8 +4875,17 @@ impl DatabasePool {
                 let duration_str = duration_match.as_str().trim();
                 
                 // Only add if not already found and both values are non-empty
-                if !title_str.is_empty() && !duration_str.is_empty() && !raw_durations.contains_key(title_str) {
-                    raw_durations.insert(title_str.to_string(), duration_str.to_string());
+                if !title_str.is_empty() && !duration_str.is_empty() {
+                    // Decode HTML entities in title to match feed-rs parsed titles
+                    let decoded_title = title_str
+                        .replace("&apos;", "'")
+                        .replace("&quot;", "\"")
+                        .replace("&amp;", "&")
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">");
+                    if !raw_durations.contains_key(&decoded_title) {
+                        raw_durations.insert(decoded_title, duration_str.to_string());
+                    }
                 }
             }
         }
@@ -12502,13 +12518,18 @@ impl DatabasePool {
                 }
             }
             
-            // If media duration is suspicious (< 60 seconds but seems wrong), 
-            // fall back to re-parsing the raw RSS for this entry
-            // This handles feed-rs iTunes duration parsing bugs
-            if duration_seconds > 0 && duration_seconds < 60 {
-                // Suspicious duration - might be feed-rs parsing issue
-                // Keep the extracted value for now, but could be enhanced later
-                // to re-fetch and parse the specific episode's raw RSS data
+            // If media duration is suspicious (< 3600 seconds = 1 hour), 
+            // try to extract iTunes duration from raw RSS to work around feed-rs parsing bugs
+            if duration_seconds > 0 && duration_seconds < 3600 {
+                if let Some(title) = &entry.title {
+                    if let Some(corrected_duration) = Self::extract_itunes_duration_from_raw(&content, &title.content) {
+                        if corrected_duration != duration_seconds as u64 {
+                            println!("🔧 DURATION CORRECTED: '{}' feed-rs={} -> iTunes={}", 
+                                title.content, duration_seconds, corrected_duration);
+                            duration_seconds = corrected_duration as i32;
+                        }
+                    }
+                }
             }
             
             // Extract publication date
@@ -12535,6 +12556,121 @@ impl DatabasePool {
         }
         
         Ok(episodes)
+    }
+
+    // Extract iTunes duration from raw RSS for a specific episode title (workaround for feed-rs bugs)
+    fn extract_itunes_duration_from_raw(raw_rss: &str, episode_title: &str) -> Option<u64> {
+        // HTML encode the episode title to match raw RSS format
+        // IMPORTANT: encode & first, otherwise it will double-encode other entities
+        let html_encoded_title = episode_title
+            .replace("&", "&amp;")
+            .replace("'", "&apos;")
+            .replace("\"", "&quot;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;");
+        
+        // Try different title formats - RSS titles can vary from feed-rs parsed titles
+        let search_patterns = vec![
+            format!("<title><![CDATA[{}]]></title>", episode_title),
+            format!("<title>{}</title>", episode_title),
+            format!("<title><![CDATA[{}]]></title>", html_encoded_title),
+            format!("<title>{}</title>", html_encoded_title),
+            // Also try searching for the core title without extra formatting
+            episode_title.split(" (").next().unwrap_or(episode_title).to_string(),
+            html_encoded_title.split(" (").next().unwrap_or(&html_encoded_title).to_string(),
+        ];
+        
+        let mut item_pos = None;
+        let mut item_end_pos = None;
+        
+        // Find any item that contains this title or a partial match
+        for pattern in &search_patterns {
+            if let Some(pos) = raw_rss.find(pattern) {
+                // Find the start of the <item> block containing this title
+                let item_start = raw_rss[..pos].rfind("<item>").unwrap_or(0);
+                if let Some(end) = raw_rss[pos..].find("</item>") {
+                    item_pos = Some(item_start);
+                    item_end_pos = Some(pos + end + "</item>".len());
+                    break;
+                }
+            }
+        }
+        
+        // If exact matches failed, try a broader search by looking through all items
+        if item_pos.is_none() {
+            let mut start = 0;
+            while let Some(item_start) = raw_rss[start..].find("<item>") {
+                let absolute_start = start + item_start;
+                if let Some(item_end) = raw_rss[absolute_start..].find("</item>") {
+                    let absolute_end = absolute_start + item_end + "</item>".len();
+                    let item_block = &raw_rss[absolute_start..absolute_end];
+                    
+                    // Check if this item contains any part of our episode title
+                    let title_core = episode_title.split(" (").next().unwrap_or(episode_title);
+                    if item_block.contains(title_core) {
+                        item_pos = Some(absolute_start);
+                        item_end_pos = Some(absolute_end);
+                        break;
+                    }
+                    
+                    start = absolute_end;
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        // Extract duration from the found item block
+        if let (Some(start), Some(end)) = (item_pos, item_end_pos) {
+            let item_block = &raw_rss[start..end];
+            
+            // Look for <itunes:duration> in this item block
+            if let Some(duration_start) = item_block.find("<itunes:duration>") {
+                let duration_content_start = duration_start + "<itunes:duration>".len();
+                if let Some(duration_end) = item_block[duration_content_start..].find("</itunes:duration>") {
+                    let duration_str = &item_block[duration_content_start..duration_content_start + duration_end];
+                    return Self::parse_itunes_duration(duration_str.trim());
+                }
+            }
+        }
+        
+        None
+    }
+
+    // Parse iTunes duration string (HH:MM:SS, MM:SS, or seconds) to total seconds
+    fn parse_itunes_duration(duration_str: &str) -> Option<u64> {
+        if duration_str.is_empty() {
+            return None;
+        }
+        
+        // If it's just a number, treat as seconds
+        if let Ok(seconds) = duration_str.parse::<u64>() {
+            return Some(seconds);
+        }
+        
+        // Split by colons for time format
+        let parts: Vec<&str> = duration_str.split(':').collect();
+        
+        match parts.len() {
+            1 => {
+                // Just seconds
+                parts[0].parse::<u64>().ok()
+            },
+            2 => {
+                // MM:SS
+                let minutes = parts[0].parse::<u64>().ok()?;
+                let seconds = parts[1].parse::<u64>().ok()?;
+                Some(minutes * 60 + seconds)
+            },
+            3 => {
+                // HH:MM:SS
+                let hours = parts[0].parse::<u64>().ok()?;
+                let minutes = parts[1].parse::<u64>().ok()?;
+                let seconds = parts[2].parse::<u64>().ok()?;
+                Some(hours * 3600 + minutes * 60 + seconds)
+            },
+            _ => None
+        }
     }
 
     // Add podcast from RSS values - wrapper function for custom podcast addition
