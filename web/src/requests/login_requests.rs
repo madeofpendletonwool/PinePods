@@ -925,6 +925,7 @@ pub async fn call_get_public_oidc_providers(
 pub struct StoreStateRequest {
     pub state: String,
     pub client_id: String,
+    pub origin_url: Option<String>,
 }
 
 // Then create the function to make the request
@@ -932,9 +933,10 @@ pub async fn call_store_oidc_state(
     server_name: String,
     state: String,
     client_id: String,
+    origin_url: Option<String>,
 ) -> Result<(), Error> {
     let url = format!("{}/api/auth/store_state", server_name);
-    let request_body = StoreStateRequest { state, client_id };
+    let request_body = StoreStateRequest { state, client_id, origin_url };
 
     let response = Request::post(&url).json(&request_body)?.send().await?;
 

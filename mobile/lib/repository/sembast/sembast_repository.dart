@@ -36,7 +36,7 @@ class SembastRepository extends Repository {
 
   SembastRepository({
     bool cleanup = true,
-    String databaseName = 'anytime.db',
+    String databaseName = 'pinepods.db',
   }) {
     _databaseService = DatabaseService(databaseName, version: 2, upgraderCallback: dbUpgrader);
 

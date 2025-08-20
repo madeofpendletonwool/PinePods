@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:pinepods_mobile/bloc/podcast/audio_bloc.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
@@ -101,9 +102,27 @@ class _MiniPlayerBuilderState extends State<_MiniPlayerBuilder>
               routeSettings: const RouteSettings(name: 'nowplaying'),
               isScrollControlled: true,
               builder: (BuildContext modalContext) {
+                final contextPadding = MediaQuery.of(context).padding.top;
+                final modalPadding = MediaQuery.of(modalContext).padding.top;
+                
+                // Get the actual system safe area from the window (works on both iOS and Android)
+                final window = PlatformDispatcher.instance.views.first;
+                final systemPadding = window.padding.top / window.devicePixelRatio;
+                
+                // Use the best available padding value
+                double topPadding;
+                if (contextPadding > 0) {
+                  topPadding = contextPadding;
+                } else if (modalPadding > 0) {
+                  topPadding = modalPadding;
+                } else {
+                  // Fall back to system padding if both contexts have 0
+                  topPadding = systemPadding;
+                }
+                
+                
                 return Padding(
-                  padding:
-                      EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+                  padding: EdgeInsets.only(top: topPadding),
                   child: const NowPlaying(),
                 );
               },

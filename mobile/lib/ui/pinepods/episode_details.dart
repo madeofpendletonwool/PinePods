@@ -4,6 +4,7 @@ import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/services/audio/default_audio_player_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/entities/person.dart';
@@ -12,6 +13,9 @@ import 'package:pinepods_mobile/ui/widgets/episode_description.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
+import 'package:pinepods_mobile/ui/utils/player_utils.dart';
+import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
+import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 
@@ -29,33 +33,62 @@ class PinepodsEpisodeDetails extends StatefulWidget {
 
 class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
   final PinepodsService _pinepodsService = PinepodsService();
-  PinepodsAudioService? _audioService;
+  // Use global audio service instead of creating local instance
   PinepodsEpisode? _episode;
   bool _isLoading = true;
   String _errorMessage = '';
   List<Person> _persons = [];
+  bool _isDownloadedLocally = false;
 
   @override
   void initState() {
     super.initState();
     _episode = widget.initialEpisode;
     _loadEpisodeDetails();
+    _checkLocalDownloadStatus();
   }
 
-  void _initializeAudioService() {
-    if (_audioService != null) return;
+  PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
+
+  Future<void> _checkLocalDownloadStatus() async {
+    if (_episode == null) return;
     
-    try {
-      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
-      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-      
-      _audioService = PinepodsAudioService(
-        audioPlayerService,
-        _pinepodsService,
-        settingsBloc,
+    final isDownloaded = await LocalDownloadUtils.isEpisodeDownloadedLocally(context, _episode!);
+    
+    if (mounted) {
+      setState(() {
+        _isDownloadedLocally = isDownloaded;
+      });
+    }
+  }
+
+  Future<void> _localDownloadEpisode() async {
+    if (_episode == null) return;
+    
+    final success = await LocalDownloadUtils.localDownloadEpisode(context, _episode!);
+    
+    if (success) {
+      LocalDownloadUtils.showSnackBar(context, 'Episode download started', Colors.green);
+      await _checkLocalDownloadStatus(); // Update button state
+    } else {
+      LocalDownloadUtils.showSnackBar(context, 'Failed to start download', Colors.red);
+    }
+  }
+
+  Future<void> _deleteLocalDownload() async {
+    if (_episode == null) return;
+    
+    final deletedCount = await LocalDownloadUtils.deleteLocalDownload(context, _episode!);
+    
+    if (deletedCount > 0) {
+      LocalDownloadUtils.showSnackBar(
+        context, 
+        'Deleted $deletedCount local download${deletedCount > 1 ? 's' : ''}', 
+        Colors.orange
       );
-    } catch (e) {
-      // Provider not available - audio service will remain null
+      await _checkLocalDownloadStatus(); // Update button state
+    } else {
+      LocalDownloadUtils.showSnackBar(context, 'Local download not found', Colors.red);
     }
   }
 
@@ -80,6 +113,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
       }
 
       _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+      GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
       final userId = settings.pinepodsUserId!;
 
       final episodeDetails = await _pinepodsService.getEpisodeMetadata(
@@ -157,7 +191,6 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
   }
 
   Future<void> _togglePlayPause() async {
-    _initializeAudioService();
     
     if (_audioService == null) {
       _showSnackBar('Audio service not available', Colors.red);
@@ -184,8 +217,10 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
         }
       } else {
         // Start playing this episode
-        await _audioService!.playPinepodsEpisode(
-          pinepodsEpisode: _episode!,
+        await playPinepodsEpisodeWithOptionalFullScreen(
+          context,
+          _audioService!,
+          _episode!,
           resume: _episode!.isStarted,
         );
       }
@@ -195,7 +230,6 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
   }
 
   Future<void> _handleTimestampTap(Duration timestamp) async {
-    _initializeAudioService();
     
     if (_audioService == null) {
       _showSnackBar('Audio service not available', Colors.red);
@@ -212,8 +246,10 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
       
       if (!isCurrentEpisode) {
         // Start playing the episode first
-        await _audioService!.playPinepodsEpisode(
-          pinepodsEpisode: _episode!,
+        await playPinepodsEpisodeWithOptionalFullScreen(
+          context,
+          _audioService!,
+          _episode!,
           resume: false, // Start from beginning initially
         );
         
@@ -482,22 +518,33 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
     }
 
     try {
-      // Create a minimal podcast object using data from episode - same pattern as podcast tile
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      final settings = settingsBloc.currentSettings;
+      final userId = settings.pinepodsUserId;
+
+      if (userId == null) {
+        _showSnackBar('Not logged in', Colors.red);
+        return;
+      }
+
+      // Fetch the actual podcast details to get correct episode count
+      final podcastDetails = await _pinepodsService.getPodcastDetailsById(_episode!.podcastId!, userId);
+      
       final podcast = UnifiedPinepodsPodcast(
         id: _episode!.podcastId!,
         indexId: 0,
         title: _episode!.podcastName,
-        url: '', // Will be loaded by the details page
-        originalUrl: '',
-        link: '',
-        description: '',
-        author: '',
-        ownerName: '',
-        image: _episode!.episodeArtwork,
-        artwork: _episode!.episodeArtwork,
+        url: podcastDetails?['feedurl'] ?? '',
+        originalUrl: podcastDetails?['feedurl'] ?? '',
+        link: podcastDetails?['websiteurl'] ?? '',
+        description: podcastDetails?['description'] ?? '',
+        author: podcastDetails?['author'] ?? '',
+        ownerName: podcastDetails?['author'] ?? '',
+        image: podcastDetails?['artworkurl'] ?? _episode!.episodeArtwork,
+        artwork: podcastDetails?['artworkurl'] ?? _episode!.episodeArtwork,
         lastUpdateTime: 0,
-        explicit: false,
-        episodeCount: 0,
+        explicit: podcastDetails?['explicit'] ?? false,
+        episodeCount: podcastDetails?['episodecount'] ?? 0,
       );
       
       // Navigate to podcast details - same as podcast tile does  
@@ -794,6 +841,29 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
                     ),
                   ],
                 ),
+                
+                const SizedBox(height: 8),
+                
+                // Third row: Local Download (full width)
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _isDownloadedLocally ? _deleteLocalDownload : _localDownloadEpisode,
+                        icon: Icon(
+                          _isDownloadedLocally ? Icons.delete_forever_outlined : Icons.file_download_outlined,
+                          color: _isDownloadedLocally ? Colors.red : Colors.green,
+                        ),
+                        label: Text(_isDownloadedLocally ? 'Delete Local Download' : 'Download Locally'),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(
+                            color: _isDownloadedLocally ? Colors.red : Colors.green,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
             
@@ -887,7 +957,7 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
 
   @override
   void dispose() {
-    _audioService?.dispose();
+    // Don't dispose global audio service - it should persist across pages
     super.dispose();
   }
 }

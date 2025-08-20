@@ -220,9 +220,30 @@ pub async fn add_podcast(
         return Err(AppError::forbidden("You can only add podcasts for yourself!"));
     }
 
-    // Add podcast to database
+    // Re-parse feed URL using backend feed-rs parsing instead of trusting frontend data
+    let feed_url = &request.podcast_values.pod_feed_url;
+    let user_id = request.podcast_values.user_id;
+    
+    // Get properly parsed podcast values from feed-rs
+    let parsed_podcast_values = state.db_pool.get_podcast_values(feed_url, user_id, None, None).await?;
+    
+    // Convert to PodcastValues struct using backend-parsed data
+    let backend_podcast_values = PodcastValues {
+        user_id,
+        pod_title: parsed_podcast_values.get("podcastname").unwrap_or(&request.podcast_values.pod_title).clone(),
+        pod_artwork: parsed_podcast_values.get("artworkurl").unwrap_or(&"".to_string()).clone(),
+        pod_author: parsed_podcast_values.get("author").unwrap_or(&"".to_string()).clone(),
+        categories: serde_json::from_str(parsed_podcast_values.get("categories").unwrap_or(&"{}".to_string())).unwrap_or_default(),
+        pod_description: parsed_podcast_values.get("description").unwrap_or(&request.podcast_values.pod_description).clone(),
+        pod_episode_count: parsed_podcast_values.get("episodecount").unwrap_or(&"0".to_string()).parse().unwrap_or(0),
+        pod_feed_url: feed_url.clone(),
+        pod_website: parsed_podcast_values.get("websiteurl").unwrap_or(&request.podcast_values.pod_website).clone(),
+        pod_explicit: parsed_podcast_values.get("explicit").unwrap_or(&"False".to_string()) == "True",
+    };
+    
+    // Add podcast to database using backend-parsed values
     let (podcast_id, first_episode_id) = state.db_pool.add_podcast(
-        &request.podcast_values,
+        &backend_podcast_values,
         request.podcast_index_id.unwrap_or(0),
         None, // username
         None, // password
@@ -2194,52 +2215,18 @@ pub struct FetchPodcastFeedQuery {
     pub podcast_feed: String,
 }
 
-// Fetch podcast feed endpoint - returns raw XML feed data
+// Fetch podcast feed endpoint - returns parsed episode data using feed-rs
 pub async fn fetch_podcast_feed(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
     Query(query): Query<FetchPodcastFeedQuery>,
-) -> Result<axum::response::Response, AppError> {
+) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
+    let _user_id = validate_api_key(&state, &api_key).await?;
 
-    // Define headers that mimic a standard web browser - matches Python implementation exactly
-    let client = reqwest::Client::new();
-    let response = client
-        .get(&query.podcast_feed)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-        .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
-        .header("Accept-Language", "en-US,en;q=0.5")
-        .header("Connection", "keep-alive")
-        .header("Upgrade-Insecure-Requests", "1")
-        .header("Cache-Control", "max-age=0")
-        .timeout(std::time::Duration::from_secs(30))
-        .send()
-        .await
-        .map_err(|e| AppError::external_error(&format!("Request error fetching podcast feed: {}", e)))?;
-
-    if !response.status().is_success() {
-        return Err(AppError::external_error(&format!(
-            "HTTP error fetching podcast feed: {} {}",
-            response.status().as_u16(),
-            response.status().canonical_reason().unwrap_or("Unknown error")
-        )));
-    }
-
-    // Get the response body as bytes
-    let content = response
-        .bytes()
-        .await
-        .map_err(|e| AppError::external_error(&format!("Failed to read response body: {}", e)))?;
-
-    // Return the XML content with proper content-type
-    use axum::response::Response;
-    use axum::body::Body;
+    // Parse feed and extract episodes using feed-rs (same logic as add_episodes but without DB insertion)
+    let episodes = state.db_pool.parse_feed_episodes(&query.podcast_feed).await
+        .map_err(|e| AppError::external_error(&format!("Failed to parse podcast feed: {}", e)))?;
     
-    let response = Response::builder()
-        .header("content-type", "application/xml")
-        .body(Body::from(content))
-        .map_err(|e| AppError::external_error(&format!("Failed to create response: {}", e)))?;
-        
-    Ok(response)
+    Ok(Json(serde_json::json!({ "episodes": episodes })))
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/user_stats.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/services/logging/app_logger.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/core/environment.dart';
 import 'package:provider/provider.dart';
@@ -75,9 +76,39 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
   }
 
   Future<void> _launchUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    final logger = AppLogger();
+    logger.info('UserStats', 'Attempting to launch URL: $url');
+    
+    try {
+      final uri = Uri.parse(url);
+      
+      // Try to launch directly first (works better on Android)
+      final launched = await launchUrl(
+        uri, 
+        mode: LaunchMode.externalApplication,
+      );
+      
+      if (!launched) {
+        logger.warning('UserStats', 'Direct URL launch failed, checking if URL can be launched');
+        // If direct launch fails, check if URL can be launched
+        final canLaunch = await canLaunchUrl(uri);
+        if (!canLaunch) {
+          throw Exception('No app available to handle this URL');
+        }
+      } else {
+        logger.info('UserStats', 'Successfully launched URL: $url');
+      }
+    } catch (e) {
+      logger.error('UserStats', 'Failed to launch URL: $url', e.toString());
+      // Show error if URL can't be launched
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open link: $url'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

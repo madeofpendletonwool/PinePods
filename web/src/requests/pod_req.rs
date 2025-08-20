@@ -2721,6 +2721,9 @@ pub async fn connect_to_episode_websocket(
                         // Handle progress updates
                         match serde_json::from_value::<RefreshProgress>(progress.clone()) {
                             Ok(progress_data) => {
+                                // Check if this is a completion message
+                                let is_complete = progress_data.current_podcast.contains("Refresh completed:");
+                                
                                 // Update the state for the drawer display
                                 dispatch.reduce_mut(|state| {
                                     state.refresh_progress = Some(progress_data.clone());
@@ -2740,7 +2743,14 @@ pub async fn connect_to_episode_websocket(
                                             };
 
                                             task.progress = progress_percentage;
-                                            task.status = "PROGRESS".to_string();
+                                            
+                                            if is_complete {
+                                                task.status = "SUCCESS".to_string();
+                                                task.completed_at = Some(format!("{}", js_sys::Date::now()));
+                                                task.completion_time = Some(js_sys::Date::now());
+                                            } else {
+                                                task.status = "PROGRESS".to_string();
+                                            }
 
                                             // Update the details
                                             if let Some(details) = &mut task.details {
@@ -2756,19 +2766,35 @@ pub async fn connect_to_episode_websocket(
                                                     "total".to_string(),
                                                     progress_data.total.to_string(),
                                                 );
-                                                details.insert(
-                                                    "status_text".to_string(),
+                                                let status_text = if is_complete {
+                                                    progress_data.current_podcast.clone()
+                                                } else {
                                                     format!(
                                                         "Refreshing {}/{}: {}",
                                                         progress_data.current,
                                                         progress_data.total,
                                                         progress_data.current_podcast
-                                                    ),
-                                                );
+                                                    )
+                                                };
+                                                details.insert("status_text".to_string(), status_text);
                                             }
                                         }
                                     }
                                 });
+
+                                // Break out of the loop if refresh is complete
+                                if is_complete {
+                                    console::log_1(&"Refresh completed, closing websocket connection".into());
+                                    
+                                    // Reset refreshing state when complete
+                                    dispatch.reduce_mut(|state| {
+                                        state.is_refreshing = Some(false);
+                                        state.refresh_progress = None;
+                                        state.clone()
+                                    });
+                                    
+                                    break;
+                                }
                             }
                             Err(e) => {
                                 console::log_1(&format!("Failed to parse progress: {}", e).into());

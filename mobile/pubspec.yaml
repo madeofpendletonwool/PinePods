@@ -28,12 +28,14 @@ dependencies:
   flutter_launcher_icons: ^0.14.2
   flutter_spinkit: ^5.0.0
   html: ^0.15.0
+  http: ^1.2.2
   intl: ^0.20.2
   intl_translation: ^0.20.0
   just_audio: ^0.10.4
   logging: ^1.0.2
   meta: ^1.17.0
   mp3_info: ^0.2.0
+  package_info_plus: ^8.1.2
   path: ^1.8.3
   path_provider: ^2.1.4
   path_provider_platform_interface: ^2.0.4

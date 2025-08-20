@@ -12,6 +12,8 @@ import 'package:pinepods_mobile/ui/widgets/pinepods_podcast_grid_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_podcast_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/layout_selector.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
+import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:sliver_tools/sliver_tools.dart';
@@ -266,39 +268,15 @@ class _PinepodsPodcastsState extends State<PinepodsPodcasts> {
     }
 
     if (_errorMessage != null) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              Icon(
-                Icons.error_outline,
-                size: 75,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Error loading podcasts',
-                style: Theme.of(context).textTheme.titleLarge,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _errorMessage!,
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _loadPodcasts,
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
+      return SliverServerErrorPage(
+        errorMessage: _errorMessage!.isServerConnectionError 
+          ? null 
+          : _errorMessage,
+        onRetry: _loadPodcasts,
+        title: 'Podcasts Unavailable',
+        subtitle: _errorMessage!.isServerConnectionError
+          ? 'Unable to connect to the PinePods server'
+          : 'Failed to load your podcasts',
       );
     }
 

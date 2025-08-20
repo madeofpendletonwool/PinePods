@@ -56,8 +56,8 @@ class Chapter {
       imageUrl: chapter['imageUrl'] as String?,
       url: chapter['url'] as String?,
       toc: chapter['toc'] == 'false' ? false : true,
-      startTime: double.parse(chapter['startTime'] as String),
-      endTime: double.parse(chapter['endTime'] as String),
+      startTime: double.tryParse(chapter['startTime'] as String? ?? '0') ?? 0.0,
+      endTime: double.tryParse(chapter['endTime'] as String? ?? '0') ?? 0.0,
     );
   }
 

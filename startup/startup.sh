@@ -4,7 +4,7 @@ set -e  # Exit immediately if a command exits with a non-zero status
 # Function to handle shutdown
 shutdown() {
     echo "Shutting down..."
-    supervisorctl stop all
+    pkill -TERM horust
     exit 0
 }
 
@@ -100,7 +100,7 @@ mkdir -p /pinepods/cache
 mkdir -p /opt/pinepods/backups
 mkdir -p /opt/pinepods/downloads
 mkdir -p /opt/pinepods/certs
-mkdir -p /var/log/supervisor  # Make sure supervisor log directory exists
+mkdir -p /var/log/pinepods  # Make sure log directory exists
 
 # Database Setup
 echo "Using $DB_TYPE database"
@@ -123,15 +123,18 @@ else
     echo "Skipping exim setup as user/group doesn't exist on this system"
 fi
 
-# Start all services with supervisord
-echo "Starting supervisord..."
+# Set up environment variables for Horust logging modes
 if [[ $DEBUG_MODE == "true" ]]; then
-    supervisord -c /pinepods/startup/supervisordebug.conf
+    export HORUST_STDOUT_MODE="STDOUT"
+    export HORUST_STDERR_MODE="STDERR"
+    echo "Starting Horust in debug mode (logs to stdout)..."
 else
-    supervisord -c /pinepods/startup/supervisord.conf
+    export HORUST_STDOUT_MODE="/var/log/pinepods/service.log"
+    export HORUST_STDERR_MODE="/var/log/pinepods/service.log"
+    echo "Starting Horust in production mode (logs to files)..."
 fi
 
-# Set permissions for download and backup directories
+# Set permissions for download and backup directories BEFORE starting services
 # Only do this if PUID and PGID are set
 if [[ -n "$PUID" && -n "$PGID" ]]; then
     echo "Setting permissions for download and backup directories..."
@@ -141,6 +144,11 @@ else
     echo "Skipping permission setting as PUID/PGID are not set"
 fi
 
-# Keep container running
-echo "PinePods startup complete, running supervisord in foreground..."
-exec supervisorctl tail -f all
+# Copy service configurations to Horust directory
+cp /pinepods/startup/services/*.toml /etc/horust/services/
+
+# Start all services with Horust
+echo "Starting services with Horust..."
+echo "PinePods startup complete, running Horust in foreground..."
+exec horust --services-path /etc/horust/services/
+

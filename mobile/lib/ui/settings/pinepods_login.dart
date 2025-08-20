@@ -5,6 +5,7 @@ import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/login_service.dart';
 import 'package:pinepods_mobile/ui/widgets/restart_widget.dart';
+import 'package:pinepods_mobile/ui/settings/settings_section_label.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -20,11 +21,17 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
   final _serverController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _mfaController = TextEditingController();
 
   bool _isLoading = false;
+  bool _showMfaField = false;
   String _errorMessage = '';
   bool _isLoggedIn = false;
   String? _connectedServer;
+  String? _tempServerUrl;
+  String? _tempUsername;
+  int? _tempUserId;
+  String? _tempMfaSessionToken;
 
   @override
   void initState() {
@@ -53,78 +60,19 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
     });
   }
 
-  Future<bool> _verifyPinepodsInstance(String serverUrl) async {
-    // Normalize the URL by removing trailing slashes
-    final normalizedUrl = serverUrl.trim().replaceAll(RegExp(r'/$'), '');
-    final url = Uri.parse('$normalizedUrl/api/pinepods_check');
-
-    try {
-      final response = await http.get(url);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['pinepods_instance'] == true;
-      }
-      return false;
-    } catch (e) {
-      print('Error verifying PinePods instance: $e');
-      return false;
-    }
-  }
-
-  Future<String?> _login(String serverUrl, String username, String password) async {
-    // Normalize the URL by removing trailing slashes
-    final normalizedUrl = serverUrl.trim().replaceAll(RegExp(r'/$'), '');
-
-    // Create Basic Auth header
-    final credentials = base64Encode(utf8.encode('$username:$password'));
-    final authHeader = 'Basic $credentials';
-
-    final url = Uri.parse('$normalizedUrl/api/data/get_key');
-
-    try {
-      final response = await http.get(
-        url,
-        headers: {'Authorization': authHeader},
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['retrieved_key'];
-      }
-      return null;
-    } catch (e) {
-      print('Login error: $e');
-      return null;
-    }
-  }
-
-  Future<bool> _verifyApiKey(String serverUrl, String apiKey) async {
-    final url = Uri.parse('$serverUrl/api/data/verify_key');
-
-    try {
-      final response = await http.get(
-        url,
-        headers: {'Api-Key': apiKey},
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['status'] == 'success';
-      }
-      return false;
-    } catch (e) {
-      print('Error verifying API key: $e');
-      return false;
-    }
-  }
-
   Future<void> _connectToPinepods() async {
-    if (_serverController.text.isEmpty ||
+    if (!_showMfaField && (_serverController.text.isEmpty ||
         _usernameController.text.isEmpty ||
-        _passwordController.text.isEmpty) {
+        _passwordController.text.isEmpty)) {
       setState(() {
         _errorMessage = 'Please fill in all fields';
+      });
+      return;
+    }
+
+    if (_showMfaField && _mfaController.text.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter your MFA code';
       });
       return;
     }
@@ -135,34 +83,80 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
     });
 
     try {
-      final serverUrl = _serverController.text.trim();
-      final username = _usernameController.text.trim();
-      final password = _passwordController.text;
+      if (_showMfaField && _tempMfaSessionToken != null) {
+        // Complete MFA login flow
+        final mfaCode = _mfaController.text.trim();
+        final result = await PinepodsLoginService.completeMfaLogin(
+          serverUrl: _tempServerUrl!,
+          username: _tempUsername!,
+          mfaSessionToken: _tempMfaSessionToken!,
+          mfaCode: mfaCode,
+        );
+        
+        if (result.isSuccess) {
+          // Save the connection details including user ID
+          var settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+          settingsBloc.setPinepodsServer(result.serverUrl!);
+          settingsBloc.setPinepodsApiKey(result.apiKey!);
+          settingsBloc.setPinepodsUserId(result.userId!);
 
-      // Use the same login service as the startup login
-      final result = await PinepodsLoginService.login(
-        serverUrl,
-        username,
-        password,
-      );
-
-      if (result.isSuccess) {
-        // Save the connection details including user ID
-        var settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-        settingsBloc.setPinepodsServer(result.serverUrl!);
-        settingsBloc.setPinepodsApiKey(result.apiKey!);
-        settingsBloc.setPinepodsUserId(result.userId!);
-
-        setState(() {
-          _isLoggedIn = true;
-          _connectedServer = serverUrl;
-          _isLoading = false;
-        });
+          setState(() {
+            _isLoggedIn = true;
+            _connectedServer = _tempServerUrl;
+            _showMfaField = false;
+            _tempServerUrl = null;
+            _tempUsername = null;
+            _tempUserId = null;
+            _tempMfaSessionToken = null;
+            _isLoading = false;
+          });
+        } else {
+          setState(() {
+            _errorMessage = result.errorMessage ?? 'MFA verification failed';
+            _isLoading = false;
+          });
+        }
       } else {
-        setState(() {
-          _errorMessage = result.errorMessage ?? 'Login failed';
-          _isLoading = false;
-        });
+        // Initial login flow
+        final serverUrl = _serverController.text.trim();
+        final username = _usernameController.text.trim();
+        final password = _passwordController.text;
+
+        final result = await PinepodsLoginService.login(
+          serverUrl,
+          username,
+          password,
+        );
+
+        if (result.isSuccess) {
+          // Save the connection details including user ID
+          var settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+          settingsBloc.setPinepodsServer(result.serverUrl!);
+          settingsBloc.setPinepodsApiKey(result.apiKey!);
+          settingsBloc.setPinepodsUserId(result.userId!);
+
+          setState(() {
+            _isLoggedIn = true;
+            _connectedServer = serverUrl;
+            _isLoading = false;
+          });
+        } else if (result.requiresMfa) {
+          // Store MFA session info and show MFA field
+          setState(() {
+            _tempServerUrl = result.serverUrl;
+            _tempUsername = result.username;
+            _tempUserId = result.userId;
+            _tempMfaSessionToken = result.mfaSessionToken;
+            _showMfaField = true;
+            _isLoading = false;
+            _errorMessage = 'Please enter your MFA code';
+          });
+        } else {
+          setState(() {
+            _errorMessage = result.errorMessage ?? 'Login failed';
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       setState(() {
@@ -170,6 +164,18 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
         _isLoading = false;
       });
     }
+  }
+
+  void _resetMfa() {
+    setState(() {
+      _showMfaField = false;
+      _tempServerUrl = null;
+      _tempUsername = null;
+      _tempUserId = null;
+      _tempMfaSessionToken = null;
+      _mfaController.clear();
+      _errorMessage = '';
+    });
   }
 
   void _logOut() async {
@@ -203,16 +209,7 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 16.0, top: 16.0, bottom: 8.0),
-          child: Text(
-            'PinePods Server',
-            style: TextStyle(
-              fontSize: 14.0,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
+        SettingsDividerLabel(label: 'PinePods Server'),
         const Divider(),
         if (_isLoggedIn) ...[
           // Show connected status
@@ -252,7 +249,26 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
                     labelText: 'Password',
                   ),
                   obscureText: true,
+                  enabled: !_showMfaField,
                 ),
+                // MFA Field (shown when MFA is required)
+                if (_showMfaField) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _mfaController,
+                    decoration: InputDecoration(
+                      labelText: 'MFA Code',
+                      hintText: 'Enter 6-digit code',
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: _resetMfa,
+                        tooltip: 'Cancel MFA',
+                      ),
+                    ),
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                  ),
+                ],
                 if (_errorMessage.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   Text(
@@ -273,7 +289,7 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
                         strokeWidth: 2,
                       ),
                     )
-                        : const Text('Connect'),
+                        : Text(_showMfaField ? 'Verify MFA Code' : 'Connect'),
                   ),
                 ),
               ],
@@ -289,6 +305,7 @@ class _PinepodsLoginWidgetState extends State<PinepodsLoginWidget> {
     _serverController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
+    _mfaController.dispose();
     super.dispose();
   }
 }

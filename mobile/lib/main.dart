@@ -5,6 +5,7 @@
 import 'dart:io';
 
 import 'package:pinepods_mobile/services/settings/mobile_settings_service.dart';
+import 'package:pinepods_mobile/services/logging/app_logger.dart';
 import 'package:pinepods_mobile/ui/pinepods_podcast_app.dart';
 import 'package:pinepods_mobile/ui/widgets/restart_widget.dart';
 import 'package:device_info_plus/device_info_plus.dart';
@@ -18,10 +19,38 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent));
 
+  // Initialize app logger
+  final appLogger = AppLogger();
+  await appLogger.initialize();
+
   Logger.root.level = Level.FINE;
 
   Logger.root.onRecord.listen((record) {
     print('${record.level.name}: - ${record.time}: ${record.loggerName}: ${record.message}');
+    
+    // Also log to our app logger
+    LogLevel appLogLevel;
+    switch (record.level.name) {
+      case 'SEVERE':
+        appLogLevel = LogLevel.critical;
+        break;
+      case 'WARNING':
+        appLogLevel = LogLevel.warning;
+        break;
+      case 'INFO':
+        appLogLevel = LogLevel.info;
+        break;
+      case 'FINE':
+      case 'FINER':
+      case 'FINEST':
+        appLogLevel = LogLevel.debug;
+        break;
+      default:
+        appLogLevel = LogLevel.info;
+        break;
+    }
+    
+    appLogger.log(appLogLevel, record.loggerName, record.message);
   });
 
   var mobileSettingsService = (await MobileSettingsService.instance())!;

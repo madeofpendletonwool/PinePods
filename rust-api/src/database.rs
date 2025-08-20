@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use bigdecimal::ToPrimitive;
 use std::sync::{Arc, Mutex};
 use lazy_static::lazy_static;
+use base64;
 
 // Global temporary MFA secrets storage (matches Python temp_mfa_secrets)
 lazy_static! {
@@ -695,7 +696,7 @@ impl DatabasePool {
                     .await?;
                 
                 if let Some(row) = existing {
-                    let podcast_id: i32 = row.try_get("podcastid")?;
+                    let podcast_id: i32 = row.try_get("PodcastID")?;
                     // Check if there are episodes
                     let episode_count = sqlx::query("SELECT COUNT(*) as count FROM Episodes WHERE PodcastID = ?")
                         .bind(podcast_id)
@@ -1094,7 +1095,7 @@ impl DatabasePool {
                         PodcastName as name,
                         FeedURL as feed_url,
                         ArtworkURL as artwork_url,
-                        IsYoutube as is_youtube,
+                        IsYouTubeChannel as is_youtube,
                         AutoDownload as auto_download,
                         Username as username,
                         Password as password,
@@ -1451,14 +1452,14 @@ impl DatabasePool {
                         COUNT(ueh.UserEpisodeHistoryID) as play_count,
                         COUNT(DISTINCT ueh.EpisodeID) as episodes_played,
                         MIN(e.EpisodePubDate) as oldest_episode_date,
-                        COALESCE(p.IsYoutube, false) as is_youtube
+                        COALESCE(p.IsYouTubeChannel, false) as is_youtube
                     FROM Podcasts p
                     LEFT JOIN Episodes e ON p.PodcastID = e.PodcastID
                     LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
                     WHERE p.UserID = ?
                     GROUP BY p.PodcastID, p.PodcastName, p.ArtworkURL, p.Description, 
                              p.EpisodeCount, p.WebsiteURL, p.FeedURL, p.Author, 
-                             p.Categories, p.Explicit, p.PodcastIndexID, p.IsYoutube
+                             p.Categories, p.Explicit, p.PodcastIndexID, p.IsYouTubeChannel
                     ORDER BY p.PodcastName"
                 )
                 .bind(user_id)
@@ -1965,8 +1966,8 @@ impl DatabasePool {
                         episodetitle: row.try_get("episodetitle")?,
                         podcastname: row.try_get("podcastname")?,
                         episodepubdate: {
-                            let naive = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
-                            naive.format("%Y-%m-%dT%H:%M:%S").to_string()
+                            let dt = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("episodepubdate")?;
+                            dt.format("%Y-%m-%dT%H:%M:%S").to_string()
                         },
                         episodedescription: row.try_get("episodedescription")?,
                         episodeartwork: row.try_get("episodeartwork")?,
@@ -1974,8 +1975,8 @@ impl DatabasePool {
                         queueposition: row.try_get("queueposition").ok(),
                         episodeduration: row.try_get("episodeduration")?,
                         queuedate: {
-                        let naive = row.try_get::<chrono::NaiveDateTime, _>("queuedate")?;
-                        naive.format("%Y-%m-%dT%H:%M:%S").to_string()
+                        let dt = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("queuedate")?;
+                        dt.format("%Y-%m-%dT%H:%M:%S").to_string()
                     },
                         listenduration: row.try_get("listenduration").ok(),
                         episodeid: row.try_get("episodeid")?,
@@ -2472,7 +2473,7 @@ impl DatabasePool {
                     .await?;
 
                 if let Some(row) = row {
-                    return Ok(Some(row.try_get("podcastid")?));
+                    return Ok(Some(row.try_get("PodcastID")?));
                 }
 
                 // If not found, try with system user (1)
@@ -2483,7 +2484,7 @@ impl DatabasePool {
                     .await?;
 
                 if let Some(row) = row {
-                    Ok(Some(row.try_get("podcastid")?))
+                    Ok(Some(row.try_get("PodcastID")?))
                 } else {
                     Ok(None)
                 }
@@ -2606,7 +2607,7 @@ impl DatabasePool {
                     let downloaded_count: i64 = downloaded_count_row.try_get("downloaded_count")?;
 
                     let stats = serde_json::json!({
-                        "UserCreated": row.try_get::<chrono::NaiveDateTime, _>("UserCreated")?.format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
+                        "UserCreated": row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("UserCreated")?.format("%Y-%m-%dT%H:%M:%S%.f").to_string(),
                         "PodcastsPlayed": row.try_get::<i32, _>("PodcastsPlayed")?,
                         "TimeListened": row.try_get::<i32, _>("TimeListened")?,
                         "PodcastsAdded": row.try_get::<i32, _>("PodcastsAdded")?,
@@ -3147,7 +3148,7 @@ impl DatabasePool {
                     let episodeduration: i32 = row.try_get("EpisodeDuration")?;
                     let completed: bool = row.try_get::<i8, _>("Completed")? != 0;
                     let podcastname: String = row.try_get("PodcastName")?;
-                    let podcastid: i32 = row.try_get("podcastid")?;
+                    let podcastid: i32 = row.try_get("PodcastID")?;
                     let is_youtube: bool = row.try_get::<i8, _>("is_youtube")? != 0;
                     let listenduration: Option<i32> = row.try_get("ListenDuration")?;
                     let saved: bool = row.try_get::<i8, _>("saved")? != 0;
@@ -3231,7 +3232,7 @@ impl DatabasePool {
                     let episodeduration: i32 = row.try_get("EpisodeDuration")?;
                     let completed: bool = row.try_get::<i8, _>("Completed")? != 0;
                     let podcastname: String = row.try_get("PodcastName")?;
-                    let podcastid: i32 = row.try_get("podcastid")?;
+                    let podcastid: i32 = row.try_get("PodcastID")?;
                     let is_youtube: bool = row.try_get::<i8, _>("is_youtube")? != 0;
                     let listenduration: Option<i32> = row.try_get("ListenDuration")?;
                     let saved: bool = row.try_get::<i8, _>("saved")? != 0;
@@ -3567,8 +3568,8 @@ impl DatabasePool {
                         "sort_order": row.try_get::<Option<String>, _>("SortOrder")?,
                         "group_by_podcast": row.try_get::<i8, _>("GroupByPodcast")? != 0,
                         "max_episodes": row.try_get::<Option<i32>, _>("MaxEpisodes")?,
-                        "last_updated": row.try_get::<Option<chrono::NaiveDateTime>, _>("LastUpdated")?.map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()).unwrap_or_default(),
-                        "created": row.try_get::<Option<chrono::NaiveDateTime>, _>("Created")?.map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()).unwrap_or_default(),
+                        "last_updated": row.try_get::<Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, _>("LastUpdated")?.map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()).unwrap_or_default(),
+                        "created": row.try_get::<Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>>, _>("Created")?.map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()).unwrap_or_default(),
                         "icon_name": row.try_get::<Option<String>, _>("IconName")?.unwrap_or_default(),
                         "episode_count": row.try_get::<i64, _>("episode_count")?,
                         "preview_episodes": preview_episodes
@@ -4851,8 +4852,14 @@ impl DatabasePool {
                 
                 // Skip empty values
                 if !title_str.is_empty() && !duration_str.is_empty() {
-                    println!("🕐 Raw iTunes duration extracted: title='{}' duration='{}'", title_str, duration_str);
-                    raw_durations.insert(title_str.to_string(), duration_str.to_string());
+                    // Decode HTML entities in title to match feed-rs parsed titles
+                    let decoded_title = title_str
+                        .replace("&apos;", "'")
+                        .replace("&quot;", "\"")
+                        .replace("&amp;", "&")
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">");
+                    raw_durations.insert(decoded_title, duration_str.to_string());
                 }
             }
         }
@@ -4868,14 +4875,21 @@ impl DatabasePool {
                 let duration_str = duration_match.as_str().trim();
                 
                 // Only add if not already found and both values are non-empty
-                if !title_str.is_empty() && !duration_str.is_empty() && !raw_durations.contains_key(title_str) {
-                    println!("🕐 Raw iTunes duration extracted (reverse): title='{}' duration='{}'", title_str, duration_str);
-                    raw_durations.insert(title_str.to_string(), duration_str.to_string());
+                if !title_str.is_empty() && !duration_str.is_empty() {
+                    // Decode HTML entities in title to match feed-rs parsed titles
+                    let decoded_title = title_str
+                        .replace("&apos;", "'")
+                        .replace("&quot;", "\"")
+                        .replace("&amp;", "&")
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">");
+                    if !raw_durations.contains_key(&decoded_title) {
+                        raw_durations.insert(decoded_title, duration_str.to_string());
+                    }
                 }
             }
         }
         
-        println!("🕐 Total raw iTunes durations extracted: {}", raw_durations.len());
         raw_durations
     }
 
@@ -4898,22 +4912,7 @@ impl DatabasePool {
         
         let mut episodes = Vec::new();
         
-        println!("🔍 Feed parsed successfully, found {} entries", feed.entries.len());
         
-        for (i, entry) in feed.entries.iter().enumerate() {
-            println!("🔍 Entry {}: title={:?}", i, entry.title.as_ref().map(|t| &t.content));
-            println!("🔍 Entry {}: links count={}", i, entry.links.len());
-            for (j, link) in entry.links.iter().enumerate() {
-                println!("🔍 Entry {} Link {}: href={}, media_type={:?}, rel={:?}", i, j, link.href, link.media_type, link.rel);
-            }
-            println!("🔍 Entry {}: media count={}", i, entry.media.len());
-            for (j, media) in entry.media.iter().enumerate() {
-                println!("🔍 Entry {} Media {}: content count={}", i, j, media.content.len());
-                for (k, content) in media.content.iter().enumerate() {
-                    println!("🔍 Entry {} Media {} Content {}: url={:?}, content_type={:?}", i, j, k, content.url, content.content_type);
-                }
-            }
-        }
         
         for entry in feed.entries {
             // EXACT Python replication: if not all(hasattr(entry, attr) for attr in ["title", "summary", "enclosures"]): continue
@@ -4963,15 +4962,19 @@ impl DatabasePool {
             // Also check for RSS <enclosure> tags that might not be in links
             // feed_rs should put enclosures in the links, but as fallback check media
             
-            // Published date
+            // Published date - store under both keys for compatibility
             if let Some(published) = &entry.published {
-                episode_data.insert("published".to_string(), published.to_rfc3339());
+                let date_str = published.to_rfc3339();
+                // println!("📅 DEBUG: feed-rs extracted published date: {}", date_str);
+                episode_data.insert("published".to_string(), date_str.clone());
+                episode_data.insert("pubDate".to_string(), date_str);
+            } else {
+                // println!("⚠️  DEBUG: No published date found in feed-rs entry for episode: {:?}", entry.title);
             }
             
             // Media extensions
             for media in &entry.media {
                 if let Some(duration) = &media.duration {
-                    println!("🕐 Found media duration: {} seconds", duration.as_secs());
                     episode_data.insert("duration".to_string(), duration.as_secs().to_string());
                     // Don't use feed_rs processed duration for iTunes - we'll use raw values
                 }
@@ -4979,7 +4982,6 @@ impl DatabasePool {
                 // Check if we have a raw iTunes duration for this episode title
                 if let Some(title) = &entry.title {
                     if let Some(raw_duration) = raw_durations.get(&title.content) {
-                        println!("🕐 Using raw iTunes duration: '{}' for episode '{}'", raw_duration, title.content);
                         episode_data.insert("itunes:duration".to_string(), raw_duration.clone());
                     }
                 }
@@ -5009,10 +5011,6 @@ impl DatabasePool {
             }
             
             // Debug what we're passing to duration parsing
-            println!("🕐 Episode '{}' duration data: itunes:duration={:?}, duration={:?}", 
-                episode_data.get("title").unwrap_or(&"NO TITLE".to_string()),
-                episode_data.get("itunes:duration"),
-                episode_data.get("duration"));
             
             // Apply all the Python-style parsing logic with ALL fallbacks
             self.apply_python_style_parsing(&mut episode, &episode_data, artwork_url);
@@ -5033,7 +5031,6 @@ impl DatabasePool {
         }
         // Skip episodes without titles - this is critical like Python version
         if episode.title.is_empty() {
-            println!("⚠️  Skipping episode with no title");
             return;
         }
         
@@ -5044,10 +5041,6 @@ impl DatabasePool {
         episode.url = self.parse_audio_url_comprehensive(data);
         
         // Debug logging for episode URL extraction
-        println!("🎵 Episode URL extraction: title='{}', enclosure_url={:?}, final_url='{}'", 
-            episode.title, 
-            data.get("enclosure_url"), 
-            episode.url);
         
         // Artwork with comprehensive fallbacks and validation like Python
         episode.artwork_url = self.parse_artwork_comprehensive(data, default_artwork);
@@ -5057,7 +5050,6 @@ impl DatabasePool {
         
         // Duration parsing with extensive fallbacks like Python
         episode.duration = self.parse_duration_comprehensive(data);
-        println!("🕐 Final parsed duration for '{}': {} seconds", episode.title, episode.duration);
     }
     
     // Clean and normalize titles like Python version
@@ -5125,18 +5117,18 @@ impl DatabasePool {
         for candidate in artwork_candidates.iter().flatten() {
             if !candidate.trim().is_empty() && self.is_valid_image_url(candidate) {
                 let cleaned_url = self.validate_and_clean_url(candidate);
-                println!("🎨 Using artwork: {}", cleaned_url);
                 return cleaned_url;
             }
         }
         
         // Use default podcast artwork as fallback
-        println!("🎨 Using default podcast artwork: {}", default_artwork);
         default_artwork.to_string()
     }
     
     // Comprehensive publication date parsing
     fn parse_publication_date_comprehensive(&self, data: &HashMap<String, String>) -> DateTime<Utc> {
+        // println!("🔍 DEBUG: Date parsing - episode_data keys: {:?}", data.keys().collect::<Vec<_>>());
+        
         // Multiple date field sources
         let date_candidates = [
             data.get("pubDate"),
@@ -5147,35 +5139,51 @@ impl DatabasePool {
             data.get("date"),
         ];
         
-        for date_str in date_candidates.iter().flatten() {
-            if let Some(parsed_date) = self.try_parse_date(date_str) {
-                // Validate date is reasonable (not too far in future, not before 1990)
-                let now = Utc::now();
-                let year_1990 = DateTime::parse_from_rfc3339("1990-01-01T00:00:00Z").unwrap().with_timezone(&Utc);
-                let one_year_future = now + chrono::Duration::days(365);
-                
-                if parsed_date >= year_1990 && parsed_date <= one_year_future {
-                    return parsed_date;
+        for (i, date_str) in date_candidates.iter().enumerate() {
+            if let Some(date_str) = date_str {
+                // println!("📅 DEBUG: Trying date candidate {}: '{}'", i, date_str);
+                if let Some(parsed_date) = self.try_parse_date(date_str) {
+                    // Validate date is reasonable (not too far in future, not before 1990)
+                    let now = Utc::now();
+                    let year_1990 = DateTime::parse_from_rfc3339("1990-01-01T00:00:00Z").unwrap().with_timezone(&Utc);
+                    let one_year_future = now + chrono::Duration::days(365);
+                    
+                    if parsed_date >= year_1990 && parsed_date <= one_year_future {
+                        // println!("✅ DEBUG: Successfully parsed date: {}", parsed_date);
+                        return parsed_date;
+                    } else {
+                        // println!("❌ DEBUG: Date {} outside valid range", parsed_date);
+                    }
+                } else {
+                    // println!("❌ DEBUG: Failed to parse date string: '{}'", date_str);
                 }
             }
         }
         
         // Fallback to current time like Python version
+        // println!("⚠️  DEBUG: No valid date found, falling back to current time");
         Utc::now()
     }
     
     // Try to parse a date string with multiple formats
     fn try_parse_date(&self, date_str: &str) -> Option<DateTime<Utc>> {
         let date_str = date_str.trim();
+        // println!("🔧 DEBUG: Attempting to parse date: '{}'", date_str);
         
         // RFC 2822 format (most common in RSS)
         if let Ok(parsed) = DateTime::parse_from_rfc2822(date_str) {
+            // println!("✅ DEBUG: Parsed as RFC 2822: {}", parsed);
             return Some(parsed.with_timezone(&Utc));
+        } else {
+            // println!("❌ DEBUG: Failed to parse as RFC 2822");
         }
         
         // RFC 3339/ISO 8601 format
         if let Ok(parsed) = DateTime::parse_from_rfc3339(date_str) {
+            // println!("✅ DEBUG: Parsed as RFC 3339: {}", parsed);
             return Some(parsed.with_timezone(&Utc));
+        } else {
+            // println!("❌ DEBUG: Failed to parse as RFC 3339");
         }
         
         // Common custom formats found in real feeds
@@ -5761,7 +5769,7 @@ impl DatabasePool {
                     .await?;
                 
                 if let Some(row) = row {
-                    Ok(Some(row.try_get("podcastid")?))
+                    Ok(Some(row.try_get("PodcastID")?))
                 } else {
                     Ok(None)
                 }
@@ -6232,7 +6240,7 @@ impl DatabasePool {
                         podcastname: row.try_get("PodcastName")?,
                         episodetitle: row.try_get("EpisodeTitle")?,
                         episodepubdate: {
-                            let datetime = row.try_get::<chrono::DateTime<chrono::Utc>, _>("EpisodePubDate")?;
+                            let datetime = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("EpisodePubDate")?;
                             datetime.format("%Y-%m-%dT%H:%M:%S").to_string()
                         },
                         episodedescription: row.try_get("EpisodeDescription")?,
@@ -6241,7 +6249,7 @@ impl DatabasePool {
                         episodeduration: row.try_get("EpisodeDuration")?,
                         listenduration: row.try_get("ListenDuration").ok(),
                         episodeid: row.try_get("EpisodeID")?,
-                        completed: row.try_get("Completed")?,
+                        completed: row.try_get::<i8, _>("Completed")? != 0,
                         saved: false, // Not included in this query
                         queued: false, // Not included in this query
                         downloaded: false, // Not included in this query
@@ -6534,21 +6542,35 @@ impl DatabasePool {
             DatabasePool::MySQL(pool) => {
                 let row = sqlx::query(
                     r#"SELECT 
-                        Episodes.EpisodeTitle as title,
-                        Episodes.EpisodeDescription as description,
-                        Episodes.EpisodeURL as episode_url,
-                        Episodes.EpisodeArtwork as artwork_url,
-                        Episodes.EpisodeDuration as duration,
-                        Episodes.EpisodePubDate as pub_date,
-                        Podcasts.PodcastName as podcast_name,
-                        Podcasts.ArtworkURL as podcast_artwork,
-                        UserEpisodeHistory.ListenDuration as listen_duration,
-                        UserEpisodeHistory.Completed as completed
+                        Podcasts.PodcastID,
+                        Podcasts.PodcastIndexID,
+                        Podcasts.FeedURL,
+                        Podcasts.PodcastName,
+                        Podcasts.ArtworkURL,
+                        Episodes.EpisodeTitle,
+                        Episodes.EpisodePubDate,
+                        Episodes.EpisodeDescription,
+                        Episodes.EpisodeArtwork,
+                        Episodes.EpisodeURL,
+                        Episodes.EpisodeDuration,
+                        Episodes.EpisodeID,
+                        UserEpisodeHistory.ListenDuration,
+                        Episodes.Completed,
+                        CASE WHEN q.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_queued,
+                        CASE WHEN s.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_saved,
+                        CASE WHEN d.EpisodeID IS NOT NULL THEN 1 ELSE 0 END as is_downloaded,
+                        0 as is_youtube
                     FROM Episodes
                     INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
                     LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = ?
+                    LEFT JOIN EpisodeQueue q ON Episodes.EpisodeID = q.EpisodeID AND q.UserID = ?
+                    LEFT JOIN SavedEpisodes s ON Episodes.EpisodeID = s.EpisodeID AND s.UserID = ?
+                    LEFT JOIN DownloadedEpisodes d ON Episodes.EpisodeID = d.EpisodeID AND d.UserID = ?
                     WHERE Episodes.EpisodeID = ? AND Podcasts.UserID = ?"#
                 )
+                .bind(user_id)
+                .bind(user_id)
+                .bind(user_id)
                 .bind(user_id)
                 .bind(episode_id)
                 .bind(user_id)
@@ -6556,20 +6578,27 @@ impl DatabasePool {
                 .await?;
 
                 if let Some(row) = row {
-                    let naive_date = row.try_get::<chrono::NaiveDateTime, _>("pub_date")?;
-                    let pub_date = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive_date, chrono::Utc);
+                    let datetime = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("EpisodePubDate")?;
                     
                     Ok(serde_json::json!({
-                        "title": row.try_get::<String, _>("title")?,
-                        "description": row.try_get::<String, _>("description")?,
-                        "episode_url": row.try_get::<String, _>("episode_url")?,
-                        "artwork_url": row.try_get::<String, _>("artwork_url")?,
-                        "duration": row.try_get::<i32, _>("duration")?,
-                        "pub_date": pub_date.to_rfc3339(),
-                        "podcast_name": row.try_get::<String, _>("podcast_name")?,
-                        "podcast_artwork": row.try_get::<String, _>("podcast_artwork")?,
-                        "listen_duration": row.try_get::<Option<i32>, _>("listen_duration")?,
-                        "completed": row.try_get::<Option<bool>, _>("completed")?.unwrap_or(false)
+                        "podcastid": row.try_get::<i32, _>("PodcastID")?,
+                        "podcastindexid": row.try_get::<Option<i32>, _>("PodcastIndexID")?,
+                        "feedurl": row.try_get::<String, _>("FeedURL").unwrap_or_default(),
+                        "podcastname": row.try_get::<String, _>("PodcastName")?,
+                        "artworkurl": row.try_get::<String, _>("ArtworkURL")?,
+                        "episodetitle": row.try_get::<String, _>("EpisodeTitle")?,
+                        "episodepubdate": datetime.to_rfc3339(),
+                        "episodedescription": row.try_get::<String, _>("EpisodeDescription")?,
+                        "episodeartwork": row.try_get::<String, _>("EpisodeArtwork")?,
+                        "episodeurl": row.try_get::<String, _>("EpisodeURL")?,
+                        "episodeduration": row.try_get::<i32, _>("EpisodeDuration")?,
+                        "episodeid": row.try_get::<i32, _>("EpisodeID")?,
+                        "listenduration": row.try_get::<Option<i32>, _>("ListenDuration")?,
+                        "completed": row.try_get::<i8, _>("Completed")? != 0,
+                        "is_queued": row.try_get::<i32, _>("is_queued")? != 0,
+                        "is_saved": row.try_get::<i32, _>("is_saved")? != 0,
+                        "is_downloaded": row.try_get::<i32, _>("is_downloaded")? != 0,
+                        "is_youtube": row.try_get::<i32, _>("is_youtube")? != 0,
                     }))
                 } else {
                     Err(AppError::not_found("Episode not found"))
@@ -7761,7 +7790,11 @@ impl DatabasePool {
                     .await?;
                     
                 let user_playback_speed = if let Some(row) = user_row {
-                    row.try_get::<Option<f64>, _>("PlaybackSpeed")?.unwrap_or(1.0)
+                    if let Ok(speed) = row.try_get::<Option<bigdecimal::BigDecimal>, _>("PlaybackSpeed") {
+                        speed.map(|s| s.to_f64().unwrap_or(1.0)).unwrap_or(1.0)
+                    } else {
+                        1.0
+                    }
                 } else {
                     1.0
                 };
@@ -7779,7 +7812,11 @@ impl DatabasePool {
                     
                 if let Some(row) = podcast_row {
                     let playback_speed_customized: Option<bool> = row.try_get("PlaybackSpeedCustomized")?;
-                    let podcast_playback_speed: Option<f64> = row.try_get("PlaybackSpeed")?;
+                    let podcast_playback_speed: Option<f64> = if let Ok(speed) = row.try_get::<Option<bigdecimal::BigDecimal>, _>("PlaybackSpeed") {
+                        speed.map(|s| s.to_f64().unwrap_or(1.0))
+                    } else {
+                        None
+                    };
                     let start_skip: Option<i32> = row.try_get("StartSkip")?;
                     let end_skip: Option<i32> = row.try_get("EndSkip")?;
                     
@@ -7899,8 +7936,111 @@ impl DatabasePool {
                 Ok(episodes)
             }
             DatabasePool::MySQL(pool) => {
-                // MySQL version would go here - similar structure but without quoted table names
-                Ok(vec![])
+                let rows = sqlx::query(
+                    "SELECT * FROM (
+                        SELECT
+                            Podcasts.PodcastName as podcastname,
+                            Episodes.EpisodeTitle as Episodetitle,
+                            Episodes.EpisodePubDate as Episodepubdate,
+                            Episodes.EpisodeDescription as Episodedescription,
+                            Episodes.EpisodeArtwork as Episodeartwork,
+                            Episodes.EpisodeURL as Episodeurl,
+                            Episodes.EpisodeDuration as Episodeduration,
+                            UserEpisodeHistory.ListenDuration as Listenduration,
+                            Episodes.EpisodeID as Episodeid,
+                            Episodes.Completed as Completed,
+                            CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                            CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                            FALSE as is_youtube
+                        FROM Episodes
+                        INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN UserEpisodeHistory ON
+                            Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
+                            AND UserEpisodeHistory.UserID = ?
+                        LEFT JOIN SavedEpisodes ON
+                            Episodes.EpisodeID = SavedEpisodes.EpisodeID
+                            AND SavedEpisodes.UserID = ?
+                        LEFT JOIN EpisodeQueue ON
+                            Episodes.EpisodeID = EpisodeQueue.EpisodeID
+                            AND EpisodeQueue.UserID = ?
+                            AND EpisodeQueue.is_youtube = FALSE
+                        LEFT JOIN DownloadedEpisodes ON
+                            Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
+                            AND DownloadedEpisodes.UserID = ?
+                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID = ?
+
+                        UNION ALL
+
+                        SELECT
+                            Podcasts.PodcastName as podcastname,
+                            YouTubeVideos.VideoTitle as Episodetitle,
+                            YouTubeVideos.PublishedAt as Episodepubdate,
+                            YouTubeVideos.VideoDescription as Episodedescription,
+                            YouTubeVideos.ThumbnailURL as Episodeartwork,
+                            YouTubeVideos.VideoURL as Episodeurl,
+                            YouTubeVideos.Duration as Episodeduration,
+                            YouTubeVideos.ListenPosition as Listenduration,
+                            YouTubeVideos.VideoID as Episodeid,
+                            YouTubeVideos.Completed as Completed,
+                            CASE WHEN SavedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL AND EpisodeQueue.is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
+                            CASE WHEN DownloadedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                            TRUE as is_youtube
+                        FROM YouTubeVideos
+                        INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN SavedVideos ON
+                            YouTubeVideos.VideoID = SavedVideos.VideoID
+                            AND SavedVideos.UserID = ?
+                        LEFT JOIN EpisodeQueue ON
+                            YouTubeVideos.VideoID = EpisodeQueue.EpisodeID
+                            AND EpisodeQueue.UserID = ?
+                            AND EpisodeQueue.is_youtube = TRUE
+                        LEFT JOIN DownloadedVideos ON
+                            YouTubeVideos.VideoID = DownloadedVideos.VideoID
+                            AND DownloadedVideos.UserID = ?
+                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID = ?
+                    ) combined
+                    ORDER BY Episodepubdate DESC"
+                )
+                .bind(user_id)
+                .bind(user_id)
+                .bind(user_id)
+                .bind(user_id)
+                .bind(user_id)
+                .bind(podcast_id)
+                .bind(user_id)
+                .bind(user_id)
+                .bind(user_id)
+                .bind(user_id)
+                .bind(podcast_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut episodes = Vec::new();
+                for row in rows {
+                    let datetime = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("Episodepubdate")?;
+                    let episodepubdate = datetime.format("%Y-%m-%dT%H:%M:%S").to_string();
+                    
+                    episodes.push(crate::handlers::podcasts::PodcastEpisode {
+                        podcastname: row.try_get("podcastname")?,
+                        episodetitle: row.try_get("Episodetitle")?,
+                        episodepubdate,
+                        episodedescription: row.try_get("Episodedescription")?,
+                        episodeartwork: row.try_get("Episodeartwork")?,
+                        episodeurl: row.try_get("Episodeurl")?,
+                        episodeduration: row.try_get("Episodeduration")?,
+                        listenduration: row.try_get("Listenduration").ok(),
+                        episodeid: row.try_get("Episodeid")?,
+                        completed: row.try_get::<i8, _>("Completed")? != 0,
+                        saved: row.try_get::<i8, _>("saved")? != 0,
+                        queued: row.try_get::<i8, _>("queued")? != 0,
+                        downloaded: row.try_get::<i8, _>("downloaded")? != 0,
+                        is_youtube: row.try_get::<i8, _>("is_youtube")? != 0,
+                    });
+                }
+                
+                Ok(episodes)
             }
         }
     }
@@ -9245,8 +9385,7 @@ pub struct PublicOidcProvider {
 // Nextcloud login data structure
 #[derive(Debug, Clone)]
 pub struct NextcloudLoginData {
-    pub login_url: String,
-    pub token: String,
+    pub raw_response: serde_json::Value,
 }
 
 // Sync result structure
@@ -9366,6 +9505,8 @@ impl DatabasePool {
                    .arg("--port").arg(&port)
                    .arg("--user").arg(&username)
                    .arg(format!("--password={}", password))
+                   .arg("--skip-ssl")
+                   .arg("--default-auth=mysql_native_password")
                    .arg(&database)
                    .stdin(std::process::Stdio::piped())
                    .stdout(std::process::Stdio::piped())
@@ -9437,8 +9578,16 @@ impl DatabasePool {
                 
                 // Clear each table
                 for table in tables {
-                    let table_name: String = table.try_get("TABLE_NAME")?;
-                    let query = format!("TRUNCATE TABLE `{}`", table_name);
+                    // Handle both VARCHAR and VARBINARY cases for TABLE_NAME
+                    let table_name: String = if let Ok(name) = table.try_get::<String, _>("TABLE_NAME") {
+                        name
+                    } else if let Ok(name_bytes) = table.try_get::<Vec<u8>, _>("TABLE_NAME") {
+                        String::from_utf8(name_bytes).map_err(|_| AppError::internal("Invalid table name encoding"))?
+                    } else {
+                        return Err(AppError::internal("Could not retrieve table name"));
+                    };
+                    // Use DELETE instead of TRUNCATE to avoid foreign key constraint issues
+                    let query = format!("DELETE FROM `{}`", table_name);
                     sqlx::query(&query).execute(pool).await?;
                 }
                 
@@ -9741,14 +9890,9 @@ impl DatabasePool {
         let json: serde_json::Value = response.json().await
             .map_err(|e| AppError::internal(&format!("Failed to parse Nextcloud response: {}", e)))?;
         
-        let poll_token = json["poll"]["token"].as_str()
-            .ok_or_else(|| AppError::internal("Missing poll token in Nextcloud response"))?;
-        let login_url = json["login"].as_str()
-            .ok_or_else(|| AppError::internal("Missing login URL in Nextcloud response"))?;
-        
+        // Return the raw JSON response from Nextcloud to match Python behavior
         Ok(NextcloudLoginData {
-            login_url: login_url.to_string(),
-            token: poll_token.to_string(),
+            raw_response: json,
         })
     }
     
@@ -9804,46 +9948,35 @@ impl DatabasePool {
             }
         }
         
+        // Perform initial full sync for Nextcloud to get ALL user subscriptions
+        if let Err(e) = self.call_nextcloud_initial_full_sync(user_id, nextcloud_url, login_name, app_password).await {
+            tracing::warn!("Initial Nextcloud full sync failed during setup: {}", e);
+            // Don't fail setup if initial sync fails
+        }
+        
         Ok(true)
     }
-    
-    // Verify gPodder authentication - matches Python verify_gpodder_auth function exactly
-    pub async fn verify_gpodder_auth(&self, gpodder_url: &str, username: &str, password: &str) -> AppResult<bool> {
-        let client = reqwest::Client::new();
+
+    // Save Nextcloud credentials - helper method for background polling
+    pub async fn save_nextcloud_credentials(&self, user_id: i32, nextcloud_url: &str, app_password: &str, login_name: &str) -> AppResult<()> {
+        // Encrypt the app password
+        let encrypted_password = self.encrypt_password(app_password).await?;
         
-        // Test authentication with gPodder API
-        let auth_url = format!("{}/api/2/auth/{}/login.json", gpodder_url.trim_end_matches('/'), username);
-        
-        let response = client
-            .post(&auth_url)
-            .basic_auth(username, Some(password))
-            .send()
-            .await
-            .map_err(|e| AppError::internal(&format!("Failed to verify gPodder auth: {}", e)))?;
-        
-        Ok(response.status().is_success())
-    }
-    
-    // Add gPodder server - matches Python add_gpodder_server function exactly
-    pub async fn add_gpodder_server(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str) -> AppResult<bool> {
-        // Encrypt the password
-        let encrypted_password = self.encrypt_password(password).await?;
-        
-        // Store gPodder credentials
+        // Store Nextcloud credentials
         match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'external' WHERE userid = $4"#)
-                    .bind(gpodder_url)
-                    .bind(username)
+                sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'nextcloud' WHERE userid = $4"#)
+                    .bind(nextcloud_url)
+                    .bind(login_name)
                     .bind(&encrypted_password)
                     .bind(user_id)
                     .execute(pool)
                     .await?;
             }
             DatabasePool::MySQL(pool) => {
-                sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'external' WHERE UserID = ?")
-                    .bind(gpodder_url)
-                    .bind(username)
+                sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'nextcloud' WHERE UserID = ?")
+                    .bind(nextcloud_url)
+                    .bind(login_name)
                     .bind(&encrypted_password)
                     .bind(user_id)
                     .execute(pool)
@@ -9851,14 +9984,120 @@ impl DatabasePool {
             }
         }
         
+        Ok(())
+    }
+    
+    
+    // Add gPodder server - matches Python add_gpodder_server function exactly
+    pub async fn add_gpodder_server(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str) -> AppResult<bool> {
+        // Encrypt the password
+        let encrypted_password = self.encrypt_password(password).await?;
+        
+        // Try to get devices from the external server to set a default device
+        let default_device_name = match self.get_first_device_from_server(gpodder_url, username, password).await {
+            Ok(device_name) => Some(device_name),
+            Err(e) => {
+                tracing::warn!("Could not get default device from external GPodder server: {}", e);
+                None
+            }
+        };
+        
+        // Store gPodder credentials
+        match self {
+            DatabasePool::Postgres(pool) => {
+                if let Some(device_name) = &default_device_name {
+                    sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'external', defaultgpodderdevice = $5 WHERE userid = $4"#)
+                        .bind(gpodder_url)
+                        .bind(username)
+                        .bind(&encrypted_password)
+                        .bind(user_id)
+                        .bind(device_name)
+                        .execute(pool)
+                        .await?;
+                } else {
+                    sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'external' WHERE userid = $4"#)
+                        .bind(gpodder_url)
+                        .bind(username)
+                        .bind(&encrypted_password)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                if let Some(device_name) = &default_device_name {
+                    sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'external', DefaultGpodderDevice = ? WHERE UserID = ?")
+                        .bind(gpodder_url)
+                        .bind(username)
+                        .bind(&encrypted_password)
+                        .bind(device_name)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                } else {
+                    sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'external' WHERE UserID = ?")
+                        .bind(gpodder_url)
+                        .bind(username)
+                        .bind(&encrypted_password)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+        }
+        
+        // Perform initial full sync for external GPodder server to get ALL user subscriptions
+        if let Some(device_name) = &default_device_name {
+            if let Err(e) = self.call_gpodder_initial_full_sync(user_id, gpodder_url, username, password, device_name).await {
+                tracing::warn!("Initial GPodder full sync failed during external server setup: {}", e);
+                // Don't fail setup if initial sync fails
+            }
+        }
+        
         Ok(true)
     }
     
+    // Helper function to get first device from external GPodder server
+    async fn get_first_device_from_server(&self, gpodder_url: &str, username: &str, password: &str) -> AppResult<String> {
+        let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+        
+        let devices_url = format!("{}/api/2/devices/{}.json", gpodder_url.trim_end_matches('/'), username);
+        
+        let response = if session.authenticated {
+            session.client.get(&devices_url).send().await
+        } else {
+            session.client.get(&devices_url).basic_auth(username, Some(password)).send().await
+        };
+        
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                let devices_data: serde_json::Value = resp.json().await
+                    .map_err(|e| AppError::internal(&format!("Failed to parse devices: {}", e)))?;
+                    
+                if let Some(devices_array) = devices_data.as_array() {
+                    if let Some(first_device) = devices_array.first() {
+                        if let Some(device_id) = first_device.get("id").and_then(|v| v.as_str()) {
+                            return Ok(device_id.to_string());
+                        }
+                    }
+                }
+                
+                Err(AppError::internal("No devices found on external GPodder server"))
+            }
+            Ok(resp) => {
+                Err(AppError::internal(&format!("Failed to get devices from external server: {}", resp.status())))
+            }
+            Err(e) => {
+                Err(AppError::internal(&format!("Error connecting to external server: {}", e)))
+            }
+        }
+    }
+    
     // Encrypt password using Fernet - matches Python encryption
-    async fn encrypt_password(&self, password: &str) -> AppResult<String> {
+    pub async fn encrypt_password(&self, password: &str) -> AppResult<String> {
         use fernet::Fernet;
         
-        // Get encryption key from app settings
+        // Get encryption key from app settings (base64 string)
         let encryption_key = self.get_encryption_key().await?;
         let fernet = Fernet::new(&encryption_key)
             .ok_or_else(|| AppError::internal("Failed to create Fernet cipher"))?;
@@ -9871,13 +10110,24 @@ impl DatabasePool {
     async fn get_encryption_key(&self) -> AppResult<String> {
         match self {
             DatabasePool::Postgres(pool) => {
+                // Try as string first (new format), fallback to bytes (old format)
                 let row = sqlx::query(r#"SELECT encryptionkey FROM "AppSettings" LIMIT 1"#)
                     .fetch_optional(pool)
                     .await?;
                 
                 if let Some(row) = row {
-                    let key: Option<String> = row.try_get("encryptionkey")?;
-                    key.ok_or_else(|| AppError::internal("Encryption key not found"))
+                    // Try string first
+                    if let Ok(key_string) = row.try_get::<String, _>("encryptionkey") {
+                        return Ok(key_string);
+                    }
+                    // Fallback to bytes and convert to string
+                    let key_bytes: Option<Vec<u8>> = row.try_get("encryptionkey")?;
+                    if let Some(bytes) = key_bytes {
+                        String::from_utf8(bytes)
+                            .map_err(|e| AppError::internal(&format!("Invalid UTF-8 in encryption key: {}", e)))
+                    } else {
+                        Err(AppError::internal("Encryption key not found"))
+                    }
                 } else {
                     Err(AppError::internal("App settings not found"))
                 }
@@ -9913,8 +10163,8 @@ impl DatabasePool {
                     
                     if url.is_some() && username.is_some() {
                         Ok(Some(serde_json::json!({
-                            "gpodder_url": url.unwrap_or_default(),
-                            "gpodder_username": username.unwrap_or_default(),
+                            "gpodderurl": url.unwrap_or_default(),
+                            "gpoddertoken": "", // Frontend expects this field but it's not used for display
                             "sync_type": sync_type.unwrap_or_default()
                         })))
                     } else {
@@ -9937,8 +10187,8 @@ impl DatabasePool {
                     
                     if url.is_some() && username.is_some() {
                         Ok(Some(serde_json::json!({
-                            "gpodder_url": url.unwrap_or_default(),
-                            "gpodder_username": username.unwrap_or_default(),
+                            "gpodderurl": url.unwrap_or_default(),
+                            "gpoddertoken": "", // Frontend expects this field but it's not used for display
                             "sync_type": sync_type.unwrap_or_default()
                         })))
                     } else {
@@ -10047,38 +10297,60 @@ impl DatabasePool {
 
     // Get gPodder devices for user - matches Python get_devices function exactly with remote device support
     pub async fn gpodder_get_user_devices(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
-        // Get local devices
-        let mut local_devices = self.get_local_devices(user_id).await?;
-        
-        // Get remote devices if sync is configured
+        // Check what type of sync is configured
         if let Some(sync_settings) = self.get_user_sync_settings(user_id).await? {
-            if sync_settings.sync_type != "None" && sync_settings.sync_type != "nextcloud" {
-                let remote_devices = self.fetch_remote_devices(&sync_settings).await.unwrap_or_default();
-                
-                // Merge remote devices with local, handling conflicts
-                for remote_device in remote_devices {
-                    let existing_local = local_devices.iter().find(|d| 
-                        d["name"].as_str() == Some(&remote_device.device_name)
-                    );
+            match sync_settings.sync_type.as_str() {
+                "gpodder" | "external" => {
+                    // Both internal and external use HTTP API calls to GPodder server
+                    // Internal: http://localhost:8042, External: user's configured URL
+                    let mut devices = self.fetch_devices_from_gpodder_api(&sync_settings).await?;
                     
-                    if existing_local.is_none() {
-                        // Add remote device with negative ID to indicate it's remote
-                        local_devices.push(serde_json::json!({
-                            "id": -(remote_device.device_id.abs()), // Negative for remote
-                            "name": remote_device.device_name,
-                            "type": remote_device.device_type,
-                            "caption": remote_device.device_caption,
-                            "last_sync": Option::<String>::None,
-                            "is_active": true,
-                            "is_default": false, // Remote devices are never default locally
-                            "is_remote": true
-                        }));
+                    // Get the default device name from Users table to mark the correct device
+                    let default_device_name = match self {
+                        DatabasePool::Postgres(pool) => {
+                            let row = sqlx::query(r#"SELECT defaultgpodderdevice FROM "Users" WHERE userid = $1"#)
+                                .bind(user_id)
+                                .fetch_optional(pool)
+                                .await?;
+                            
+                            row.and_then(|r| r.try_get::<Option<String>, _>("defaultgpodderdevice").ok().flatten())
+                        }
+                        DatabasePool::MySQL(pool) => {
+                            let row = sqlx::query("SELECT DefaultGpodderDevice FROM Users WHERE UserID = ?")
+                                .bind(user_id)
+                                .fetch_optional(pool)
+                                .await?;
+                            
+                            row.and_then(|r| r.try_get::<Option<String>, _>("DefaultGpodderDevice").ok().flatten())
+                        }
+                    };
+                    
+                    // Mark the default device
+                    if let Some(default_name) = default_device_name {
+                        for device in &mut devices {
+                            if device.get("name").and_then(|v| v.as_str()) == Some(&default_name) {
+                                device["is_default"] = serde_json::Value::Bool(true);
+                                device["is_remote"] = serde_json::Value::Bool(false); // Default device is treated as local
+                                break;
+                            }
+                        }
                     }
+                    
+                    Ok(devices)
+                }
+                "nextcloud" => {
+                    // Nextcloud doesn't have device concept like GPodder
+                    Ok(vec![])
+                }
+                _ => {
+                    // No sync configured - return empty list
+                    Ok(vec![])
                 }
             }
+        } else {
+            // No sync settings found - return empty list
+            Ok(vec![])
         }
-        
-        Ok(local_devices)
     }
 
     // Get local devices only - internal helper
@@ -10129,46 +10401,70 @@ impl DatabasePool {
         }
     }
 
-    // Fetch remote devices from gPodder server - matches Python remote device fetching
-    async fn fetch_remote_devices(&self, settings: &UserSyncSettings) -> AppResult<Vec<GpodderDevice>> {
-        let session = self.create_gpodder_session(settings).await?;
+    // Fetch devices from GPodder API server - works for both internal and external
+    async fn fetch_devices_from_gpodder_api(&self, settings: &UserSyncSettings) -> AppResult<Vec<serde_json::Value>> {
+        // For internal GPodder API, use X-GPodder-Token header
+        // For external GPodder API, use session auth with basic auth fallback
+        let (client, auth_headers) = if settings.url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token
+            let client = reqwest::Client::new();
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert("X-GPodder-Token", settings.token.parse().unwrap());
+            (client, Some(headers))
+        } else {
+            // External GPodder API - decrypt password and use session auth  
+            let decrypted_password = self.decrypt_password(&settings.token).await?;
+            let session = self.create_gpodder_session_with_password(&settings.url, &settings.username, &decrypted_password).await?;
+            (session.client, None)
+        };
         
         let devices_url = format!("{}/api/2/devices/{}.json", 
             settings.url.trim_end_matches('/'), settings.username);
         
-        let response = session.client
-            .get(&devices_url)
+        let mut request = client.get(&devices_url);
+        
+        // Add authentication headers if needed
+        if let Some(headers) = auth_headers {
+            request = request.headers(headers);
+        } else {
+            // External server with session auth - if session failed, fall back to basic auth
+            let decrypted_password = self.decrypt_password(&settings.token).await?;
+            request = request.basic_auth(&settings.username, Some(&decrypted_password));
+        }
+        
+        let response = request
             .send()
             .await
-            .map_err(|e| AppError::internal(&format!("Failed to fetch remote devices: {}", e)))?;
+            .map_err(|e| AppError::internal(&format!("Failed to fetch devices from GPodder API: {}", e)))?;
         
         if response.status().is_success() {
             let devices_data: serde_json::Value = response.json().await
-                .map_err(|e| AppError::internal(&format!("Failed to parse remote devices: {}", e)))?;
+                .map_err(|e| AppError::internal(&format!("Failed to parse devices from GPodder API: {}", e)))?;
             
-            let mut remote_devices = Vec::new();
+            let mut devices = Vec::new();
             
             if let Some(devices_array) = devices_data.as_array() {
-                for (index, device) in devices_array.iter().enumerate() {
-                    if let (Some(device_name), Some(device_type)) = (
-                        device["id"].as_str(),
-                        device["type"].as_str()
-                    ) {
-                        remote_devices.push(GpodderDevice {
-                            device_id: -(index as i32 + 1000), // Negative ID for remote devices
-                            device_name: device_name.to_string(),
-                            device_type: device_type.to_string(),
-                            device_caption: device["caption"].as_str().map(|s| s.to_string()),
-                            is_default: false,
-                            is_remote: true,
-                            user_id: 0, // Remote devices don't have local user_id
-                        });
+                for device in devices_array.iter() {
+                    if let Some(device_id) = device["id"].as_str() {
+                        // Convert GPodder API response to Pinepods device format
+                        devices.push(serde_json::json!({
+                            "id": device_id,  // Use actual GPodder device ID (string)
+                            "name": device_id,
+                            "type": device["type"].as_str().unwrap_or("other"),
+                            "caption": device["caption"].as_str().unwrap_or(device_id),
+                            "last_sync": Option::<String>::None,
+                            "is_active": true,
+                            "is_default": false, // GPodder devices are not local defaults
+                            "is_remote": true,
+                            "subscriptions": device["subscriptions"].as_i64().unwrap_or(0)
+                        }));
                     }
                 }
             }
             
-            Ok(remote_devices)
+            Ok(devices)
         } else {
+            tracing::warn!("Failed to fetch devices from GPodder API: {}", response.status());
             Ok(Vec::new())
         }
     }
@@ -10215,6 +10511,42 @@ impl DatabasePool {
         })
     }
 
+    // Create gPodder session with already-decrypted password (avoids double decryption)
+    async fn create_gpodder_session_with_password(&self, gpodder_url: &str, username: &str, password: &str) -> AppResult<GpodderSession> {
+        let jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
+        let client = reqwest::Client::builder()
+            .cookie_provider(jar)
+            .build()
+            .map_err(|e| AppError::internal(&format!("Failed to create HTTP client: {}", e)))?;
+        
+        // Try session-based authentication first - matches Python login flow
+        let login_url = format!("{}/api/2/auth/{}/login.json", 
+            gpodder_url.trim_end_matches('/'), username);
+        
+        let login_response = client
+            .post(&login_url)
+            .basic_auth(username, Some(password))
+            .send()
+            .await;
+        
+        let session_authenticated = match login_response {
+            Ok(response) if response.status().is_success() => {
+                tracing::info!("gPodder session authentication successful");
+                true
+            }
+            _ => {
+                tracing::warn!("gPodder session authentication failed, will use basic auth");
+                false
+            }
+        };
+        
+        Ok(GpodderSession {
+            client,
+            session_id: None,
+            authenticated: session_authenticated,
+        })
+    }
+
     // gPodder force sync - calls Go gPodder service exactly like Python force_full_sync_to_gpodder
     pub async fn gpodder_force_sync(&self, user_id: i32) -> AppResult<bool> {
         let sync_settings = self.get_user_sync_settings(user_id).await?;
@@ -10227,7 +10559,7 @@ impl DatabasePool {
         
         match settings.sync_type.as_str() {
             "gpodder" => {
-                // Internal gPodder API on localhost:8042 - use encrypted token directly
+                // Internal gPodder API on localhost:8042 - use unencrypted token directly
                 self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, true).await
             }
             "nextcloud" => {
@@ -10258,98 +10590,657 @@ impl DatabasePool {
         let settings = sync_settings.unwrap();
         let device_name = self.get_or_create_default_device(user_id).await?;
         
-        match settings.sync_type.as_str() {
+        let success = match settings.sync_type.as_str() {
             "gpodder" => {
-                self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?;
-                Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
+                self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?
             }
             "nextcloud" => {
-                self.sync_with_nextcloud(user_id, &settings, false).await?;
-                Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
+                self.sync_with_nextcloud(user_id, &settings, false).await?
             }
             "external" => {
                 let decrypted_token = self.decrypt_password(&settings.token).await?;
-                self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?;
-                Ok(SyncResult { synced_podcasts: 1, synced_episodes: 0 })
+                self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?
             }
             "both" => {
-                self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?;
+                let internal_success = self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await?;
                 let decrypted_token = self.decrypt_password(&settings.token).await?;
-                self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?;
-                Ok(SyncResult { synced_podcasts: 2, synced_episodes: 0 })
+                let external_success = self.call_gpodder_service_sync(user_id, &settings.url, &settings.username, &decrypted_token, &device_name, false).await?;
+                internal_success || external_success
             }
-            _ => Ok(SyncResult { synced_podcasts: 0, synced_episodes: 0 })
-        }
+            _ => false
+        };
+        
+        Ok(SyncResult { 
+            synced_podcasts: if success { 1 } else { 0 }, 
+            synced_episodes: 0 
+        })
     }
 
     // Call gPodder service for sync - matches Python API calls exactly with enhanced error handling
     async fn call_gpodder_service_sync(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str, device_name: &str, force: bool) -> AppResult<bool> {
-        let session = self.create_gpodder_session(&UserSyncSettings {
-            url: gpodder_url.to_string(),
-            username: username.to_string(),
-            token: password.to_string(),
-            sync_type: if gpodder_url == "http://localhost:8042" { "gpodder".to_string() } else { "external".to_string() },
-        }).await?;
+        // Step 1: Get ALL devices first (critical for detecting changes from external devices like AntennaPod)
+        let devices_url = format!("{}/api/2/devices/{}.json", 
+            gpodder_url.trim_end_matches('/'), username);
         
-        // Step 1: Get subscriptions from gPodder service with session or basic auth fallback
-        let subscriptions_url = format!("{}/api/2/subscriptions/{}/{}.json", gpodder_url.trim_end_matches('/'), username, device_name);
-        
-        let response = if session.authenticated {
-            session.client
-                .get(&subscriptions_url)
+        // Use correct authentication based on internal vs external
+        let devices_response = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            client.get(&devices_url)
+                .header("X-GPodder-Token", password)
                 .send()
                 .await
         } else {
-            session.client
-                .get(&subscriptions_url)
-                .basic_auth(username, Some(password))
+            // External GPodder API - use session auth with basic fallback
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                session.client
+                    .get(&devices_url)
+                    .send()
+                    .await
+            } else {
+                session.client
+                    .get(&devices_url)
+                    .basic_auth(username, Some(password))
+                    .send()
+                    .await
+            }
+        };
+        
+        let devices = match devices_response {
+            Ok(resp) if resp.status().is_success() => {
+                let devices_data: serde_json::Value = resp.json().await
+                    .map_err(|e| AppError::internal(&format!("Failed to parse devices: {}", e)))?;
+                
+                if let Some(devices_array) = devices_data.as_array() {
+                    let device_names: Vec<String> = devices_array.iter()
+                        .filter_map(|device| device.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                        .collect();
+                    
+                    tracing::info!("Found {} devices for user: {:?}", device_names.len(), device_names);
+                    device_names
+                } else {
+                    tracing::warn!("No devices found for user");
+                    vec![]
+                }
+            }
+            Ok(resp) => {
+                tracing::warn!("Failed to get devices: {}", resp.status());
+                if force {
+                    return Err(AppError::internal(&format!("Force sync failed to get devices: {}", resp.status())));
+                } else {
+                    return Ok(false);
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to connect to get devices: {}", e);
+                if force {
+                    return Err(AppError::internal(&format!("Force sync connection failed: {}", e)));
+                } else {
+                    return Ok(false);
+                }
+            }
+        };
+        
+        tracing::info!("Found {} devices to sync from: {:?}", devices.len(), devices);
+        
+        // Step 2: Get subscriptions from ALL devices with timestamps (like AntennaPod sync)
+        let since_timestamp = self.get_last_sync_timestamp(user_id).await?;
+        let mut all_subscriptions = std::collections::HashSet::new();
+        let mut all_removals = std::collections::HashSet::new();
+        
+        for device_id in &devices {
+            tracing::info!("Getting subscriptions from device: {}", device_id);
+            
+            let subscriptions_url = if let Some(since) = since_timestamp {
+                format!("{}/api/2/subscriptions/{}/{}.json?since={}", 
+                    gpodder_url.trim_end_matches('/'), username, device_id, since.timestamp())
+            } else {
+                format!("{}/api/2/subscriptions/{}/{}.json?since=0", 
+                    gpodder_url.trim_end_matches('/'), username, device_id)
+            };
+            
+            let device_response = if gpodder_url == "http://localhost:8042" {
+                let client = reqwest::Client::new();
+                client.get(&subscriptions_url)
+                    .header("X-GPodder-Token", password)
+                    .send()
+                    .await
+            } else {
+                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+                if session.authenticated {
+                    session.client
+                        .get(&subscriptions_url)
+                        .send()
+                        .await
+                } else {
+                    session.client
+                        .get(&subscriptions_url)
+                        .basic_auth(username, Some(password))
+                        .send()
+                        .await
+                }
+            };
+            
+            match device_response {
+                Ok(resp) if resp.status().is_success() => {
+                    let response_text = resp.text().await
+                        .map_err(|e| AppError::internal(&format!("Failed to get response text: {}", e)))?;
+                    
+                    let sync_response: serde_json::Value = serde_json::from_str(&response_text)
+                        .map_err(|e| AppError::internal(&format!("Failed to parse gPodder sync response: {}", e)))?;
+                    
+                    let device_subscriptions = sync_response["add"].as_array()
+                        .unwrap_or(&vec![])
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<String>>();
+                    
+                    let device_removals = sync_response["remove"].as_array()
+                        .unwrap_or(&vec![])
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<String>>();
+                    
+                    tracing::info!("Device {} has {} subscriptions and {} removals", device_id, device_subscriptions.len(), device_removals.len());
+                    
+                    // Add to combined sets (HashSet automatically deduplicates)
+                    for subscription in device_subscriptions {
+                        all_subscriptions.insert(subscription);
+                    }
+                    
+                    for removal in device_removals {
+                        all_removals.insert(removal);
+                    }
+                }
+                Ok(resp) => {
+                    tracing::warn!("Device {} returned error: {}", device_id, resp.status());
+                    // Continue with other devices instead of failing
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to get subscriptions from device {}: {}", device_id, e);
+                    // Continue with other devices instead of failing
+                }
+            }
+        }
+        
+        tracing::info!("Downloaded {} unique subscriptions and {} unique removals from ALL devices", all_subscriptions.len(), all_removals.len());
+        
+        // Step 3: Get episode actions from ALL devices with timestamps
+        let mut all_episode_actions = Vec::new();
+        
+        for device_id in &devices {
+            tracing::info!("Getting episode actions from device: {}", device_id);
+            
+            let episode_actions_url = if let Some(since) = since_timestamp {
+                format!("{}/api/2/episodes/{}.json?since={}&device={}", 
+                    gpodder_url.trim_end_matches('/'), username, since.timestamp(), device_id)
+            } else {
+                format!("{}/api/2/episodes/{}.json?since=0&device={}", 
+                    gpodder_url.trim_end_matches('/'), username, device_id)
+            };
+            
+            let device_response = if gpodder_url == "http://localhost:8042" {
+                let client = reqwest::Client::new();
+                client.get(&episode_actions_url)
+                    .header("X-GPodder-Token", password)
+                    .send()
+                    .await
+            } else {
+                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+                if session.authenticated {
+                    session.client
+                        .get(&episode_actions_url)
+                        .send()
+                        .await
+                } else {
+                    session.client
+                        .get(&episode_actions_url)
+                        .basic_auth(username, Some(password))
+                        .send()
+                        .await
+                }
+            };
+            
+            match device_response {
+                Ok(resp) if resp.status().is_success() => {
+                    let response_text = resp.text().await
+                        .map_err(|e| AppError::internal(&format!("Failed to get episode actions response text: {}", e)))?;
+                    
+                    let episode_actions: serde_json::Value = serde_json::from_str(&response_text)
+                        .map_err(|e| AppError::internal(&format!("Failed to parse episode actions response: {}", e)))?;
+                    
+                    if let Some(actions_array) = episode_actions["actions"].as_array() {
+                        let device_actions_count = actions_array.len();
+                        tracing::info!("Device {} has {} episode actions", device_id, device_actions_count);
+                        
+                        for action in actions_array {
+                            all_episode_actions.push(action.clone());
+                        }
+                    }
+                }
+                Ok(resp) => {
+                    tracing::warn!("Device {} episode actions returned error: {}", device_id, resp.status());
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to get episode actions from device {}: {}", device_id, e);
+                }
+            }
+        }
+        
+        tracing::info!("Downloaded {} episode actions from ALL devices", all_episode_actions.len());
+        
+        // Step 4: Process all subscriptions (additions)
+        let subscriptions_vec: Vec<String> = all_subscriptions.into_iter().collect();
+        self.process_gpodder_subscriptions(user_id, &subscriptions_vec).await?;
+        
+        // Step 5: Process all subscription removals
+        let removals_vec: Vec<String> = all_removals.into_iter().collect();
+        if !removals_vec.is_empty() {
+            self.process_gpodder_subscription_removals(user_id, &removals_vec).await?;
+        }
+        
+        // Step 6: Process all episode actions
+        if !all_episode_actions.is_empty() {
+            if let Err(e) = self.apply_remote_episode_actions(user_id, &all_episode_actions).await {
+                tracing::warn!("Episode actions processing failed but continuing: {}", e);
+            }
+        }
+        
+        // Step 7: Upload local subscriptions to gPodder service (to default device)
+        if since_timestamp.is_none() || !subscriptions_vec.is_empty() || !removals_vec.is_empty() {
+            let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+            self.upload_subscriptions_to_gpodder(gpodder_url, username, password, device_name, &local_subscriptions).await?;
+        } else {
+            tracing::info!("Skipping subscription upload - no changes detected in incremental sync");
+        }
+        
+        // Step 8: Upload local episode actions to gPodder service (to default device)
+        if let Err(e) = self.sync_episode_actions_with_gpodder(gpodder_url, username, password, device_name, user_id).await {
+            tracing::warn!("Episode actions sync failed but continuing: {}", e);
+        }
+        
+        // Step 9: Update last sync timestamp for next incremental sync
+        self.update_last_sync_timestamp(user_id).await?;
+        
+        Ok(true)
+    }
+
+    // Initial full sync for GPodder - gets ALL user subscriptions from ALL devices
+    pub async fn call_gpodder_initial_full_sync(&self, user_id: i32, gpodder_url: &str, username: &str, password: &str, device_name: &str) -> AppResult<bool> {
+        tracing::info!("Starting initial full GPodder sync for user {} from {}", user_id, gpodder_url);
+        
+        // Step 1: Get ALL devices first (this is how AntennaPod and other apps do it)
+        let devices_url = format!("{}/api/2/devices/{}.json", 
+            gpodder_url.trim_end_matches('/'), username);
+        
+        let devices_response = if gpodder_url == "http://localhost:8042" {
+            let client = reqwest::Client::new();
+            client.get(&devices_url).header("X-GPodder-Token", password).send().await
+        } else {
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                session.client.get(&devices_url).send().await
+            } else {
+                session.client.get(&devices_url).basic_auth(username, Some(password)).send().await
+            }
+        };
+        
+        let devices = match devices_response {
+            Ok(resp) if resp.status().is_success() => {
+                let devices_data: serde_json::Value = resp.json().await
+                    .map_err(|e| AppError::internal(&format!("Failed to parse devices: {}", e)))?;
+                
+                if let Some(devices_array) = devices_data.as_array() {
+                    let device_names: Vec<String> = devices_array.iter()
+                        .filter_map(|device| device.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                        .collect();
+                    
+                    tracing::info!("Found {} devices for user: {:?}", device_names.len(), device_names);
+                    device_names
+                } else {
+                    tracing::warn!("No devices found for user");
+                    vec![]
+                }
+            }
+            Ok(resp) => {
+                tracing::error!("Failed to get devices: {}", resp.status());
+                return Ok(false);
+            }
+            Err(e) => {
+                tracing::error!("Failed to connect for devices: {}", e);
+                return Ok(false);
+            }
+        };
+        
+        // Step 2: Get subscriptions from ALL devices (like AntennaPod does)
+        let mut all_subscriptions = std::collections::HashSet::new();
+        
+        for device_id in &devices {
+            tracing::info!("Getting subscriptions from device: {}", device_id);
+            
+            let subscriptions_url = format!("{}/api/2/subscriptions/{}/{}.json?since=0", 
+                gpodder_url.trim_end_matches('/'), username, device_id);
+            
+            let response = if gpodder_url == "http://localhost:8042" {
+                let client = reqwest::Client::new();
+                client.get(&subscriptions_url).header("X-GPodder-Token", password).send().await
+            } else {
+                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+                if session.authenticated {
+                    session.client.get(&subscriptions_url).send().await
+                } else {
+                    session.client.get(&subscriptions_url).basic_auth(username, Some(password)).send().await
+                }
+            };
+            
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    let response_text = resp.text().await
+                        .map_err(|e| AppError::internal(&format!("Failed to get response text: {}", e)))?;
+                    
+                    let sync_response: serde_json::Value = serde_json::from_str(&response_text)
+                        .map_err(|e| AppError::internal(&format!("Failed to parse gPodder sync response: {}", e)))?;
+                    
+                    let device_subscriptions = sync_response["add"].as_array()
+                        .unwrap_or(&vec![])
+                        .iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect::<Vec<String>>();
+                    
+                    tracing::info!("Device {} has {} subscriptions", device_id, device_subscriptions.len());
+                    
+                    // Add all subscriptions to our set (deduplicates automatically)
+                    for subscription in device_subscriptions {
+                        all_subscriptions.insert(subscription);
+                    }
+                }
+                Ok(resp) => {
+                    tracing::warn!("Failed to get subscriptions from device {}: {}", device_id, resp.status());
+                    // Continue with other devices
+                }
+                Err(e) => {
+                    tracing::warn!("Error getting subscriptions from device {}: {}", device_id, e);
+                    // Continue with other devices
+                }
+            }
+        }
+        
+        let all_subscriptions: Vec<String> = all_subscriptions.into_iter().collect();
+        tracing::info!("Total unique subscriptions from all devices: {}", all_subscriptions.len());
+        
+        // Step 2: Get episode actions from ALL devices (like subscription sync)
+        let mut all_episode_actions = Vec::new();
+        
+        for device_id in &devices {
+            tracing::info!("Getting episode actions from device: {}", device_id);
+            
+            let episode_actions_url = format!("{}/api/2/episodes/{}.json?since=0&device={}", 
+                gpodder_url.trim_end_matches('/'), username, device_id);
+            
+            let response = if gpodder_url == "http://localhost:8042" {
+                let client = reqwest::Client::new();
+                client.get(&episode_actions_url).header("X-GPodder-Token", password).send().await
+            } else {
+                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+                if session.authenticated {
+                    session.client.get(&episode_actions_url).send().await
+                } else {
+                    session.client.get(&episode_actions_url).basic_auth(username, Some(password)).send().await
+                }
+            };
+            
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    let episode_data: serde_json::Value = resp.json().await
+                        .map_err(|e| AppError::internal(&format!("Failed to parse episode actions for device {}: {}", device_id, e)))?;
+                    
+                    if let Some(actions) = episode_data.get("actions").and_then(|v| v.as_array()) {
+                        tracing::info!("Device {} has {} episode actions", device_id, actions.len());
+                        
+                        // Add all episode actions from this device
+                        for action in actions {
+                            all_episode_actions.push(action.clone());
+                        }
+                    }
+                }
+                Ok(resp) => {
+                    tracing::warn!("Failed to get episode actions from device {}: {}", device_id, resp.status());
+                    // Continue with other devices
+                }
+                Err(e) => {
+                    tracing::warn!("Error getting episode actions from device {}: {}", device_id, e);
+                    // Continue with other devices
+                }
+            }
+        }
+        
+        tracing::info!("Total episode actions from all devices: {}", all_episode_actions.len());
+        
+        // Process all episode actions and apply them locally
+        if !all_episode_actions.is_empty() {
+            if let Err(e) = self.apply_remote_episode_actions(user_id, &all_episode_actions).await {
+                tracing::warn!("Failed to apply remote episode actions: {}", e);
+            }
+        }
+        
+        // Step 3: Process all subscriptions and add missing podcasts
+        self.process_gpodder_subscriptions(user_id, &all_subscriptions).await?;
+        
+        // Step 4: Upload local subscriptions to GPodder service
+        let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+        self.upload_subscriptions_to_gpodder(gpodder_url, username, password, device_name, &local_subscriptions).await?;
+        
+        // Step 5: Upload local episode actions to GPodder service
+        let local_episode_actions = self.get_user_episode_actions(user_id).await?;
+        if !local_episode_actions.is_empty() {
+            if let Err(e) = self.upload_episode_actions_to_gpodder(gpodder_url, username, password, &local_episode_actions).await {
+                tracing::warn!("Failed to upload local episode actions to GPodder: {}", e);
+                // Don't fail the sync if episode actions upload fails
+            }
+        }
+        
+        // Step 5: Clear any existing sync timestamp to start fresh for incremental syncs
+        self.clear_last_sync_timestamp(user_id).await?;
+        
+        tracing::info!("Initial full GPodder sync completed for user {}", user_id);
+        Ok(true)
+    }
+    
+    // Initial full sync for Nextcloud - gets ALL user subscriptions 
+    pub async fn call_nextcloud_initial_full_sync(&self, user_id: i32, nextcloud_url: &str, username: &str, password: &str) -> AppResult<bool> {
+        tracing::info!("Starting initial full Nextcloud sync for user {} from {}", user_id, nextcloud_url);
+        
+        let client = reqwest::Client::new();
+        
+        // Get ALL subscriptions from Nextcloud gPodder Sync app
+        let subscriptions_url = format!("{}/index.php/apps/gpoddersync/subscriptions", nextcloud_url.trim_end_matches('/'));
+        
+        let response = client
+            .get(&subscriptions_url)
+            .basic_auth(username, Some(password))
+            .send()
+            .await
+            .map_err(|e| AppError::internal(&format!("Failed to get Nextcloud subscriptions: {}", e)))?;
+        
+        if !response.status().is_success() {
+            tracing::error!("Failed to get Nextcloud subscriptions: {}", response.status());
+            return Ok(false);
+        }
+        
+        let subscriptions: serde_json::Value = response.json().await
+            .map_err(|e| AppError::internal(&format!("Failed to parse Nextcloud subscriptions: {}", e)))?;
+        
+        // Process subscriptions - Nextcloud returns array of feed URLs
+        let feed_urls = if let Some(feeds) = subscriptions.as_array() {
+            let urls: Vec<String> = feeds.iter()
+                .filter_map(|f| f.as_str().map(|s| s.to_string()))
+                .collect();
+            
+            tracing::info!("Downloaded {} subscriptions from Nextcloud", urls.len());
+            urls
+        } else {
+            tracing::warn!("No subscriptions found in Nextcloud response");
+            vec![]
+        };
+        
+        // Get ALL episode actions from Nextcloud
+        let episode_actions_url = format!("{}/index.php/apps/gpoddersync/episode_action", nextcloud_url.trim_end_matches('/'));
+        
+        let episode_response = client
+            .get(&episode_actions_url)
+            .basic_auth(username, Some(password))
+            .send()
+            .await;
+        
+        let mut all_episode_actions = Vec::new();
+        
+        match episode_response {
+            Ok(resp) if resp.status().is_success() => {
+                let episode_data: serde_json::Value = resp.json().await
+                    .map_err(|e| AppError::internal(&format!("Failed to parse Nextcloud episode actions: {}", e)))?;
+                
+                if let Some(actions) = episode_data.get("actions").and_then(|v| v.as_array()) {
+                    tracing::info!("Downloaded {} episode actions from Nextcloud", actions.len());
+                    
+                    // Add all episode actions
+                    for action in actions {
+                        all_episode_actions.push(action.clone());
+                    }
+                }
+            }
+            Ok(resp) => {
+                tracing::warn!("Failed to get Nextcloud episode actions: {}", resp.status());
+                // Continue even if episode actions fail
+            }
+            Err(e) => {
+                tracing::warn!("Error getting Nextcloud episode actions: {}", e);
+                // Continue even if episode actions fail
+            }
+        }
+        
+        // Process all episode actions and apply them locally
+        if !all_episode_actions.is_empty() {
+            if let Err(e) = self.apply_remote_episode_actions(user_id, &all_episode_actions).await {
+                tracing::warn!("Failed to apply remote episode actions from Nextcloud: {}", e);
+            }
+        }
+        
+        // Process all subscriptions and add missing podcasts
+        self.process_gpodder_subscriptions(user_id, &feed_urls).await?;
+        
+        // Upload local subscriptions to Nextcloud
+        let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+        self.upload_subscriptions_to_nextcloud(nextcloud_url, username, password, &local_subscriptions).await?;
+        
+        // Upload local episode actions to Nextcloud
+        let local_episode_actions = self.get_user_episode_actions(user_id).await?;
+        if !local_episode_actions.is_empty() {
+            if let Err(e) = self.upload_episode_actions_to_nextcloud(nextcloud_url, username, password, &local_episode_actions).await {
+                tracing::warn!("Failed to upload local episode actions to Nextcloud: {}", e);
+                // Don't fail the sync if episode actions upload fails
+            }
+        }
+        
+        // Clear any existing sync timestamp to start fresh for incremental syncs
+        self.clear_last_sync_timestamp(user_id).await?;
+        
+        tracing::info!("Initial full Nextcloud sync completed for user {}", user_id);
+        Ok(true)
+    }
+    
+    // Upload episode actions to GPodder server for initial sync
+    async fn upload_episode_actions_to_gpodder(&self, gpodder_url: &str, username: &str, password: &str, episode_actions: &[serde_json::Value]) -> AppResult<()> {
+        let upload_url = format!("{}/api/2/episodes/{}.json", gpodder_url.trim_end_matches('/'), username);
+        
+        // Use correct authentication based on internal vs external
+        let response = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            client.post(&upload_url)
+                .header("X-GPodder-Token", password)
+                .json(episode_actions)
                 .send()
                 .await
+        } else {
+            // External GPodder API - use session auth with basic fallback
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                // Use session-based authentication
+                session.client
+                    .post(&upload_url)
+                    .json(episode_actions)
+                    .send()
+                    .await
+            } else {
+                // Fallback to basic auth
+                session.client
+                    .post(&upload_url)
+                    .basic_auth(username, Some(password))
+                    .json(episode_actions)
+                    .send()
+                    .await
+            }
         };
         
         match response {
             Ok(resp) if resp.status().is_success() => {
-                let subscriptions: Vec<String> = resp.json().await
-                    .map_err(|e| AppError::internal(&format!("Failed to parse gPodder subscriptions: {}", e)))?;
-                
-                tracing::info!("Downloaded {} subscriptions from gPodder service", subscriptions.len());
-                
-                // Step 2: Process subscriptions and add missing podcasts
-                self.process_gpodder_subscriptions(user_id, &subscriptions).await?;
-                
-                // Step 3: Upload local subscriptions to gPodder service
-                let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
-                self.upload_subscriptions_to_gpodder_with_session(&session, gpodder_url, username, password, device_name, &local_subscriptions).await?;
-                
-                // Step 4: Sync episode actions (listening progress) with enhanced error handling
-                if let Err(e) = self.sync_episode_actions_with_gpodder(gpodder_url, username, password, device_name, user_id).await {
-                    tracing::warn!("Episode actions sync failed but continuing: {}", e);
-                    // Don't fail the entire sync if episode actions fail
-                }
-                
-                // Step 5: Update last sync timestamp for next incremental sync (BETTER than Python)
-                self.update_last_sync_timestamp(user_id).await?;
-                
-                Ok(true)
+                tracing::info!("Successfully uploaded {} episode actions to GPodder", episode_actions.len());
+                Ok(())
             }
             Ok(resp) => {
-                tracing::warn!("gPodder service returned error: {}", resp.status());
-                if force {
-                    // For force sync, treat non-success as failure
-                    Err(AppError::internal(&format!("Force sync failed with status: {}", resp.status())))
-                } else {
-                    // For regular sync, continue gracefully
-                    Ok(false)
-                }
+                tracing::warn!("Failed to upload episode actions to GPodder: {}", resp.status());
+                Ok(()) // Don't fail the whole sync if upload fails
             }
             Err(e) => {
-                tracing::error!("Failed to connect to gPodder service: {}", e);
-                if force {
-                    Err(AppError::internal(&format!("Force sync connection failed: {}", e)))
-                } else {
-                    Ok(false)
-                }
+                Err(AppError::internal(&format!("Failed to upload episode actions to GPodder: {}", e)))
             }
+        }
+    }
+    
+    // Upload subscriptions to Nextcloud using the gPodder Sync app endpoint
+    async fn upload_subscriptions_to_nextcloud(&self, nextcloud_url: &str, username: &str, password: &str, subscriptions: &[String]) -> AppResult<()> {
+        let client = reqwest::Client::new();
+        // Nextcloud gPodder Sync app uses the subscription_change endpoint
+        let upload_url = format!("{}/index.php/apps/gpoddersync/subscription_change/upload", nextcloud_url.trim_end_matches('/'));
+        
+        let response = client
+            .post(&upload_url)
+            .basic_auth(username, Some(password))
+            .json(subscriptions)
+            .send()
+            .await
+            .map_err(|e| AppError::internal(&format!("Failed to upload subscriptions to Nextcloud: {}", e)))?;
+        
+        if response.status().is_success() {
+            tracing::info!("Successfully uploaded {} subscriptions to Nextcloud", subscriptions.len());
+            Ok(())
+        } else {
+            tracing::warn!("Failed to upload subscriptions to Nextcloud: {}", response.status());
+            Ok(()) // Don't fail the whole sync if upload fails
+        }
+    }
+    
+    // Upload episode actions to Nextcloud using the gPodder Sync app endpoint
+    async fn upload_episode_actions_to_nextcloud(&self, nextcloud_url: &str, username: &str, password: &str, episode_actions: &[serde_json::Value]) -> AppResult<()> {
+        let client = reqwest::Client::new();
+        // Nextcloud gPodder Sync app uses the episode_action endpoint  
+        let upload_url = format!("{}/index.php/apps/gpoddersync/episode_action/create", nextcloud_url.trim_end_matches('/'));
+        
+        let response = client
+            .post(&upload_url)
+            .basic_auth(username, Some(password))
+            .json(episode_actions)
+            .send()
+            .await
+            .map_err(|e| AppError::internal(&format!("Failed to upload episode actions to Nextcloud: {}", e)))?;
+        
+        if response.status().is_success() {
+            tracing::info!("Successfully uploaded {} episode actions to Nextcloud", episode_actions.len());
+            Ok(())
+        } else {
+            tracing::warn!("Failed to upload episode actions to Nextcloud: {}", response.status());
+            Ok(()) // Don't fail the whole sync if upload fails
         }
     }
     
@@ -10357,17 +11248,23 @@ impl DatabasePool {
     async fn upload_subscriptions_to_gpodder_with_session(&self, session: &GpodderSession, gpodder_url: &str, username: &str, password: &str, device_name: &str, subscriptions: &[String]) -> AppResult<()> {
         let upload_url = format!("{}/api/2/subscriptions/{}/{}.json", gpodder_url.trim_end_matches('/'), username, device_name);
         
+        // Format subscription changes according to GPodder API spec
+        let subscription_changes = serde_json::json!({
+            "add": subscriptions,
+            "remove": []
+        });
+        
         let response = if session.authenticated {
             session.client
-                .put(&upload_url)
-                .json(subscriptions)
+                .post(&upload_url)
+                .json(&subscription_changes)
                 .send()
                 .await
         } else {
             session.client
-                .put(&upload_url)
+                .post(&upload_url)
                 .basic_auth(username, Some(password))
-                .json(subscriptions)
+                .json(&subscription_changes)
                 .send()
                 .await
         };
@@ -10392,45 +11289,155 @@ impl DatabasePool {
 
     // Process gPodder subscriptions and add missing podcasts
     async fn process_gpodder_subscriptions(&self, user_id: i32, subscriptions: &[String]) -> AppResult<()> {
+        let mut added = 0;
+        let mut skipped = 0;
+        let mut failed = 0;
+        
         for feed_url in subscriptions {
-            let exists = self.podcast_exists_for_user(user_id, feed_url).await?;
-            if !exists {
-                // Add new podcast - this would call the actual add_podcast function
-                tracing::info!("Would add podcast {} for user {}", feed_url, user_id);
+            tracing::info!("Processing podcast {} for user {}", feed_url, user_id);
+            
+            // Use the existing add_podcast_from_url function which handles duplicates and fetching
+            match self.add_podcast_from_url(user_id, feed_url, None).await {
+                Ok(_) => {
+                    added += 1;
+                    tracing::info!("Successfully added podcast: {}", feed_url);
+                }
+                Err(e) => {
+                    // Check if it failed because it already exists
+                    if self.podcast_exists_for_user(user_id, feed_url).await.unwrap_or(false) {
+                        skipped += 1;
+                        tracing::debug!("Podcast {} already exists for user {}", feed_url, user_id);
+                    } else {
+                        failed += 1;
+                        tracing::warn!("Failed to add podcast {}: {}", feed_url, e);
+                    }
+                }
             }
         }
+        
+        tracing::info!("GPodder subscription sync completed: {} added, {} skipped, {} failed", added, skipped, failed);
         Ok(())
     }
 
-    // Upload local subscriptions to gPodder service - matches Python PUT /api/2/subscriptions/{username}/{device}.json
-    async fn upload_subscriptions_to_gpodder(&self, gpodder_url: &str, username: &str, password: &str, device_name: &str, subscriptions: &[String]) -> AppResult<()> {
-        let client = reqwest::Client::new();
-        let upload_url = format!("{}/api/2/subscriptions/{}/{}.json", gpodder_url.trim_end_matches('/'), username, device_name);
+    // Process subscription removals from gPodder service
+    async fn process_gpodder_subscription_removals(&self, user_id: i32, removals: &[String]) -> AppResult<()> {
+        let mut removed = 0;
+        let mut not_found = 0;
+        let mut failed = 0;
         
-        let response = client
-            .put(&upload_url)
-            .basic_auth(username, Some(password))
-            .json(subscriptions)
-            .send()
-            .await
-            .map_err(|e| AppError::internal(&format!("Failed to upload subscriptions: {}", e)))?;
-        
-        if !response.status().is_success() {
-            tracing::warn!("Failed to upload subscriptions to gPodder service: {}", response.status());
+        for feed_url in removals {
+            tracing::info!("Processing podcast removal {} for user {}", feed_url, user_id);
+            
+            // Check if the podcast exists locally first
+            if self.podcast_exists_for_user(user_id, feed_url).await.unwrap_or(false) {
+                // Remove the podcast using existing function
+                match self.remove_podcast_by_url(user_id, feed_url).await {
+                    Ok(_) => {
+                        removed += 1;
+                        tracing::info!("Successfully removed podcast: {}", feed_url);
+                    }
+                    Err(e) => {
+                        failed += 1;
+                        tracing::warn!("Failed to remove podcast {}: {}", feed_url, e);
+                    }
+                }
+            } else {
+                not_found += 1;
+                tracing::debug!("Podcast {} not found locally for user {} (already removed)", feed_url, user_id);
+            }
         }
         
+        tracing::info!("GPodder subscription removal completed: {} removed, {} not found, {} failed", removed, not_found, failed);
         Ok(())
+    }
+
+    // Detect and remove orphaned local podcasts that are not in the remote subscription list
+    async fn sync_local_podcast_removals(&self, user_id: i32, remote_subscriptions: &[String]) -> AppResult<Vec<String>> {
+        let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+        let remote_set: std::collections::HashSet<String> = remote_subscriptions.iter().cloned().collect();
+        
+        let mut removed_podcasts = Vec::new();
+        
+        // Find podcasts that exist locally but not in remote subscriptions
+        for local_feed in &local_subscriptions {
+            if !remote_set.contains(local_feed) {
+                tracing::info!("Local podcast {} not found in remote subscriptions, removing", local_feed);
+                
+                match self.remove_podcast_by_url(user_id, local_feed).await {
+                    Ok(_) => {
+                        removed_podcasts.push(local_feed.clone());
+                        tracing::info!("Successfully removed orphaned local podcast: {}", local_feed);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to remove orphaned local podcast {}: {}", local_feed, e);
+                    }
+                }
+            }
+        }
+        
+        if !removed_podcasts.is_empty() {
+            tracing::info!("Removed {} orphaned local podcasts", removed_podcasts.len());
+        }
+        
+        Ok(removed_podcasts)
+    }
+
+    // Upload local subscriptions to gPodder service - matches GPodder API spec POST /api/2/subscriptions/{username}/{device}.json
+    async fn upload_subscriptions_to_gpodder(&self, gpodder_url: &str, username: &str, password: &str, device_name: &str, subscriptions: &[String]) -> AppResult<()> {
+        let upload_url = format!("{}/api/2/subscriptions/{}/{}.json", gpodder_url.trim_end_matches('/'), username, device_name);
+        
+        // Format subscription changes according to GPodder API spec
+        let subscription_changes = serde_json::json!({
+            "add": subscriptions,
+            "remove": []
+        });
+        
+        // Use correct authentication based on internal vs external
+        let response = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            client.post(&upload_url)
+                .header("X-GPodder-Token", password)
+                .json(&subscription_changes)
+                .send()
+                .await
+        } else {
+            // External GPodder API - use session auth with basic fallback
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                session.client
+                    .post(&upload_url)
+                    .json(&subscription_changes)
+                    .send()
+                    .await
+            } else {
+                session.client
+                    .post(&upload_url)
+                    .basic_auth(username, Some(password))
+                    .json(&subscription_changes)
+                    .send()
+                    .await
+            }
+        };
+        
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                tracing::info!("Successfully uploaded {} subscriptions to gPodder service", subscriptions.len());
+                Ok(())
+            }
+            Ok(resp) => {
+                tracing::warn!("Failed to upload subscriptions to gPodder service: {}", resp.status());
+                Ok(()) // Don't fail sync for upload failures
+            }
+            Err(e) => {
+                tracing::warn!("Failed to upload subscriptions: {}", e);
+                Ok(()) // Don't fail sync for upload failures
+            }
+        }
     }
 
     // Sync episode actions with gPodder service - matches Python episode actions sync with timestamp support
-    async fn sync_episode_actions_with_gpodder(&self, gpodder_url: &str, username: &str, password: &str, _device_name: &str, user_id: i32) -> AppResult<()> {
-        let session = self.create_gpodder_session(&UserSyncSettings {
-            url: gpodder_url.to_string(),
-            username: username.to_string(),
-            token: password.to_string(),
-            sync_type: "external".to_string(),
-        }).await?;
-        
+    async fn sync_episode_actions_with_gpodder(&self, gpodder_url: &str, username: &str, password: &str, device_name: &str, user_id: i32) -> AppResult<()> {
         // Get last sync timestamp for incremental sync (BETTER than Python - follows GPodder spec)
         let since_timestamp = self.get_last_sync_timestamp(user_id).await?;
         
@@ -10445,21 +11452,34 @@ impl DatabasePool {
         if !local_actions.is_empty() {
             let upload_url = format!("{}/api/2/episodes/{}.json", gpodder_url.trim_end_matches('/'), username);
             
-            let response = if session.authenticated {
-                // Use session-based authentication
-                session.client
-                    .post(&upload_url)
+            // Use correct authentication based on internal vs external
+            let response = if gpodder_url == "http://localhost:8042" {
+                // Internal GPodder API - use X-GPodder-Token header
+                let client = reqwest::Client::new();
+                client.post(&upload_url)
+                    .header("X-GPodder-Token", password)
                     .json(&local_actions)
                     .send()
                     .await
             } else {
-                // Fallback to basic auth
-                session.client
-                    .post(&upload_url)
-                    .basic_auth(username, Some(password))
-                    .json(&local_actions)
-                    .send()
-                    .await
+                // External GPodder API - use session auth with basic fallback
+                let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+                if session.authenticated {
+                    // Use session-based authentication
+                    session.client
+                        .post(&upload_url)
+                        .json(&local_actions)
+                        .send()
+                        .await
+                } else {
+                    // Fallback to basic auth
+                    session.client
+                        .post(&upload_url)
+                        .basic_auth(username, Some(password))
+                        .json(&local_actions)
+                        .send()
+                        .await
+                }
             };
             
             match response {
@@ -10475,25 +11495,38 @@ impl DatabasePool {
             }
         }
         
-        // Download remote actions from gPodder service with timestamp support
-        let mut download_url = format!("{}/api/2/episodes/{}.json", gpodder_url.trim_end_matches('/'), username);
+        // Download remote actions from gPodder service with timestamp support - use same format as working sync
+        let download_url = if let Some(since) = since_timestamp {
+            format!("{}/api/2/episodes/{}.json?since={}&device={}", 
+                gpodder_url.trim_end_matches('/'), username, since.timestamp(), device_name)
+        } else {
+            format!("{}/api/2/episodes/{}.json?since=0&device={}", 
+                gpodder_url.trim_end_matches('/'), username, device_name)
+        };
         
-        // Add since parameter for incremental sync
-        if let Some(since) = since_timestamp {
-            download_url = format!("{}?since={}", download_url, since.timestamp());
-        }
-        
-        let response = if session.authenticated {
-            session.client
-                .get(&download_url)
+        // Use correct authentication based on internal vs external for download
+        let response = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            client.get(&download_url)
+                .header("X-GPodder-Token", password)
                 .send()
                 .await
         } else {
-            session.client
-                .get(&download_url)
-                .basic_auth(username, Some(password))
-                .send()
-                .await
+            // External GPodder API - use session auth with basic fallback
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, password).await?;
+            if session.authenticated {
+                session.client
+                    .get(&download_url)
+                    .send()
+                    .await
+            } else {
+                session.client
+                    .get(&download_url)
+                    .basic_auth(username, Some(password))
+                    .send()
+                    .await
+            }
         };
         
         match response {
@@ -10557,6 +11590,10 @@ impl DatabasePool {
 
     // Apply remote episode actions locally - matches Python apply_episode_actions function exactly
     async fn apply_remote_episode_actions(&self, user_id: i32, actions: &[serde_json::Value]) -> AppResult<()> {
+        tracing::info!("Processing {} episode actions for user {}", actions.len(), user_id);
+        let mut applied_count = 0;
+        let mut not_found_count = 0;
+        
         for action in actions {
             if let (Some(episode_url), Some(action_type)) = (
                 action["episode"].as_str(),
@@ -10570,10 +11607,39 @@ impl DatabasePool {
                         ) {
                             // Find local episode by URL
                             if let Some(episode_id) = self.find_episode_by_url(user_id, episode_url).await? {
-                                // Parse timestamp
-                                if let Ok(timestamp) = chrono::DateTime::parse_from_rfc3339(timestamp_str) {
-                                    self.update_episode_progress(user_id, episode_id, position as i32, timestamp.naive_utc()).await?;
+                                // Parse timestamp - handle both RFC3339 and simple datetime formats
+                                let timestamp = if let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(timestamp_str) {
+                                    parsed.naive_utc()
+                                } else if let Ok(parsed) = chrono::NaiveDateTime::parse_from_str(timestamp_str, "%Y-%m-%dT%H:%M:%S") {
+                                    parsed
+                                } else {
+                                    tracing::warn!("Failed to parse timestamp for episode action: {}", timestamp_str);
+                                    continue;
+                                };
+                                
+                                // Get episode duration to check if it should be marked as complete
+                                if let Ok(episode_duration) = self.get_episode_duration(episode_id).await {
+                                    if episode_duration > 0 && (episode_duration - position as i32) <= 120 {
+                                        // Within 2 minutes of completion - mark as complete
+                                        // GPodder sync only handles regular podcast episodes, never YouTube videos
+                                        self.mark_episode_completed(episode_id, user_id, false).await?;
+                                        applied_count += 1;
+                                        tracing::debug!("Marked episode as completed: {} ({}s of {}s)", episode_url, position, episode_duration);
+                                    } else {
+                                        // Update progress normally
+                                        self.update_episode_progress(user_id, episode_id, position as i32, timestamp).await?;
+                                        applied_count += 1;
+                                        tracing::debug!("Applied episode action: {} -> position {}", episode_url, position);
+                                    }
+                                } else {
+                                    // Fallback to normal progress update if duration unavailable
+                                    self.update_episode_progress(user_id, episode_id, position as i32, timestamp).await?;
+                                    applied_count += 1;
+                                    tracing::debug!("Applied episode action (no duration): {} -> position {}", episode_url, position);
                                 }
+                            } else {
+                                not_found_count += 1;
+                                tracing::debug!("Episode not found in local database: {}", episode_url);
                             }
                         }
                     }
@@ -10591,6 +11657,9 @@ impl DatabasePool {
                 }
             }
         }
+        
+        tracing::info!("Episode actions processing complete: {} applied, {} not found in local database", 
+                      applied_count, not_found_count);
         Ok(())
     }
     
@@ -10770,7 +11839,7 @@ impl DatabasePool {
     }
 
     // Helper function to get user sync settings
-    async fn get_user_sync_settings(&self, user_id: i32) -> AppResult<Option<UserSyncSettings>> {
+    pub async fn get_user_sync_settings(&self, user_id: i32) -> AppResult<Option<UserSyncSettings>> {
         match self {
             DatabasePool::Postgres(pool) => {
                 let row = sqlx::query(r#"SELECT gpodderurl, gpodderloginname, gpoddertoken, pod_sync_type FROM "Users" WHERE userid = $1"#)
@@ -10852,27 +11921,85 @@ impl DatabasePool {
     }
 
     // Get or create default device - matches Python device handling
-    async fn get_or_create_default_device(&self, user_id: i32) -> AppResult<String> {
-        let devices = self.gpodder_get_user_devices(user_id).await?;
+    pub async fn get_or_create_default_device(&self, user_id: i32) -> AppResult<String> {
+        // Get the default device name from Users table - this is where PinePods tracks user preferences
+        let default_device_name = match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT defaultgpodderdevice FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                row.and_then(|r| r.try_get::<Option<String>, _>("defaultgpodderdevice").ok().flatten())
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT DefaultGpodderDevice FROM Users WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                row.and_then(|r| r.try_get::<Option<String>, _>("DefaultGpodderDevice").ok().flatten())
+            }
+        };
         
-        for device in &devices {
-            if device["is_default"].as_bool().unwrap_or(false) {
-                return Ok(device["name"].as_str().unwrap_or("pinepods").to_string());
+        // If we have a default device name from Users table, use it
+        if let Some(device_name) = default_device_name {
+            return Ok(device_name);
+        }
+        
+        // Fallback: check sync settings to determine appropriate default
+        if let Some(sync_settings) = self.get_user_sync_settings(user_id).await? {
+            match sync_settings.sync_type.as_str() {
+                "external" => {
+                    // For external servers, we should not create devices - they must exist on the external server
+                    return Err(AppError::BadRequest("No default device configured for external GPodder sync. Please configure a default device.".to_string()));
+                }
+                "gpodder" | "both" => {
+                    // For internal sync, create a default internal device
+                    let device_name = format!("pinepods-internal-{}", user_id);
+                    let device_type = "server";
+                    self.create_gpodder_device(user_id, &device_name, device_type, true).await?;
+                    
+                    // Set this as the default in Users table
+                    match self {
+                        DatabasePool::Postgres(pool) => {
+                            sqlx::query(r#"UPDATE "Users" SET defaultgpodderdevice = $1 WHERE userid = $2"#)
+                                .bind(&device_name)
+                                .bind(user_id)
+                                .execute(pool)
+                                .await?;
+                        }
+                        DatabasePool::MySQL(pool) => {
+                            sqlx::query("UPDATE Users SET DefaultGpodderDevice = ? WHERE UserID = ?")
+                                .bind(&device_name)
+                                .bind(user_id)
+                                .execute(pool)
+                                .await?;
+                        }
+                    }
+                    
+                    return Ok(device_name);
+                }
+                _ => {
+                    return Err(AppError::BadRequest("GPodder sync not properly configured".to_string()));
+                }
             }
         }
         
-        // Create default device if none exists - matches Python device creation logic
-        let device_name = format!("pinepods-internal-{}", user_id);
-        let device_type = "server";
-        self.create_gpodder_device(user_id, &device_name, device_type, true).await?;
-        Ok(device_name)
+        Err(AppError::BadRequest("No GPodder sync configured".to_string()))
     }
 
     // Create gPodder device - matches Python device creation
     async fn create_gpodder_device(&self, user_id: i32, device_name: &str, device_type: &str, is_default: bool) -> AppResult<()> {
         match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"INSERT INTO "GpodderDevices" (userid, devicename, devicetype, isdefault) VALUES ($1, $2, $3, $4)"#)
+                // Use INSERT ... ON CONFLICT to handle existing devices
+                sqlx::query(r#"
+                    INSERT INTO "GpodderDevices" (userid, devicename, devicetype, isdefault) 
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (userid, devicename) 
+                    DO UPDATE SET devicetype = EXCLUDED.devicetype, isdefault = EXCLUDED.isdefault
+                "#)
                     .bind(user_id)
                     .bind(device_name)
                     .bind(device_type)
@@ -10881,7 +12008,12 @@ impl DatabasePool {
                     .await?;
             }
             DatabasePool::MySQL(pool) => {
-                sqlx::query("INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsDefault) VALUES (?, ?, ?, ?)")
+                // Use INSERT ... ON DUPLICATE KEY UPDATE to handle existing devices
+                sqlx::query("
+                    INSERT INTO GpodderDevices (UserID, DeviceName, DeviceType, IsDefault) 
+                    VALUES (?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE DeviceType = VALUES(DeviceType), IsDefault = VALUES(IsDefault)
+                ")
                     .bind(user_id)
                     .bind(device_name)
                     .bind(device_type)
@@ -10928,50 +12060,42 @@ impl DatabasePool {
     
     // Get default gPodder device - matches Python get_default_device function exactly
     pub async fn gpodder_get_default_device(&self, user_id: i32) -> AppResult<Option<serde_json::Value>> {
-        match self {
+        // Get the default device name from Users table
+        let default_device_name = match self {
             DatabasePool::Postgres(pool) => {
-                let row = sqlx::query(r#"SELECT deviceid, devicename, devicetype, devicecaption FROM "GpodderDevices" WHERE userid = $1 AND isdefault = true LIMIT 1"#)
+                let row = sqlx::query(r#"SELECT defaultgpodderdevice FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
                 
-                if let Some(row) = row {
-                    Ok(Some(serde_json::json!({
-                        "id": row.try_get::<i32, _>("deviceid")?,
-                        "name": row.try_get::<String, _>("devicename")?,
-                        "type": row.try_get::<String, _>("devicetype")?,
-                        "caption": row.try_get::<Option<String>, _>("devicecaption")?,
-                        "last_sync": None::<Option<String>>,
-                        "is_active": true,
-                        "is_remote": false,
-                        "is_default": true
-                    })))
-                } else {
-                    Ok(None)
-                }
+                row.and_then(|r| r.try_get::<Option<String>, _>("defaultgpodderdevice").ok().flatten())
             }
             DatabasePool::MySQL(pool) => {
-                let row = sqlx::query("SELECT DeviceID, DeviceName, DeviceType, DeviceCaption FROM GpodderDevices WHERE UserID = ? AND IsDefault = 1 LIMIT 1")
+                let row = sqlx::query("SELECT DefaultGpodderDevice FROM Users WHERE UserID = ?")
                     .bind(user_id)
                     .fetch_optional(pool)
                     .await?;
                 
-                if let Some(row) = row {
-                    Ok(Some(serde_json::json!({
-                        "id": row.try_get::<i32, _>("DeviceID")?,
-                        "name": row.try_get::<String, _>("DeviceName")?,
-                        "type": row.try_get::<String, _>("DeviceType")?,
-                        "caption": row.try_get::<Option<String>, _>("DeviceCaption")?,
-                        "last_sync": None::<Option<String>>,
-                        "is_active": true,
-                        "is_remote": false,
-                        "is_default": true
-                    })))
-                } else {
-                    Ok(None)
+                row.and_then(|r| r.try_get::<Option<String>, _>("DefaultGpodderDevice").ok().flatten())
+            }
+        };
+        
+        if let Some(device_name) = default_device_name {
+            // Get all devices from GPodder API and find the one with matching name
+            let devices = self.gpodder_get_user_devices(user_id).await?;
+            
+            for device in devices {
+                if device.get("name").and_then(|v| v.as_str()) == Some(&device_name) {
+                    // Mark this device as default and return it
+                    let mut default_device = device;
+                    default_device["is_default"] = serde_json::Value::Bool(true);
+                    return Ok(Some(default_device));
                 }
             }
         }
+        
+        // If no default device found, return None
+        Ok(None)
     }
 
 
@@ -10980,8 +12104,18 @@ impl DatabasePool {
         let client = reqwest::Client::new();
         let decrypted_password = self.decrypt_password(&settings.token).await?;
         
-        // Get subscriptions from Nextcloud gPodder Sync app
-        let subscriptions_url = format!("{}/index.php/apps/gpoddersync/subscriptions", settings.url.trim_end_matches('/'));
+        // Step 1: Get last sync timestamp for incremental sync
+        let since_timestamp = self.get_last_sync_timestamp(user_id).await?;
+        
+        // Step 2: Get subscriptions from Nextcloud gPodder Sync app with timestamp
+        let subscriptions_url = if let Some(since) = since_timestamp {
+            format!("{}/index.php/apps/gpoddersync/subscription_changes/{}?since={}", 
+                settings.url.trim_end_matches('/'), since.timestamp(), since.timestamp())
+        } else {
+            format!("{}/index.php/apps/gpoddersync/subscriptions", settings.url.trim_end_matches('/'))
+        };
+        
+        tracing::info!("Getting Nextcloud subscriptions from: {}", subscriptions_url);
         
         let response = client
             .get(&subscriptions_url)
@@ -10990,34 +12124,147 @@ impl DatabasePool {
             .await
             .map_err(|e| AppError::internal(&format!("Failed to sync with Nextcloud: {}", e)))?;
         
+        let mut subscriptions_processed = false;
+        
         if response.status().is_success() {
-            let subscriptions: serde_json::Value = response.json().await
+            let subscriptions_response: serde_json::Value = response.json().await
                 .map_err(|e| AppError::internal(&format!("Failed to parse Nextcloud subscriptions: {}", e)))?;
             
-            // Process subscriptions and add missing podcasts
-            if let Some(feeds) = subscriptions.as_array() {
-                let feed_urls: Vec<String> = feeds.iter()
+            // Handle both subscription change format and direct subscription list
+            let (subscriptions, removals) = if since_timestamp.is_some() {
+                // Incremental sync - expect {add: [], remove: [], timestamp: N} format
+                let adds = subscriptions_response["add"].as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
                     .filter_map(|f| f.as_str().map(|s| s.to_string()))
-                    .collect();
-                self.process_gpodder_subscriptions(user_id, &feed_urls).await?;
+                    .collect::<Vec<String>>();
+                
+                let removes = subscriptions_response["remove"].as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .filter_map(|f| f.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<String>>();
+                
+                (adds, removes)
+            } else {
+                // Full sync - expect direct array of subscription URLs, no removals in this format
+                let adds = subscriptions_response.as_array()
+                    .unwrap_or(&vec![])
+                    .iter()
+                    .filter_map(|f| f.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<String>>();
+                
+                (adds, Vec::new())
+            };
+            
+            tracing::info!("Downloaded {} subscriptions and {} removals from Nextcloud", subscriptions.len(), removals.len());
+            
+            // Process subscriptions and add missing podcasts
+            if !subscriptions.is_empty() {
+                self.process_gpodder_subscriptions(user_id, &subscriptions).await?;
+                subscriptions_processed = true;
             }
             
-            Ok(true)
-        } else {
-            Ok(false)
+            // Process subscription removals
+            if !removals.is_empty() {
+                self.process_gpodder_subscription_removals(user_id, &removals).await?;
+                subscriptions_processed = true; // Mark as processed since we did work
+            }
         }
+        
+        // Step 3: Get episode actions from Nextcloud with timestamp
+        let episode_actions_url = if let Some(since) = since_timestamp {
+            format!("{}/index.php/apps/gpoddersync/episode_action?since={}", 
+                settings.url.trim_end_matches('/'), since.timestamp())
+        } else {
+            format!("{}/index.php/apps/gpoddersync/episode_action", settings.url.trim_end_matches('/'))
+        };
+        
+        tracing::info!("Getting Nextcloud episode actions from: {}", episode_actions_url);
+        
+        let episode_response = client
+            .get(&episode_actions_url)
+            .basic_auth(&settings.username, Some(&decrypted_password))
+            .send()
+            .await;
+        
+        let mut episode_actions_processed = false;
+        
+        if let Ok(resp) = episode_response {
+            if resp.status().is_success() {
+                let episode_actions: serde_json::Value = resp.json().await
+                    .map_err(|e| AppError::internal(&format!("Failed to parse Nextcloud episode actions: {}", e)))?;
+                
+                if let Some(actions_array) = episode_actions["actions"].as_array() {
+                    tracing::info!("Downloaded {} episode actions from Nextcloud", actions_array.len());
+                    
+                    if !actions_array.is_empty() {
+                        if let Err(e) = self.apply_remote_episode_actions(user_id, actions_array).await {
+                            tracing::warn!("Nextcloud episode actions processing failed but continuing: {}", e);
+                        } else {
+                            episode_actions_processed = true;
+                        }
+                    }
+                } else if let Some(actions_array) = episode_actions.as_array() {
+                    // Some Nextcloud implementations return direct array
+                    tracing::info!("Downloaded {} episode actions from Nextcloud (direct)", actions_array.len());
+                    
+                    if !actions_array.is_empty() {
+                        if let Err(e) = self.apply_remote_episode_actions(user_id, actions_array).await {
+                            tracing::warn!("Nextcloud episode actions processing failed but continuing: {}", e);
+                        } else {
+                            episode_actions_processed = true;
+                        }
+                    }
+                }
+            } else {
+                tracing::warn!("Nextcloud episode actions returned error: {}", resp.status());
+            }
+        } else {
+            tracing::warn!("Failed to get episode actions from Nextcloud");
+        }
+        
+        // Step 4: Upload local subscriptions to Nextcloud (if needed)
+        if since_timestamp.is_none() || subscriptions_processed {
+            let local_subscriptions = self.get_user_podcast_feeds(user_id).await?;
+            if let Err(e) = self.upload_subscriptions_to_nextcloud(&settings.url, &settings.username, &decrypted_password, &local_subscriptions).await {
+                tracing::warn!("Failed to upload subscriptions to Nextcloud: {}", e);
+            } else {
+                tracing::info!("Successfully uploaded {} subscriptions to Nextcloud", local_subscriptions.len());
+            }
+        } else {
+            tracing::info!("Skipping subscription upload to Nextcloud - no changes detected");
+        }
+        
+        // Step 5: Upload local episode actions to Nextcloud
+        let local_episode_actions = self.get_user_episode_actions(user_id).await?;
+        if !local_episode_actions.is_empty() {
+            if let Err(e) = self.upload_episode_actions_to_nextcloud(&settings.url, &settings.username, &decrypted_password, &local_episode_actions).await {
+                tracing::warn!("Failed to upload episode actions to Nextcloud: {}", e);
+            } else {
+                tracing::info!("Successfully uploaded {} episode actions to Nextcloud", local_episode_actions.len());
+            }
+        } else {
+            tracing::info!("No local episode actions to upload to Nextcloud");
+        }
+        
+        // Step 6: Update last sync timestamp for next incremental sync
+        self.update_last_sync_timestamp(user_id).await?;
+        
+        Ok(subscriptions_processed || episode_actions_processed)
     }
 
     // Decrypt password using Fernet - matches Python encryption
-    async fn decrypt_password(&self, encrypted_password: &str) -> AppResult<String> {
+    pub async fn decrypt_password(&self, encrypted_password: &str) -> AppResult<String> {
         use fernet::Fernet;
         
+        // Get encryption key from app settings (base64 string)
         let encryption_key = self.get_encryption_key().await?;
         let fernet = Fernet::new(&encryption_key)
             .ok_or_else(|| AppError::internal("Failed to create Fernet cipher"))?;
         
         let decrypted = fernet.decrypt(encrypted_password)
-            .map_err(|e| AppError::internal(&format!("Failed to decrypt password: {}", e)))?;
+            .map_err(|e| AppError::internal(&format!("Failed to decrypt password: Fernet decryption error")))?;
         
         String::from_utf8(decrypted)
             .map_err(|e| AppError::internal(&format!("Invalid UTF-8 in decrypted password: {}", e)))
@@ -11059,6 +12306,7 @@ impl DatabasePool {
                     SELECT userid FROM "Users" 
                     WHERE pod_sync_type IS NOT NULL 
                     AND pod_sync_type != 'None' 
+                    AND pod_sync_type != 'nextcloud'
                     AND gpodderurl IS NOT NULL 
                     AND gpodderloginname IS NOT NULL 
                     AND gpoddertoken IS NOT NULL
@@ -11078,6 +12326,7 @@ impl DatabasePool {
                     SELECT UserID FROM Users 
                     WHERE Pod_Sync_Type IS NOT NULL 
                     AND Pod_Sync_Type != 'None' 
+                    AND Pod_Sync_Type != 'nextcloud'
                     AND GpodderUrl IS NOT NULL 
                     AND GpodderLoginName IS NOT NULL 
                     AND GpodderToken IS NOT NULL
@@ -11162,6 +12411,266 @@ impl DatabasePool {
         println!("Successfully extracted podcast values: {}", podcast_values.get("podcastname").unwrap_or(&"Unknown".to_string()));
         
         Ok(podcast_values)
+    }
+
+    // Parse feed episodes using feed-rs and return JSON data (for frontend consumption)
+    pub async fn parse_feed_episodes(&self, feed_url: &str) -> AppResult<Vec<serde_json::Value>> {
+        use reqwest::header::AUTHORIZATION;
+        use feed_rs::parser;
+        
+        // Fetch RSS feed
+        let client = reqwest::Client::new();
+        let response = client.get(feed_url).send().await?;
+        if !response.status().is_success() {
+            return Err(AppError::external_error(&format!("Failed to fetch RSS feed: {}", response.status())));
+        }
+        
+        let content = response.text().await?;
+        
+        // Parse RSS feed using feed-rs
+        let feed = parser::parse(content.as_bytes())
+            .map_err(|e| AppError::external_error(&format!("Failed to parse RSS feed: {}", e)))?;
+        
+        // Extract podcast-level artwork as fallback
+        let podcast_artwork = feed.logo.as_ref().map(|l| l.uri.clone())
+            .or_else(|| feed.icon.as_ref().map(|i| i.uri.clone()))
+            .unwrap_or_default();
+        
+        let mut episodes = Vec::new();
+        
+        for entry in feed.entries.iter() {
+            // Skip episodes without titles
+            if entry.title.is_none() {
+                continue;
+            }
+            
+            // Extract episode data using same logic as add_episodes
+            let mut episode_data = std::collections::HashMap::new();
+            
+            if let Some(title) = &entry.title {
+                episode_data.insert("title".to_string(), title.content.clone());
+            }
+            
+            if let Some(summary) = &entry.summary {
+                episode_data.insert("summary".to_string(), summary.content.clone());
+            }
+            
+            if let Some(content) = &entry.content {
+                if let Some(body) = &content.body {
+                    episode_data.insert("content:encoded".to_string(), body.clone());
+                }
+            }
+            
+            // Extract audio URL from media or links
+            let mut audio_url = String::new();
+            let mut enclosure_length = String::new();
+            
+            // Check media objects first
+            for media in &entry.media {
+                for content in &media.content {
+                    if let Some(url) = &content.url {
+                        if let Some(media_type) = &content.content_type {
+                            if media_type.to_string().starts_with("audio/") {
+                                audio_url = url.to_string();
+                                if let Some(size) = content.size {
+                                    enclosure_length = size.to_string();
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                if !audio_url.is_empty() { break; }
+            }
+            
+            // Fallback to links if no media found
+            if audio_url.is_empty() {
+                for link in &entry.links {
+                    if let Some(media_type) = &link.media_type {
+                        if media_type.starts_with("audio/") {
+                            audio_url = link.href.clone();
+                            if let Some(length) = &link.length {
+                                enclosure_length = length.to_string();
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Extract episode artwork (with fallback to podcast artwork)
+            let mut episode_artwork = podcast_artwork.clone();
+            for media in &entry.media {
+                if !media.thumbnails.is_empty() {
+                    episode_artwork = media.thumbnails[0].image.uri.clone();
+                    break;
+                }
+            }
+            
+            // Extract duration from media or iTunes tags
+            let mut duration_seconds = 0;
+            
+            // First try media objects (works for some feeds)
+            for media in &entry.media {
+                if let Some(duration) = &media.duration {
+                    duration_seconds = duration.as_secs() as i32;
+                    break;
+                }
+            }
+            
+            // If media duration is suspicious (< 3600 seconds = 1 hour), 
+            // try to extract iTunes duration from raw RSS to work around feed-rs parsing bugs
+            if duration_seconds > 0 && duration_seconds < 3600 {
+                if let Some(title) = &entry.title {
+                    if let Some(corrected_duration) = Self::extract_itunes_duration_from_raw(&content, &title.content) {
+                        if corrected_duration != duration_seconds as u64 {
+                            println!("🔧 DURATION CORRECTED: '{}' feed-rs={} -> iTunes={}", 
+                                title.content, duration_seconds, corrected_duration);
+                            duration_seconds = corrected_duration as i32;
+                        }
+                    }
+                }
+            }
+            
+            // Extract publication date
+            let pub_date = if let Some(published) = &entry.published {
+                published.to_rfc3339()
+            } else {
+                chrono::Utc::now().to_rfc3339()
+            };
+            
+            // Create episode JSON object matching frontend Episode structure
+            let episode_json = serde_json::json!({
+                "title": entry.title.as_ref().map(|t| t.content.clone()),
+                "description": entry.summary.as_ref().map(|s| s.content.clone()),
+                "pub_date": pub_date,
+                "enclosure_url": if audio_url.is_empty() { None } else { Some(audio_url) },
+                "enclosure_length": if enclosure_length.is_empty() { None } else { Some(enclosure_length) },
+                "artwork": if episode_artwork.is_empty() { None } else { Some(episode_artwork) },
+                "content": entry.content.as_ref().and_then(|c| c.body.clone()),
+                "duration": duration_seconds,
+                "guid": entry.id.clone()
+            });
+            
+            episodes.push(episode_json);
+        }
+        
+        Ok(episodes)
+    }
+
+    // Extract iTunes duration from raw RSS for a specific episode title (workaround for feed-rs bugs)
+    fn extract_itunes_duration_from_raw(raw_rss: &str, episode_title: &str) -> Option<u64> {
+        // HTML encode the episode title to match raw RSS format
+        // IMPORTANT: encode & first, otherwise it will double-encode other entities
+        let html_encoded_title = episode_title
+            .replace("&", "&amp;")
+            .replace("'", "&apos;")
+            .replace("\"", "&quot;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;");
+        
+        // Try different title formats - RSS titles can vary from feed-rs parsed titles
+        let search_patterns = vec![
+            format!("<title><![CDATA[{}]]></title>", episode_title),
+            format!("<title>{}</title>", episode_title),
+            format!("<title><![CDATA[{}]]></title>", html_encoded_title),
+            format!("<title>{}</title>", html_encoded_title),
+            // Also try searching for the core title without extra formatting
+            episode_title.split(" (").next().unwrap_or(episode_title).to_string(),
+            html_encoded_title.split(" (").next().unwrap_or(&html_encoded_title).to_string(),
+        ];
+        
+        let mut item_pos = None;
+        let mut item_end_pos = None;
+        
+        // Find any item that contains this title or a partial match
+        for pattern in &search_patterns {
+            if let Some(pos) = raw_rss.find(pattern) {
+                // Find the start of the <item> block containing this title
+                let item_start = raw_rss[..pos].rfind("<item>").unwrap_or(0);
+                if let Some(end) = raw_rss[pos..].find("</item>") {
+                    item_pos = Some(item_start);
+                    item_end_pos = Some(pos + end + "</item>".len());
+                    break;
+                }
+            }
+        }
+        
+        // If exact matches failed, try a broader search by looking through all items
+        if item_pos.is_none() {
+            let mut start = 0;
+            while let Some(item_start) = raw_rss[start..].find("<item>") {
+                let absolute_start = start + item_start;
+                if let Some(item_end) = raw_rss[absolute_start..].find("</item>") {
+                    let absolute_end = absolute_start + item_end + "</item>".len();
+                    let item_block = &raw_rss[absolute_start..absolute_end];
+                    
+                    // Check if this item contains any part of our episode title
+                    let title_core = episode_title.split(" (").next().unwrap_or(episode_title);
+                    if item_block.contains(title_core) {
+                        item_pos = Some(absolute_start);
+                        item_end_pos = Some(absolute_end);
+                        break;
+                    }
+                    
+                    start = absolute_end;
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        // Extract duration from the found item block
+        if let (Some(start), Some(end)) = (item_pos, item_end_pos) {
+            let item_block = &raw_rss[start..end];
+            
+            // Look for <itunes:duration> in this item block
+            if let Some(duration_start) = item_block.find("<itunes:duration>") {
+                let duration_content_start = duration_start + "<itunes:duration>".len();
+                if let Some(duration_end) = item_block[duration_content_start..].find("</itunes:duration>") {
+                    let duration_str = &item_block[duration_content_start..duration_content_start + duration_end];
+                    return Self::parse_itunes_duration(duration_str.trim());
+                }
+            }
+        }
+        
+        None
+    }
+
+    // Parse iTunes duration string (HH:MM:SS, MM:SS, or seconds) to total seconds
+    fn parse_itunes_duration(duration_str: &str) -> Option<u64> {
+        if duration_str.is_empty() {
+            return None;
+        }
+        
+        // If it's just a number, treat as seconds
+        if let Ok(seconds) = duration_str.parse::<u64>() {
+            return Some(seconds);
+        }
+        
+        // Split by colons for time format
+        let parts: Vec<&str> = duration_str.split(':').collect();
+        
+        match parts.len() {
+            1 => {
+                // Just seconds
+                parts[0].parse::<u64>().ok()
+            },
+            2 => {
+                // MM:SS
+                let minutes = parts[0].parse::<u64>().ok()?;
+                let seconds = parts[1].parse::<u64>().ok()?;
+                Some(minutes * 60 + seconds)
+            },
+            3 => {
+                // HH:MM:SS
+                let hours = parts[0].parse::<u64>().ok()?;
+                let minutes = parts[1].parse::<u64>().ok()?;
+                let seconds = parts[2].parse::<u64>().ok()?;
+                Some(hours * 3600 + minutes * 60 + seconds)
+            },
+            _ => None
+        }
     }
 
     // Add podcast from RSS values - wrapper function for custom podcast addition
@@ -12938,42 +14447,54 @@ impl DatabasePool {
                 let rows = sqlx::query(
                     r#"SELECT * FROM (
                         SELECT
-                            "Episodes".EpisodeID as episodeid,
-                            "UserEpisodeHistory".ListenDate as listendate,
-                            "UserEpisodeHistory".ListenDuration as listenduration,
-                            "Episodes".EpisodeTitle as episodetitle,
-                            "Episodes".EpisodeDescription as episodedescription,
-                            "Episodes".EpisodeArtwork as episodeartwork,
-                            "Episodes".EpisodeURL as episodeurl,
-                            "Episodes".EpisodeDuration as episodeduration,
-                            "Podcasts".PodcastName as podcastname,
-                            "Episodes".EpisodePubDate as episodepubdate,
-                            "Episodes".Completed as completed,
+                            "Episodes".episodeid as episodeid,
+                            "UserEpisodeHistory".listendate as listendate,
+                            "UserEpisodeHistory".listenduration as listenduration,
+                            "Episodes".episodetitle as episodetitle,
+                            "Episodes".episodedescription as episodedescription,
+                            "Episodes".episodeartwork as episodeartwork,
+                            "Episodes".episodeurl as episodeurl,
+                            "Episodes".episodeduration as episodeduration,
+                            "Podcasts".podcastname as podcastname,
+                            "Episodes".episodepubdate as episodepubdate,
+                            "Episodes".completed as completed,
+                            CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                            CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             FALSE as is_youtube
                         FROM "UserEpisodeHistory"
-                        JOIN "Episodes" ON "UserEpisodeHistory".EpisodeID = "Episodes".EpisodeID
-                        JOIN "Podcasts" ON "Episodes".PodcastID = "Podcasts".PodcastID
-                        WHERE "UserEpisodeHistory".UserID = $1
+                        JOIN "Episodes" ON "UserEpisodeHistory".episodeid = "Episodes".episodeid
+                        JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "SavedEpisodes" ON "Episodes".episodeid = "SavedEpisodes".episodeid AND "SavedEpisodes".userid = $1
+                        LEFT JOIN "EpisodeQueue" ON "Episodes".episodeid = "EpisodeQueue".episodeid AND "EpisodeQueue".userid = $1
+                        LEFT JOIN "DownloadedEpisodes" ON "Episodes".episodeid = "DownloadedEpisodes".episodeid AND "DownloadedEpisodes".userid = $1
+                        WHERE "UserEpisodeHistory".userid = $1
 
                         UNION ALL
 
                         SELECT
-                            "YouTubeVideos".VideoID as episodeid,
+                            "YouTubeVideos".videoid as episodeid,
                             NULL as listendate,
-                            "YouTubeVideos".ListenPosition as listenduration,
-                            "YouTubeVideos".VideoTitle as episodetitle,
-                            "YouTubeVideos".VideoDescription as episodedescription,
-                            "YouTubeVideos".ThumbnailURL as episodeartwork,
-                            "YouTubeVideos".VideoURL as episodeurl,
-                            "YouTubeVideos".Duration as episodeduration,
-                            "Podcasts".PodcastName as podcastname,
-                            "YouTubeVideos".PublishedAt as episodepubdate,
-                            "YouTubeVideos".Completed as completed,
+                            "YouTubeVideos".listenposition as listenduration,
+                            "YouTubeVideos".videotitle as episodetitle,
+                            "YouTubeVideos".videodescription as episodedescription,
+                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            "YouTubeVideos".videourl as episodeurl,
+                            "YouTubeVideos".duration as episodeduration,
+                            "Podcasts".podcastname as podcastname,
+                            "YouTubeVideos".publishedat as episodepubdate,
+                            "YouTubeVideos".completed as completed,
+                            CASE WHEN "SavedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                            CASE WHEN "DownloadedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             TRUE as is_youtube
                         FROM "YouTubeVideos"
-                        JOIN "Podcasts" ON "YouTubeVideos".PodcastID = "Podcasts".PodcastID
-                        WHERE "YouTubeVideos".ListenPosition > 0
-                          AND "Podcasts".UserID = $1
+                        JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "SavedVideos" ON "YouTubeVideos".videoid = "SavedVideos".videoid AND "SavedVideos".userid = $1
+                        LEFT JOIN "EpisodeQueue" ON "YouTubeVideos".videoid = "EpisodeQueue".episodeid AND "EpisodeQueue".userid = $1
+                        LEFT JOIN "DownloadedVideos" ON "YouTubeVideos".videoid = "DownloadedVideos".videoid AND "DownloadedVideos".userid = $1
+                        WHERE "YouTubeVideos".listenposition > 0
+                          AND "Podcasts".userid = $1
                     ) combined_results
                     ORDER BY listendate DESC NULLS LAST"#
                 )
@@ -13000,6 +14521,9 @@ impl DatabasePool {
                         "podcastname": row.get::<Option<String>, _>("podcastname"),
                         "episodepubdate": episodepubdate,
                         "completed": row.get::<Option<bool>, _>("completed"),
+                        "saved": row.get::<Option<bool>, _>("saved"),
+                        "queued": row.get::<Option<bool>, _>("queued"),
+                        "downloaded": row.get::<Option<bool>, _>("downloaded"),
                         "is_youtube": row.get::<Option<bool>, _>("is_youtube")
                     }));
                 }
@@ -13020,10 +14544,16 @@ impl DatabasePool {
                             p.PodcastName as podcastname,
                             e.EpisodePubDate as episodepubdate,
                             e.Completed as completed,
+                            CASE WHEN se.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN eq.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                            CASE WHEN de.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             0 as is_youtube
                         FROM UserEpisodeHistory ueh
                         JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
                         JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                        LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
+                        LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ?
+                        LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
                         WHERE ueh.UserID = ?
 
                         UNION ALL
@@ -13040,16 +14570,28 @@ impl DatabasePool {
                             p.PodcastName as podcastname,
                             yv.PublishedAt as episodepubdate,
                             yv.Completed as completed,
+                            CASE WHEN sv.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN eq.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                            CASE WHEN dv.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             1 as is_youtube
                         FROM YouTubeVideos yv
                         JOIN Podcasts p ON yv.PodcastID = p.PodcastID
+                        LEFT JOIN SavedVideos sv ON yv.VideoID = sv.VideoID AND sv.UserID = ?
+                        LEFT JOIN EpisodeQueue eq ON yv.VideoID = eq.EpisodeID AND eq.UserID = ?
+                        LEFT JOIN DownloadedVideos dv ON yv.VideoID = dv.VideoID AND dv.UserID = ?
                         WHERE yv.ListenPosition > 0
                           AND p.UserID = ?
                     ) combined_results
                     ORDER BY listendate DESC"
                 )
-                .bind(user_id)
-                .bind(user_id)
+                .bind(user_id)  // SavedEpisodes join
+                .bind(user_id)  // EpisodeQueue join  
+                .bind(user_id)  // DownloadedEpisodes join
+                .bind(user_id)  // WHERE clause
+                .bind(user_id)  // SavedVideos join
+                .bind(user_id)  // EpisodeQueue join (YouTube)
+                .bind(user_id)  // DownloadedVideos join
+                .bind(user_id)  // WHERE clause (YouTube)
                 .fetch_all(pool)
                 .await?;
 
@@ -13072,6 +14614,9 @@ impl DatabasePool {
                         "podcastname": row.get::<Option<String>, _>("podcastname"),
                         "episodepubdate": episodepubdate,
                         "completed": row.get::<Option<bool>, _>("completed"),
+                        "saved": row.get::<Option<bool>, _>("saved"),
+                        "queued": row.get::<Option<bool>, _>("queued"),
+                        "downloaded": row.get::<Option<bool>, _>("downloaded"),
                         "is_youtube": row.get::<Option<bool>, _>("is_youtube")
                     }));
                 }
@@ -13131,7 +14676,11 @@ impl DatabasePool {
                     .fetch_one(pool)
                     .await?;
 
-                Ok(row.try_get::<f64, _>("PlaybackSpeed").unwrap_or(1.0))
+                if let Ok(speed) = row.try_get::<bigdecimal::BigDecimal, _>("PlaybackSpeed") {
+                    Ok(speed.to_f64().unwrap_or(1.0))
+                } else {
+                    Ok(1.0)
+                }
             }
         }
     }
@@ -13159,7 +14708,7 @@ impl DatabasePool {
                 tracing::info!("Cleaned up {} old PeopleEpisodes records older than {} days", result.rows_affected(), days);
             }
             DatabasePool::MySQL(pool) => {
-                let result = sqlx::query("DELETE FROM PeopleEpisodes WHERE Created < ?")
+                let result = sqlx::query("DELETE FROM PeopleEpisodes WHERE AddedDate < ?")
                     .bind(cutoff_date)
                     .execute(pool)
                     .await?;
@@ -13234,7 +14783,7 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let playlists = sqlx::query("
-                    SELECT PlaylistID, PlaylistName, UserID, PodcastIds, IncludeUnplayed, 
+                    SELECT PlaylistID, Name, UserID, PodcastIds, IncludeUnplayed, 
                            IncludePartiallyPlayed, IncludePlayed, PlayProgressMin, PlayProgressMax, 
                            TimeFilterHours, MinDuration, MaxDuration, SortOrder, 
                            GroupByPodcast, MaxEpisodes
@@ -13247,7 +14796,7 @@ impl DatabasePool {
                 
                 for playlist in playlists {
                     let playlist_id: i32 = playlist.try_get("PlaylistID")?;
-                    let playlist_name: String = playlist.try_get("PlaylistName")?;
+                    let playlist_name: String = playlist.try_get("Name")?;
                     let user_id: i32 = playlist.try_get("UserID")?;
                     
                     tracing::info!("Updating playlist: {} (ID: {}, User: {})", playlist_name, playlist_id, user_id);
@@ -13301,6 +14850,12 @@ impl DatabasePool {
                 let episode_count = if playlist_name == "Fresh Releases" && is_system_playlist {
                     // Special handling for Fresh Releases
                     self.update_fresh_releases_playlist_postgres(pool, playlist_id).await?
+                } else if playlist_name == "Currently Listening" && is_system_playlist {
+                    // Special handling for Currently Listening
+                    self.update_currently_listening_playlist_postgres(pool, playlist_id).await?
+                } else if playlist_name == "Almost Done" && is_system_playlist {
+                    // Special handling for Almost Done  
+                    self.update_almost_done_playlist_postgres(pool, playlist_id).await?
                 } else {
                     // Standard playlist query building
                     self.build_and_execute_playlist_query_postgres(pool, &playlist).await?
@@ -13317,7 +14872,7 @@ impl DatabasePool {
             DatabasePool::MySQL(pool) => {
                 // Get playlist configuration first
                 let playlist = sqlx::query("
-                    SELECT PlaylistID, PlaylistName, UserID, PodcastIds, IncludeUnplayed, 
+                    SELECT PlaylistID, Name, UserID, PodcastIds, IncludeUnplayed, 
                            IncludePartiallyPlayed, IncludePlayed, PlayProgressMin, PlayProgressMax, 
                            TimeFilterHours, MinDuration, MaxDuration, SortOrder, 
                            GroupByPodcast, MaxEpisodes, IsSystemPlaylist
@@ -13334,13 +14889,19 @@ impl DatabasePool {
                     .await?;
                 
                 // Handle special playlists
-                let playlist_name: String = playlist.try_get("PlaylistName")?;
+                let playlist_name: String = playlist.try_get("Name")?;
                 let user_id: i32 = playlist.try_get("UserID")?;
                 let is_system_playlist: bool = playlist.try_get("IsSystemPlaylist").unwrap_or(false);
                 
                 let episode_count = if playlist_name == "Fresh Releases" && is_system_playlist {
                     // Special handling for Fresh Releases
                     self.update_fresh_releases_playlist_mysql(pool, playlist_id).await?
+                } else if playlist_name == "Currently Listening" && is_system_playlist {
+                    // Special handling for Currently Listening
+                    self.update_currently_listening_playlist_mysql(pool, playlist_id).await?
+                } else if playlist_name == "Almost Done" && is_system_playlist {
+                    // Special handling for Almost Done
+                    self.update_almost_done_playlist_mysql(pool, playlist_id).await?
                 } else {
                     // Standard playlist query building
                     self.build_and_execute_playlist_query_mysql(pool, &playlist).await?
@@ -13809,7 +15370,9 @@ impl DatabasePool {
         for user in users {
             let user_id: i32 = user.try_get("userid")?;
             let timezone: Option<String> = user.try_get("timezone").ok();
-            let tz = timezone.as_deref().unwrap_or("UTC");
+            let tz = timezone.as_deref()
+                .filter(|s| !s.is_empty()) // Filter out empty strings
+                .unwrap_or("UTC");
             
             tracing::info!("Processing Fresh Releases for user {} with timezone {}", user_id, tz);
             
@@ -13850,6 +15413,111 @@ impl DatabasePool {
         Ok(added_episodes.len() as i32)
     }
 
+    // Update Currently Listening playlist - episodes that users have started but not finished
+    async fn update_currently_listening_playlist_postgres(&self, pool: &Pool<Postgres>, playlist_id: i32) -> AppResult<i32> {
+        tracing::info!("Updating Currently Listening playlist");
+        
+        // Get all users and their currently listening episodes
+        let users = sqlx::query(r#"SELECT userid FROM "Users""#)
+            .fetch_all(pool)
+            .await?;
+        
+        let mut added_episodes: std::collections::HashSet<i32> = std::collections::HashSet::new();
+        let mut position = 1;
+        
+        for user in users {
+            let user_id: i32 = user.try_get("userid")?;
+            
+            tracing::info!("Processing Currently Listening for user {}", user_id);
+            
+            // Get episodes user has started but not finished
+            let episodes = sqlx::query(r#"
+                SELECT e.episodeid
+                FROM "Episodes" e
+                JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid
+                WHERE h.userid = $1
+                AND h.listenduration > 0
+                AND h.listenduration < e.episodeduration
+                ORDER BY h.listendate DESC
+            "#)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+            
+            // Add unique episodes to playlist
+            for episode in episodes {
+                let episode_id: i32 = episode.try_get("episodeid")?;
+                if !added_episodes.contains(&episode_id) {
+                    sqlx::query(r#"INSERT INTO "PlaylistContents" (playlistid, episodeid, position) VALUES ($1, $2, $3)"#)
+                        .bind(playlist_id)
+                        .bind(episode_id)
+                        .bind(position)
+                        .execute(pool)
+                        .await?;
+                    
+                    added_episodes.insert(episode_id);
+                    position += 1;
+                }
+            }
+        }
+        
+        tracing::info!("Currently Listening playlist updated with {} episodes", added_episodes.len());
+        Ok(added_episodes.len() as i32)
+    }
+
+    // Update Almost Done playlist - episodes that users are 75%+ through
+    async fn update_almost_done_playlist_postgres(&self, pool: &Pool<Postgres>, playlist_id: i32) -> AppResult<i32> {
+        tracing::info!("Updating Almost Done playlist");
+        
+        // Get all users and their almost done episodes
+        let users = sqlx::query(r#"SELECT userid FROM "Users""#)
+            .fetch_all(pool)
+            .await?;
+        
+        let mut added_episodes: std::collections::HashSet<i32> = std::collections::HashSet::new();
+        let mut position = 1;
+        
+        for user in users {
+            let user_id: i32 = user.try_get("userid")?;
+            
+            tracing::info!("Processing Almost Done for user {}", user_id);
+            
+            // Get episodes user is 75%+ through but not completed
+            let episodes = sqlx::query(r#"
+                SELECT e.episodeid
+                FROM "Episodes" e
+                JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid
+                WHERE h.userid = $1
+                AND h.listenduration > 0
+                AND h.listenduration < e.episodeduration
+                AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) >= 0.75
+                ORDER BY h.listendate DESC
+            "#)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+            
+            // Add unique episodes to playlist
+            for episode in episodes {
+                let episode_id: i32 = episode.try_get("episodeid")?;
+                if !added_episodes.contains(&episode_id) {
+                    sqlx::query(r#"INSERT INTO "PlaylistContents" (playlistid, episodeid, position) VALUES ($1, $2, $3)"#)
+                        .bind(playlist_id)
+                        .bind(episode_id)
+                        .bind(position)
+                        .execute(pool)
+                        .await?;
+                    
+                    added_episodes.insert(episode_id);
+                    position += 1;
+                }
+            }
+        }
+        
+        tracing::info!("Almost Done playlist updated with {} episodes", added_episodes.len());
+        Ok(added_episodes.len() as i32)
+    }
+
     async fn update_fresh_releases_playlist_mysql(&self, pool: &Pool<MySql>, playlist_id: i32) -> AppResult<i32> {
         tracing::info!("Updating Fresh Releases playlist with timezone logic");
         
@@ -13864,7 +15532,9 @@ impl DatabasePool {
         for user in users {
             let user_id: i32 = user.try_get("UserID")?;
             let timezone: Option<String> = user.try_get("TimeZone").ok();
-            let tz = timezone.as_deref().unwrap_or("UTC");
+            let tz = timezone.as_deref()
+                .filter(|s| !s.is_empty()) // Filter out empty strings
+                .unwrap_or("UTC");
             
             tracing::info!("Processing Fresh Releases for user {} with timezone {}", user_id, tz);
             
@@ -13906,6 +15576,126 @@ impl DatabasePool {
         Ok(added_episodes.len() as i32)
     }
 
+    async fn update_currently_listening_playlist_mysql(&self, pool: &Pool<MySql>, playlist_id: i32) -> AppResult<i32> {
+        tracing::info!("Updating Currently Listening playlist");
+        
+        // Clear existing playlist contents
+        sqlx::query("DELETE FROM PlaylistContents WHERE PlaylistID = ?")
+            .bind(playlist_id)
+            .execute(pool)
+            .await?;
+        
+        // Get all users
+        let users = sqlx::query("SELECT UserID FROM Users")
+            .fetch_all(pool)
+            .await?;
+        
+        let mut added_episodes: std::collections::HashSet<i32> = std::collections::HashSet::new();
+        let mut position = 1;
+        
+        for user in users {
+            let user_id: i32 = user.try_get("UserID")?;
+            
+            tracing::info!("Processing Currently Listening for user {}", user_id);
+            
+            // Get episodes that are currently being listened to (started but not completed)
+            let episodes = sqlx::query("
+                SELECT e.EpisodeID
+                FROM Episodes e
+                JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = ?
+                WHERE h.ListenDuration > 0 AND h.ListenDuration < e.EpisodeDuration
+                ORDER BY h.ListenDate DESC
+            ")
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+            
+            // Add unique episodes to playlist
+            for episode in episodes {
+                let episode_id: i32 = episode.try_get("EpisodeID")?;
+                if !added_episodes.contains(&episode_id) {
+                    sqlx::query("
+                        INSERT INTO PlaylistContents (PlaylistID, EpisodeID, Position)
+                        VALUES (?, ?, ?)
+                    ")
+                        .bind(playlist_id)
+                        .bind(episode_id)
+                        .bind(position)
+                        .execute(pool)
+                        .await?;
+                    
+                    added_episodes.insert(episode_id);
+                    position += 1;
+                }
+            }
+        }
+        
+        tracing::info!("Currently Listening playlist updated with {} episodes", added_episodes.len());
+        Ok(added_episodes.len() as i32)
+    }
+
+    async fn update_almost_done_playlist_mysql(&self, pool: &Pool<MySql>, playlist_id: i32) -> AppResult<i32> {
+        tracing::info!("Updating Almost Done playlist");
+        
+        // Clear existing playlist contents
+        sqlx::query("DELETE FROM PlaylistContents WHERE PlaylistID = ?")
+            .bind(playlist_id)
+            .execute(pool)
+            .await?;
+        
+        // Get all users
+        let users = sqlx::query("SELECT UserID FROM Users")
+            .fetch_all(pool)
+            .await?;
+        
+        let mut added_episodes: std::collections::HashSet<i32> = std::collections::HashSet::new();
+        let mut position = 1;
+        
+        for user in users {
+            let user_id: i32 = user.try_get("UserID")?;
+            
+            tracing::info!("Processing Almost Done for user {}", user_id);
+            
+            // Get episodes that are almost done (75%+ listened and not completed)
+            let episodes = sqlx::query("
+                SELECT e.EpisodeID
+                FROM Episodes e
+                JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = ?
+                WHERE h.ListenDuration > 0 
+                  AND h.ListenDuration < e.EpisodeDuration 
+                  AND (h.ListenDuration / NULLIF(e.EpisodeDuration, 0)) >= 0.75
+                ORDER BY h.ListenDate DESC
+            ")
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+            
+            // Add unique episodes to playlist
+            for episode in episodes {
+                let episode_id: i32 = episode.try_get("EpisodeID")?;
+                if !added_episodes.contains(&episode_id) {
+                    sqlx::query("
+                        INSERT INTO PlaylistContents (PlaylistID, EpisodeID, Position)
+                        VALUES (?, ?, ?)
+                    ")
+                        .bind(playlist_id)
+                        .bind(episode_id)
+                        .bind(position)
+                        .execute(pool)
+                        .await?;
+                    
+                    added_episodes.insert(episode_id);
+                    position += 1;
+                }
+            }
+        }
+        
+        tracing::info!("Almost Done playlist updated with {} episodes", added_episodes.len());
+        Ok(added_episodes.len() as i32)
+    }
+
     // Build and execute playlist query for PostgreSQL - matches Python build_playlist_query exactly
     async fn build_and_execute_playlist_query_postgres(&self, pool: &Pool<Postgres>, playlist: &sqlx::postgres::PgRow) -> AppResult<i32> {
         let playlist_id: i32 = playlist.try_get("playlistid")?;
@@ -13939,15 +15729,16 @@ impl DatabasePool {
                     WHERE 1=1
                 "#.to_string(), vec![user_id, user_id])
             } else {
-                // System playlist without user history filtering (Fresh Releases)
+                // System playlist without user history filtering (Fresh Releases, etc.)  
+                // But still need user context for history when needed
                 (r#"
                     SELECT e.episodeid, p.podcastid, u.timezone
                     FROM "Episodes" e
                     JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid
-                    JOIN "Users" u ON u.userid = $1
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $1
+                    JOIN "Users" u ON u.userid = $2
                     WHERE 1=1
-                "#.to_string(), vec![user_id])
+                "#.to_string(), vec![user_id, user_id])
             }
         } else {
             // User-specific playlist
@@ -13974,7 +15765,7 @@ impl DatabasePool {
     async fn build_and_execute_playlist_query_mysql(&self, pool: &Pool<MySql>, playlist: &sqlx::mysql::MySqlRow) -> AppResult<i32> {
         let playlist_id: i32 = playlist.try_get("PlaylistID")?;
         let user_id: i32 = playlist.try_get("UserID")?;
-        let playlist_name: String = playlist.try_get("PlaylistName")?;
+        let playlist_name: String = playlist.try_get("Name")?;
         let is_system_playlist: bool = playlist.try_get("IsSystemPlaylist").unwrap_or(false);
         
         // Parse playlist configuration
@@ -14003,15 +15794,16 @@ impl DatabasePool {
                     WHERE 1=1
                 ".to_string(), vec![user_id, user_id])
             } else {
-                // System playlist without user history filtering (Fresh Releases)
+                // System playlist without user history filtering (Fresh Releases, etc.)
+                // But still need user context for history when needed
                 ("
                     SELECT e.EpisodeID
                     FROM Episodes e
                     JOIN Podcasts p ON e.PodcastID = p.PodcastID
-                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID
+                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = ?
                     JOIN Users u ON u.UserID = ?
                     WHERE 1=1
-                ".to_string(), vec![user_id])
+                ".to_string(), vec![user_id, user_id])
             }
         } else {
             // User-specific playlist
@@ -14056,17 +15848,13 @@ impl DatabasePool {
         let mut params = vec![playlist_id, user_id];
         let mut param_index = 3;
         
-        // Add progress filters
+        // Add progress filters using hardcoded values instead of parameters to avoid type issues
         if let Some(min_progress) = config.play_progress_min {
-            query.push_str(&format!(" AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) >= ${}", param_index));
-            params.push((min_progress / 100.0) as i32); // Simplified - should be f64 but keeping i32 for now
-            param_index += 1;
+            query.push_str(&format!(" AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) >= {}", min_progress / 100.0));
         }
         
         if let Some(max_progress) = config.play_progress_max {
-            query.push_str(&format!(" AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) <= ${}", param_index));
-            params.push((max_progress / 100.0) as i32); // Simplified - should be f64 but keeping i32 for now
-            param_index += 1;
+            query.push_str(&format!(" AND (h.listenduration::float / NULLIF(e.episodeduration, 0)) <= {}", max_progress / 100.0));
         }
         
         // Add limit
@@ -14240,7 +16028,7 @@ impl DatabasePool {
         ];
         
         let mut select_query = base_query.replace(
-            "SELECT e.EpisodeID, p.PodcastID, u.TimeZone",
+            "SELECT e.EpisodeID",
             &format!("SELECT {}", select_columns.join(", "))
         );
         
@@ -14457,10 +16245,17 @@ impl DatabasePool {
 
     // Execute the final playlist query for MySQL
     async fn execute_playlist_query_mysql(&self, pool: &Pool<MySql>, query: &str, params: &[i32], _playlist_id: i32) -> AppResult<i32> {
-        // Simplified execution - full implementation would handle dynamic parameters properly
-        let result = sqlx::query(query)
-            .bind(params.get(0).unwrap_or(&0))
-            .execute(pool)
+        tracing::info!("Executing MySQL playlist query with {} parameters", params.len());
+        tracing::debug!("Query: {}", query);
+        tracing::debug!("Params: {:?}", params);
+        
+        // Build query with proper parameter binding
+        let mut sqlx_query = sqlx::query(query);
+        for param in params {
+            sqlx_query = sqlx_query.bind(*param);
+        }
+        
+        let result = sqlx_query.execute(pool)
             .await?;
         
         Ok(result.rows_affected() as i32)
@@ -14614,7 +16409,11 @@ impl DatabasePool {
                     "notificationsenabled": row.try_get::<i8, _>("NotificationsEnabled").unwrap_or(0) != 0,
                     "feedcutoffdays": row.try_get::<i32, _>("FeedCutoffDays").unwrap_or(0),
                     "playbackspeedcustomized": row.try_get::<i8, _>("PlaybackSpeedCustomized").unwrap_or(0) != 0,
-                    "playbackspeed": row.try_get::<f64, _>("PlaybackSpeed").unwrap_or(1.0)
+                    "playbackspeed": if let Ok(speed) = row.try_get::<bigdecimal::BigDecimal, _>("PlaybackSpeed") {
+                        speed.to_f64().unwrap_or(1.0)
+                    } else {
+                        1.0
+                    }
                 }))
             }
         }
@@ -14846,7 +16645,7 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 let result = sqlx::query(r#"
-                    SELECT api_key FROM "APIKeys" 
+                    SELECT apikey FROM "APIKeys" 
                     WHERE userid = $1 
                     ORDER BY created DESC 
                     LIMIT 1
@@ -14856,7 +16655,7 @@ impl DatabasePool {
                     .await?;
 
                 if let Some(row) = result {
-                    Ok(Some(row.try_get("api_key")?))
+                    Ok(Some(row.try_get("apikey")?))
                 } else {
                     Ok(None)
                 }
@@ -15634,7 +17433,7 @@ impl PlaylistConfig {
         
         Ok(PlaylistConfig {
             playlist_id: row.try_get("PlaylistID")?,
-            name: row.try_get("PlaylistName")?,
+            name: row.try_get("Name")?,
             user_id: row.try_get("UserID")?,
             podcast_ids,
             include_unplayed: row.try_get("IncludeUnplayed").unwrap_or(true),
@@ -17338,10 +19137,13 @@ impl DatabasePool {
 
                 let local_gpodder_url = "http://localhost:8042";
 
-                // Update user with internal gpodder settings
+                // Create default device name
+                let default_device_name = format!("pinepods-internal-{}", user_id);
+
+                // Update user with internal gpodder settings and set default device
                 sqlx::query(r#"
                     UPDATE "Users" 
-                    SET gpodderurl = $1, gpoddertoken = $2, gpodderloginname = $3, pod_sync_type = $4
+                    SET gpodderurl = $1, gpoddertoken = $2, gpodderloginname = $3, pod_sync_type = $4, defaultgpodderdevice = $6
                     WHERE userid = $5
                 "#)
                 .bind(local_gpodder_url)
@@ -17349,31 +19151,37 @@ impl DatabasePool {
                 .bind(&username)
                 .bind(new_sync_type)
                 .bind(user_id)
+                .bind(&default_device_name)
                 .execute(pool)
                 .await?;
-
-                // Create default device name
-                let default_device_name = format!("pinepods-internal-{}", user_id);
                 
                 // Create device via gPodder API (matches Python version exactly)
-                match self.create_device_via_gpodder_api(local_gpodder_url, &username, &internal_token, &default_device_name).await {
+                let device_result = match self.create_device_via_gpodder_api(local_gpodder_url, &username, &internal_token, &default_device_name).await {
                     Ok(device_id) => {
-                        Ok(serde_json::json!({
+                        serde_json::json!({
                             "device_name": default_device_name,
                             "device_id": device_id,
                             "success": true
-                        }))
+                        })
                     }
                     Err(e) => {
                         tracing::warn!("Failed to create device via API: {}, continuing anyway", e);
                         // Even if device creation fails, still return success (matches Python behavior)
-                        Ok(serde_json::json!({
+                        serde_json::json!({
                             "device_name": default_device_name,
                             "device_id": user_id,
                             "success": true
-                        }))
+                        })
                     }
+                };
+                
+                // Perform initial full sync to get ALL user subscriptions from all devices
+                if let Err(e) = self.call_gpodder_initial_full_sync(user_id, local_gpodder_url, &username, &internal_token, &default_device_name).await {
+                    tracing::warn!("Initial GPodder full sync failed during setup: {}", e);
+                    // Don't fail setup if initial sync fails
                 }
+                
+                Ok(device_result)
             }
             DatabasePool::MySQL(pool) => {
                 // Get the username and current sync type
@@ -17407,42 +19215,51 @@ impl DatabasePool {
 
                 let local_gpodder_url = "http://localhost:8042";
 
-                // Update user with internal gpodder settings
+                // Create default device name
+                let default_device_name = format!("pinepods-internal-{}", user_id);
+
+                // Update user with internal gpodder settings and set default device
                 sqlx::query("
                     UPDATE Users 
-                    SET GpodderUrl = ?, GpodderToken = ?, GpodderLoginName = ?, Pod_Sync_Type = ?
+                    SET GpodderUrl = ?, GpodderToken = ?, GpodderLoginName = ?, Pod_Sync_Type = ?, DefaultGpodderDevice = ?
                     WHERE UserID = ?
                 ")
                 .bind(local_gpodder_url)
                 .bind(&internal_token)
                 .bind(&username)
                 .bind(new_sync_type)
+                .bind(&default_device_name)
                 .bind(user_id)
                 .execute(pool)
                 .await?;
-
-                // Create default device name
-                let default_device_name = format!("pinepods-internal-{}", user_id);
                 
                 // Create device via gPodder API (matches Python version exactly)
-                match self.create_device_via_gpodder_api(local_gpodder_url, &username, &internal_token, &default_device_name).await {
+                let device_result = match self.create_device_via_gpodder_api(local_gpodder_url, &username, &internal_token, &default_device_name).await {
                     Ok(device_id) => {
-                        Ok(serde_json::json!({
+                        serde_json::json!({
                             "device_name": default_device_name,
                             "device_id": device_id,
                             "success": true
-                        }))
+                        })
                     }
                     Err(e) => {
                         tracing::warn!("Failed to create device via API: {}, continuing anyway", e);
                         // Even if device creation fails, still return success (matches Python behavior)
-                        Ok(serde_json::json!({
+                        serde_json::json!({
                             "device_name": default_device_name,
                             "device_id": user_id,
                             "success": true
-                        }))
+                        })
                     }
+                };
+                
+                // Perform initial full sync to get ALL user subscriptions from all devices
+                if let Err(e) = self.call_gpodder_initial_full_sync(user_id, local_gpodder_url, &username, &internal_token, &default_device_name).await {
+                    tracing::warn!("Initial GPodder full sync failed during setup: {}", e);
+                    // Don't fail setup if initial sync fails
                 }
+                
+                Ok(device_result)
             }
         }
     }
@@ -17509,24 +19326,40 @@ impl DatabasePool {
     }
 
     // Helper function to create device via gPodder API - matches Python create device logic exactly
-    async fn create_device_via_gpodder_api(&self, gpodder_url: &str, username: &str, token: &str, device_name: &str) -> AppResult<String> {
+    pub async fn create_device_via_gpodder_api(&self, gpodder_url: &str, username: &str, token: &str, device_name: &str) -> AppResult<String> {
         use reqwest;
         use serde_json;
         
-        let client = reqwest::Client::new();
+        // Use correct authentication based on internal vs external
+        let (client, auth_method) = if gpodder_url == "http://localhost:8042" {
+            // Internal GPodder API - use X-GPodder-Token header
+            let client = reqwest::Client::new();
+            (client, "internal")
+        } else {
+            // External GPodder API - use session auth with basic fallback
+            let decrypted_password = self.decrypt_password(token).await?;
+            let session = self.create_gpodder_session_with_password(gpodder_url, username, &decrypted_password).await?;
+            (session.client, "external")
+        };
         
         // First, check if device already exists
         let device_list_url = format!("{}/api/2/devices/{}.json", gpodder_url.trim_end_matches('/'), username);
         
-        let auth = reqwest::header::HeaderValue::from_str(&format!("Basic {}", 
-            base64::encode(format!("{}:{}", username, token))
-        )).map_err(|e| AppError::internal(&format!("Failed to create auth header: {}", e)))?;
+        let response = if auth_method == "internal" {
+            client.get(&device_list_url)
+                .header("X-GPodder-Token", token)
+                .send()
+                .await
+        } else {
+            // External - session auth with basic fallback handled by session client
+            let decrypted_password = self.decrypt_password(token).await?;
+            client.get(&device_list_url)
+                .basic_auth(username, Some(&decrypted_password))
+                .send()
+                .await
+        };
         
-        match client.get(&device_list_url)
-            .header(reqwest::header::AUTHORIZATION, auth.clone())
-            .send()
-            .await
-        {
+        match response {
             Ok(response) if response.status().is_success() => {
                 if let Ok(devices) = response.json::<Vec<serde_json::Value>>().await {
                     for device in devices {
@@ -17552,11 +19385,22 @@ impl DatabasePool {
             "type": "server"
         });
         
-        match client.post(&device_url)
-            .header(reqwest::header::AUTHORIZATION, auth)
-            .json(&device_data)
-            .send()
-            .await
+        let create_response = if auth_method == "internal" {
+            client.post(&device_url)
+                .header("X-GPodder-Token", token)
+                .json(&device_data)
+                .send()
+                .await
+        } else {
+            let decrypted_password = self.decrypt_password(token).await?;
+            client.post(&device_url)
+                .basic_auth(username, Some(&decrypted_password))
+                .json(&device_data)
+                .send()
+                .await
+        };
+        
+        match create_response
         {
             Ok(response) if response.status().is_success() => {
                 tracing::info!("Created device with ID: {}", device_name);
@@ -17591,7 +19435,7 @@ impl DatabasePool {
         // Call the appropriate sync method based on sync type
         match settings.sync_type.as_str() {
             "gpodder" => {
-                // Internal GPodder API
+                // Internal GPodder API - token is already unencrypted for internal use
                 self.call_gpodder_service_sync(user_id, "http://localhost:8042", &settings.username, &settings.token, &device_name, false).await
             }
             "external" => {
@@ -17704,22 +19548,154 @@ impl DatabasePool {
             }
         };
 
-        // Create GPodder session using the same method as sync operations
-        let session = self.create_gpodder_session(&UserSyncSettings {
-            url: gpodder_url.clone(),
-            username: username.clone(),
-            token: password.clone(),
-            sync_type: settings.sync_type.clone(),
-        }).await?;
-
         let mut api_endpoints_tested = Vec::new();
         let mut server_devices = Vec::new();
         let mut server_subscriptions = Vec::new();
         let mut recent_episode_actions = Vec::new();
 
-        // Test 1: Get devices from GPodder API
-        let devices_url = format!("{}/api/2/devices/{}.json", gpodder_url.trim_end_matches('/'), username);
-        let start = Instant::now();
+        // Handle Nextcloud differently from standard GPodder API
+        if settings.sync_type == "nextcloud" {
+            // Nextcloud uses different endpoints and doesn't have devices concept
+            let client = reqwest::Client::new();
+            
+            // Test 1: Get subscriptions from Nextcloud
+            let subscriptions_url = format!("{}/index.php/apps/gpoddersync/subscriptions", gpodder_url.trim_end_matches('/'));
+            let start = Instant::now();
+            
+            let subscriptions_response = client
+                .get(&subscriptions_url)
+                .basic_auth(&username, Some(&password))
+                .send()
+                .await;
+            
+            match subscriptions_response {
+                Ok(resp) if resp.status().is_success() => {
+                    let duration = start.elapsed().as_millis() as i64;
+                    api_endpoints_tested.push(EndpointTest {
+                        endpoint: "GET /index.php/apps/gpoddersync/subscriptions".to_string(),
+                        status: "success".to_string(),
+                        response_time_ms: Some(duration),
+                        error: None,
+                    });
+
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(subs_data) => {
+                            tracing::info!("Nextcloud subscriptions response: {:?}", subs_data);
+                            if let Some(subs_array) = subs_data.as_array() {
+                                tracing::info!("Found {} subscriptions in Nextcloud array", subs_array.len());
+                                for sub in subs_array {
+                                    if let Some(url) = sub.as_str() {
+                                        server_subscriptions.push(ServerSubscription {
+                                            url: url.to_string(),
+                                            title: None,
+                                            description: None,
+                                        });
+                                    }
+                                }
+                            } else {
+                                tracing::warn!("Nextcloud subscriptions response is not an array: {:?}", subs_data);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to parse Nextcloud subscriptions response: {}", e);
+                        }
+                    }
+                }
+                Ok(resp) => {
+                    let duration = start.elapsed().as_millis() as i64;
+                    api_endpoints_tested.push(EndpointTest {
+                        endpoint: "GET /index.php/apps/gpoddersync/subscriptions".to_string(),
+                        status: "failed".to_string(),
+                        response_time_ms: Some(duration),
+                        error: Some(format!("HTTP {}", resp.status())),
+                    });
+                }
+                Err(e) => {
+                    let duration = start.elapsed().as_millis() as i64;
+                    api_endpoints_tested.push(EndpointTest {
+                        endpoint: "GET /index.php/apps/gpoddersync/subscriptions".to_string(),
+                        status: "failed".to_string(),
+                        response_time_ms: Some(duration),
+                        error: Some(e.to_string()),
+                    });
+                }
+            }
+
+            // Test 2: Get episode actions from Nextcloud
+            let episode_actions_url = format!("{}/index.php/apps/gpoddersync/episode_action", gpodder_url.trim_end_matches('/'));
+            let start = Instant::now();
+
+            let episode_response = client
+                .get(&episode_actions_url)
+                .basic_auth(&username, Some(&password))
+                .send()
+                .await;
+
+            match episode_response {
+                Ok(resp) if resp.status().is_success() => {
+                    let duration = start.elapsed().as_millis() as i64;
+                    api_endpoints_tested.push(EndpointTest {
+                        endpoint: "GET /index.php/apps/gpoddersync/episode_action".to_string(),
+                        status: "success".to_string(),
+                        response_time_ms: Some(duration),
+                        error: None,
+                    });
+
+                    match resp.json::<serde_json::Value>().await {
+                        Ok(episode_data) => {
+                            if let Some(actions) = episode_data.get("actions").and_then(|v| v.as_array()) {
+                                for action in actions.iter().take(10) { // Show last 10 actions
+                                    recent_episode_actions.push(ServerEpisodeAction {
+                                        podcast: action["podcast"].as_str().unwrap_or("").to_string(),
+                                        episode: action["episode"].as_str().unwrap_or("").to_string(),
+                                        action: action["action"].as_str().unwrap_or("").to_string(),
+                                        timestamp: action["timestamp"].as_str().unwrap_or("").to_string(),
+                                        position: action["position"].as_i64().map(|p| p as i32),
+                                        device: Some("nextcloud".to_string()),
+                                    });
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to parse Nextcloud episode actions response: {}", e);
+                        }
+                    }
+                }
+                Ok(resp) => {
+                    let duration = start.elapsed().as_millis() as i64;
+                    api_endpoints_tested.push(EndpointTest {
+                        endpoint: "GET /index.php/apps/gpoddersync/episode_action".to_string(),
+                        status: "failed".to_string(),
+                        response_time_ms: Some(duration),
+                        error: Some(format!("HTTP {}", resp.status())),
+                    });
+                }
+                Err(e) => {
+                    let duration = start.elapsed().as_millis() as i64;
+                    api_endpoints_tested.push(EndpointTest {
+                        endpoint: "GET /index.php/apps/gpoddersync/episode_action".to_string(),
+                        status: "failed".to_string(),
+                        response_time_ms: Some(duration),
+                        error: Some(e.to_string()),
+                    });
+                }
+            }
+
+            // Nextcloud doesn't have devices concept, so add a fake device entry
+            server_devices.push(ServerDevice {
+                id: "nextcloud".to_string(),
+                caption: "Nextcloud gPodder Sync".to_string(),
+                device_type: "cloud".to_string(),
+                subscriptions: server_subscriptions.len() as i32,
+            });
+        } else {
+            // Standard GPodder API (internal or external)
+            // Create GPodder session directly with already-decrypted password to avoid double decryption
+            let session = self.create_gpodder_session_with_password(&gpodder_url, &username, &password).await?;
+
+            // Test 1: Get devices from GPodder API
+            let devices_url = format!("{}/api/2/devices/{}.json", gpodder_url.trim_end_matches('/'), username);
+            let start = Instant::now();
         
         let devices_response = if session.authenticated {
             session.client.get(&devices_url).send().await
@@ -17776,10 +19752,10 @@ impl DatabasePool {
             }
         }
 
-        // Test 2: Get subscriptions from GPodder API
-        let default_device = server_devices.first().map(|d| d.id.clone()).unwrap_or_else(|| "default".to_string());
-        let subscriptions_url = format!("{}/api/2/subscriptions/{}/{}.json", 
-            gpodder_url.trim_end_matches('/'), username, default_device);
+        // Test 2: Get subscriptions from GPodder API - use the user's actual default device
+        let device_name = self.get_or_create_default_device(user_id).await?;
+        let subscriptions_url = format!("{}/api/2/subscriptions/{}/{}.json?since=0", 
+            gpodder_url.trim_end_matches('/'), username, device_name);
         let start = Instant::now();
 
         let subscriptions_response = if session.authenticated {
@@ -17793,7 +19769,7 @@ impl DatabasePool {
             Ok(resp) if resp.status().is_success() => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/subscriptions/{username}/{device}.json".to_string(),
+                    endpoint: "GET /api/2/subscriptions/{username}/{device}.json?since=0".to_string(),
                     status: "success".to_string(),
                     response_time_ms: Some(duration),
                     error: None,
@@ -17801,8 +19777,9 @@ impl DatabasePool {
 
                 match resp.json::<serde_json::Value>().await {
                     Ok(subs_data) => {
-                        if let Some(subs_array) = subs_data.as_array() {
-                            for sub in subs_array {
+                        // GPodder API returns subscriptions in format: {"add": ["url1", "url2"], "remove": ["url3"]}
+                        if let Some(add_array) = subs_data["add"].as_array() {
+                            for sub in add_array {
                                 if let Some(url) = sub.as_str() {
                                     server_subscriptions.push(ServerSubscription {
                                         url: url.to_string(),
@@ -17821,7 +19798,7 @@ impl DatabasePool {
             Ok(resp) => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/subscriptions/{username}/{device}.json".to_string(),
+                    endpoint: "GET /api/2/subscriptions/{username}/{device}.json?since=0".to_string(),
                     status: "failed".to_string(),
                     response_time_ms: Some(duration),
                     error: Some(format!("HTTP {}", resp.status())),
@@ -17830,7 +19807,7 @@ impl DatabasePool {
             Err(e) => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/subscriptions/{username}/{device}.json".to_string(),
+                    endpoint: "GET /api/2/subscriptions/{username}/{device}.json?since=0".to_string(),
                     status: "failed".to_string(),
                     response_time_ms: Some(duration),
                     error: Some(e.to_string()),
@@ -17839,7 +19816,8 @@ impl DatabasePool {
         }
 
         // Test 3: Get episode actions from GPodder API  
-        let episodes_url = format!("{}/api/2/episodes/{}.json", gpodder_url.trim_end_matches('/'), username);
+        let episodes_url = format!("{}/api/2/episodes/{}.json?since=0&device={}", 
+            gpodder_url.trim_end_matches('/'), username, device_name);
         let start = Instant::now();
 
         let episodes_response = if session.authenticated {
@@ -17853,7 +19831,7 @@ impl DatabasePool {
             Ok(resp) if resp.status().is_success() => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/episodes/{username}.json".to_string(),
+                    endpoint: "GET /api/2/episodes/{username}.json?since=0&device={device}".to_string(),
                     status: "success".to_string(),
                     response_time_ms: Some(duration),
                     error: None,
@@ -17882,7 +19860,7 @@ impl DatabasePool {
             Ok(resp) => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/episodes/{username}.json".to_string(),
+                    endpoint: "GET /api/2/episodes/{username}.json?since=0&device={device}".to_string(),
                     status: "failed".to_string(),
                     response_time_ms: Some(duration),
                     error: Some(format!("HTTP {}", resp.status())),
@@ -17891,12 +19869,13 @@ impl DatabasePool {
             Err(e) => {
                 let duration = start.elapsed().as_millis() as i64;
                 api_endpoints_tested.push(EndpointTest {
-                    endpoint: "GET /api/2/episodes/{username}.json".to_string(),
+                    endpoint: "GET /api/2/episodes/{username}.json?since=0&device={device}".to_string(),
                     status: "failed".to_string(),
                     response_time_ms: Some(duration),
                     error: Some(e.to_string()),
                 });
             }
+        }
         }
 
         // Get sync status
@@ -18068,6 +20047,26 @@ impl DatabasePool {
         Ok(())
     }
 
+    // Clear last sync timestamp - for initial full sync to start fresh
+    async fn clear_last_sync_timestamp(&self, user_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {                
+                sqlx::query(r#"UPDATE "Users" SET lastsynctime = NULL WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {                
+                sqlx::query("UPDATE Users SET LastSyncTime = NULL WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        
+        Ok(())
+    }
+
     // Get user episode actions since timestamp - CRITICAL for incremental sync performance
     async fn get_user_episode_actions_since(&self, user_id: i32, since: chrono::DateTime<chrono::Utc>) -> AppResult<Vec<serde_json::Value>> {
         match self {
@@ -18097,11 +20096,16 @@ impl DatabasePool {
                 
                 let mut actions = Vec::new();
                 for row in rows {
+                    // Handle PostgreSQL TIMESTAMP (not TIMESTAMPTZ) column
+                    let naive_timestamp: chrono::NaiveDateTime = row.try_get("timestamp")?;
+                    let utc_timestamp = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive_timestamp, chrono::Utc);
+                    let timestamp_str = utc_timestamp.to_rfc3339();
+                    
                     actions.push(serde_json::json!({
                         "podcast": row.try_get::<String, _>("podcast")?,
                         "episode": row.try_get::<String, _>("episode")?,
                         "action": row.try_get::<String, _>("action")?,
-                        "timestamp": row.try_get::<chrono::DateTime<chrono::Utc>, _>("timestamp")?.to_rfc3339(),
+                        "timestamp": timestamp_str,
                         "position": row.try_get::<Option<i32>, _>("position").unwrap_or(None)
                     }));
                 }
@@ -18136,11 +20140,16 @@ impl DatabasePool {
                 
                 let mut actions = Vec::new();
                 for row in rows {
+                    // Handle MySQL DATETIME column 
+                    let naive_timestamp: chrono::NaiveDateTime = row.try_get("timestamp")?;
+                    let utc_timestamp = chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(naive_timestamp, chrono::Utc);
+                    let timestamp_str = utc_timestamp.to_rfc3339();
+                    
                     actions.push(serde_json::json!({
                         "podcast": row.try_get::<String, _>("podcast")?,
                         "episode": row.try_get::<String, _>("episode")?,
                         "action": row.try_get::<String, _>("action")?,
-                        "timestamp": row.try_get::<chrono::DateTime<chrono::Utc>, _>("timestamp")?.to_rfc3339(),
+                        "timestamp": timestamp_str,
                         "position": row.try_get::<Option<i32>, _>("position").unwrap_or(None)
                     }));
                 }
@@ -18531,5 +20540,65 @@ impl DatabasePool {
             }
         }
         Ok(())
+    }
+
+    // Remove GPodder sync settings for a user - matches Python remove_gpodder_settings function exactly
+    pub async fn remove_gpodder_settings(&self, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // First delete any device records
+                sqlx::query(r#"DELETE FROM "GpodderDevices" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                sqlx::query(r#"DELETE FROM "GpodderSyncState" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                // Then clear GPodder settings from user record
+                sqlx::query(r#"
+                    UPDATE "Users"
+                    SET gpodderurl = '', gpodderloginname = '', gpoddertoken = '', pod_sync_type = 'None'
+                    WHERE userid = $1
+                "#)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+                Ok(true)
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // First delete any device records
+                sqlx::query("DELETE FROM GpodderDevices WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                sqlx::query("DELETE FROM GpodderSyncState WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                // Then clear GPodder settings from user record
+                sqlx::query(r#"
+                    UPDATE Users
+                    SET GpodderUrl = '', GpodderLoginName = '', GpodderToken = '', Pod_Sync_Type = 'None'
+                    WHERE UserID = ?
+                "#)
+                    .bind(user_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+                Ok(true)
+            }
+        }
     }
 }

@@ -8,6 +8,8 @@ import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
+import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
+import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:provider/provider.dart';
 
 class PinepodsSearch extends StatefulWidget {
@@ -448,31 +450,15 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
               child: Center(child: PlatformProgressIndicator()),
             )
           else if (_errorMessage != null)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      size: 64,
-                      color: Colors.red[300],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _errorMessage!,
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyLarge,
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: () => _performSearch(_searchController.text),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              ),
+            SliverServerErrorPage(
+              errorMessage: _errorMessage!.isServerConnectionError 
+                ? null 
+                : _errorMessage,
+              onRetry: () => _performSearch(_searchController.text),
+              title: 'Search Unavailable',
+              subtitle: _errorMessage!.isServerConnectionError
+                ? 'Unable to connect to the PinePods server'
+                : 'Failed to search for podcasts',
             )
           else if (_searchResults.isEmpty && _searchController.text.isNotEmpty)
             SliverFillRemaining(

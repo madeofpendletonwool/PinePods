@@ -4,25 +4,26 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_tile.dart';
+import 'package:pinepods_mobile/ui/widgets/offline_episode_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/shimmer_episode_tile.dart';
 
 class PaginatedEpisodeList extends StatefulWidget {
   final List<dynamic> episodes; // Can be PinepodsEpisode or Episode
   final bool isServerEpisodes;
+  final bool isOfflineMode; // New flag for offline mode
   final Function(dynamic episode)? onEpisodeTap;
   final Function(dynamic episode, int globalIndex)? onEpisodeLongPress;
   final Function(dynamic episode)? onPlayPressed;
-  final Function(dynamic episode)? onDownloadPressed;
   final int pageSize;
 
   const PaginatedEpisodeList({
     super.key,
     required this.episodes,
     required this.isServerEpisodes,
+    this.isOfflineMode = false,
     this.onEpisodeTap,
     this.onEpisodeLongPress,
     this.onPlayPressed,
-    this.onDownloadPressed,
     this.pageSize = 20, // Show 20 episodes at a time
   });
 
@@ -70,16 +71,26 @@ class _PaginatedEpisodeListState extends State<PaginatedEpisodeList> {
         onPlayPressed: widget.onPlayPressed != null
           ? () => widget.onPlayPressed!(episode)
           : null,
-        onDownloadPressed: widget.onDownloadPressed != null
-          ? () => widget.onDownloadPressed!(episode)
-          : null,
       );
     } else if (!widget.isServerEpisodes && episode is Episode) {
-      return EpisodeTile(
-        episode: episode,
-        download: false,
-        play: true,
-      );
+      // Use offline episode tile when in offline mode to bypass legacy audio system
+      if (widget.isOfflineMode) {
+        return OfflineEpisodeTile(
+          episode: episode,
+          onTap: widget.onEpisodeTap != null 
+            ? () => widget.onEpisodeTap!(episode)
+            : null,
+          onPlayPressed: widget.onPlayPressed != null
+            ? () => widget.onPlayPressed!(episode)
+            : null,
+        );
+      } else {
+        return EpisodeTile(
+          episode: episode,
+          download: false,
+          play: true,
+        );
+      }
     }
     
     return const SizedBox.shrink(); // Fallback

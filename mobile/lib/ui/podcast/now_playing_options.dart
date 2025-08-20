@@ -58,11 +58,19 @@ class _NowPlayingOptionsSelectorState extends State<NowPlayingOptionsSelector> {
       // snap: true,
       // snapSizes: [minSize, maxSize],
       builder: (BuildContext context, ScrollController scrollController) {
-        return DefaultTabController(
-          animationDuration: !draggableController!.isAttached || draggableController!.size <= minSize
-              ? const Duration(seconds: 0)
-              : kTabScrollDuration,
-          length: 2,
+        return StreamBuilder<QueueState>(
+            initialData: QueueEmptyState(),
+            stream: queueBloc.queue,
+            builder: (context, queueSnapshot) {
+              final hasTranscript = queueSnapshot.hasData &&
+                  queueSnapshot.data?.playing != null &&
+                  queueSnapshot.data!.playing!.hasTranscripts;
+              
+              return DefaultTabController(
+                animationDuration: !draggableController!.isAttached || draggableController!.size <= minSize
+                    ? const Duration(seconds: 0)
+                    : kTabScrollDuration,
+                length: hasTranscript ? 2 : 1,
           child: LayoutBuilder(builder: (BuildContext ctx, BoxConstraints constraints) {
             return SingleChildScrollView(
               controller: scrollController,
@@ -119,60 +127,44 @@ class _NowPlayingOptionsSelectorState extends State<NowPlayingOptionsSelector> {
                                 : BorderSide(color: Colors.grey[800]!, width: 1.0),
                           ),
                         ),
-                        child: StreamBuilder<QueueState>(
-                            initialData: QueueEmptyState(),
-                            stream: queueBloc.queue,
-                            builder: (context, snapshot) {
-                              return TabBar(
-                                onTap: (index) {
-                                  DefaultTabController.of(ctx).animateTo(index);
+                        child: TabBar(
+                          onTap: (index) {
+                            DefaultTabController.of(ctx).animateTo(index);
 
-                                  if (draggableController != null && draggableController!.size < 1.0) {
-                                    draggableController!.animateTo(
-                                      1.0,
-                                      duration: const Duration(milliseconds: 150),
-                                      curve: Curves.easeInOut,
-                                    );
-                                  }
-                                },
-                                automaticIndicatorColorAdjustment: false,
-                                indicatorPadding: EdgeInsets.zero,
-
-                                /// Little hack to hide the indicator when closed
-                                indicatorColor: draggableController != null &&
-                                        (!draggableController!.isAttached || draggableController!.size <= minSize)
-                                    ? Theme.of(context).secondaryHeaderColor
-                                    : null,
-                                tabs: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
-                                    child: Text(
-                                      L.of(context)!.up_next_queue_label.toUpperCase(),
-                                      style: Theme.of(context).textTheme.labelLarge,
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
-                                    // If the episode does not support transcripts, grey out
-                                    // the option.
-                                    child: snapshot.hasData &&
-                                            snapshot.data?.playing != null &&
-                                            snapshot.data!.playing!.hasTranscripts
-                                        ? Text(
-                                            L.of(context)!.transcript_label.toUpperCase(),
-                                            style: Theme.of(context).textTheme.labelLarge,
-                                          )
-                                        : Text(
-                                            L.of(context)!.transcript_label.toUpperCase(),
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .labelLarge!
-                                                .copyWith(color: theme.disabledColor),
-                                          ),
-                                  ),
-                                ],
+                            if (draggableController != null && draggableController!.size < 1.0) {
+                              draggableController!.animateTo(
+                                1.0,
+                                duration: const Duration(milliseconds: 150),
+                                curve: Curves.easeInOut,
                               );
-                            }),
+                            }
+                          },
+                          automaticIndicatorColorAdjustment: false,
+                          indicatorPadding: EdgeInsets.zero,
+
+                          /// Little hack to hide the indicator when closed
+                          indicatorColor: draggableController != null &&
+                                  (!draggableController!.isAttached || draggableController!.size <= minSize)
+                              ? Theme.of(context).secondaryHeaderColor
+                              : null,
+                          tabs: [
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+                              child: Text(
+                                L.of(context)!.up_next_queue_label.toUpperCase(),
+                                style: Theme.of(context).textTheme.labelLarge,
+                              ),
+                            ),
+                            if (hasTranscript)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+                                child: Text(
+                                  L.of(context)!.transcript_label.toUpperCase(),
+                                  style: Theme.of(context).textTheme.labelLarge,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                       const Padding(padding: EdgeInsets.only(bottom: 12.0)),
                       Expanded(
@@ -188,7 +180,8 @@ class _NowPlayingOptionsSelectorState extends State<NowPlayingOptionsSelector> {
                                 isPinepodsConnected 
                                   ? const PinepodsUpNextView()
                                   : const UpNextView(),
-                                const TranscriptView(),
+                                if (hasTranscript)
+                                  const TranscriptView(),
                               ],
                             );
                           },
@@ -201,6 +194,7 @@ class _NowPlayingOptionsSelectorState extends State<NowPlayingOptionsSelector> {
             );
           }),
         );
+            });
       },
     );
   }
@@ -250,8 +244,16 @@ class _NowPlayingOptionsSelectorWideState extends State<NowPlayingOptionsSelecto
     final theme = Theme.of(context);
     final scrollController = ScrollController();
 
-    return DefaultTabController(
-      length: 2,
+    return StreamBuilder<QueueState>(
+        initialData: QueueEmptyState(),
+        stream: queueBloc.queue,
+        builder: (context, queueSnapshot) {
+          final hasTranscript = queueSnapshot.hasData &&
+              queueSnapshot.data?.playing != null &&
+              queueSnapshot.data!.playing!.hasTranscripts;
+          
+          return DefaultTabController(
+            length: hasTranscript ? 2 : 1,
       child: LayoutBuilder(builder: (BuildContext ctx, BoxConstraints constraints) {
         return SingleChildScrollView(
           controller: scrollController,
@@ -273,46 +275,33 @@ class _NowPlayingOptionsSelectorWideState extends State<NowPlayingOptionsSelecto
                         bottom: BorderSide(color: Colors.grey[800]!, width: 1.0),
                       ),
                     ),
-                    child: StreamBuilder<QueueState>(
-                        initialData: QueueEmptyState(),
-                        stream: queueBloc.queue,
-                        builder: (context, snapshot) {
-                          return TabBar(
-                            automaticIndicatorColorAdjustment: false,
-                            tabs: [
-                              Padding(
-                                padding: const EdgeInsets.only(top: 16.0, bottom: 16.0),
-                                child: Text(
-                                  L.of(context)!.up_next_queue_label.toUpperCase(),
-                                  style: Theme.of(context).textTheme.labelLarge,
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.only(top: 16.0, bottom: 16.0),
-                                child: snapshot.hasData &&
-                                        snapshot.data?.playing != null &&
-                                        snapshot.data!.playing!.hasTranscripts
-                                    ? Text(
-                                        L.of(context)!.transcript_label.toUpperCase(),
-                                        style: Theme.of(context).textTheme.labelLarge,
-                                      )
-                                    : Text(
-                                        L.of(context)!.transcript_label.toUpperCase(),
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .labelLarge!
-                                            .copyWith(color: theme.disabledColor),
-                                      ),
-                              ),
-                            ],
-                          );
-                        }),
+                    child: TabBar(
+                      automaticIndicatorColorAdjustment: false,
+                      tabs: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 16.0, bottom: 16.0),
+                          child: Text(
+                            L.of(context)!.up_next_queue_label.toUpperCase(),
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                        ),
+                        if (hasTranscript)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 16.0, bottom: 16.0),
+                            child: Text(
+                              L.of(context)!.transcript_label.toUpperCase(),
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                  const Expanded(
+                  Expanded(
                     child: TabBarView(
                       children: [
-                        UpNextView(),
-                        TranscriptView(),
+                        const UpNextView(),
+                        if (hasTranscript)
+                          const TranscriptView(),
                       ],
                     ),
                   ),
@@ -322,6 +311,7 @@ class _NowPlayingOptionsSelectorWideState extends State<NowPlayingOptionsSelecto
           ),
         );
       }),
-    );
+        );
+        });
   }
 }

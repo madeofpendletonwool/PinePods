@@ -22,7 +22,7 @@ const userAgentAppString = String.fromEnvironment(
 /// Link to a feedback form. This will be shown in the main overflow menu if set
 const feedbackUrl = String.fromEnvironment('FEEDBACK_URL', defaultValue: '');
 
-/// This class stores version information for Anytime, including project version and
+/// This class stores version information for PinePods, including project version and
 /// build number. This is then used for user agent strings when interacting with
 /// APIs and RSS feeds.
 ///

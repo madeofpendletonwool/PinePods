@@ -9,6 +9,8 @@ import 'package:pinepods_mobile/core/environment.dart';
 import 'package:pinepods_mobile/entities/transcript.dart';
 import 'package:flutter/foundation.dart';
 import 'package:podcast_search/podcast_search.dart' as podcast_search;
+import 'package:http/http.dart' as http;
+import 'package:html/parser.dart' as html;
 
 /// An implementation of the [PodcastApi].
 ///
@@ -92,6 +94,11 @@ class MobilePodcastApi extends PodcastApi {
 
   @override
   Future<podcast_search.Transcript> loadTranscript(TranscriptUrl transcriptUrl) async {
+    // Handle HTML transcripts with custom parser
+    if (transcriptUrl.type == TranscriptFormat.html) {
+      return await _loadHtmlTranscript(transcriptUrl);
+    }
+
     late podcast_search.TranscriptFormat format;
 
     switch (transcriptUrl.type) {
@@ -100,6 +107,10 @@ class MobilePodcastApi extends PodcastApi {
         break;
       case TranscriptFormat.json:
         format = podcast_search.TranscriptFormat.json;
+        break;
+      case TranscriptFormat.html:
+        // This case is now handled above
+        format = podcast_search.TranscriptFormat.unsupported;
         break;
       case TranscriptFormat.unsupported:
         format = podcast_search.TranscriptFormat.unsupported;
@@ -121,6 +132,61 @@ class MobilePodcastApi extends PodcastApi {
       );
     } catch (e) {
       // Fallback: create empty transcript if loading fails
+      return podcast_search.Transcript();
+    }
+  }
+
+  /// Parse HTML transcript content into a transcript object
+  Future<podcast_search.Transcript> _loadHtmlTranscript(TranscriptUrl transcriptUrl) async {
+    try {
+      final response = await http.get(Uri.parse(transcriptUrl.url));
+      
+      if (response.statusCode != 200) {
+        return podcast_search.Transcript();
+      }
+
+      final document = html.parse(response.body);
+      final subtitles = <podcast_search.Subtitle>[];
+      
+      // For HTML transcripts, find the main content area and render as a single block
+      String transcriptContent = '';
+      
+      // Try to find the main transcript content area
+      final transcriptContainer = document.querySelector('.transcript, .content, main, article') ?? 
+                                document.querySelector('body');
+      
+      if (transcriptContainer != null) {
+        transcriptContent = transcriptContainer.innerHtml;
+        
+        // Clean up common unwanted elements
+        final cleanDoc = html.parse(transcriptContent);
+        
+        // Remove navigation, headers, footers, ads, etc.
+        for (final selector in ['nav', 'header', 'footer', '.nav', '.navigation', '.ads', '.advertisement', '.sidebar']) {
+          cleanDoc.querySelectorAll(selector).forEach((el) => el.remove());
+        }
+        
+        transcriptContent = cleanDoc.body?.innerHtml ?? transcriptContent;
+        
+        // Process markdown-style links [text](url) -> <a href="url">text</a>
+        transcriptContent = transcriptContent.replaceAllMapped(
+          RegExp(r'\[([^\]]+)\]\(([^)]+)\)'),
+          (match) => '<a href="${match.group(2)}">${match.group(1)}</a>',
+        );
+        
+        // Create a single subtitle entry for the entire HTML transcript
+        subtitles.add(podcast_search.Subtitle(
+          index: 0,
+          start: const Duration(seconds: 0),
+          end: const Duration(seconds: 1), // Minimal duration since timing doesn't matter
+          data: '{{HTMLFULL}}$transcriptContent',
+          speaker: '',
+        ));
+      }
+      
+      return podcast_search.Transcript(subtitles: subtitles);
+    } catch (e) {
+      debugPrint('Error parsing HTML transcript: $e');
       return podcast_search.Transcript();
     }
   }

@@ -134,12 +134,13 @@ class DefaultAudioPlayerService extends AudioPlayerService {
   /// Set the PinepodsAudioService reference for listen duration tracking
   void setPinepodsAudioService(PinepodsAudioService? service) {
     _pinepodsAudioService = service;
+    log.info('PinepodsAudioService reference set for enhanced sync capabilities');
   }
 
-  /// Save episode position locally (every 5 seconds)
+  /// Save episode position locally (every 3 seconds for more frequent updates)
   void _startLocalPositionSaver() {
     _localPositionTimer?.cancel();
-    _localPositionTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _localPositionTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       _saveLocalPosition();
     });
   }
@@ -168,13 +169,25 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     // Get local position
     final localPosition = episode.position;
     
-    // Get server position if we have PinePods service
+    // Get server position if we have PinePods service and episode is from PinePods
     int serverPosition = 0;
-    if (_pinepodsAudioService != null) {
+    if (_pinepodsAudioService != null && episode.guid.startsWith('pinepods_')) {
       try {
-        // This would need to be implemented in PinepodsService
-        // For now, we'll use local position
-        serverPosition = localPosition;
+        // Extract episode ID from GUID (format: 'pinepods_123')
+        final episodeIdStr = episode.guid.replaceFirst('pinepods_', '').split('_').first;
+        final episodeId = int.tryParse(episodeIdStr);
+        
+        if (episodeId != null) {
+          final serverPos = await _pinepodsAudioService!.getServerPositionForEpisode(
+            episodeId,
+            settingsService.pinepodsUserId ?? 0,
+            episode.pguid?.contains('youtube') ?? false,
+          );
+          
+          if (serverPos != null) {
+            serverPosition = (serverPos * 1000).round(); // Convert to milliseconds
+          }
+        }
       } catch (e) {
         log.warning('Failed to get server position: $e');
       }
@@ -182,7 +195,6 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     
     // Return the furthest position
     final bestPosition = localPosition > serverPosition ? localPosition : serverPosition;
-    log.info('Best position for ${episode.title}: ${bestPosition}ms (local: ${localPosition}ms, server: ${serverPosition}ms)');
     return bestPosition;
   }
 
@@ -205,12 +217,17 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     // Record listen duration before pausing
     await _recordListenDuration();
     
+    // Sync position to PinePods server immediately
+    if (_pinepodsAudioService != null) {
+      await _pinepodsAudioService!.onPause();
+    }
+    
     // Stop local position saver while paused
     _stopLocalPositionSaver();
     
     await _audioHandler.pause();
     
-    log.info('Episode paused - listen duration recorded');
+    log.info('Episode paused - listen duration recorded and synced to server');
   }
 
   @override
@@ -297,7 +314,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
         // Track episode start time for listen duration calculation
         _episodeStartTime = DateTime.now();
         
-        // Start local position saving (every 5 seconds)
+        // Start local position saving (every 3 seconds for better accuracy)
         _startLocalPositionSaver();
         
         log.info('Started episode tracking at ${_episodeStartTime}');
@@ -403,13 +420,18 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     // Record listen duration before stopping
     await _recordListenDuration();
     
+    // Sync position to PinePods server immediately  
+    if (_pinepodsAudioService != null) {
+      await _pinepodsAudioService!.onStop();
+    }
+    
     // Stop local position saver
     _stopLocalPositionSaver();
     
     _currentEpisode = null;
     await _audioHandler.stop();
     
-    log.info('Episode stopped - listen duration recorded');
+    log.info('Episode stopped - listen duration recorded and synced to server');
   }
 
   @override
@@ -842,6 +864,8 @@ class DefaultAudioPlayerService extends AudioPlayerService {
         var sub = _currentEpisode!.transcriptUrls.firstWhereOrNull((element) => element.type == TranscriptFormat.json);
 
         sub ??= _currentEpisode!.transcriptUrls.firstWhereOrNull((element) => element.type == TranscriptFormat.subrip);
+        
+        sub ??= _currentEpisode!.transcriptUrls.firstWhereOrNull((element) => element.type == TranscriptFormat.html);
 
         if (sub != null) {
           _updateTranscriptState(state: TranscriptLoadingState());
@@ -1200,6 +1224,7 @@ class _DefaultAudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     log.fine('pause() triggered - saving position');
     await _savePosition();
     await _player.pause();
+    log.info('Audio handler pause completed - position saved');
   }
 
   @override
@@ -1210,6 +1235,7 @@ class _DefaultAudioPlayerHandler extends BaseAudioHandler with SeekHandler {
     await _savePosition();
 
     await super.stop();
+    log.info('Audio handler stop completed - position saved');
   }
 
   @override

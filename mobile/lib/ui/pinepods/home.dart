@@ -1,21 +1,28 @@
 // lib/ui/pinepods/home.dart
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
+import 'package:pinepods_mobile/bloc/podcast/podcast_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
+import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:pinepods_mobile/entities/home_data.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
+import 'package:pinepods_mobile/entities/episode.dart';
 import 'package:pinepods_mobile/ui/pinepods/feed.dart';
 import 'package:pinepods_mobile/ui/pinepods/saved.dart';
 import 'package:pinepods_mobile/ui/pinepods/downloads.dart';
 import 'package:pinepods_mobile/ui/pinepods/queue.dart';
 import 'package:pinepods_mobile/ui/pinepods/history.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlists.dart';
+import 'package:pinepods_mobile/ui/pinepods/playlist_episodes.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
+import 'package:pinepods_mobile/ui/utils/player_utils.dart';
+import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
+import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
@@ -33,8 +40,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
   PlaylistResponse? _playlistData;
   final PinepodsService _pinepodsService = PinepodsService();
 
-  // Audio service and context menu state
-  PinepodsAudioService? _audioService;
+  // Use global audio service instead of creating local instance
   int? _contextMenuEpisodeIndex;
   bool _isContextMenuForContinueListening = false;
 
@@ -68,6 +74,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         settings.pinepodsServer!,
         settings.pinepodsApiKey!,
       );
+      GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
       // Load home data and playlists in parallel
       final futures = await Future.wait([
@@ -76,8 +83,8 @@ class _PinepodsHomeState extends State<PinepodsHome> {
       ]);
 
       setState(() {
-        _homeData = futures[0] as HomeOverview?;
-        _playlistData = futures[1] as PlaylistResponse?;
+        _homeData = futures[0] as HomeOverview;
+        _playlistData = futures[1] as PlaylistResponse;
         _isLoading = false;
       });
     } catch (e) {
@@ -88,27 +95,9 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     }
   }
 
-  void _initializeAudioService() {
-    if (_audioService != null) return; // Already initialized
-
-    try {
-      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
-      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-
-      _audioService = PinepodsAudioService(
-        audioPlayerService,
-        _pinepodsService,
-        settingsBloc,
-      );
-    } catch (e) {
-      // Provider not available - audio service will remain null
-    }
-  }
+  PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
 
   Future<void> _playEpisode(HomeEpisode homeEpisode) async {
-    // Try to initialize audio service if not already done
-    _initializeAudioService();
-
     if (_audioService == null) {
       _showSnackBar('Audio service not available', Colors.red);
       return;
@@ -133,7 +122,11 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     );
 
     try {
-      await _audioService!.playPinepodsEpisode(pinepodsEpisode: episode);
+      await playPinepodsEpisodeWithOptionalFullScreen(
+        context,
+        _audioService!,
+        episode,
+      );
     } catch (e) {
       if (mounted) {
         _showSnackBar('Failed to play episode: $e', Colors.red);
@@ -171,6 +164,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     }
 
     _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+    GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
     try {
       final success = await _pinepodsService.saveEpisode(
@@ -213,6 +207,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     }
 
     _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+    GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
     try {
       final success = await _pinepodsService.removeSavedEpisode(
@@ -254,6 +249,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     }
 
     _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+    GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
     try {
       final success = await _pinepodsService.downloadEpisode(
@@ -279,6 +275,53 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     }
   }
 
+  Future<void> _localDownloadEpisode(int episodeIndex, bool isContinueListening) async {
+    final episodes = isContinueListening
+        ? _homeData!.inProgressEpisodes
+        : _homeData!.recentEpisodes;
+    final homeEpisode = episodes[episodeIndex];
+    
+    try {
+      // Convert HomeEpisode to Episode for local download
+      final localEpisode = Episode(
+        guid: 'pinepods_${homeEpisode.episodeId}_${DateTime.now().millisecondsSinceEpoch}',
+        pguid: 'pinepods_${homeEpisode.podcastName.replaceAll(' ', '_').toLowerCase()}',
+        podcast: homeEpisode.podcastName,
+        title: homeEpisode.episodeTitle,
+        description: homeEpisode.episodeDescription,
+        imageUrl: homeEpisode.episodeArtwork,
+        contentUrl: homeEpisode.episodeUrl,
+        duration: homeEpisode.episodeDuration,
+        publicationDate: DateTime.tryParse(homeEpisode.episodePubDate),
+        author: homeEpisode.podcastName,
+        season: 0,
+        episode: 0,
+        position: homeEpisode.listenDuration ?? 0,
+        played: homeEpisode.completed,
+        chapters: [],
+        transcriptUrls: [],
+      );
+      
+      final podcastBloc = Provider.of<PodcastBloc>(context, listen: false);
+      
+      // First save the episode to the repository so it can be tracked
+      await podcastBloc.podcastService.saveEpisode(localEpisode);
+      
+      // Use the download service from podcast bloc
+      final success = await podcastBloc.downloadService.downloadEpisode(localEpisode);
+      
+      if (success) {
+        _showSnackBar('Episode download started', Colors.green);
+      } else {
+        _showSnackBar('Failed to start download', Colors.red);
+      }
+    } catch (e) {
+      _showSnackBar('Error starting local download: $e', Colors.red);
+    }
+
+    _hideContextMenu();
+  }
+
   Future<void> _deleteEpisode(int episodeIndex, bool isContinueListening) async {
     final episodes = isContinueListening
         ? _homeData!.inProgressEpisodes
@@ -295,6 +338,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     }
 
     _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+    GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
     try {
       final success = await _pinepodsService.deleteEpisode(
@@ -336,6 +380,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     }
 
     _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+    GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
     try {
       bool success;
@@ -397,6 +442,7 @@ class _PinepodsHomeState extends State<PinepodsHome> {
     }
 
     _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+    GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
     try {
       bool success;
@@ -529,6 +575,10 @@ class _PinepodsHomeState extends State<PinepodsHome> {
                 Navigator.of(context).pop();
                 _downloadEpisode(episodeIndex, _isContextMenuForContinueListening);
               },
+              onLocalDownload: () {
+                Navigator.of(context).pop();
+                _localDownloadEpisode(episodeIndex, _isContextMenuForContinueListening);
+              },
               onQueue: () {
                 Navigator.of(context).pop();
                 _toggleQueueEpisode(episodeIndex, _isContextMenuForContinueListening);
@@ -565,36 +615,15 @@ class _PinepodsHomeState extends State<PinepodsHome> {
             ),
           )
         else if (_errorMessage.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Card(
-              color: Theme.of(context).colorScheme.errorContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      color: Theme.of(context).colorScheme.onErrorContainer,
-                      size: 48,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _errorMessage,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onErrorContainer,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: _loadHomeContent,
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          ServerErrorPage(
+            errorMessage: _errorMessage.isServerConnectionError 
+              ? null 
+              : _errorMessage,
+            onRetry: _loadHomeContent,
+            title: 'Home Unavailable',
+            subtitle: _errorMessage.isServerConnectionError
+              ? 'Unable to connect to the PinePods server'
+              : 'Failed to load home content',
           )
         else if (_homeData != null)
           Padding(
@@ -1234,11 +1263,7 @@ class _PlaylistCard extends StatelessWidget {
       width: 200,
       child: Card(
         child: InkWell(
-          onTap: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Opening playlist: ${playlist.name}')),
-            );
-          },
+          onTap: () => _openPlaylist(context),
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -1281,6 +1306,57 @@ class _PlaylistCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openPlaylist(BuildContext context) async {
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    
+    if (settings.pinepodsServer == null ||
+        settings.pinepodsApiKey == null ||
+        settings.pinepodsUserId == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Not connected to PinePods server. Please connect in Settings.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final pinepodsService = PinepodsService();
+      pinepodsService.setCredentials(
+        settings.pinepodsServer!,
+        settings.pinepodsApiKey!,
+      );
+      
+      final userPlaylists = await pinepodsService.getUserPlaylists(settings.pinepodsUserId!);
+      final fullPlaylistData = userPlaylists.firstWhere(
+        (p) => p.playlistId == playlist.playlistId,
+        orElse: () => throw Exception('Playlist not found'),
+      );
+      
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PlaylistEpisodesPage(playlist: fullPlaylistData),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening playlist: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   IconData _getIconFromName(String iconName) {

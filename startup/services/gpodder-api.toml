@@ -1,0 +1,17 @@
+command = "/usr/local/bin/gpodder-api"
+start-after = ["pinepods-api.toml"]
+stdout = "${HORUST_STDOUT_MODE}"
+stderr = "${HORUST_STDERR_MODE}"
+
+[restart]
+strategy = "always"
+backoff = "1s"
+attempts = 0
+
+[environment]
+keep-env = true
+additional = { DB_USER = "${DB_USER}", DB_HOST = "${DB_HOST}", DB_PORT = "${DB_PORT}", DB_NAME = "${DB_NAME}", DB_PASSWORD = "${DB_PASSWORD}", SERVER_PORT = "8042" }
+
+[termination]
+signal = "TERM"
+wait = "10s"

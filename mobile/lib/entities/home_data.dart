@@ -40,7 +40,7 @@ class HomePodcast {
       podcastIndexId: json['podcastindexid'],
       artworkUrl: json['artworkurl'],
       author: json['author'],
-      categories: json['categories'],
+      categories: _parseCategories(json['categories']),
       description: json['description'],
       episodeCount: json['episodecount'],
       feedUrl: json['feedurl'],
@@ -50,6 +50,22 @@ class HomePodcast {
       playCount: json['play_count'] ?? 0,
       totalListenTime: json['total_listen_time'],
     );
+  }
+
+  /// Parse categories from either string or Map format
+  static String? _parseCategories(dynamic categories) {
+    if (categories == null) return null;
+    
+    if (categories is String) {
+      // Old format - return as is
+      return categories;
+    } else if (categories is Map<String, dynamic>) {
+      // New format - convert map values to comma-separated string
+      if (categories.isEmpty) return null;
+      return categories.values.join(', ');
+    }
+    
+    return null;
   }
 }
 

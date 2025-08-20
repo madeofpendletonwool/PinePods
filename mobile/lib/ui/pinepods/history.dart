@@ -8,6 +8,12 @@ import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
+import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
+import 'package:pinepods_mobile/ui/utils/player_utils.dart';
+import 'package:pinepods_mobile/ui/utils/position_utils.dart';
+import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
+import 'package:pinepods_mobile/services/error_handling_service.dart';
+import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
 import 'package:sliver_tools/sliver_tools.dart';
 
@@ -24,7 +30,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
   List<PinepodsEpisode> _episodes = [];
   List<PinepodsEpisode> _filteredEpisodes = [];
   final PinepodsService _pinepodsService = PinepodsService();
-  PinepodsAudioService? _audioService;
+  // Use global audio service instead of creating local instance
   int? _contextMenuEpisodeIndex;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -39,7 +45,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
   @override
   void dispose() {
     _searchController.dispose();
-    _audioService?.dispose();
+    // Don't dispose global audio service - it should persist across pages
     super.dispose();
   }
 
@@ -61,22 +67,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
     }
   }
 
-  void _initializeAudioService() {
-    if (_audioService != null) return;
-    
-    try {
-      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
-      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-      
-      _audioService = PinepodsAudioService(
-        audioPlayerService,
-        _pinepodsService,
-        settingsBloc,
-      );
-    } catch (e) {
-      // Provider not available - audio service will remain null
-    }
-  }
+  PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
 
   Future<void> _loadHistory() async {
     setState(() {
@@ -99,12 +90,21 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       }
 
       _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+      GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
       final userId = settings.pinepodsUserId!;
 
       final episodes = await _pinepodsService.getUserHistory(userId);
       
+      // Enrich episodes with best available positions (local vs server)
+      final enrichedEpisodes = await PositionUtils.enrichEpisodesWithBestPositions(
+        context,
+        _pinepodsService,
+        episodes,
+        userId,
+      );
+      
       setState(() {
-        _episodes = episodes;
+        _episodes = enrichedEpisodes;
         // Sort episodes by publication date (newest first)
         _episodes.sort((a, b) {
           try {
@@ -118,6 +118,9 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
         _filterEpisodes(); // Initialize filtered list
         _isLoading = false;
       });
+      
+      // After loading episodes, check their local download status
+      await LocalDownloadUtils.loadLocalDownloadStatuses(context, enrichedEpisodes);
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to load listening history: ${e.toString()}';
@@ -127,11 +130,12 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
   }
 
   Future<void> _refresh() async {
+    // Clear local download status cache on refresh
+    LocalDownloadUtils.clearCache();
     await _loadHistory();
   }
 
   Future<void> _playEpisode(PinepodsEpisode episode) async {
-    _initializeAudioService();
     
     if (_audioService == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -184,10 +188,84 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
     }
   }
 
-  void _showContextMenu(int episodeIndex) {
-    setState(() {
-      _contextMenuEpisodeIndex = episodeIndex;
-    });
+  Future<void> _showContextMenu(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    final isDownloadedLocally = await LocalDownloadUtils.isEpisodeDownloadedLocally(context, episode);
+    
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.3),
+      builder: (context) => EpisodeContextMenu(
+        episode: episode,
+        isDownloadedLocally: isDownloadedLocally,
+        onSave: () {
+          Navigator.of(context).pop();
+          _saveEpisode(episodeIndex);
+        },
+        onRemoveSaved: () {
+          Navigator.of(context).pop();
+          _removeSavedEpisode(episodeIndex);
+        },
+        onDownload: episode.downloaded 
+          ? () {
+              Navigator.of(context).pop();
+              _deleteEpisode(episodeIndex);
+            }
+          : () {
+              Navigator.of(context).pop();
+              _downloadEpisode(episodeIndex);
+            },
+        onLocalDownload: () {
+          Navigator.of(context).pop();
+          _localDownloadEpisode(episodeIndex);
+        },
+        onDeleteLocalDownload: () {
+          Navigator.of(context).pop();
+          _deleteLocalDownload(episodeIndex);
+        },
+        onQueue: () {
+          Navigator.of(context).pop();
+          _toggleQueueEpisode(episodeIndex);
+        },
+        onMarkComplete: () {
+          Navigator.of(context).pop();
+          _toggleMarkComplete(episodeIndex);
+        },
+        onDismiss: () {
+          Navigator.of(context).pop();
+        },
+      ),
+    );
+  }
+
+  Future<void> _localDownloadEpisode(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    
+    final success = await LocalDownloadUtils.localDownloadEpisode(context, episode);
+    
+    if (success) {
+      LocalDownloadUtils.showSnackBar(context, 'Episode download started', Colors.green);
+    } else {
+      LocalDownloadUtils.showSnackBar(context, 'Failed to start download', Colors.red);
+    }
+  }
+
+  Future<void> _deleteLocalDownload(int episodeIndex) async {
+    final episode = _episodes[episodeIndex];
+    
+    final deletedCount = await LocalDownloadUtils.deleteLocalDownload(context, episode);
+    
+    if (deletedCount > 0) {
+      LocalDownloadUtils.showSnackBar(
+        context, 
+        'Deleted $deletedCount local download${deletedCount > 1 ? 's' : ''}', 
+        Colors.orange
+      );
+    } else {
+      LocalDownloadUtils.showSnackBar(context, 'Local download not found', Colors.red);
+    }
   }
 
   void _hideContextMenu() {
@@ -219,6 +297,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(_episodes[episodeIndex], saved: true);
+          _filterEpisodes(); // Update filtered list to reflect changes
         });
         _showSnackBar('Episode saved!', Colors.green);
       } else {
@@ -254,6 +333,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(_episodes[episodeIndex], saved: false);
+          _filterEpisodes(); // Update filtered list to reflect changes
         });
         _showSnackBar('Removed from saved episodes', Colors.orange);
       } else {
@@ -289,6 +369,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: true);
+          _filterEpisodes(); // Update filtered list to reflect changes
         });
         _showSnackBar('Episode download queued!', Colors.green);
       } else {
@@ -324,6 +405,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: false);
+          _filterEpisodes(); // Update filtered list to reflect changes
         });
         _showSnackBar('Episode deleted from server', Colors.orange);
       } else {
@@ -360,6 +442,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: false);
+            _filterEpisodes(); // Update filtered list to reflect changes
           });
           _showSnackBar('Removed from queue', Colors.orange);
         }
@@ -372,6 +455,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: true);
+            _filterEpisodes(); // Update filtered list to reflect changes
           });
           _showSnackBar('Added to queue!', Colors.green);
         }
@@ -411,6 +495,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: false);
+            _filterEpisodes(); // Update filtered list to reflect changes
           });
           _showSnackBar('Marked as incomplete', Colors.orange);
         }
@@ -423,6 +508,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: true);
+            _filterEpisodes(); // Update filtered list to reflect changes
           });
           _showSnackBar('Marked as complete!', Colors.green);
         }
@@ -476,50 +562,6 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
 
   @override
   Widget build(BuildContext context) {
-    // Show context menu as a modal overlay if needed
-    if (_contextMenuEpisodeIndex != null) {
-      final episodeIndex = _contextMenuEpisodeIndex!;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        showDialog(
-          context: context,
-          barrierColor: Colors.black.withOpacity(0.3),
-          builder: (context) => EpisodeContextMenu(
-            episode: _episodes[episodeIndex],
-            onSave: () {
-              Navigator.of(context).pop();
-              _saveEpisode(episodeIndex);
-            },
-            onRemoveSaved: () {
-              Navigator.of(context).pop();
-              _removeSavedEpisode(episodeIndex);
-            },
-            onDownload: _episodes[episodeIndex].downloaded 
-              ? () {
-                  Navigator.of(context).pop();
-                  _deleteEpisode(episodeIndex);
-                }
-              : () {
-                  Navigator.of(context).pop();
-                  _downloadEpisode(episodeIndex);
-                },
-            onQueue: () {
-              Navigator.of(context).pop();
-              _toggleQueueEpisode(episodeIndex);
-            },
-            onMarkComplete: () {
-              Navigator.of(context).pop();
-              _toggleMarkComplete(episodeIndex);
-            },
-            onDismiss: () {
-              Navigator.of(context).pop();
-              _hideContextMenu();
-            },
-          ),
-        );
-      });
-      _contextMenuEpisodeIndex = null;
-    }
-    
     if (_isLoading) {
       return const SliverFillRemaining(
         child: Center(
@@ -536,35 +578,15 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
     }
 
     if (_errorMessage.isNotEmpty) {
-      return SliverFillRemaining(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  color: Theme.of(context).colorScheme.error,
-                  size: 48,
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  _errorMessage,
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _refresh,
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
-          ),
-        ),
+      return SliverServerErrorPage(
+        errorMessage: _errorMessage.isServerConnectionError 
+          ? null 
+          : _errorMessage,
+        onRetry: _refresh,
+        title: 'History Unavailable',
+        subtitle: _errorMessage.isServerConnectionError
+          ? 'Unable to connect to the PinePods server'
+          : 'Failed to load listening history',
       );
     }
 
@@ -712,9 +734,8 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
                 ),
               );
             },
-            onLongPress: () => _showContextMenu(originalIndex),
+            onLongPress: originalIndex >= 0 ? () => _showContextMenu(originalIndex) : null,
             onPlayPressed: () => _playEpisode(episode),
-            onDownloadPressed: () => _downloadEpisode(originalIndex),
           );
         },
         childCount: _filteredEpisodes.length + 1, // +1 for header

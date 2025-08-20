@@ -64,7 +64,7 @@ Future<String> getStorageDirectory() async {
     directory = await getApplicationSupportDirectory();
   }
 
-  return join(directory.path, 'AnyTime');
+  return join(directory.path, 'PinePods');
 }
 
 Future<bool> hasExternalStorage() async {

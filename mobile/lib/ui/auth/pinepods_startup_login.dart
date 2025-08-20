@@ -28,8 +28,9 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
   bool _showMfaField = false;
   String _errorMessage = '';
   String? _tempServerUrl;
-  String? _tempApiKey;
+  String? _tempUsername;
   int? _tempUserId;
+  String? _tempMfaSessionToken;
 
   // List of background images - you can add your own images to assets/images/
   final List<String> _backgroundImages = [
@@ -65,51 +66,87 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
     });
 
     try {
-      final serverUrl = _serverController.text.trim();
-      final username = _usernameController.text.trim();
-      final password = _passwordController.text;
-      final mfaCode = _showMfaField ? _mfaController.text.trim() : null;
+      if (_showMfaField && _tempMfaSessionToken != null) {
+        // Complete MFA login flow
+        final mfaCode = _mfaController.text.trim();
+        final result = await PinepodsLoginService.completeMfaLogin(
+          serverUrl: _tempServerUrl!,
+          username: _tempUsername!,
+          mfaSessionToken: _tempMfaSessionToken!,
+          mfaCode: mfaCode,
+        );
+        
+        if (result.isSuccess) {
+          // Save the connection details including user ID
+          final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+          settingsBloc.setPinepodsServer(result.serverUrl!);
+          settingsBloc.setPinepodsApiKey(result.apiKey!);
+          settingsBloc.setPinepodsUserId(result.userId!);
 
-      final result = await PinepodsLoginService.login(
-        serverUrl,
-        username,
-        password,
-        mfaCode: mfaCode,
-      );
+          // Fetch theme from server after successful login
+          await settingsBloc.fetchThemeFromServer();
 
-      if (result.isSuccess) {
-        // Save the connection details including user ID
-        final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-        settingsBloc.setPinepodsServer(result.serverUrl!);
-        settingsBloc.setPinepodsApiKey(result.apiKey!);
-        settingsBloc.setPinepodsUserId(result.userId!);
+          setState(() {
+            _isLoading = false;
+          });
 
-        // Fetch theme from server after successful login
-        await settingsBloc.fetchThemeFromServer();
-
-        setState(() {
-          _isLoading = false;
-        });
-
-        // Call success callback
-        if (widget.onLoginSuccess != null) {
-          widget.onLoginSuccess!();
+          // Call success callback
+          if (widget.onLoginSuccess != null) {
+            widget.onLoginSuccess!();
+          }
+        } else {
+          setState(() {
+            _errorMessage = result.errorMessage ?? 'MFA verification failed';
+            _isLoading = false;
+          });
         }
-      } else if (result.requiresMfa) {
-        // Store temporary credentials and show MFA field
-        setState(() {
-          _tempServerUrl = result.serverUrl;
-          _tempApiKey = result.apiKey;
-          _tempUserId = result.userId;
-          _showMfaField = true;
-          _isLoading = false;
-          _errorMessage = 'Please enter your MFA code';
-        });
       } else {
-        setState(() {
-          _errorMessage = result.errorMessage ?? 'Login failed';
-          _isLoading = false;
-        });
+        // Initial login flow
+        final serverUrl = _serverController.text.trim();
+        final username = _usernameController.text.trim();
+        final password = _passwordController.text;
+
+        final result = await PinepodsLoginService.login(
+          serverUrl,
+          username,
+          password,
+        );
+
+        if (result.isSuccess) {
+          // Save the connection details including user ID
+          final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+          settingsBloc.setPinepodsServer(result.serverUrl!);
+          settingsBloc.setPinepodsApiKey(result.apiKey!);
+          settingsBloc.setPinepodsUserId(result.userId!);
+
+          // Fetch theme from server after successful login
+          await settingsBloc.fetchThemeFromServer();
+
+          setState(() {
+            _isLoading = false;
+          });
+
+          // Call success callback
+          if (widget.onLoginSuccess != null) {
+            widget.onLoginSuccess!();
+          }
+        } else if (result.requiresMfa) {
+          // Store MFA session info and show MFA field
+          setState(() {
+            _tempServerUrl = result.serverUrl;
+            _tempUsername = result.username;
+            _tempUserId = result.userId;
+            _tempMfaSessionToken = result.mfaSessionToken;
+            _showMfaField = true;
+            _isLoading = false;
+            _errorMessage = 'Please enter your MFA code';
+          });
+        } else {
+          setState(() {
+            _errorMessage = result.errorMessage ?? 'Login failed';
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       setState(() {
@@ -123,8 +160,9 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
     setState(() {
       _showMfaField = false;
       _tempServerUrl = null;
-      _tempApiKey = null;
+      _tempUsername = null;
       _tempUserId = null;
+      _tempMfaSessionToken = null;
       _mfaController.clear();
       _errorMessage = '';
     });

@@ -13,6 +13,8 @@ import 'package:pinepods_mobile/ui/widgets/episode_tile.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/widgets/paginated_episode_list.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
+import 'package:pinepods_mobile/services/error_handling_service.dart';
+import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
 import 'package:logging/logging.dart';
@@ -268,6 +270,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
           setState(() {
             _serverDownloads.removeWhere((e) => e.episodeId == episode.episodeId);
             _serverDownloadsByPodcast = _groupEpisodesByPodcast(_serverDownloads);
+            _filterDownloads(); // Update filtered lists after removal
           });
         } else {
           _showErrorSnackBar('Failed to delete episode from server');
@@ -437,7 +440,7 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
                 : null,
               onPlayPressed: isServerDownload
                 ? (episode) => _playServerEpisode(episode)
-                : null,
+                : (episode) => _playLocalEpisode(episode),
             ),
         ],
       ),
@@ -503,37 +506,43 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
           );
         }
         
-        if (_errorMessage != null) {
-          return SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.error_outline,
-                    size: 64,
-                    color: Colors.red[300],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _errorMessage!,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: _loadDownloads,
-                    child: const Text('Retry'),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        
         // Update filtered local downloads when local downloads change
         _filterLocalDownloads(currentLocalDownloadsByPodcast);
+        
+        if (_errorMessage != null) {
+          // Check if this is a server connection error - show offline mode for downloads
+          if (_errorMessage!.isServerConnectionError) {
+            // Show offline downloads only with special UI
+            return _buildOfflineDownloadsView(_filteredLocalDownloadsByPodcast);
+          } else {
+            return SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: Colors.red[300],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _errorMessage!.userFriendlyMessage,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _loadDownloads,
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+        }
         
         if (_filteredLocalDownloadsByPodcast.isEmpty && _filteredServerDownloadsByPodcast.isEmpty) {
           if (_searchQuery.isNotEmpty) {
@@ -726,5 +735,234 @@ class _PinepodsDownloadsState extends State<PinepodsDownloads> {
     log.info('Playing server episode: ${episode.episodeTitle}');
     
     _showErrorSnackBar('Server episode playback not yet implemented');
+  }
+
+  Future<void> _playLocalEpisode(Episode episode) async {
+    try {
+      log.info('Playing local episode: ${episode.title}');
+      
+      final audioPlayerService = Provider.of<AudioPlayerService>(context, listen: false);
+      
+      // Use the regular audio player service for offline playback
+      // This bypasses the PinePods service and server dependencies
+      await audioPlayerService.playEpisode(episode: episode, resume: true);
+      
+      log.info('Successfully started local episode playback');
+    } catch (e) {
+      log.severe('Error playing local episode: $e');
+      _showErrorSnackBar('Failed to play episode: $e');
+    }
+  }
+
+  Widget _buildOfflinePodcastDropdown(String podcastKey, List<Episode> episodes, {String? displayName}) {
+    final isExpanded = _expandedPodcasts.contains(podcastKey);
+    final title = displayName ?? podcastKey;
+    
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+      child: Column(
+        children: [
+          ListTile(
+            leading: Icon(
+              Icons.offline_pin,
+              color: Colors.green[700],
+            ),
+            title: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            subtitle: Text(
+              '${episodes.length} episode${episodes.length != 1 ? 's' : ''} available offline'
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.green[100],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Offline',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.green[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  isExpanded ? Icons.expand_less : Icons.expand_more,
+                ),
+              ],
+            ),
+            onTap: () => _togglePodcastExpansion(podcastKey),
+          ),
+          if (isExpanded)
+            PaginatedEpisodeList(
+              episodes: episodes,
+              isServerEpisodes: false,
+              isOfflineMode: true,
+              onPlayPressed: (episode) => _playLocalEpisode(episode),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOfflineDownloadsView(Map<String, List<Episode>> localDownloadsByPodcast) {
+    return MultiSliver(
+      children: [
+        // Offline banner
+        SliverToBoxAdapter(
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16.0),
+            margin: const EdgeInsets.all(12.0),
+            decoration: BoxDecoration(
+              color: Colors.orange[100],
+              border: Border.all(color: Colors.orange[300]!),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.cloud_off,
+                  color: Colors.orange[800],
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Offline Mode',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange[800],
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Server unavailable. Showing local downloads only.',
+                        style: TextStyle(
+                          color: Colors.orange[700],
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _errorMessage = null;
+                    });
+                    _loadDownloads();
+                  },
+                  icon: Icon(
+                    Icons.refresh,
+                    size: 16,
+                    color: Colors.orange[800],
+                  ),
+                  label: Text(
+                    'Retry',
+                    style: TextStyle(
+                      color: Colors.orange[800],
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange[50],
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        
+        // Search bar for filtering local downloads
+        _buildSearchBar(),
+        
+        // Local downloads content
+        if (localDownloadsByPodcast.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.cloud_off,
+                    size: 64,
+                    color: Colors.grey[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No local downloads',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Download episodes while online to access them here',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          SliverList(
+            delegate: SliverChildListDelegate([
+              // Local downloads header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.smartphone, color: Colors.green[600]),
+                    const SizedBox(width: 8),
+                    Text(
+                      _searchQuery.isEmpty 
+                          ? 'Local Downloads' 
+                          : 'Local Downloads (${_countFilteredEpisodes(localDownloadsByPodcast)})',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Local downloads by podcast
+              ...localDownloadsByPodcast.entries.map((entry) {
+                final podcastName = entry.key;
+                final episodes = entry.value;
+                final podcastKey = 'offline_local_$podcastName';
+                
+                return _buildOfflinePodcastDropdown(
+                  podcastKey,
+                  episodes,
+                  displayName: podcastName,
+                );
+              }).toList(),
+              
+              // Bottom padding
+              const SizedBox(height: 100),
+            ]),
+          ),
+      ],
+    );
   }
 }

@@ -120,7 +120,16 @@ impl NotificationManager {
         
         let response = request.send().await?;
 
-        Ok(response.status().is_success())
+        let status = response.status();
+        let is_success = status.is_success();
+
+        if !is_success {
+            let response_text = response.text().await.unwrap_or_default();
+            println!("Ntfy notification failed with status: {} - Response: {}", 
+                     status, response_text);
+        }
+
+        Ok(is_success)
     }
 
     async fn send_gotify_notification(&self, settings: &serde_json::Value) -> AppResult<bool> {

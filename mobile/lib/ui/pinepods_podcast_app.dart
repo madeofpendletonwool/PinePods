@@ -68,6 +68,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:logging/logging.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pinepods_mobile/services/global_services.dart';
 
 var theme = Themes.lightTheme().themeData;
 
@@ -83,6 +84,8 @@ class PinepodsPodcastApp extends StatefulWidget {
   SettingsBloc? settingsBloc;
   MobileSettingsService mobileSettingsService;
   List<int> certificateAuthorityBytes;
+  late PinepodsAudioService pinepodsAudioService;
+  late PinepodsService pinepodsService;
 
   PinepodsPodcastApp({
     super.key,
@@ -114,16 +117,23 @@ class PinepodsPodcastApp extends StatefulWidget {
     settingsBloc = SettingsBloc(mobileSettingsService);
 
     // Create and connect PinepodsAudioService for listen duration tracking
-    final pinepodsService = PinepodsService();
-    final pinepodsAudioService = PinepodsAudioService(
+    pinepodsService = PinepodsService();
+    pinepodsAudioService = PinepodsAudioService(
       audioPlayerService!,
       pinepodsService,
       settingsBloc!,
     );
 
     // Connect the services for listen duration recording
-    (audioPlayerService as DefaultAudioPlayerService).setPinepodsAudioService(pinepodsAudioService);
+    (audioPlayerService as DefaultAudioPlayerService).setPinepodsAudioService(
+      pinepodsAudioService,
+    );
 
+    // Initialize global services for app-wide access
+    GlobalServices.initialize(
+      pinepodsAudioService: pinepodsAudioService,
+      pinepodsService: pinepodsService,
+    );
 
     podcastApi.addClientAuthorityBytes(certificateAuthorityBytes);
   }
@@ -160,22 +170,23 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
     return MultiProvider(
       providers: [
         Provider<SearchBloc>(
-          create: (_) => SearchBloc(
-            podcastService: widget.podcastService!,
-          ),
+          create: (_) => SearchBloc(podcastService: widget.podcastService!),
           dispose: (_, value) => value.dispose(),
         ),
         Provider<EpisodeBloc>(
-          create: (_) =>
-              EpisodeBloc(podcastService: widget.podcastService!, audioPlayerService: widget.audioPlayerService),
+          create: (_) => EpisodeBloc(
+            podcastService: widget.podcastService!,
+            audioPlayerService: widget.audioPlayerService,
+          ),
           dispose: (_, value) => value.dispose(),
         ),
         Provider<PodcastBloc>(
           create: (_) => PodcastBloc(
-              podcastService: widget.podcastService!,
-              audioPlayerService: widget.audioPlayerService,
-              downloadService: widget.downloadService,
-              settingsService: widget.mobileSettingsService),
+            podcastService: widget.podcastService!,
+            audioPlayerService: widget.audioPlayerService,
+            downloadService: widget.downloadService,
+            settingsService: widget.mobileSettingsService,
+          ),
           dispose: (_, value) => value.dispose(),
         ),
         Provider<PagerBloc>(
@@ -183,7 +194,8 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
           dispose: (_, value) => value.dispose(),
         ),
         Provider<AudioBloc>(
-          create: (_) => AudioBloc(audioPlayerService: widget.audioPlayerService),
+          create: (_) =>
+              AudioBloc(audioPlayerService: widget.audioPlayerService),
           dispose: (_, value) => value.dispose(),
         ),
         Provider<SettingsBloc?>(
@@ -197,12 +209,8 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
           ),
           dispose: (_, value) => value.dispose(),
         ),
-        Provider<AudioPlayerService>(
-          create: (_) => widget.audioPlayerService,
-        ),
-        Provider<PodcastService>(
-          create: (_) => widget.podcastService!,
-        )
+        Provider<AudioPlayerService>(create: (_) => widget.audioPlayerService),
+        Provider<PodcastService>(create: (_) => widget.podcastService!),
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -210,7 +218,7 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
         title: 'Pinepods Podcast Client',
         navigatorObservers: [NavigationRouteObserver()],
         localizationsDelegates: const <LocalizationsDelegate<Object>>[
-          AnytimeLocalisationsDelegate(),
+          PinepodsLocalisationsDelegate(),
           GlobalMaterialLocalizations.delegate,
           GlobalWidgetsLocalizations.delegate,
           GlobalCupertinoLocalizations.delegate,
@@ -224,31 +232,28 @@ class PinepodsPodcastAppState extends State<PinepodsPodcastApp> {
         // Uncomment builder below to enable accessibility checker tool.
         // builder: (context, child) => AccessibilityTools(child: child),
         home: const AuthWrapper(
-          child: AnytimeHomePage(title: 'PinePods Podcast Player'),
+          child: PinepodsHomePage(title: 'PinePods Podcast Player'),
         ),
       ),
     );
   }
 }
 
-class AnytimeHomePage extends StatefulWidget {
+class PinepodsHomePage extends StatefulWidget {
   final String? title;
   final bool topBarVisible;
 
-  const AnytimeHomePage({
-    super.key,
-    this.title,
-    this.topBarVisible = true,
-  });
+  const PinepodsHomePage({super.key, this.title, this.topBarVisible = true});
 
   @override
-  State<AnytimeHomePage> createState() => _AnytimeHomePageState();
+  State<PinepodsHomePage> createState() => _PinepodsHomePageState();
 }
 
-class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingObserver {
+class _PinepodsHomePageState extends State<PinepodsHomePage>
+    with WidgetsBindingObserver {
   StreamSubscription<Uri>? deepLinkSubscription;
 
-  final log = Logger('_AnytimeHomePageState');
+  final log = Logger('_PinepodsHomePageState');
   bool handledInitialLink = false;
   Widget? library;
 
@@ -267,7 +272,7 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
   }
 
   /// We listen to external links from outside the app. For example, someone may navigate
-  /// to a web page that supports 'Open with Anytime'.
+  /// to a web page that supports 'Open with Pinepods'.
   void _setupLinkListener() async {
     final appLinks = AppLinks(); // AppLinks is singleton
 
@@ -291,26 +296,32 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
       /// the BLoC) that we load this new URL. If not, we pop the stack until we are
       /// back at root and then load the podcast details page.
       if (routeName != null && routeName == 'podcastdetails') {
-        loadPodcastBloc.load(Feed(
-          podcast: Podcast.fromUrl(url: path),
-          backgroundFresh: false,
-          silently: false,
-        ));
+        loadPodcastBloc.load(
+          Feed(
+            podcast: Podcast.fromUrl(url: path),
+            backgroundFresh: false,
+            silently: false,
+          ),
+        );
       } else {
         /// Pop back to route.
         Navigator.of(context).popUntil((route) {
           var currentRouteName = NavigationRouteObserver().top!.settings.name;
 
-          return currentRouteName == null || currentRouteName == '' || currentRouteName == '/';
+          return currentRouteName == null ||
+              currentRouteName == '' ||
+              currentRouteName == '/';
         });
 
         /// Once we have reached the root route, push podcast details.
         await Navigator.push(
           context,
           MaterialPageRoute<void>(
-              fullscreenDialog: true,
-              settings: const RouteSettings(name: 'podcastdetails'),
-              builder: (context) => PodcastDetails(Podcast.fromUrl(url: path), loadPodcastBloc)),
+            fullscreenDialog: true,
+            settings: const RouteSettings(name: 'podcastdetails'),
+            builder: (context) =>
+                PodcastDetails(Podcast.fromUrl(url: path), loadPodcastBloc),
+          ),
         );
       }
     }
@@ -361,9 +372,7 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                   SliverVisibility(
                     visible: widget.topBarVisible,
                     sliver: SliverAppBar(
-                      title: ExcludeSemantics(
-                        child: TitleWidget(),
-                      ),
+                      title: ExcludeSemantics(child: TitleWidget()),
                       backgroundColor: backgroundColour,
                       floating: false,
                       pinned: true,
@@ -379,16 +388,12 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                                 fullscreenDialog: false,
                                 settings: const RouteSettings(name: 'queue'),
                                 builder: (context) => Scaffold(
-                                  appBar: AppBar(
-                                    title: const Text('Queue'),
-                                  ),
+                                  appBar: AppBar(title: const Text('Queue')),
                                   body: const Column(
                                     children: [
                                       Expanded(
                                         child: CustomScrollView(
-                                          slivers: [
-                                            PinepodsQueue(),
-                                          ],
+                                          slivers: [PinepodsQueue()],
                                         ),
                                       ),
                                       MiniPlayer(),
@@ -408,39 +413,53 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                               defaultTargetPlatform == TargetPlatform.iOS
                                   ? MaterialPageRoute<void>(
                                       fullscreenDialog: false,
-                                      settings: const RouteSettings(name: 'pinepods_search'),
-                                      builder: (context) => const PinepodsSearch())
+                                      settings: const RouteSettings(
+                                        name: 'pinepods_search',
+                                      ),
+                                      builder: (context) =>
+                                          const PinepodsSearch(),
+                                    )
                                   : SlideRightRoute(
                                       widget: const PinepodsSearch(),
-                                      settings: const RouteSettings(name: 'pinepods_search'),
+                                      settings: const RouteSettings(
+                                        name: 'pinepods_search',
+                                      ),
                                     ),
                             );
                           },
                         ),
                         PopupMenuButton<String>(
                           onSelected: _menuSelect,
-                          icon: const Icon(
-                            Icons.more_vert,
-                          ),
+                          icon: const Icon(Icons.more_vert),
                           itemBuilder: (BuildContext context) {
                             return <PopupMenuEntry<String>>[
                               if (feedbackUrl.isNotEmpty)
                                 PopupMenuItem<String>(
-                                  textStyle: Theme.of(context).textTheme.titleMedium,
+                                  textStyle: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
                                   value: 'feedback',
                                   child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
                                     children: [
                                       const Padding(
                                         padding: EdgeInsets.only(right: 8.0),
-                                        child: Icon(Icons.feedback_outlined, size: 18.0),
+                                        child: Icon(
+                                          Icons.feedback_outlined,
+                                          size: 18.0,
+                                        ),
                                       ),
-                                      Text(L.of(context)!.feedback_menu_item_label),
+                                      Text(
+                                        L.of(context)!.feedback_menu_item_label,
+                                      ),
                                     ],
                                   ),
                                 ),
                               PopupMenuItem<String>(
-                                textStyle: Theme.of(context).textTheme.titleMedium,
+                                textStyle: Theme.of(
+                                  context,
+                                ).textTheme.titleMedium,
                                 value: 'rss',
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -454,7 +473,9 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                                 ),
                               ),
                               PopupMenuItem<String>(
-                                textStyle: Theme.of(context).textTheme.titleMedium,
+                                textStyle: Theme.of(
+                                  context,
+                                ).textTheme.titleMedium,
                                 value: 'settings',
                                 child: Row(
                                   children: [
@@ -473,10 +494,12 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
                     ),
                   ),
                   StreamBuilder<int>(
-                      stream: pager.currentPage,
-                      builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
-                        return _fragment(snapshot.data, searchBloc);
-                      }),
+                    stream: pager.currentPage,
+                    builder:
+                        (BuildContext context, AsyncSnapshot<int> snapshot) {
+                          return _fragment(snapshot.data, searchBloc);
+                        },
+                  ),
                 ],
               ),
             ),
@@ -484,178 +507,231 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
           ],
         ),
         bottomNavigationBar: StreamBuilder<int>(
-            stream: pager.currentPage,
-            initialData: 0,
-            builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
-              int index = snapshot.data ?? 0;
-              
-              return StreamBuilder<AppSettings>(
-                stream: Provider.of<SettingsBloc>(context).settings,
-                builder: (BuildContext context, AsyncSnapshot<AppSettings> settingsSnapshot) {
-                  final bottomBarOrder = settingsSnapshot.data?.bottomBarOrder ?? 
-                    ['Home', 'Feed', 'Saved', 'Podcasts', 'Downloads', 'History', 'Playlists', 'Search'];
+          stream: pager.currentPage,
+          initialData: 0,
+          builder: (BuildContext context, AsyncSnapshot<int> snapshot) {
+            int index = snapshot.data ?? 0;
 
-              // Create a map of all available nav items
-              final Map<String, BottomNavItem> allNavItems = {
-                'Home': BottomNavItem(
-                  icon: Icons.home,
-                  label: 'Home',
-                  isSelected: false,
-                ),
-                'Feed': BottomNavItem(
-                  icon: Icons.rss_feed,
-                  label: 'Feed',
-                  isSelected: false,
-                ),
-                'Saved': BottomNavItem(
-                  icon: Icons.bookmark,
-                  label: 'Saved',
-                  isSelected: false,
-                ),
-                'Podcasts': BottomNavItem(
-                  icon: Icons.podcasts,
-                  label: 'Podcasts',
-                  isSelected: false,
-                ),
-                'Downloads': BottomNavItem(
-                  icon: Icons.download,
-                  label: 'Downloads',
-                  isSelected: false,
-                ),
-                'History': BottomNavItem(
-                  icon: Icons.history,
-                  label: 'History',
-                  isSelected: false,
-                ),
-                'Playlists': BottomNavItem(
-                  icon: Icons.playlist_play,
-                  label: 'Playlists',
-                  isSelected: false,
-                ),
-                'Search': BottomNavItem(
-                  icon: Icons.search,
-                  label: 'Search',
-                  isSelected: false,
-                ),
-              };
+            return StreamBuilder<AppSettings>(
+              stream: Provider.of<SettingsBloc>(context).settings,
+              builder:
+                  (
+                    BuildContext context,
+                    AsyncSnapshot<AppSettings> settingsSnapshot,
+                  ) {
+                    final bottomBarOrder =
+                        settingsSnapshot.data?.bottomBarOrder ??
+                        [
+                          'Home',
+                          'Feed',
+                          'Saved',
+                          'Podcasts',
+                          'Downloads',
+                          'History',
+                          'Playlists',
+                          'Search',
+                        ];
 
-              // Create the ordered nav items based on settings
-              final List<BottomNavItem> navItems = bottomBarOrder.map((label) {
-                final baseItem = allNavItems[label]!;
-                final itemIndex = bottomBarOrder.indexOf(label);
-                return BottomNavItem(
-                  icon: index == itemIndex ? _getSelectedIcon(label) : _getUnselectedIcon(label),
-                  label: label,
-                  isSelected: index == itemIndex,
-                );
-              }).toList();
+                    // Create a map of all available nav items
+                    final Map<String, BottomNavItem> allNavItems = {
+                      'Home': BottomNavItem(
+                        icon: Icons.home,
+                        label: 'Home',
+                        isSelected: false,
+                      ),
+                      'Feed': BottomNavItem(
+                        icon: Icons.rss_feed,
+                        label: 'Feed',
+                        isSelected: false,
+                      ),
+                      'Saved': BottomNavItem(
+                        icon: Icons.bookmark,
+                        label: 'Saved',
+                        isSelected: false,
+                      ),
+                      'Podcasts': BottomNavItem(
+                        icon: Icons.podcasts,
+                        label: 'Podcasts',
+                        isSelected: false,
+                      ),
+                      'Downloads': BottomNavItem(
+                        icon: Icons.download,
+                        label: 'Downloads',
+                        isSelected: false,
+                      ),
+                      'History': BottomNavItem(
+                        icon: Icons.history,
+                        label: 'History',
+                        isSelected: false,
+                      ),
+                      'Playlists': BottomNavItem(
+                        icon: Icons.playlist_play,
+                        label: 'Playlists',
+                        isSelected: false,
+                      ),
+                      'Search': BottomNavItem(
+                        icon: Icons.search,
+                        label: 'Search',
+                        isSelected: false,
+                      ),
+                    };
 
-                  return Container(
-                    height: 70,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).bottomAppBarTheme.color,
-                      border: Border(
-                        top: BorderSide(
-                          color: Theme.of(context).dividerColor,
-                          width: 0.5,
+                    // Create the ordered nav items based on settings
+                    final List<BottomNavItem> navItems = bottomBarOrder.map((
+                      label,
+                    ) {
+                      final baseItem = allNavItems[label]!;
+                      final itemIndex = bottomBarOrder.indexOf(label);
+                      return BottomNavItem(
+                        icon: index == itemIndex
+                            ? _getSelectedIcon(label)
+                            : _getUnselectedIcon(label),
+                        label: label,
+                        isSelected: index == itemIndex,
+                      );
+                    }).toList();
+
+                    return Container(
+                      height: 70,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).bottomAppBarTheme.color,
+                        border: Border(
+                          top: BorderSide(
+                            color: Theme.of(context).dividerColor,
+                            width: 0.5,
+                          ),
                         ),
                       ),
-                    ),
-                    child: MediaQuery.of(context).orientation == Orientation.landscape
-                        ? Center(
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: navItems.asMap().entries.map((entry) {
-                                int itemIndex = entry.key;
-                                BottomNavItem item = entry.value;
-                                
-                                return GestureDetector(
-                                  onTap: () => pager.changePage(itemIndex),
-                                  child: Container(
-                                    width: 80,
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          item.icon,
-                                          color: item.isSelected
-                                              ? Theme.of(context).iconTheme.color
-                                              : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
-                                                  .withLightness(0.8)
-                                                  .toColor(),
-                                          size: 24,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          item.label,
-                                          style: TextStyle(
-                                            fontSize: 11,
+                      child:
+                          MediaQuery.of(context).orientation ==
+                              Orientation.landscape
+                          ? Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: navItems.asMap().entries.map((entry) {
+                                  int itemIndex = entry.key;
+                                  BottomNavItem item = entry.value;
+
+                                  return GestureDetector(
+                                    onTap: () => pager.changePage(itemIndex),
+                                    child: Container(
+                                      width: 80,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            item.icon,
                                             color: item.isSelected
-                                                ? Theme.of(context).iconTheme.color
-                                                : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
-                                                    .withLightness(0.8)
-                                                    .toColor(),
-                                            fontWeight: item.isSelected ? FontWeight.w600 : FontWeight.normal,
+                                                ? Theme.of(
+                                                    context,
+                                                  ).iconTheme.color
+                                                : HSLColor.fromColor(
+                                                        Theme.of(context)
+                                                            .bottomAppBarTheme
+                                                            .color!,
+                                                      )
+                                                      .withLightness(0.8)
+                                                      .toColor(),
+                                            size: 24,
                                           ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ],
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            item.label,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: item.isSelected
+                                                  ? Theme.of(
+                                                      context,
+                                                    ).iconTheme.color
+                                                  : HSLColor.fromColor(
+                                                          Theme.of(context)
+                                                              .bottomAppBarTheme
+                                                              .color!,
+                                                        )
+                                                        .withLightness(0.8)
+                                                        .toColor(),
+                                              fontWeight: item.isSelected
+                                                  ? FontWeight.w600
+                                                  : FontWeight.normal,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          )
-                        : SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: navItems.asMap().entries.map((entry) {
-                                int itemIndex = entry.key;
-                                BottomNavItem item = entry.value;
-                                
-                                return GestureDetector(
-                                  onTap: () => pager.changePage(itemIndex),
-                                  child: Container(
-                                    width: 80,
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          item.icon,
-                                          color: item.isSelected
-                                              ? Theme.of(context).iconTheme.color
-                                              : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
-                                                  .withLightness(0.8)
-                                                  .toColor(),
-                                          size: 24,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          item.label,
-                                          style: TextStyle(
-                                            fontSize: 11,
+                                  );
+                                }).toList(),
+                              ),
+                            )
+                          : SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: navItems.asMap().entries.map((entry) {
+                                  int itemIndex = entry.key;
+                                  BottomNavItem item = entry.value;
+
+                                  return GestureDetector(
+                                    onTap: () => pager.changePage(itemIndex),
+                                    child: Container(
+                                      width: 80,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            item.icon,
                                             color: item.isSelected
-                                                ? Theme.of(context).iconTheme.color
-                                                : HSLColor.fromColor(Theme.of(context).bottomAppBarTheme.color!)
-                                                    .withLightness(0.8)
-                                                    .toColor(),
-                                            fontWeight: item.isSelected ? FontWeight.w600 : FontWeight.normal,
+                                                ? Theme.of(
+                                                    context,
+                                                  ).iconTheme.color
+                                                : HSLColor.fromColor(
+                                                        Theme.of(context)
+                                                            .bottomAppBarTheme
+                                                            .color!,
+                                                      )
+                                                      .withLightness(0.8)
+                                                      .toColor(),
+                                            size: 24,
                                           ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ],
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            item.label,
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: item.isSelected
+                                                  ? Theme.of(
+                                                      context,
+                                                    ).iconTheme.color
+                                                  : HSLColor.fromColor(
+                                                          Theme.of(context)
+                                                              .bottomAppBarTheme
+                                                              .color!,
+                                                        )
+                                                        .withLightness(0.8)
+                                                        .toColor(),
+                                              fontWeight: item.isSelected
+                                                  ? FontWeight.w600
+                                                  : FontWeight.normal,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                );
-                              }).toList(),
+                                  );
+                                }).toList(),
+                              ),
                             ),
-                          ),
-                  );
-                }
-              );
-            }),
+                    );
+                  },
+            );
+          },
+        ),
       ),
     );
   }
@@ -663,13 +739,13 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
   Widget _fragment(int? index, EpisodeBloc searchBloc) {
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final bottomBarOrder = settingsBloc.currentSettings.bottomBarOrder;
-    
+
     if (index == null || index < 0 || index >= bottomBarOrder.length) {
       return const PinepodsHome(); // Default to Home
     }
-    
+
     final pageLabel = bottomBarOrder[index];
-    
+
     switch (pageLabel) {
       case 'Home':
         return const PinepodsHome();
@@ -694,29 +770,47 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
 
   IconData _getSelectedIcon(String label) {
     switch (label) {
-      case 'Home': return Icons.home;
-      case 'Feed': return Icons.rss_feed;
-      case 'Saved': return Icons.bookmark;
-      case 'Podcasts': return Icons.podcasts;
-      case 'Downloads': return Icons.download;
-      case 'History': return Icons.history;
-      case 'Playlists': return Icons.playlist_play;
-      case 'Search': return Icons.search;
-      default: return Icons.home;
+      case 'Home':
+        return Icons.home;
+      case 'Feed':
+        return Icons.rss_feed;
+      case 'Saved':
+        return Icons.bookmark;
+      case 'Podcasts':
+        return Icons.podcasts;
+      case 'Downloads':
+        return Icons.download;
+      case 'History':
+        return Icons.history;
+      case 'Playlists':
+        return Icons.playlist_play;
+      case 'Search':
+        return Icons.search;
+      default:
+        return Icons.home;
     }
   }
 
   IconData _getUnselectedIcon(String label) {
     switch (label) {
-      case 'Home': return Icons.home_outlined;
-      case 'Feed': return Icons.rss_feed_outlined;
-      case 'Saved': return Icons.bookmark_outline;
-      case 'Podcasts': return Icons.podcasts_outlined;
-      case 'Downloads': return Icons.download_outlined;
-      case 'History': return Icons.history_outlined;
-      case 'Playlists': return Icons.playlist_play_outlined;
-      case 'Search': return Icons.search_outlined;
-      default: return Icons.home_outlined;
+      case 'Home':
+        return Icons.home_outlined;
+      case 'Feed':
+        return Icons.rss_feed_outlined;
+      case 'Saved':
+        return Icons.bookmark_outline;
+      case 'Podcasts':
+        return Icons.podcasts_outlined;
+      case 'Downloads':
+        return Icons.download_outlined;
+      case 'History':
+        return Icons.history_outlined;
+      case 'Playlists':
+        return Icons.playlist_play_outlined;
+      case 'Search':
+        return Icons.search_outlined;
+      default:
+        return Icons.home_outlined;
     }
   }
 
@@ -727,7 +821,6 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
     var url = '';
 
     switch (choice) {
-
       case 'settings':
         await Navigator.push(
           context,
@@ -761,30 +854,25 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
             ),
             actions: <Widget>[
               BasicDialogAction(
-                title: ActionText(
-                  L.of(context)!.cancel_button_label,
-                ),
+                title: ActionText(L.of(context)!.cancel_button_label),
                 onPressed: () {
                   Navigator.pop(context);
                 },
               ),
               BasicDialogAction(
-                title: ActionText(
-                  L.of(context)!.ok_button_label,
-                ),
+                title: ActionText(L.of(context)!.ok_button_label),
                 iosIsDefaultAction: true,
                 onPressed: () async {
                   Navigator.of(context).pop(); // Close the dialog first
-                  
+
                   // Show loading indicator
                   showDialog(
                     context: context,
                     barrierDismissible: false,
-                    builder: (context) => const Center(
-                      child: CircularProgressIndicator(),
-                    ),
+                    builder: (context) =>
+                        const Center(child: CircularProgressIndicator()),
                   );
-                  
+
                   try {
                     await _handleRssUrl(url);
                   } catch (e) {
@@ -812,10 +900,10 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
       // Get services
       final podcastApi = MobilePodcastApi();
       final pinepodsService = PinepodsService();
-      
+
       // Load podcast feed from RSS
       final podcast = await podcastApi.loadFeed(url);
-      
+
       // Create UnifiedPinepodsPodcast from the loaded feed
       final unifiedPodcast = UnifiedPinepodsPodcast(
         id: 0,
@@ -834,13 +922,13 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
         explicit: false,
         episodeCount: podcast.episodes?.length ?? 0,
       );
-      
+
       // Check if podcast is already followed
       bool isFollowing = false;
       final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
       final settings = settingsBloc.currentSettings;
       final userId = settings.pinepodsUserId;
-      
+
       if (userId != null) {
         try {
           isFollowing = await pinepodsService.checkPodcastExists(
@@ -852,10 +940,10 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
           print('Failed to check if podcast exists: $e');
         }
       }
-      
+
       if (mounted) {
         Navigator.of(context).pop(); // Close loading dialog
-        
+
         // Navigate to podcast details page
         Navigator.push(
           context,
@@ -879,16 +967,13 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
   void _launchFeedback() async {
     final uri = Uri.parse(feedbackUrl);
 
-    if (!await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    )) {
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       throw Exception('Could not launch $uri');
     }
   }
 
   void _launchEmail() async {
-    final uri = Uri.parse('mailto:hello@anytimeplayer.app');
+    final uri = Uri.parse('mailto:mobile-support@pinepods.online');
 
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
@@ -899,12 +984,12 @@ class _AnytimeHomePageState extends State<AnytimeHomePage> with WidgetsBindingOb
 }
 
 class TitleWidget extends StatelessWidget {
-  TitleWidget({
-    super.key,
-  });
+  TitleWidget({super.key});
 
   String _generateGravatarUrl(String email, {int size = 40}) {
-    final hash = md5.convert(utf8.encode(email.toLowerCase().trim())).toString();
+    final hash = md5
+        .convert(utf8.encode(email.toLowerCase().trim()))
+        .toString();
     return 'https://www.gravatar.com/avatar/$hash?s=$size&d=identicon';
   }
 
@@ -943,7 +1028,9 @@ class TitleWidget extends StatelessWidget {
                   Text(
                     'Pods',
                     style: TextStyle(
-                      color: Theme.of(context).brightness == Brightness.light ? Colors.black : Colors.white,
+                      color: Theme.of(context).brightness == Brightness.light
+                          ? Colors.black
+                          : Colors.white,
                       fontWeight: FontWeight.bold,
                       fontFamily: 'MontserratRegular',
                       fontSize: 18,
@@ -1002,7 +1089,9 @@ class TitleWidget extends StatelessWidget {
                   child: Text(
                     username,
                     style: TextStyle(
-                      color: Theme.of(context).brightness == Brightness.light ? Colors.black : Colors.white,
+                      color: Theme.of(context).brightness == Brightness.light
+                          ? Colors.black
+                          : Colors.white,
                       fontWeight: FontWeight.w600,
                       fontSize: 16,
                     ),

@@ -21,13 +21,21 @@ class PinepodsAudioService {
   Timer? _userStatsTimer;
   int? _currentEpisodeId;
   int? _currentUserId;
+  bool _isYoutube = false;
   double _lastRecordedPosition = 0;
+  
+  /// Callbacks for pause/stop events
+  Function()? _onPauseCallback;
+  Function()? _onStopCallback;
 
   PinepodsAudioService(
     this._audioPlayerService,
     this._pinepodsService,
-    this._settingsBloc,
-  );
+    this._settingsBloc, {
+    Function()? onPauseCallback,
+    Function()? onStopCallback,
+  }) : _onPauseCallback = onPauseCallback,
+       _onStopCallback = onStopCallback;
 
   /// Play a PinePods episode with full server integration
   Future<void> playPinepodsEpisode({
@@ -44,6 +52,7 @@ class PinepodsAudioService {
       }
 
       _currentUserId = userId;
+      _isYoutube = pinepodsEpisode.isYoutube;
 
       log.info('Starting PinePods episode playback: ${pinepodsEpisode.episodeTitle}');
 
@@ -91,10 +100,11 @@ class PinepodsAudioService {
 
       // Add to history
       log.info('Adding episode $episodeId to history for user $userId');
-      await _pinepodsService.addHistory(
+      final initialPosition = resume ? (pinepodsEpisode.listenDuration ?? 0).toDouble() : 0.0;
+      await _pinepodsService.recordListenDuration(
         episodeId,
-        resume ? (pinepodsEpisode.listenDuration ?? 0).toDouble() : 0,
         userId,
+        initialPosition, // Send seconds like web app does
         pinepodsEpisode.isYoutube,
       );
 
@@ -124,9 +134,11 @@ class PinepodsAudioService {
   void _startPeriodicUpdates() {
     _stopPeriodicUpdates(); // Clean up any existing timers
 
-    // Episode position updates every 30 seconds
+    log.info('Starting periodic updates - episode position every 15s, user stats every 60s');
+    
+    // Episode position updates every 15 seconds (more frequent for reliability)
     _episodeUpdateTimer = Timer.periodic(
-      const Duration(seconds: 30),
+      const Duration(seconds: 15),
       (_) => _updateEpisodePosition(),
     );
 
@@ -139,7 +151,11 @@ class PinepodsAudioService {
 
   /// Update episode position on server
   Future<void> _updateEpisodePosition() async {
-    if (_currentEpisodeId == null || _currentUserId == null) return;
+    log.info('_updateEpisodePosition called - episodeId: $_currentEpisodeId, userId: $_currentUserId');
+    if (_currentEpisodeId == null || _currentUserId == null) {
+      log.warning('Skipping scheduled sync - missing episode ID ($_currentEpisodeId) or user ID ($_currentUserId)');
+      return;
+    }
 
     try {
       final positionState = _audioPlayerService.playPosition?.value;
@@ -147,17 +163,21 @@ class PinepodsAudioService {
 
       final currentPosition = positionState.position.inSeconds.toDouble();
       
-      // Only update if position has changed significantly
-      if ((currentPosition - _lastRecordedPosition).abs() > 5) {
-        await _pinepodsService.addHistory(
+      // Only update if position has changed by more than 2 seconds (more responsive)
+      if ((currentPosition - _lastRecordedPosition).abs() > 2) {
+        // Convert seconds to minutes for the API
+        final currentPositionMinutes = currentPosition / 60.0;
+        log.info('Scheduled sync: position changed from ${_lastRecordedPosition}s to ${currentPosition}s');
+        
+        await _pinepodsService.recordListenDuration(
           _currentEpisodeId!,
-          currentPosition,
           _currentUserId!,
-          false, // Assume not YouTube for now
+          currentPosition, // Send seconds like web app does
+          _isYoutube,
         );
         
         _lastRecordedPosition = currentPosition;
-        log.fine('Updated episode position: ${currentPosition}s');
+        log.info('Scheduled sync completed: ${currentPosition}s');
       }
     } catch (e) {
       log.warning('Failed to update episode position: $e');
@@ -176,6 +196,75 @@ class PinepodsAudioService {
     }
   }
 
+  /// Sync current position to server immediately (for pause/stop events)
+  Future<void> syncCurrentPositionToServer() async {
+    log.info('syncCurrentPositionToServer called - episodeId: $_currentEpisodeId, userId: $_currentUserId');
+    
+    if (_currentEpisodeId == null || _currentUserId == null) {
+      log.warning('Cannot sync - missing episode ID ($_currentEpisodeId) or user ID ($_currentUserId)');
+      return;
+    }
+
+    try {
+      final positionState = _audioPlayerService.playPosition?.value;
+      if (positionState == null) {
+        log.warning('Cannot sync - positionState is null');
+        return;
+      }
+
+      final currentPosition = positionState.position.inSeconds.toDouble();
+      
+      log.info('Syncing position to server: ${currentPosition}s for episode $_currentEpisodeId');
+      
+      await _pinepodsService.recordListenDuration(
+        _currentEpisodeId!,
+        _currentUserId!,
+        currentPosition, // Send seconds like web app does
+        _isYoutube,
+      );
+      
+      _lastRecordedPosition = currentPosition;
+      log.info('Successfully synced position to server: ${currentPosition}s');
+    } catch (e) {
+      log.warning('Failed to sync position to server: $e');
+      log.warning('Stack trace: ${StackTrace.current}');
+    }
+  }
+
+  /// Get server position for current episode
+  Future<double?> getServerPosition() async {
+    if (_currentEpisodeId == null || _currentUserId == null) return null;
+
+    try {
+      final episodeMetadata = await _pinepodsService.getEpisodeMetadata(
+        _currentEpisodeId!,
+        _currentUserId!,
+        isYoutube: _isYoutube,
+      );
+      
+      return episodeMetadata?.listenDuration?.toDouble();
+    } catch (e) {
+      log.warning('Failed to get server position: $e');
+      return null;
+    }
+  }
+
+  /// Get server position for any episode
+  Future<double?> getServerPositionForEpisode(int episodeId, int userId, bool isYoutube) async {
+    try {
+      final episodeMetadata = await _pinepodsService.getEpisodeMetadata(
+        episodeId,
+        userId,
+        isYoutube: isYoutube,
+      );
+      
+      return episodeMetadata?.listenDuration?.toDouble();
+    } catch (e) {
+      log.warning('Failed to get server position for episode $episodeId: $e');
+      return null;
+    }
+  }
+
   /// Record listen duration when episode ends or is stopped
   Future<void> recordListenDuration(double listenDuration) async {
     if (_currentEpisodeId == null || _currentUserId == null) return;
@@ -185,12 +274,26 @@ class PinepodsAudioService {
         _currentEpisodeId!,
         _currentUserId!,
         listenDuration,
-        false, // Assume not YouTube for now
+        _isYoutube,
       );
       log.info('Recorded listen duration: ${listenDuration}s');
     } catch (e) {
       log.warning('Failed to record listen duration: $e');
     }
+  }
+
+  /// Handle pause event - sync position to server
+  Future<void> onPause() async {
+    await syncCurrentPositionToServer();
+    _onPauseCallback?.call();
+    log.info('Pause event handled - position synced to server');
+  }
+
+  /// Handle stop event - sync position to server
+  Future<void> onStop() async {
+    await syncCurrentPositionToServer();
+    _onStopCallback?.call();
+    log.info('Stop event handled - position synced to server');
   }
 
   /// Stop periodic updates
@@ -303,6 +406,11 @@ class PinepodsAudioService {
                        url.toLowerCase().contains('subrip')) {
               format = TranscriptFormat.subrip;
               log.info('Detected SubRip transcript format');
+            } else if (url.toLowerCase().contains('transcript') || 
+                       mimeType.toLowerCase().contains('html') || 
+                       type.toLowerCase().contains('html')) {
+              format = TranscriptFormat.html;
+              log.info('Detected HTML transcript format');
             } else {
               log.warning('Transcript format not recognized: mimeType=$mimeType, type=$type');
             }

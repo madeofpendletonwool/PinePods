@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
+import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
+import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/ui/pinepods/playlist_episodes.dart';
 import 'package:pinepods_mobile/ui/pinepods/create_playlist.dart';
 import 'package:provider/provider.dart';
@@ -256,39 +258,15 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
     }
 
     if (_errorMessage != null) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              Icon(
-                Icons.error_outline,
-                size: 75,
-                color: Theme.of(context).colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Error loading playlists',
-                style: Theme.of(context).textTheme.titleLarge,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _errorMessage!,
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _loadPlaylists,
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
+      return SliverServerErrorPage(
+        errorMessage: _errorMessage!.isServerConnectionError 
+          ? null 
+          : _errorMessage,
+        onRetry: _loadPlaylists,
+        title: 'Playlists Unavailable',
+        subtitle: _errorMessage!.isServerConnectionError
+          ? 'Unable to connect to the PinePods server'
+          : 'Failed to load your playlists',
       );
     }
 
