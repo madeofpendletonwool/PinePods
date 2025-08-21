@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Fetch the latest release
         id: fetch_release
@@ -32,6 +32,14 @@ jobs:
           echo "Release URL: $release_url"
           echo "::set-output name=version::$latest_release"
           echo "::set-output name=release_url::$release_url"
+          
+          # Check if this is an RC release
+          if [[ "$latest_release" == *"-rc"* ]]; then
+            echo "RC release detected, skipping Discord notification"
+            echo "::set-output name=is_rc::true"
+          else
+            echo "::set-output name=is_rc::false"
+          fi
 
       - name: Set release message
         id: set_message
@@ -45,7 +53,13 @@ jobs:
             echo "::set-output name=message::$message"
           fi
 
+      - name: Skip Discord notification for RC release
+        if: steps.fetch_release.outputs.is_rc == 'true'
+        run: |
+          echo "Skipping Discord notification for RC release: ${{ steps.fetch_release.outputs.version }}"
+
       - name: Discord notification to announce deployment
+        if: steps.fetch_release.outputs.is_rc == 'false'
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         uses: Ilshidur/action-discord@master

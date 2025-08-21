@@ -2520,16 +2520,6 @@ impl DatabasePool {
                 .await?;
 
                 if let Some(row) = row {
-                    // Get additional stats from Episodes and Podcasts
-                    let episode_count_row = sqlx::query(
-                        r#"SELECT COUNT(*) as total_episodes FROM "Episodes" e
-                           INNER JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                           WHERE p.userid = $1"#
-                    )
-                    .bind(user_id)
-                    .fetch_one(pool)
-                    .await?;
-
                     // Count saved episodes directly from SavedEpisodes table
                     let saved_count_row = sqlx::query(
                         r#"SELECT COUNT(*) as saved_count FROM "SavedEpisodes" WHERE userid = $1"#
@@ -2546,7 +2536,6 @@ impl DatabasePool {
                     .fetch_one(pool)
                     .await?;
 
-                    let total_episodes: i64 = episode_count_row.try_get("total_episodes")?;
                     let saved_count: i64 = saved_count_row.try_get("saved_count")?;
                     let downloaded_count: i64 = downloaded_count_row.try_get("downloaded_count")?;
 
@@ -2576,15 +2565,6 @@ impl DatabasePool {
                 .await?;
 
                 if let Some(row) = row {
-                    // Get additional stats from Episodes and Podcasts
-                    let episode_count_row = sqlx::query(
-                        "SELECT COUNT(*) as total_episodes FROM Episodes e
-                         INNER JOIN Podcasts p ON e.PodcastID = p.PodcastID
-                         WHERE p.UserID = ?"
-                    )
-                    .bind(user_id)
-                    .fetch_one(pool)
-                    .await?;
 
                     // Count saved episodes directly from SavedEpisodes table
                     let saved_count_row = sqlx::query(
@@ -2602,7 +2582,6 @@ impl DatabasePool {
                     .fetch_one(pool)
                     .await?;
 
-                    let total_episodes: i64 = episode_count_row.try_get("total_episodes")?;
                     let saved_count: i64 = saved_count_row.try_get("saved_count")?;
                     let downloaded_count: i64 = downloaded_count_row.try_get("downloaded_count")?;
 
@@ -3583,6 +3562,127 @@ impl DatabasePool {
         }
     }
 
+    // Create playlist - matches Python create_playlist function exactly
+    pub async fn create_playlist(&self, _config: &Config, playlist_data: &crate::models::CreatePlaylistRequest) -> AppResult<i32> {
+        let min_duration = playlist_data.min_duration.map(|d| d * 60);
+        let max_duration = playlist_data.max_duration.map(|d| d * 60);
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let podcast_ids_array = if let Some(ref ids) = playlist_data.podcast_ids {
+                    ids.clone()
+                } else {
+                    vec![]
+                };
+
+                let result = sqlx::query(r#"
+                    INSERT INTO "Playlists" (
+                        userid,
+                        name,
+                        description,
+                        issystemplaylist,
+                        podcastids,
+                        includeunplayed,
+                        includepartiallyplayed,
+                        includeplayed,
+                        minduration,
+                        maxduration,
+                        sortorder,
+                        groupbypodcast,
+                        maxepisodes,
+                        iconname,
+                        playprogressmin,
+                        playprogressmax,
+                        timefilterhours
+                    ) VALUES (
+                        $1, $2, $3, FALSE, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+                    ) RETURNING playlistid
+                "#)
+                .bind(playlist_data.user_id)
+                .bind(&playlist_data.name)
+                .bind(&playlist_data.description)
+                .bind(&podcast_ids_array)
+                .bind(playlist_data.include_unplayed)
+                .bind(playlist_data.include_partially_played)
+                .bind(playlist_data.include_played)
+                .bind(min_duration)
+                .bind(max_duration)
+                .bind(&playlist_data.sort_order)
+                .bind(playlist_data.group_by_podcast)
+                .bind(playlist_data.max_episodes)
+                .bind(&playlist_data.icon_name)
+                .bind(playlist_data.play_progress_min)
+                .bind(playlist_data.play_progress_max)
+                .bind(playlist_data.time_filter_hours)
+                .fetch_one(pool)
+                .await?;
+
+                let playlist_id = result.get::<i32, _>("playlistid");
+                
+                // Update playlist contents immediately like Python does
+                self.update_playlist_contents(playlist_id).await?;
+                
+                Ok(playlist_id)
+            }
+            DatabasePool::MySQL(pool) => {
+                let podcast_ids_json = if let Some(ref ids) = playlist_data.podcast_ids {
+                    serde_json::to_string(ids)?
+                } else {
+                    "[]".to_string()
+                };
+
+                let result = sqlx::query(r#"
+                    INSERT INTO Playlists (
+                        UserID,
+                        Name,
+                        Description,
+                        IsSystemPlaylist,
+                        PodcastIDs,
+                        IncludeUnplayed,
+                        IncludePartiallyPlayed,
+                        IncludePlayed,
+                        MinDuration,
+                        MaxDuration,
+                        SortOrder,
+                        GroupByPodcast,
+                        MaxEpisodes,
+                        IconName,
+                        PlayProgressMin,
+                        PlayProgressMax,
+                        TimeFilterHours
+                    ) VALUES (
+                        ?, ?, ?, FALSE, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    )
+                "#)
+                .bind(playlist_data.user_id)
+                .bind(&playlist_data.name)
+                .bind(&playlist_data.description)
+                .bind(&podcast_ids_json)
+                .bind(playlist_data.include_unplayed)
+                .bind(playlist_data.include_partially_played)
+                .bind(playlist_data.include_played)
+                .bind(min_duration)
+                .bind(max_duration)
+                .bind(&playlist_data.sort_order)
+                .bind(playlist_data.group_by_podcast)
+                .bind(playlist_data.max_episodes)
+                .bind(&playlist_data.icon_name)
+                .bind(playlist_data.play_progress_min)
+                .bind(playlist_data.play_progress_max)
+                .bind(playlist_data.time_filter_hours)
+                .execute(pool)
+                .await?;
+
+                let playlist_id = result.last_insert_id() as i32;
+                
+                // Update playlist contents immediately like Python does
+                self.update_playlist_contents(playlist_id).await?;
+                
+                Ok(playlist_id)
+            }
+        }
+    }
+
     // Mark episode as uncompleted - matches Python mark_episode_uncompleted function
     pub async fn mark_episode_uncompleted(&self, episode_id: i32, user_id: i32, is_youtube: bool) -> AppResult<()> {
         match self {
@@ -4311,10 +4411,10 @@ impl DatabasePool {
     fn generate_api_key(&self) -> String {
         use rand::Rng;
         const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         (0..64)
             .map(|_| {
-                let idx = rng.gen_range(0..CHARSET.len());
+                let idx = rng.random_range(0..CHARSET.len());
                 CHARSET[idx] as char
             })
             .collect()
@@ -4383,7 +4483,7 @@ impl DatabasePool {
         podcast_id: i32,
         feed_url: &str,
         artwork_url: &str,
-        auto_download: bool,
+        _auto_download: bool,
         username: Option<&str>,
         password: Option<&str>,
     ) -> AppResult<Option<i32>> {
@@ -4897,10 +4997,10 @@ impl DatabasePool {
     async fn parse_rss_feed(
         &self,
         content: &str,
-        podcast_id: i32,
+        _podcast_id: i32,
         artwork_url: &str,
     ) -> AppResult<Vec<EpisodeData>> {
-        use chrono::{DateTime, Utc};
+        use chrono::Utc;
         use feed_rs::parser;
         use std::collections::HashMap;
         
@@ -7372,7 +7472,7 @@ impl DatabasePool {
     }
 
     // Check if API key is web key - matches Python is_web_key check
-    pub async fn is_web_key(&self, api_key: &str) -> AppResult<bool> {
+    pub async fn is_web_key(&self, _api_key: &str) -> AppResult<bool> {
         // This would need to be implemented based on your web key configuration
         // For now, return false - implement according to your Python logic
         Ok(false)
@@ -7731,7 +7831,7 @@ impl DatabasePool {
     }
 
     // Get play episode details - matches Python get_play_episode_details function exactly
-    pub async fn get_play_episode_details(&self, user_id: i32, podcast_id: i32, is_youtube: bool) -> AppResult<(f64, i32, i32)> {
+    pub async fn get_play_episode_details(&self, user_id: i32, podcast_id: i32, _is_youtube: bool) -> AppResult<(f64, i32, i32)> {
         match self {
             DatabasePool::Postgres(pool) => {
                 // First get user's default playback speed
@@ -9065,10 +9165,10 @@ impl DatabasePool {
                                 abcdefghijklmnopqrstuvwxyz\
                                 0123456789";
         let api_key: String = {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             (0..64)
                 .map(|_| {
-                    let idx = rng.gen_range(0..charset.len());
+                    let idx = rng.random_range(0..charset.len());
                     charset[idx] as char
                 })
                 .collect()
@@ -9096,11 +9196,11 @@ impl DatabasePool {
 
     // Create RSS key - matches Python create_rss_key function exactly
     pub async fn create_rss_key(&self, user_id: i32, podcast_ids: Option<Vec<i32>>) -> AppResult<String> {
-        use rand::{Rng, thread_rng};
+        use rand::Rng;
         use rand::distr::Alphanumeric;
         
         // Generate 64-character RSS key
-        let rss_key: String = rand::thread_rng()
+        let rss_key: String = rand::rng()
             .sample_iter(&Alphanumeric)
             .take(64)
             .map(char::from)
@@ -9678,14 +9778,13 @@ impl DatabasePool {
     // Generate MFA secret with QR code - matches Python generate_mfa_secret function exactly
     pub async fn generate_mfa_secret(&self, user_id: i32) -> AppResult<(String, String)> {
         use totp_rs::{Algorithm, Secret, TOTP};
-        use qrcode::{QrCode, Color};
-        use qrcode::render::svg;
+        use qrcode::QrCode;
         use rand::Rng;
         
         // Generate random base32 secret (matches Python random_base32())
         let secret = {
-            let mut rng = rand::thread_rng();
-            let secret_bytes: [u8; 20] = rng.gen(); // 160 bits = 32 base32 chars
+            let mut rng = rand::rng();
+            let secret_bytes: [u8; 20] = rng.random(); // 160 bits = 32 base32 chars
             Secret::Raw(secret_bytes.to_vec()).to_encoded().to_string()
         };
         
@@ -12264,7 +12363,7 @@ impl DatabasePool {
             .ok_or_else(|| AppError::internal("Failed to create Fernet cipher"))?;
         
         let decrypted = fernet.decrypt(encrypted_password)
-            .map_err(|e| AppError::internal(&format!("Failed to decrypt password: Fernet decryption error")))?;
+            .map_err(|_e| AppError::internal(&format!("Failed to decrypt password: Fernet decryption error")))?;
         
         String::from_utf8(decrypted)
             .map_err(|e| AppError::internal(&format!("Invalid UTF-8 in decrypted password: {}", e)))
@@ -12415,7 +12514,6 @@ impl DatabasePool {
 
     // Parse feed episodes using feed-rs and return JSON data (for frontend consumption)
     pub async fn parse_feed_episodes(&self, feed_url: &str) -> AppResult<Vec<serde_json::Value>> {
-        use reqwest::header::AUTHORIZATION;
         use feed_rs::parser;
         
         // Fetch RSS feed
@@ -12674,7 +12772,7 @@ impl DatabasePool {
     }
 
     // Add podcast from RSS values - wrapper function for custom podcast addition
-    pub async fn add_podcast_from_values(&self, podcast_values: &std::collections::HashMap<String, String>, user_id: i32, feed_cutoff: i32) -> AppResult<(i32, Option<i32>)> {
+    pub async fn add_podcast_from_values(&self, podcast_values: &std::collections::HashMap<String, String>, user_id: i32, _feed_cutoff: i32) -> AppResult<(i32, Option<i32>)> {
         // Convert HashMap values to PodcastValues struct
         let podcast_data = crate::handlers::podcasts::PodcastValues {
             user_id,
@@ -14646,10 +14744,10 @@ impl DatabasePool {
     }
 
     // Get playback speed - matches Python get_playback_speed function exactly
-    pub async fn get_playback_speed(&self, user_id: i32, is_youtube: bool, podcast_id: Option<i32>) -> AppResult<f64> {
+    pub async fn get_playback_speed(&self, user_id: i32, _is_youtube: bool, podcast_id: Option<i32>) -> AppResult<f64> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let query = if let Some(pod_id) = podcast_id {
+                let query = if let Some(_pod_id) = podcast_id {
                     r#"SELECT PlaybackSpeed FROM "Podcasts" WHERE PodcastID = $1"#
                 } else {
                     r#"SELECT PlaybackSpeed FROM "Users" WHERE UserID = $1"#
@@ -14664,7 +14762,7 @@ impl DatabasePool {
                 Ok(row.try_get::<f64, _>("PlaybackSpeed").unwrap_or(1.0))
             }
             DatabasePool::MySQL(pool) => {
-                let query = if let Some(pod_id) = podcast_id {
+                let query = if let Some(_pod_id) = podcast_id {
                     "SELECT PlaybackSpeed FROM Podcasts WHERE PodcastID = ?"
                 } else {
                     "SELECT PlaybackSpeed FROM Users WHERE UserID = ?"
@@ -14844,7 +14942,6 @@ impl DatabasePool {
                 
                 // Handle special playlists
                 let playlist_name: String = playlist.try_get("name")?;
-                let user_id: i32 = playlist.try_get("userid")?;
                 let is_system_playlist: bool = playlist.try_get("issystemplaylist").unwrap_or(false);
                 
                 let episode_count = if playlist_name == "Fresh Releases" && is_system_playlist {
@@ -14890,7 +14987,6 @@ impl DatabasePool {
                 
                 // Handle special playlists
                 let playlist_name: String = playlist.try_get("Name")?;
-                let user_id: i32 = playlist.try_get("UserID")?;
                 let is_system_playlist: bool = playlist.try_get("IsSystemPlaylist").unwrap_or(false);
                 
                 let episode_count = if playlist_name == "Fresh Releases" && is_system_playlist {
@@ -15056,7 +15152,7 @@ impl DatabasePool {
     }
 
     // Helper function to process individual show for person - matches Python logic
-    async fn process_person_show(&self, user_id: i32, person_id: i32, title: &str, feed_url: &str, feed_id: i32) -> AppResult<()> {
+    async fn process_person_show(&self, user_id: i32, person_id: i32, title: &str, feed_url: &str, _feed_id: i32) -> AppResult<()> {
         // First check if podcast exists for user
         let user_podcast_id = self.get_podcast_id_by_feed_url(user_id, feed_url).await?;
         
@@ -15782,7 +15878,7 @@ impl DatabasePool {
         }
         
         // Build the appropriate base query
-        let (base_query, mut params) = if is_system_playlist {
+        let (base_query, params) = if is_system_playlist {
             if needs_user_history {
                 // System playlist with user history filtering
                 ("
@@ -15845,8 +15941,7 @@ impl DatabasePool {
             AND h.userid = $2
         "#, sort_order);
         
-        let mut params = vec![playlist_id, user_id];
-        let mut param_index = 3;
+        let params = vec![playlist_id, user_id];
         
         // Add progress filters using hardcoded values instead of parameters to avoid type issues
         if let Some(min_progress) = config.play_progress_min {
@@ -15880,7 +15975,7 @@ impl DatabasePool {
         // Use direct INSERT without subquery for this optimized case - no alias scoping issues
         let sort_order = config.get_mysql_sort_order().replace("ORDER BY ", "");
         
-        let mut query = format!("
+        let query = format!("
             INSERT INTO PlaylistContents (PlaylistID, EpisodeID, Position)
             SELECT ?, e.EpisodeID, ROW_NUMBER() OVER (ORDER BY {}) as position
             FROM Episodes e
@@ -16686,7 +16781,7 @@ impl DatabasePool {
         use rand::Rng;
         
         // Create salt exactly like Python version
-        let salt_bytes: [u8; 16] = rand::thread_rng().gen();
+        let salt_bytes: [u8; 16] = rand::rng().random();
         let salt = STANDARD.encode(salt_bytes);
         let hashed_password = format!("$argon2id$v=19$m=65536,t=3,p=4${}${}_OIDC_ACCOUNT_NO_PASSWORD", 
                                     salt, "X".repeat(43));
@@ -17681,7 +17776,6 @@ impl DatabasePool {
         domain: &str,
         podcast_ids: Option<&Vec<i32>>,
     ) -> AppResult<String> {
-        use chrono::{DateTime, Utc};
         
         let user_id = rss_key.user_id;
         let mut effective_podcast_ids = rss_key.podcast_ids.clone();
@@ -18488,7 +18582,7 @@ impl DatabasePool {
     }
 
     // Get podcast ID by feed URL and title - for get_podcast_details_dynamic
-    pub async fn get_podcast_id_by_feed(&self, user_id: i32, feed_url: &str, podcast_title: &str) -> AppResult<i32> {
+    pub async fn get_podcast_id_by_feed(&self, user_id: i32, feed_url: &str, _podcast_title: &str) -> AppResult<i32> {
         match self {
             DatabasePool::Postgres(pool) => {
                 let row = sqlx::query(
@@ -18592,7 +18686,7 @@ impl DatabasePool {
     }
 
     // Get podcast values from feed - for get_podcast_details_dynamic when podcast is not added
-    pub async fn get_podcast_values_from_feed(&self, feed_url: &str, user_id: i32, display_only: bool) -> AppResult<serde_json::Value> {
+    pub async fn get_podcast_values_from_feed(&self, feed_url: &str, user_id: i32, _display_only: bool) -> AppResult<serde_json::Value> {
         // Use the real get_podcast_values function that exists in the codebase
         let podcast_values = self.get_podcast_values(feed_url, user_id, None, None).await?;
         
@@ -19129,7 +19223,7 @@ impl DatabasePool {
 
                 // Generate a secure internal token (64 characters alphanumeric)
                 use rand::{distr::Alphanumeric, Rng};
-                let internal_token: String = rand::thread_rng()
+                let internal_token: String = rand::rng()
                     .sample_iter(&Alphanumeric)
                     .take(64)
                     .map(char::from)
@@ -19207,7 +19301,7 @@ impl DatabasePool {
 
                 // Generate a secure internal token (64 characters alphanumeric)
                 use rand::{distr::Alphanumeric, Rng};
-                let internal_token: String = rand::thread_rng()
+                let internal_token: String = rand::rng()
                     .sample_iter(&Alphanumeric)
                     .take(64)
                     .map(char::from)
@@ -19983,7 +20077,7 @@ impl DatabasePool {
             }
         };
 
-        let (gpodder_url, gpodder_token, gpodder_login) = settings;
+        let (gpodder_url, _gpodder_token, gpodder_login) = settings;
 
         if gpodder_url.is_empty() || gpodder_login.is_empty() {
             return Ok(false);
@@ -20177,8 +20271,6 @@ struct RssEpisode {
     artwork_url: Option<String>,
 }
 
-use std::collections::HashSet;
-
 impl DatabasePool {
     // Get all users with nextcloud sync enabled - matches Python get_all_users_with_nextcloud_sync
     pub async fn get_all_users_with_nextcloud_sync(&self) -> AppResult<Vec<i32>> {
@@ -20358,10 +20450,6 @@ impl DatabasePool {
     
     // Process individual episode action from Nextcloud
     async fn process_nextcloud_episode_action(&self, user_id: i32, action: &serde_json::Value) -> AppResult<()> {
-        let podcast_url = action.get("podcast")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| AppError::internal("Missing podcast URL in episode action"))?;
-            
         let episode_url = action.get("episode") 
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::internal("Missing episode URL in episode action"))?;
@@ -20601,4 +20689,9 @@ impl DatabasePool {
             }
         }
     }
+}
+
+// Standalone create_playlist function that matches Python API
+pub async fn create_playlist(pool: &DatabasePool, config: &Config, playlist_data: &crate::models::CreatePlaylistRequest) -> AppResult<i32> {
+    pool.create_playlist(config, playlist_data).await
 }

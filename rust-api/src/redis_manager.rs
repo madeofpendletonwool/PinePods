@@ -1,5 +1,5 @@
 use serde_json::Value;
-use crate::{error::{AppError, AppResult}, redis_client::RedisClient};
+use crate::{error::AppResult, redis_client::RedisClient};
 
 pub struct ImportProgressManager {
     redis_client: RedisClient,

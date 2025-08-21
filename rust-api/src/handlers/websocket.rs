@@ -9,8 +9,7 @@ use futures::{sink::SinkExt, stream::StreamExt};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{broadcast, RwLock};
 use crate::{
-    error::AppResult,
-    services::task_manager::{TaskManager, TaskUpdate, WebSocketMessage},
+    services::task_manager::{TaskUpdate, WebSocketMessage},
     AppState,
 };
 

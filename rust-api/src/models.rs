@@ -155,15 +155,28 @@ pub struct UpdateEpisodeRequest {
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePlaylistRequest {
+    pub user_id: i32,
     pub name: String,
     pub description: Option<String>,
     pub podcast_ids: Option<Vec<i32>>,
-    pub include_unplayed: Option<bool>,
-    pub include_partially_played: Option<bool>,
-    pub include_played: Option<bool>,
+    pub include_unplayed: bool,
+    pub include_partially_played: bool,
+    pub include_played: bool,
+    pub play_progress_min: Option<f32>,
+    pub play_progress_max: Option<f32>,
+    pub time_filter_hours: Option<i32>,
     pub min_duration: Option<i32>,
     pub max_duration: Option<i32>,
+    pub sort_order: String,
+    pub group_by_podcast: bool,
     pub max_episodes: Option<i32>,
+    pub icon_name: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreatePlaylistResponse {
+    pub detail: String,
+    pub playlist_id: i32,
 }
 
 // Search models

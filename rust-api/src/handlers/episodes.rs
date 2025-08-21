@@ -1,5 +1,4 @@
 use axum::{extract::State, http::HeaderMap, response::Json};
-use serde_json::json;
 use crate::{
     error::{AppError, AppResult},
     handlers::{extract_api_key, validate_api_key},

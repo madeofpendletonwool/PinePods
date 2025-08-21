@@ -22,9 +22,7 @@ jobs:
           - windows-latest
         include:
           - os: ubuntu-arm64
-            runs-on:
-              - runs-on=${{ github.run_id }}
-              - runner=4cpu-linux-arm64
+            runs-on: ubuntu-24.04-arm
 
     runs-on: ${{ matrix.runs-on || matrix.os }}
 
@@ -73,7 +71,7 @@ jobs:
         if: ${{ matrix.os == 'windows-latest' }}
 
       - name: Setup | Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - uses: hecrj/setup-rust-action@v2
         with:

@@ -12,8 +12,7 @@ use sqlx::Row;
 
 use crate::{
     error::{AppError, AppResult},
-    handlers::{extract_api_key, validate_api_key, check_user_access},
-    services::task_manager::TaskManager,
+    handlers::check_user_access,
     AppState,
 };
 

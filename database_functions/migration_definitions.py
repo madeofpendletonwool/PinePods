@@ -2047,6 +2047,44 @@ def migration_020_add_default_gpodder_device(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("021", "limit_system_playlists_episodes", "Add MaxEpisodes limit to high-volume system playlists", requires=["010"])
+def migration_021_limit_system_playlists_episodes(conn, db_type: str):
+    """Add MaxEpisodes limit to Commuter Mix, Longform, and Weekend Marathon system playlists"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting system playlist episodes limit migration")
+        
+        # Define the playlists to update with 1000 episode limit
+        playlists_to_update = ['Commuter Mix', 'Longform', 'Weekend Marathon']
+        
+        if db_type == "postgresql":
+            for playlist_name in playlists_to_update:
+                safe_execute_sql(cursor, '''
+                    UPDATE "Playlists" 
+                    SET maxepisodes = 1000 
+                    WHERE name = %s AND issystemplaylist = TRUE
+                ''', (playlist_name,))
+                logger.info(f"Updated {playlist_name} system playlist with maxepisodes=1000 (PostgreSQL)")
+        
+        else:  # MySQL
+            for playlist_name in playlists_to_update:
+                safe_execute_sql(cursor, '''
+                    UPDATE Playlists 
+                    SET MaxEpisodes = 1000 
+                    WHERE Name = %s AND IsSystemPlaylist = TRUE
+                ''', (playlist_name,))
+                logger.info(f"Updated {playlist_name} system playlist with MaxEpisodes=1000 (MySQL)")
+        
+        logger.info("System playlist episodes limit migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in system playlist episodes limit migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 def register_all_migrations():
     """Register all migrations with the migration manager"""
     # Migrations are auto-registered via decorators

@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::HeaderMap,
     response::Json,
 };
 use serde::{Deserialize, Serialize};
@@ -9,9 +9,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use crate::{
     error::{AppError, AppResult},
-    handlers::{extract_api_key, validate_api_key, check_user_or_admin_access},
-    services::auth::verify_password,
-    database::{SelfServiceStatus, PublicOidcProvider},
+    handlers::{extract_api_key, check_user_or_admin_access},
     AppState,
 };
 use std::collections::HashMap;
@@ -202,10 +200,10 @@ pub async fn get_key(
         // Generate cryptographically secure session token
         use rand::Rng;
         const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let session_token: String = (0..32)
             .map(|_| {
-                let idx = rng.gen_range(0..CHARSET.len());
+                let idx = rng.random_range(0..CHARSET.len());
                 CHARSET[idx] as char
             })
             .collect();

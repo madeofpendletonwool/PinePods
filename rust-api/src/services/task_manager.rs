@@ -1,8 +1,7 @@
 use crate::{error::AppResult, redis_client::RedisClient};
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
