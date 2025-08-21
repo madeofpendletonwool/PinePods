@@ -9,8 +9,7 @@ use crate::{
     handlers::{extract_api_key, validate_api_key, check_user_access},
     AppState,
 };
-use std::collections::HashMap;
-use sqlx::{Row, Column, ValueRef};
+use sqlx::{Row, ValueRef};
 
 // Request struct for set_theme
 #[derive(Deserialize)]

@@ -3,7 +3,6 @@ pub mod health;
 pub mod podcasts;
 pub mod episodes;
 pub mod playlists;
-pub mod users;
 pub mod websocket;
 // pub mod async_tasks_examples;  // File was deleted
 pub mod refresh;
@@ -16,7 +15,7 @@ pub mod feed;
 
 // Common handler utilities
 use axum::{
-    extract::{Query, State},
+    extract::Query,
     http::{HeaderMap, StatusCode},
 };
 use crate::{

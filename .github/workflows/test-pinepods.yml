@@ -11,7 +11,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Build the Docker test container
       run: docker build -t madeofpendletonwool/pinepods-test . -f dockerfile-test
     - uses: rustsec/audit-check@v1.4.1
@@ -37,5 +37,5 @@ jobs:
     - uses: taiki-e/cache-cargo-install-action@v1
       with:
         tool: cargo-checkmate
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - run: cargo-checkmate run ${{ matrix.phase }}

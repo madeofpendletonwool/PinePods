@@ -1,15 +1,11 @@
 use axum::{
     extract::{Path, Query, State, Request},
-    http::HeaderMap,
     response::Response,
 };
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use chrono::{DateTime, Utc};
+use serde::Deserialize;
 
 use crate::{
     error::AppError,
-    handlers::{extract_api_key, validate_api_key},
     AppState,
 };
 

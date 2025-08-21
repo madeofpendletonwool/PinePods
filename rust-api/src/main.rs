@@ -1,7 +1,4 @@
 use axum::{
-    extract::State,
-    http::StatusCode,
-    response::Json,
     routing::{delete, get, post, put},
     Router,
 };
@@ -9,7 +6,6 @@ use std::net::SocketAddr;
 use tokio::signal;
 use tower::ServiceBuilder;
 use tower_http::{
-    cors::{Any, CorsLayer},
     trace::TraceLayer,
     compression::CompressionLayer,
 };
@@ -244,6 +240,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/home_overview", get(handlers::podcasts::home_overview))
         .route("/get_playlists", get(handlers::podcasts::get_playlists))
         .route("/get_playlist_episodes", get(handlers::podcasts::get_playlist_episodes))
+        .route("/create_playlist", post(handlers::playlists::create_playlist))
         .route("/get_podcast_details", get(handlers::podcasts::get_podcast_details))
         .route("/get_podcast_details_dynamic", get(handlers::podcasts::get_podcast_details_dynamic))
         .route("/podpeople/host_podcasts", get(handlers::podcasts::get_host_podcasts))

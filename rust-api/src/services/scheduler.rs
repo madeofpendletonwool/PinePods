@@ -1,6 +1,5 @@
 use crate::{
     error::AppResult,
-    database::DatabasePool,
     handlers::{refresh, tasks},
     AppState,
 };

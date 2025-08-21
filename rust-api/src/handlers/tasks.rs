@@ -3,7 +3,7 @@ use axum::{
     http::HeaderMap,
     response::Json,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json;
 
 use crate::{

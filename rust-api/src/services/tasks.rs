@@ -1,12 +1,11 @@
 use crate::{
-    error::{AppError, AppResult},
-    services::task_manager::{TaskManager, TaskInfo},
+    error::AppResult,
+    services::task_manager::TaskManager,
     database::DatabasePool,
 };
 use futures::Future;
 use serde_json::Value;
 use std::sync::Arc;
-use tokio::task::JoinHandle;
 use sqlx::Row;
 
 // New function that actually downloads an episode and waits for completion
