@@ -2085,6 +2085,53 @@ def migration_021_limit_system_playlists_episodes(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("022", "expand_downloaded_location_column", "Expand DownloadedLocation column size to handle long file paths", requires=["007"])
+def migration_022_expand_downloaded_location_column(conn, db_type: str):
+    """Expand DownloadedLocation column size to handle long file paths"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting downloaded location column expansion migration")
+        
+        if db_type == "postgresql":
+            # Expand DownloadedLocation in DownloadedEpisodes table
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "DownloadedEpisodes" 
+                ALTER COLUMN downloadedlocation TYPE TEXT
+            ''', conn=conn)
+            logger.info("Expanded downloadedlocation column in DownloadedEpisodes table (PostgreSQL)")
+            
+            # Expand DownloadedLocation in DownloadedVideos table
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "DownloadedVideos" 
+                ALTER COLUMN downloadedlocation TYPE TEXT
+            ''', conn=conn)
+            logger.info("Expanded downloadedlocation column in DownloadedVideos table (PostgreSQL)")
+        
+        else:  # MySQL
+            # Expand DownloadedLocation in DownloadedEpisodes table
+            safe_execute_sql(cursor, '''
+                ALTER TABLE DownloadedEpisodes 
+                MODIFY DownloadedLocation TEXT
+            ''', conn=conn)
+            logger.info("Expanded DownloadedLocation column in DownloadedEpisodes table (MySQL)")
+            
+            # Expand DownloadedLocation in DownloadedVideos table
+            safe_execute_sql(cursor, '''
+                ALTER TABLE DownloadedVideos 
+                MODIFY DownloadedLocation TEXT
+            ''', conn=conn)
+            logger.info("Expanded DownloadedLocation column in DownloadedVideos table (MySQL)")
+        
+        logger.info("Downloaded location column expansion migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in downloaded location column expansion migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 def register_all_migrations():
     """Register all migrations with the migration manager"""
     # Migrations are auto-registered via decorators

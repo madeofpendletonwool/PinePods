@@ -193,7 +193,7 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
             for result in rows {
                 let podcast_id: i32 = result.try_get("podcastid")?;
                 let feed_url: String = result.try_get("feedurl")?;
-                let artwork_url: String = result.try_get("artworkurl")?;
+                let artwork_url: Option<String> = result.try_get("artworkurl").ok();
                 let auto_download: bool = result.try_get("autodownload")?;
                 let username: Option<String> = result.try_get("username").ok();
                 let password: Option<String> = result.try_get("password").ok();
@@ -237,7 +237,7 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                     match state.db_pool.add_episodes_with_new_list(
                         podcast_id, 
                         &feed_url, 
-                        &artwork_url, 
+                        artwork_url.as_deref().unwrap_or(""), 
                         username.as_deref(),
                         password.as_deref()
                     ).await {
@@ -290,7 +290,7 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
             for result in rows {
                 let podcast_id: i32 = result.try_get("PodcastID")?;
                 let feed_url: String = result.try_get("FeedURL")?;
-                let artwork_url: String = result.try_get("ArtworkURL")?;
+                let artwork_url: Option<String> = result.try_get("ArtworkURL").ok();
                 let auto_download: bool = result.try_get("AutoDownload")?;
                 let username: Option<String> = result.try_get("Username").ok();
                 let password: Option<String> = result.try_get("Password").ok();
@@ -334,7 +334,7 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
                     match state.db_pool.add_episodes_with_new_list(
                         podcast_id, 
                         &feed_url, 
-                        &artwork_url, 
+                        artwork_url.as_deref().unwrap_or(""), 
                         username.as_deref(),
                         password.as_deref()
                     ).await {
@@ -702,7 +702,7 @@ pub struct PodcastForRefresh {
     pub id: i32,
     pub name: String,
     pub feed_url: String,
-    pub artwork_url: String,
+    pub artwork_url: Option<String>,
     pub is_youtube: bool,
     pub auto_download: bool,
     pub username: Option<String>,
@@ -748,7 +748,7 @@ async fn refresh_rss_feed(
     let new_episodes = state.db_pool.add_episodes_with_new_list(
         podcast.id, 
         &podcast.feed_url, 
-        &podcast.artwork_url, 
+        podcast.artwork_url.as_deref().unwrap_or(""), 
         podcast.username.as_deref(),
         podcast.password.as_deref()
     ).await?;

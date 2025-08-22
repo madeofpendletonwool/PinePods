@@ -2665,7 +2665,7 @@ impl DatabasePool {
                     let result = serde_json::json!({
                         "podcastid": row.try_get::<i32, _>("podcastid").unwrap_or(0),
                         "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default(),
-                        "artworkurl": row.try_get::<String, _>("artworkurl").unwrap_or_default(),
+                        "artworkurl": row.try_get::<Option<String>, _>("artworkurl").unwrap_or_default().unwrap_or_default(),
                         "author": row.try_get::<String, _>("author").unwrap_or_default(),
                         "categories": categories_value,
                         "description": row.try_get::<String, _>("description").unwrap_or_default(),
@@ -2756,7 +2756,7 @@ impl DatabasePool {
                     let result = serde_json::json!({
                         "podcastid": row.try_get::<i32, _>("podcastid").unwrap_or(0),
                         "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_default(),
-                        "artworkurl": row.try_get::<String, _>("artworkurl").unwrap_or_default(),
+                        "artworkurl": row.try_get::<Option<String>, _>("artworkurl").unwrap_or_default().unwrap_or_default(),
                         "author": row.try_get::<String, _>("author").unwrap_or_default(),
                         "categories": categories_value,
                         "description": row.try_get::<String, _>("description").unwrap_or_default(),
@@ -6484,7 +6484,7 @@ impl DatabasePool {
                             "podcastindexid": row.try_get::<Option<i32>, _>("podcastindexid")?,
                             "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
                             "podcastname": row.try_get::<String, _>("podcastname")?,
-                            "artworkurl": row.try_get::<String, _>("artworkurl")?,
+                            "artworkurl": row.try_get::<Option<String>, _>("artworkurl").unwrap_or_default().unwrap_or_default(),
                             "episodetitle": row.try_get::<String, _>("episodetitle")?,
                             "episodepubdate": episode_pubdate,
                             "episodedescription": row.try_get::<String, _>("episodedescription")?,
@@ -6563,7 +6563,7 @@ impl DatabasePool {
                             "podcastindexid": row.try_get::<Option<i32>, _>("podcastindexid")?,
                             "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
                             "podcastname": row.try_get::<String, _>("podcastname")?,
-                            "artworkurl": row.try_get::<String, _>("artworkurl")?,
+                            "artworkurl": row.try_get::<Option<String>, _>("artworkurl").unwrap_or_default().unwrap_or_default(),
                             "episodetitle": row.try_get::<String, _>("episodetitle")?,
                             "episodepubdate": episode_pubdate,
                             "episodedescription": row.try_get::<String, _>("episodedescription")?,
@@ -6620,7 +6620,7 @@ impl DatabasePool {
                         "podcastindexid": row.try_get::<Option<i32>, _>("podcastindexid")?,
                         "feedurl": row.try_get::<String, _>("feedurl").unwrap_or_default(),
                         "podcastname": row.try_get::<String, _>("podcastname")?,
-                        "artworkurl": row.try_get::<String, _>("artworkurl")?,
+                        "artworkurl": row.try_get::<Option<String>, _>("artworkurl").unwrap_or_default().unwrap_or_default(),
                         "episodetitle": row.try_get::<String, _>("episodetitle")?,
                         "episodepubdate": episode_pubdate,
                         "episodedescription": row.try_get::<String, _>("episodedescription")?,
@@ -6685,7 +6685,7 @@ impl DatabasePool {
                         "podcastindexid": row.try_get::<Option<i32>, _>("PodcastIndexID")?,
                         "feedurl": row.try_get::<String, _>("FeedURL").unwrap_or_default(),
                         "podcastname": row.try_get::<String, _>("PodcastName")?,
-                        "artworkurl": row.try_get::<String, _>("ArtworkURL")?,
+                        "artworkurl": row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default().unwrap_or_default(),
                         "episodetitle": row.try_get::<String, _>("EpisodeTitle")?,
                         "episodepubdate": datetime.to_rfc3339(),
                         "episodedescription": row.try_get::<String, _>("EpisodeDescription")?,
@@ -12832,7 +12832,7 @@ impl DatabasePool {
     //                     "podcastid": row.try_get::<i32, _>("podcastid")?,
     //                     "podcastindexid": row.try_get::<Option<i32>, _>("podcastindexid")?,
     //                     "podcastname": row.try_get::<String, _>("podcastname")?,
-    //                     "artworkurl": row.try_get::<String, _>("artworkurl")?,
+    //                     "artworkurl": row.try_get::<Option<String>, _>("artworkurl").unwrap_or_default().unwrap_or_default(),
     //                     "author": row.try_get::<String, _>("author")?,
     //                     "categories": row.try_get::<Option<String>, _>("categories")?,
     //                     "description": row.try_get::<String, _>("description")?,
@@ -12886,7 +12886,7 @@ impl DatabasePool {
     //                     "podcastid": row.try_get::<i32, _>("PodcastID")?,
     //                     "podcastindexid": row.try_get::<Option<i32>, _>("PodcastIndexID")?,
     //                     "podcastname": row.try_get::<String, _>("PodcastName")?,
-    //                     "artworkurl": row.try_get::<String, _>("ArtworkURL")?,
+    //                     "artworkurl": row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default().unwrap_or_default(),
     //                     "author": row.try_get::<String, _>("Author")?,
     //                     "categories": row.try_get::<Option<String>, _>("Categories")?,
     //                     "description": row.try_get::<String, _>("Description")?,
@@ -16412,7 +16412,7 @@ impl DatabasePool {
                     "podcastid": row.try_get::<i32, _>("podcastid")?,
                     "podcastindexid": row.try_get::<i32, _>("podcastindexid").unwrap_or(0),
                     "podcastname": row.try_get::<String, _>("podcastname").unwrap_or_else(|_| "Unknown Podcast".to_string()),
-                    "artworkurl": row.try_get::<String, _>("artworkurl").unwrap_or_else(|_| String::new()),
+                    "artworkurl": row.try_get::<Option<String>, _>("artworkurl").unwrap_or_default().unwrap_or_else(|| String::new()),
                     "author": row.try_get::<String, _>("author").unwrap_or_else(|_| "Unknown Author".to_string()),
                     "categories": categories,
                     "description": row.try_get::<String, _>("description").unwrap_or_else(|_| String::new()),
@@ -16486,7 +16486,7 @@ impl DatabasePool {
                     "podcastid": row.try_get::<i32, _>("PodcastID")?,
                     "podcastindexid": row.try_get::<i32, _>("PodcastIndexID").unwrap_or(0),
                     "podcastname": row.try_get::<String, _>("PodcastName").unwrap_or_else(|_| "Unknown Podcast".to_string()),
-                    "artworkurl": row.try_get::<String, _>("ArtworkURL").unwrap_or_else(|_| String::new()),
+                    "artworkurl": row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default().unwrap_or_else(|| String::new()),
                     "author": row.try_get::<String, _>("Author").unwrap_or_else(|_| "Unknown Author".to_string()),
                     "categories": categories,
                     "description": row.try_get::<String, _>("Description").unwrap_or_else(|_| String::new()),
@@ -17835,7 +17835,7 @@ impl DatabasePool {
                     if let Some(row) = row {
                         (
                             row.try_get::<String, _>("podcastname").unwrap_or_else(|_| "Unknown Podcast".to_string()),
-                            row.try_get::<String, _>("artworkurl").unwrap_or_else(|_| "/var/www/html/static/assets/favicon.png".to_string()),
+                            row.try_get::<Option<String>, _>("artworkurl").unwrap_or_default().unwrap_or_else(|| "/var/www/html/static/assets/favicon.png".to_string()),
                             row.try_get::<String, _>("description").unwrap_or_else(|_| "No description available".to_string()),
                         )
                     } else {
@@ -17852,7 +17852,7 @@ impl DatabasePool {
                         if let Some(row) = row {
                             (
                                 row.try_get::<String, _>("PodcastName").unwrap_or_else(|_| "Unknown Podcast".to_string()),
-                                row.try_get::<String, _>("ArtworkURL").unwrap_or_else(|_| "/var/www/html/static/assets/favicon.png".to_string()),
+                                row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default().unwrap_or_else(|| "/var/www/html/static/assets/favicon.png".to_string()),
                                 row.try_get::<String, _>("Description").unwrap_or_else(|_| "No description available".to_string()),
                             )
                         } else {
@@ -17870,7 +17870,7 @@ impl DatabasePool {
                         if let Some(row) = row {
                             (
                                 row.try_get::<String, _>("PodcastName").unwrap_or_else(|_| "Unknown Podcast".to_string()),
-                                row.try_get::<String, _>("ArtworkURL").unwrap_or_else(|_| "/var/www/html/static/assets/favicon.png".to_string()),
+                                row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default().unwrap_or_else(|| "/var/www/html/static/assets/favicon.png".to_string()),
                                 row.try_get::<String, _>("Description").unwrap_or_else(|_| "No description available".to_string()),
                             )
                         } else {
@@ -18636,7 +18636,7 @@ impl DatabasePool {
                     details.insert("feedurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("feedurl").unwrap_or_default()));
                     details.insert("description".to_string(), serde_json::Value::String(row.try_get::<String, _>("description").unwrap_or_default()));
                     details.insert("author".to_string(), serde_json::Value::String(row.try_get::<String, _>("author").unwrap_or_default()));
-                    details.insert("artworkurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("artworkurl").unwrap_or_default()));
+                    details.insert("artworkurl".to_string(), serde_json::Value::String(row.try_get::<Option<String>, _>("artworkurl").unwrap_or_default().unwrap_or_default()));
                     details.insert("explicit".to_string(), serde_json::Value::Bool(row.try_get::<bool, _>("explicit").unwrap_or(false)));
                     details.insert("episodecount".to_string(), serde_json::Value::Number(serde_json::Number::from(row.try_get::<i32, _>("episodecount").unwrap_or(0))));
                     let categories_str = row.try_get::<String, _>("categories").unwrap_or_default();
@@ -18667,7 +18667,7 @@ impl DatabasePool {
                     details.insert("feedurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("FeedURL").unwrap_or_default()));
                     details.insert("description".to_string(), serde_json::Value::String(row.try_get::<String, _>("Description").unwrap_or_default()));
                     details.insert("author".to_string(), serde_json::Value::String(row.try_get::<String, _>("Author").unwrap_or_default()));
-                    details.insert("artworkurl".to_string(), serde_json::Value::String(row.try_get::<String, _>("ArtworkURL").unwrap_or_default()));
+                    details.insert("artworkurl".to_string(), serde_json::Value::String(row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default().unwrap_or_default()));
                     details.insert("explicit".to_string(), serde_json::Value::Bool(row.try_get::<bool, _>("Explicit").unwrap_or(false)));
                     details.insert("episodecount".to_string(), serde_json::Value::Number(serde_json::Number::from(row.try_get::<i32, _>("EpisodeCount").unwrap_or(0))));
                     let categories_str = row.try_get::<String, _>("Categories").unwrap_or_default();

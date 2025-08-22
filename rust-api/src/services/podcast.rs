@@ -41,7 +41,7 @@ async fn refresh_podcast_internal(db_pool: &DatabasePool, podcast_id: i32) -> Ap
             let episodes = db_pool.add_episodes(
                 podcast_id,
                 &podcast.feed_url,
-                &podcast.artwork_url,
+                podcast.artwork_url.as_deref().unwrap_or(""),
                 podcast.auto_download,
                 podcast.username.as_deref(),
                 podcast.password.as_deref(),
@@ -112,7 +112,7 @@ async fn refresh_single_podcast(db_pool: &DatabasePool, podcast: &PodcastForRefr
         db_pool.add_episodes(
             podcast.id,
             &podcast.feed_url,
-            &podcast.artwork_url,
+            podcast.artwork_url.as_deref().unwrap_or(""),
             podcast.auto_download,
             podcast.username.as_deref(),
             podcast.password.as_deref(),
@@ -188,7 +188,7 @@ async fn get_podcast_for_refresh(db_pool: &DatabasePool, podcast_id: i32) -> App
                     id: row.try_get("PodcastID")?,
                     name: "".to_string(), // Not needed for refresh
                     feed_url: row.try_get("FeedURL")?,
-                    artwork_url: row.try_get("ArtworkURL").unwrap_or_default(),
+                    artwork_url: row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default(),
                     auto_download: row.try_get("AutoDownload")?,
                     username: row.try_get("Username").ok(),
                     password: row.try_get("Password").ok(),
@@ -217,7 +217,7 @@ async fn get_podcast_for_refresh(db_pool: &DatabasePool, podcast_id: i32) -> App
                     id: row.try_get("PodcastID")?,
                     name: "".to_string(), // Not needed for refresh
                     feed_url: row.try_get("FeedURL")?,
-                    artwork_url: row.try_get("ArtworkURL").unwrap_or_default(),
+                    artwork_url: row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default(),
                     auto_download: row.try_get("AutoDownload")?,
                     username: row.try_get("Username").ok(),
                     password: row.try_get("Password").ok(),
@@ -251,7 +251,7 @@ async fn get_all_podcasts_for_refresh(db_pool: &DatabasePool) -> AppResult<Vec<P
                     id: row.try_get("PodcastID")?,
                     name: "".to_string(), // Not needed for refresh
                     feed_url: row.try_get("FeedURL")?,
-                    artwork_url: row.try_get("ArtworkURL").unwrap_or_default(),
+                    artwork_url: row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default(),
                     auto_download: row.try_get("AutoDownload")?,
                     username: row.try_get("Username").ok(),
                     password: row.try_get("Password").ok(),
@@ -278,7 +278,7 @@ async fn get_all_podcasts_for_refresh(db_pool: &DatabasePool) -> AppResult<Vec<P
                     id: row.try_get("PodcastID")?,
                     name: "".to_string(), // Not needed for refresh
                     feed_url: row.try_get("FeedURL")?,
-                    artwork_url: row.try_get("ArtworkURL").unwrap_or_default(),
+                    artwork_url: row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default(),
                     auto_download: row.try_get("AutoDownload")?,
                     username: row.try_get("Username").ok(),
                     password: row.try_get("Password").ok(),
