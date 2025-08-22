@@ -30,6 +30,8 @@ import 'package:pinepods_mobile/services/podcast/mobile_podcast_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
+import 'package:pinepods_mobile/services/pinepods/oidc_service.dart';
+import 'package:pinepods_mobile/services/pinepods/login_service.dart';
 import 'package:pinepods_mobile/services/settings/mobile_settings_service.dart';
 import 'package:pinepods_mobile/ui/library/downloads.dart';
 import 'package:pinepods_mobile/ui/library/library.dart';
@@ -286,6 +288,13 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
   /// This method handles the actual link supplied from [uni_links], either
   /// at app startup or during running.
   void _handleLinkEvent(Uri uri) async {
+    // Handle OIDC authentication callback
+    if (uri.scheme == 'pinepods' && uri.host == 'auth' && uri.path == '/callback') {
+      await _handleOidcCallback(uri);
+      return;
+    }
+    
+    // Handle podcast subscription links
     if ((uri.scheme == 'pinepods-subscribe' || uri.scheme == 'https') &&
         (uri.query.startsWith('uri=') || uri.query.startsWith('url='))) {
       var path = uri.query.substring(4);
@@ -321,6 +330,134 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
             settings: const RouteSettings(name: 'podcastdetails'),
             builder: (context) =>
                 PodcastDetails(Podcast.fromUrl(url: path), loadPodcastBloc),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Handle OIDC authentication callback
+  Future<void> _handleOidcCallback(Uri uri) async {
+    try {
+      print('OIDC Callback: Received callback URL: $uri');
+      
+      // Parse the callback result
+      final callbackResult = OidcService.parseCallback(uri.toString());
+      
+      if (!callbackResult.isSuccess) {
+        print('OIDC Callback: Authentication failed: ${callbackResult.error}');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('OIDC authentication failed: ${callbackResult.error}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Check if we have an API key directly from the callback
+      if (callbackResult.hasApiKey) {
+        print('OIDC Callback: Found API key in callback, completing login');
+        await _completeOidcLogin(callbackResult.apiKey!);
+      } else {
+        print('OIDC Callback: No API key found, traditional OAuth flow not implemented yet');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('OIDC callback received but no API key found'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+      
+    } catch (e) {
+      print('OIDC Callback: Error processing callback: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error processing OIDC callback: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Complete OIDC login with the provided API key
+  Future<void> _completeOidcLogin(String apiKey) async {
+    try {
+      print('OIDC Callback: Completing login with API key');
+      
+      // We need to get the server URL - we can get it from the current settings
+      // since the user would have entered it during the initial OIDC flow
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      final settings = settingsBloc.currentSettings;
+      
+      // Check if we have a server URL from a previous attempt
+      String? serverUrl = settings.pinepodsServer;
+      
+      if (serverUrl == null || serverUrl.isEmpty) {
+        throw Exception('No server URL available for OIDC completion');
+      }
+      
+      // Verify the API key works and get user details
+      final loginService = PinepodsLoginService();
+      
+      // Verify API key
+      final isValidKey = await loginService.verifyApiKey(serverUrl, apiKey);
+      if (!isValidKey) {
+        throw Exception('API key verification failed');
+      }
+
+      // Get user ID
+      final userId = await loginService.getUserId(serverUrl, apiKey);
+      if (userId == null) {
+        throw Exception('Failed to get user ID');
+      }
+
+      // Get user details  
+      final userDetails = await loginService.getUserDetails(serverUrl, apiKey, userId);
+      if (userDetails == null) {
+        throw Exception('Failed to get user details');
+      }
+
+      // Save the authentication details
+      settingsBloc.setPinepodsServer(serverUrl);
+      settingsBloc.setPinepodsApiKey(apiKey);
+      settingsBloc.setPinepodsUserId(userId);
+      
+      // Set additional user details if available
+      if (userDetails.username != null) {
+        settingsBloc.setPinepodsUsername(userDetails.username!);
+      }
+      if (userDetails.email != null) {
+        settingsBloc.setPinepodsEmail(userDetails.email!);  
+      }
+
+      // Fetch theme from server
+      await settingsBloc.fetchThemeFromServer();
+
+      print('OIDC Callback: Login completed successfully');
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('OIDC authentication successful!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+      
+    } catch (e) {
+      print('OIDC Callback: Error completing login: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to complete OIDC login: $e'),
+            backgroundColor: Colors.red,
           ),
         );
       }

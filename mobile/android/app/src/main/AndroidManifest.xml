@@ -9,6 +9,20 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
+    <!-- Allow querying for browsers and other apps for URL launching -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="http" />
+        </intent>
+    </queries>
+
     <application
             android:icon="@mipmap/ic_launcher"
             android:label="Pinepods"
@@ -49,6 +63,18 @@
                 <data android:pathPrefix="/subscribe" />
                 <data android:scheme="https" />
                 <data android:scheme="http" />
+            </intent-filter>
+
+            <!-- Handle OIDC authentication callbacks -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="pinepods" />
+                <data android:host="auth" />
+                <data android:pathPrefix="/callback" />
             </intent-filter>
         </activity>
 

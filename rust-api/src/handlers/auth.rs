@@ -1098,6 +1098,17 @@ pub async fn store_oidc_state(
     Ok(Json(serde_json::json!({ "status": "success" })))
 }
 
+// Helper function to create proper redirect URLs for both web and mobile
+fn create_oidc_redirect_url(frontend_base: &str, params: &str) -> String {
+    if frontend_base.starts_with("pinepods://auth/callback") {
+        // Mobile deep link - append params directly
+        format!("{}?{}", frontend_base, params)
+    } else {
+        // Web callback - use traditional path
+        format!("{}/oauth/callback?{}", frontend_base, params)
+    }
+}
+
 // OIDC callback handler - matches Python /api/auth/callback endpoint
 #[derive(Deserialize)]
 pub struct OIDCCallbackQuery {
@@ -1149,17 +1160,23 @@ pub async fn oidc_callback(
 
     // Use stored origin URL if available, otherwise fall back to constructed URL
     let frontend_base = if let Some(ref origin_url) = stored_origin_url {
-        // Extract just the base part (scheme + host + port) from the stored origin URL
-        // Simple string parsing to avoid adding url dependency
-        if let Some(protocol_end) = origin_url.find("://") {
-            let after_protocol = &origin_url[protocol_end + 3..];
-            if let Some(path_start) = after_protocol.find('/') {
-                origin_url[..protocol_end + 3 + path_start].to_string()
+        // Check if this is a mobile deep link callback
+        if origin_url.starts_with("pinepods://auth/callback") {
+            // For mobile deep links, use the full URL directly - don't try to parse as HTTP
+            origin_url.clone()
+        } else {
+            // Extract just the base part (scheme + host + port) from the stored origin URL for web
+            // Simple string parsing to avoid adding url dependency
+            if let Some(protocol_end) = origin_url.find("://") {
+                let after_protocol = &origin_url[protocol_end + 3..];
+                if let Some(path_start) = after_protocol.find('/') {
+                    origin_url[..protocol_end + 3 + path_start].to_string()
+                } else {
+                    origin_url.clone()
+                }
             } else {
                 origin_url.clone()
             }
-        } else {
-            origin_url.clone()
         }
     } else {
         default_frontend_base.clone()
@@ -1171,10 +1188,10 @@ pub async fn oidc_callback(
     let provider_tuple = match state.db_pool.get_oidc_provider(&client_id).await {
         Ok(Some(provider)) => provider,
         Ok(None) => {
-            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=invalid_provider", frontend_base)));
+            return Ok(axum::response::Redirect::to(&create_oidc_redirect_url(&frontend_base, "error=invalid_provider")));
         }
         Err(_) => {
-            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=internal_error", frontend_base)));
+            return Ok(axum::response::Redirect::to(&create_oidc_redirect_url(&frontend_base, "error=internal_error")));
         }
     };
 
@@ -1344,7 +1361,7 @@ pub async fn oidc_callback(
             }
         }
 
-        return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?api_key={}", frontend_base, api_key)));
+        return Ok(axum::response::Redirect::to(&create_oidc_redirect_url(&frontend_base, &format!("api_key={}", api_key))));
     } else {
         // Create new user - EXACT match to Python
         let mut final_username = username.unwrap_or_else(|| email.split('@').next().unwrap_or(&email).to_lowercase());
@@ -1391,8 +1408,8 @@ pub async fn oidc_callback(
         None => state.db_pool.create_api_key(user_id).await?,
     };
 
-    // Success - EXACT match to Python
-    Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?api_key={}", frontend_base, api_key)))
+    // Success - handle both web and mobile redirects
+    Ok(axum::response::Redirect::to(&create_oidc_redirect_url(&frontend_base, &format!("api_key={}", api_key))))
 }
 
 // Update user timezone
