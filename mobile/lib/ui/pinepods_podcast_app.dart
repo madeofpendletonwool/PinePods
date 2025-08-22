@@ -286,7 +286,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
   /// This method handles the actual link supplied from [uni_links], either
   /// at app startup or during running.
   void _handleLinkEvent(Uri uri) async {
-    if ((uri.scheme == 'anytime-subscribe' || uri.scheme == 'https') &&
+    if ((uri.scheme == 'pinepods-subscribe' || uri.scheme == 'https') &&
         (uri.query.startsWith('uri=') || uri.query.startsWith('url='))) {
       var path = uri.query.substring(4);
       var loadPodcastBloc = Provider.of<PodcastBloc>(context, listen: false);
