@@ -277,6 +277,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
   /// We listen to external links from outside the app. For example, someone may navigate
   /// to a web page that supports 'Open with Pinepods'.
   void _setupLinkListener() async {
+    print('Deep Link: Setting up link listener...');
     final appLinks = AppLinks(); // AppLinks is singleton
 
     // Handle initial link if app was launched by one (cold start)
@@ -293,12 +294,15 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
     }
 
     // Subscribe to all events (further links while app is running)
+    print('Deep Link: Setting up stream listener...');
     deepLinkSubscription = appLinks.uriLinkStream.listen((uri) {
       print('Deep Link: App received link while running: $uri');
       _handleLinkEvent(uri);
     }, onError: (err) {
       print('Deep Link: Stream error: $err');
     });
+    
+    print('Deep Link: Link listener setup complete');
   }
 
   /// This method handles the actual link supplied from [uni_links], either
@@ -515,13 +519,28 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
+    print('Deep Link: App lifecycle state changed to: $state');
     final audioBloc = Provider.of<AudioBloc>(context, listen: false);
 
     switch (state) {
       case AppLifecycleState.resumed:
+        print('Deep Link: App resumed - checking for pending deep links...');
         audioBloc.transitionLifecycleState(LifecycleState.resume);
+        
+        // Check for any pending deep links when app resumes
+        try {
+          final appLinks = AppLinks();
+          final initialUri = await appLinks.getInitialLink();
+          if (initialUri != null) {
+            print('Deep Link: Found pending link on resume: $initialUri');
+            _handleLinkEvent(initialUri);
+          }
+        } catch (e) {
+          print('Deep Link: Error checking for pending links on resume: $e');
+        }
         break;
       case AppLifecycleState.paused:
+        print('Deep Link: App paused');
         audioBloc.transitionLifecycleState(LifecycleState.pause);
         break;
       default:

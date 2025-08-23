@@ -58,6 +58,7 @@ class OidcService {
     required String state,
     required String clientId,
     String? originUrl,
+    String? codeVerifier,
   }) async {
     try {
       final normalizedUrl = serverUrl.trim().replaceAll(RegExp(r'/$'), '');
@@ -67,6 +68,7 @@ class OidcService {
         'state': state,
         'client_id': clientId,
         'origin_url': originUrl,
+        'code_verifier': codeVerifier,
       });
       
       final response = await http.post(
@@ -84,26 +86,27 @@ class OidcService {
     }
   }
   
-  /// Build authorization URL and launch browser
-  static Future<bool> initiateOidcLogin({
+  /// Build authorization URL and return it for in-app browser use
+  static Future<String?> buildOidcLoginUrl({
     required OidcProvider provider,
     required String serverUrl,
     required String state,
     OidcPkce? pkce,
   }) async {
     try {
-      // Store state on server first with mobile deep link origin
-      print('OIDC: Storing state with origin_url: pinepods://auth/callback');
+      // Store state on server first - use web origin for in-app browser
+      print('OIDC: Storing state for in-app browser flow');
       final stateStored = await storeOidcState(
         serverUrl: serverUrl,
         state: state,
         clientId: provider.clientId,
-        originUrl: 'pinepods://auth/callback',
+        originUrl: '$serverUrl/oauth/callback', // Use web callback for in-app browser
+        codeVerifier: pkce?.codeVerifier, // Include PKCE code verifier
       );
       print('OIDC: State stored successfully: $stateStored');
       
       if (!stateStored) {
-        return false;
+        return null;
       }
       
       // Build authorization URL
@@ -124,36 +127,29 @@ class OidcService {
       
       final authUrl = authUri.replace(queryParameters: queryParams);
       
-      print('OIDC: Attempting to launch URL: $authUrl');
+      print('OIDC: Built authorization URL: $authUrl');
+      return authUrl.toString();
       
-      // Use the same pattern that works for user stats page links
-      try {
-        // Try to launch directly first (works better on Android)
-        final launched = await launchUrl(
-          authUrl, 
-          mode: LaunchMode.externalApplication,
-        );
-        
-        if (!launched) {
-          print('OIDC: Direct URL launch failed, checking if URL can be launched');
-          // If direct launch fails, check if URL can be launched
-          final canLaunch = await canLaunchUrl(authUrl);
-          if (!canLaunch) {
-            print('OIDC: No app available to handle this URL');
-            return false;
-          }
-        } else {
-          print('OIDC: Successfully launched URL');
-          return true;
-        }
-        
-        return false;
-      } catch (e) {
-        print('OIDC: Failed to launch URL: $e');
-        return false;
-      }
     } catch (e) {
-      return false;
+      print('OIDC: Failed to build authorization URL: $e');
+      return null;
+    }
+  }
+
+  /// Extract API key from callback URL (for in-app browser)
+  static String? extractApiKeyFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      
+      // Check if this is our callback URL with API key
+      if (uri.path.contains('/oauth/callback')) {
+        return uri.queryParameters['api_key'];
+      }
+      
+      return null;
+    } catch (e) {
+      print('OIDC: Failed to extract API key from URL: $e');
+      return null;
     }
   }
   

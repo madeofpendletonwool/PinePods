@@ -1069,12 +1069,14 @@ pub struct StoreStateRequest {
     pub state: String,
     pub client_id: String,
     pub origin_url: Option<String>, // URL user was on when they clicked OIDC login
+    pub code_verifier: Option<String>, // PKCE code verifier for token exchange
 }
 
 #[derive(Serialize, Deserialize)]
 struct StoredOidcState {
     client_id: String,
     origin_url: Option<String>,
+    code_verifier: Option<String>, // PKCE code verifier
 }
 
 pub async fn store_oidc_state(
@@ -1087,6 +1089,7 @@ pub async fn store_oidc_state(
     let stored_state = StoredOidcState {
         client_id: request.client_id,
         origin_url: request.origin_url,
+        code_verifier: request.code_verifier,
     };
     
     let state_json = serde_json::to_string(&stored_state)
@@ -1221,18 +1224,18 @@ pub async fn oidc_callback(
     let auth_code = query.code.ok_or_else(|| AppError::bad_request("Missing authorization code"))?;
     let state_param = query.state.ok_or_else(|| AppError::bad_request("Missing state parameter"))?;
 
-    // Get client_id and origin_url from state
-    let (client_id, stored_origin_url) = match state.redis_client.get_del(&format!("oidc_state:{}", state_param)).await {
+    // Get client_id, origin_url, and code_verifier from state
+    let (client_id, stored_origin_url, code_verifier) = match state.redis_client.get_del(&format!("oidc_state:{}", state_param)).await {
         Ok(Some(state_json)) => {
             tracing::info!("OIDC Debug - Retrieved stored state: {}", state_json);
             // Try to parse as new JSON format first
             if let Ok(stored_state) = serde_json::from_str::<StoredOidcState>(&state_json) {
-                tracing::info!("OIDC Debug - Parsed stored state: client_id={}, origin_url={:?}", stored_state.client_id, stored_state.origin_url);
-                (stored_state.client_id, stored_state.origin_url)
+                tracing::info!("OIDC Debug - Parsed stored state: client_id={}, origin_url={:?}, code_verifier={}", stored_state.client_id, stored_state.origin_url, stored_state.code_verifier.as_ref().map(|cv| format!("{}...", &cv[..8.min(cv.len())])).unwrap_or_else(|| "None".to_string()));
+                (stored_state.client_id, stored_state.origin_url, stored_state.code_verifier)
             } else {
                 // Fallback to old format (just client_id string) for backwards compatibility
                 tracing::info!("OIDC Debug - Using fallback format, client_id={}", state_json);
-                (state_json, None)
+                (state_json, None, None)
             }
         },
         Ok(None) => {
@@ -1291,14 +1294,22 @@ pub async fn oidc_callback(
 
     // Exchange authorization code for access token - EXACT match to Python
     let client = reqwest::Client::new();
+    let mut form_data = vec![
+        ("grant_type", "authorization_code"),
+        ("code", &auth_code),
+        ("redirect_uri", &registered_redirect_uri),
+        ("client_id", &client_id),
+        ("client_secret", &client_secret),
+    ];
+    
+    // Add PKCE code verifier if present
+    if let Some(ref verifier) = code_verifier {
+        form_data.push(("code_verifier", verifier));
+        tracing::info!("OIDC Debug - Including PKCE code verifier in token exchange");
+    }
+    
     let token_response = match client.post(&token_url)
-        .form(&[
-            ("grant_type", "authorization_code"),
-            ("code", &auth_code),
-            ("redirect_uri", &registered_redirect_uri),
-            ("client_id", &client_id),
-            ("client_secret", &client_secret),
-        ])
+        .form(&form_data)
         .header("Accept", "application/json")
         .send()
         .await

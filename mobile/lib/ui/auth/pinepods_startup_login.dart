@@ -4,6 +4,7 @@ import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/login_service.dart';
 import 'package:pinepods_mobile/services/pinepods/oidc_service.dart';
 import 'package:pinepods_mobile/services/auth_notifier.dart';
+import 'package:pinepods_mobile/ui/auth/oidc_browser.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:math';
@@ -168,34 +169,111 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
       final pkce = OidcService.generatePkce();
       final state = OidcService.generateState();
       
-      // Store server URL for callback handling
-      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
-      settingsBloc.setPinepodsServer(serverUrl); // Store temporarily for OIDC completion
-      
-      // Launch OIDC authentication
-      final success = await OidcService.initiateOidcLogin(
+      // Build authorization URL for in-app browser
+      final authUrl = await OidcService.buildOidcLoginUrl(
         provider: provider,
         serverUrl: serverUrl,
         state: state,
         pkce: pkce,
       );
 
-      if (!success) {
+      if (authUrl == null) {
         setState(() {
-          _errorMessage = 'Failed to launch OIDC authentication. Please check if you have a browser installed.';
+          _errorMessage = 'Failed to prepare OIDC authentication URL';
           _isLoading = false;
         });
-      } else {
-        // Successfully launched browser, show a helpful message
-        setState(() {
-          _errorMessage = 'Authentication opened in browser. Please complete login and return to the app.';
-          _isLoading = false;
-        });
+        return;
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Launch in-app browser
+      if (mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => OidcBrowser(
+              authUrl: authUrl,
+              serverUrl: serverUrl,
+              onSuccess: (apiKey) async {
+                Navigator.of(context).pop(); // Close the browser
+                await _completeOidcLogin(apiKey, serverUrl);
+              },
+              onError: (error) {
+                Navigator.of(context).pop(); // Close the browser
+                setState(() {
+                  _errorMessage = 'Authentication failed: $error';
+                });
+              },
+            ),
+          ),
+        );
       }
       
     } catch (e) {
       setState(() {
         _errorMessage = 'OIDC login error: ${e.toString()}';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _completeOidcLogin(String apiKey, String serverUrl) async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      // Verify API key
+      final isValidKey = await PinepodsLoginService.verifyApiKey(serverUrl, apiKey);
+      if (!isValidKey) {
+        throw Exception('API key verification failed');
+      }
+
+      // Get user ID
+      final userId = await PinepodsLoginService.getUserId(serverUrl, apiKey);
+      if (userId == null) {
+        throw Exception('Failed to get user ID');
+      }
+
+      // Get user details  
+      final userDetails = await PinepodsLoginService.getUserDetails(serverUrl, apiKey, userId);
+      if (userDetails == null) {
+        throw Exception('Failed to get user details');
+      }
+
+      // Store credentials
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      settingsBloc.setPinepodsServer(serverUrl);
+      settingsBloc.setPinepodsApiKey(apiKey);
+      settingsBloc.setPinepodsUserId(userId);
+      
+      // Set additional user details if available
+      if (userDetails.username != null) {
+        settingsBloc.setPinepodsUsername(userDetails.username!);
+      }
+      if (userDetails.email != null) {
+        settingsBloc.setPinepodsEmail(userDetails.email!);  
+      }
+
+      // Fetch theme from server
+      await settingsBloc.fetchThemeFromServer();
+
+      print('OIDC Login: Completed successfully');
+      
+      // Notify login success
+      AuthNotifier.notifyLoginSuccess();
+
+      // Call the callback if provided
+      if (widget.onLoginSuccess != null) {
+        widget.onLoginSuccess!();
+      }
+
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to complete login: ${e.toString()}';
         _isLoading = false;
       });
     }
