@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
-    http::HeaderMap,
-    response::Json,
+    http::{HeaderMap, StatusCode},
+    response::{Json, Html},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -1117,6 +1117,81 @@ fn create_oidc_redirect_url(frontend_base: &str, params: &str) -> String {
     redirect_url
 }
 
+// Helper function to create appropriate response for mobile vs web
+fn create_oidc_response(frontend_base: &str, params: &str) -> axum::response::Response {
+    let redirect_url = create_oidc_redirect_url(frontend_base, params);
+    
+    if frontend_base.starts_with("pinepods://") {
+        // Mobile deep link - return HTML page with JavaScript redirect
+        let html_content = format!(r#"<!DOCTYPE html>
+<html>
+<head>
+    <title>PinePods Authentication</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 40px 20px;
+            background: #f5f5f5;
+            text-align: center;
+        }}
+        .container {{
+            max-width: 400px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+        }}
+        .logo {{
+            color: #539e8a;
+            font-size: 28px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }}
+        .message {{
+            color: #333;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }}
+        .loading {{
+            color: #666;
+            font-size: 14px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">PinePods</div>
+        <div class="message">Authentication successful!</div>
+        <div class="loading">Redirecting to app...</div>
+    </div>
+    <script>
+        // Try to redirect to the mobile app
+        setTimeout(function() {{
+            window.location.href = '{}';
+        }}, 500);
+        
+        // Fallback: If the deep link doesn't work, show instructions
+        setTimeout(function() {{
+            document.querySelector('.loading').innerHTML = 
+                'If the app didn\'t open automatically, please manually open the PinePods app.';
+        }}, 3000);
+    </script>
+</body>
+</html>"#, redirect_url);
+
+        tracing::info!("OIDC Debug - Returning HTML response for mobile deep link: {}", redirect_url);
+        Html(html_content).into_response()
+    } else {
+        // Web callback - use normal redirect
+        tracing::info!("OIDC Debug - Returning redirect response for web: {}", redirect_url);
+        axum::response::Redirect::to(&redirect_url).into_response()
+    }
+}
+
 // OIDC callback handler - matches Python /api/auth/callback endpoint
 #[derive(Deserialize)]
 pub struct OIDCCallbackQuery {
@@ -1130,7 +1205,7 @@ pub async fn oidc_callback(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
     Query(query): Query<OIDCCallbackQuery>,
-) -> Result<axum::response::Redirect, AppError> {
+) -> Result<axum::response::Response, AppError> {
     // Construct base URL from request like Python version - EXACT match
     let base_url = construct_base_url_from_request(&headers)?;
     let default_frontend_base = base_url.replace("/api", "");
@@ -1139,8 +1214,7 @@ pub async fn oidc_callback(
     if let Some(error) = query.error {
         let error_desc = query.error_description.unwrap_or_else(|| "Unknown error".to_string());
         tracing::error!("OIDC provider error: {} - {}", error, error_desc);
-        return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=provider_error&description={}", 
-            default_frontend_base, urlencoding::encode(&error_desc))));
+        return Ok(create_oidc_response(&default_frontend_base, &format!("error=provider_error&description={}", urlencoding::encode(&error_desc))));
     }
 
     // Validate required parameters - EXACT match to Python
@@ -1162,10 +1236,10 @@ pub async fn oidc_callback(
             }
         },
         Ok(None) => {
-            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=invalid_state", default_frontend_base)));
+            return Ok(create_oidc_response(&default_frontend_base, "error=invalid_state"));
         }
         Err(_) => {
-            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=internal_error", default_frontend_base)));
+            return Ok(create_oidc_response(&default_frontend_base, "error=internal_error"));
         }
     };
 
@@ -1205,10 +1279,10 @@ pub async fn oidc_callback(
     let provider_tuple = match state.db_pool.get_oidc_provider(&client_id).await {
         Ok(Some(provider)) => provider,
         Ok(None) => {
-            return Ok(axum::response::Redirect::to(&create_oidc_redirect_url(&frontend_base, "error=invalid_provider")));
+            return Ok(create_oidc_response(&frontend_base, "error=invalid_provider"));
         }
         Err(_) => {
-            return Ok(axum::response::Redirect::to(&create_oidc_redirect_url(&frontend_base, "error=internal_error")));
+            return Ok(create_oidc_response(&frontend_base, "error=internal_error"));
         }
     };
 
@@ -1232,15 +1306,15 @@ pub async fn oidc_callback(
         Ok(response) if response.status().is_success() => {
             match response.json::<serde_json::Value>().await {
                 Ok(token_data) => token_data,
-                Err(_) => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=token_exchange_failed", frontend_base))),
+                Err(_) => return Ok(create_oidc_response(&frontend_base, "error=token_exchange_failed")),
             }
         }
-        _ => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=token_exchange_failed", frontend_base))),
+        _ => return Ok(create_oidc_response(&frontend_base, "error=token_exchange_failed")),
     };
 
     let access_token = match token_response.get("access_token").and_then(|v| v.as_str()) {
         Some(token) => token,
-        None => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=token_exchange_failed", frontend_base))),
+        None => return Ok(create_oidc_response(&frontend_base, "error=token_exchange_failed")),
     };
 
     // Get user info from OIDC provider - EXACT match to Python
@@ -1254,10 +1328,10 @@ pub async fn oidc_callback(
         Ok(response) if response.status().is_success() => {
             match response.json::<serde_json::Value>().await {
                 Ok(user_info) => user_info,
-                Err(_) => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=userinfo_failed", frontend_base))),
+                Err(_) => return Ok(create_oidc_response(&frontend_base, "error=userinfo_failed")),
             }
         }
-        _ => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=userinfo_failed", frontend_base))),
+        _ => return Ok(create_oidc_response(&frontend_base, "error=userinfo_failed")),
     };
 
     // Extract email with GitHub special handling - EXACT match to Python
@@ -1305,7 +1379,7 @@ pub async fn oidc_callback(
 
     let email = match email {
         Some(e) => e,
-        None => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=email_required", frontend_base))),
+        None => return Ok(create_oidc_response(&frontend_base, "error=email_required")),
     };
 
     // Role verification - EXACT match to Python
@@ -1317,10 +1391,10 @@ pub async fn oidc_callback(
             });
             
             if !has_user_role && !has_admin_role {
-                return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=no_access", frontend_base)));
+                return Ok(create_oidc_response(&frontend_base, "error=no_access"));
             }
         } else {
-            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=no_access&details=invalid_roles", frontend_base)));
+            return Ok(create_oidc_response(&frontend_base, "error=no_access&details=invalid_roles"));
         }
     }
 
@@ -1339,7 +1413,7 @@ pub async fn oidc_callback(
     // Username claim validation - EXACT match to Python
     if let Some(username_claim) = username_claim.as_ref().filter(|s| !s.is_empty()) {
         if !userinfo_response.get(username_claim).is_some() {
-            return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=user_creation_failed&details=username_claim_missing", frontend_base)));
+            return Ok(create_oidc_response(&frontend_base, "error=user_creation_failed&details=username_claim_missing"));
         }
     }
 
@@ -1378,9 +1452,8 @@ pub async fn oidc_callback(
             }
         }
 
-        let redirect_url = create_oidc_redirect_url(&frontend_base, &format!("api_key={}", api_key));
-        tracing::info!("OIDC Debug - Final redirect URL (existing user): {}", redirect_url);
-        return Ok(axum::response::Redirect::to(&redirect_url));
+        tracing::info!("OIDC Debug - Final redirect (existing user): frontend_base={}, api_key={}", frontend_base, api_key);
+        return Ok(create_oidc_response(&frontend_base, &format!("api_key={}", api_key)));
     } else {
         // Create new user - EXACT match to Python
         let mut final_username = username.unwrap_or_else(|| email.split('@').next().unwrap_or(&email).to_lowercase());
@@ -1398,7 +1471,7 @@ pub async fn oidc_callback(
                 }
                 counter += 1;
                 if counter > MAX_ATTEMPTS {
-                    return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=username_conflict", frontend_base)));
+                    return Ok(create_oidc_response(&frontend_base, "error=username_conflict"));
                 }
             }
         }
@@ -1418,7 +1491,7 @@ pub async fn oidc_callback(
                 
                 user_id
             }
-            Err(_) => return Ok(axum::response::Redirect::to(&format!("{}/oauth/callback?error=user_creation_failed", frontend_base))),
+            Err(_) => return Ok(create_oidc_response(&frontend_base, "error=user_creation_failed")),
         }
     };
 
@@ -1428,9 +1501,8 @@ pub async fn oidc_callback(
     };
 
     // Success - handle both web and mobile redirects
-    let redirect_url = create_oidc_redirect_url(&frontend_base, &format!("api_key={}", api_key));
-    tracing::info!("OIDC Debug - Final redirect URL: {}", redirect_url);
-    Ok(axum::response::Redirect::to(&redirect_url))
+    tracing::info!("OIDC Debug - Final redirect: frontend_base={}, api_key={}", frontend_base, api_key);
+    Ok(create_oidc_response(&frontend_base, &format!("api_key={}", api_key)))
 }
 
 // Update user timezone
