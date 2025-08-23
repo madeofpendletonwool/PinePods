@@ -93,12 +93,14 @@ class OidcService {
   }) async {
     try {
       // Store state on server first with mobile deep link origin
+      print('OIDC: Storing state with origin_url: pinepods://auth/callback');
       final stateStored = await storeOidcState(
         serverUrl: serverUrl,
         state: state,
         clientId: provider.clientId,
         originUrl: 'pinepods://auth/callback',
       );
+      print('OIDC: State stored successfully: $stateStored');
       
       if (!stateStored) {
         return false;

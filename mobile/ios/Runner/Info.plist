@@ -50,7 +50,7 @@
 	<key>FDMaximumConcurrentTasks</key>
 	<integer>1</integer>
 	<key>FlutterDeepLinkingEnabled</key>
-	<string>NO</string>
+	<string>YES</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSApplicationQueriesSchemes</key>

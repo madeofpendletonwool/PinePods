@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/login_service.dart';
 import 'package:pinepods_mobile/services/pinepods/oidc_service.dart';
+import 'package:pinepods_mobile/services/auth_notifier.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:math';
 import 'dart:async';
 
@@ -62,6 +64,9 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
     
     // Listen for server URL changes to check OIDC providers
     _serverController.addListener(_onServerUrlChanged);
+    
+    // Register global login success callback
+    AuthNotifier.setGlobalLoginSuccessCallback(_handleLoginSuccess);
   }
 
   void _onServerUrlChanged() {
@@ -641,6 +646,17 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                           const SizedBox(height: 16),
                         ],
 
+                        // Debug button to test deep links
+                        ElevatedButton(
+                          onPressed: () {
+                            // Test if deep links work at all
+                            launchUrl(Uri.parse('pinepods://auth/callback?api_key=test123'));
+                          },
+                          child: Text('Test Deep Link'),
+                        ),
+                        
+                        const SizedBox(height: 16),
+
                         // Additional Info
                         Text(
                           'Don\'t have a PinePods server? Visit pinepods.online to learn more.',
@@ -661,6 +677,13 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
     );
   }
 
+  /// Handle login success from any source (traditional or OIDC)
+  void _handleLoginSuccess() {
+    if (mounted) {
+      widget.onLoginSuccess?.call();
+    }
+  }
+
   @override
   void dispose() {
     _oidcCheckTimer?.cancel();
@@ -669,6 +692,10 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
     _usernameController.dispose();
     _passwordController.dispose();
     _mfaController.dispose();
+    
+    // Clear global callback to prevent memory leaks
+    AuthNotifier.clearGlobalLoginSuccessCallback();
+    
     super.dispose();
   }
 }

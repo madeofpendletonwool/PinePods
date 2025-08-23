@@ -1142,11 +1142,14 @@ pub async fn oidc_callback(
     // Get client_id and origin_url from state
     let (client_id, stored_origin_url) = match state.redis_client.get_del(&format!("oidc_state:{}", state_param)).await {
         Ok(Some(state_json)) => {
+            tracing::info!("OIDC Debug - Retrieved stored state: {}", state_json);
             // Try to parse as new JSON format first
             if let Ok(stored_state) = serde_json::from_str::<StoredOidcState>(&state_json) {
+                tracing::info!("OIDC Debug - Parsed stored state: client_id={}, origin_url={:?}", stored_state.client_id, stored_state.origin_url);
                 (stored_state.client_id, stored_state.origin_url)
             } else {
                 // Fallback to old format (just client_id string) for backwards compatibility
+                tracing::info!("OIDC Debug - Using fallback format, client_id={}", state_json);
                 (state_json, None)
             }
         },
@@ -1160,11 +1163,14 @@ pub async fn oidc_callback(
 
     // Use stored origin URL if available, otherwise fall back to constructed URL
     let frontend_base = if let Some(ref origin_url) = stored_origin_url {
+        tracing::info!("OIDC Debug - Using stored origin_url: {}", origin_url);
         // Check if this is a mobile deep link callback
         if origin_url.starts_with("pinepods://auth/callback") {
+            tracing::info!("OIDC Debug - Detected mobile deep link origin");
             // For mobile deep links, use the full URL directly - don't try to parse as HTTP
             origin_url.clone()
         } else {
+            tracing::info!("OIDC Debug - Detected web origin, parsing base URL");
             // Extract just the base part (scheme + host + port) from the stored origin URL for web
             // Simple string parsing to avoid adding url dependency
             if let Some(protocol_end) = origin_url.find("://") {
@@ -1179,8 +1185,11 @@ pub async fn oidc_callback(
             }
         }
     } else {
+        tracing::info!("OIDC Debug - No stored origin_url, using default: {}", default_frontend_base);
         default_frontend_base.clone()
     };
+    
+    tracing::info!("OIDC Debug - Final frontend_base: {}", frontend_base);
 
     let registered_redirect_uri = format!("{}/api/auth/callback", base_url);
 
@@ -1361,7 +1370,9 @@ pub async fn oidc_callback(
             }
         }
 
-        return Ok(axum::response::Redirect::to(&create_oidc_redirect_url(&frontend_base, &format!("api_key={}", api_key))));
+        let redirect_url = create_oidc_redirect_url(&frontend_base, &format!("api_key={}", api_key));
+        tracing::info!("OIDC Debug - Final redirect URL (existing user): {}", redirect_url);
+        return Ok(axum::response::Redirect::to(&redirect_url));
     } else {
         // Create new user - EXACT match to Python
         let mut final_username = username.unwrap_or_else(|| email.split('@').next().unwrap_or(&email).to_lowercase());
@@ -1409,7 +1420,9 @@ pub async fn oidc_callback(
     };
 
     // Success - handle both web and mobile redirects
-    Ok(axum::response::Redirect::to(&create_oidc_redirect_url(&frontend_base, &format!("api_key={}", api_key))))
+    let redirect_url = create_oidc_redirect_url(&frontend_base, &format!("api_key={}", api_key));
+    tracing::info!("OIDC Debug - Final redirect URL: {}", redirect_url);
+    Ok(axum::response::Redirect::to(&redirect_url))
 }
 
 // Update user timezone

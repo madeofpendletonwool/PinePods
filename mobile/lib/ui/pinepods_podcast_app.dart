@@ -32,6 +32,7 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/pinepods/oidc_service.dart';
 import 'package:pinepods_mobile/services/pinepods/login_service.dart';
+import 'package:pinepods_mobile/services/auth_notifier.dart';
 import 'package:pinepods_mobile/services/settings/mobile_settings_service.dart';
 import 'package:pinepods_mobile/ui/library/downloads.dart';
 import 'package:pinepods_mobile/ui/library/library.dart';
@@ -278,18 +279,44 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
   void _setupLinkListener() async {
     final appLinks = AppLinks(); // AppLinks is singleton
 
-    // Subscribe to all events (initial link and further)
+    // Handle initial link if app was launched by one (cold start)
+    try {
+      final initialUri = await appLinks.getInitialLink();
+      if (initialUri != null) {
+        print('Deep Link: App launched with initial link: $initialUri');
+        _handleLinkEvent(initialUri);
+      }
+    } catch (e) {
+      print('Deep Link: Error getting initial link: $e');
+    }
+
+    // Subscribe to all events (further links while app is running)
     deepLinkSubscription = appLinks.uriLinkStream.listen((uri) {
-      // Do something (navigation, ...)
+      print('Deep Link: App received link while running: $uri');
       _handleLinkEvent(uri);
+    }, onError: (err) {
+      print('Deep Link: Stream error: $err');
     });
   }
 
   /// This method handles the actual link supplied from [uni_links], either
   /// at app startup or during running.
   void _handleLinkEvent(Uri uri) async {
-    // Handle OIDC authentication callback
+    print('Deep Link: Received link: $uri');
+    print('Deep Link: Scheme: ${uri.scheme}, Host: ${uri.host}, Path: ${uri.path}');
+    print('Deep Link: Query: ${uri.query}');
+    print('Deep Link: QueryParameters: ${uri.queryParameters}');
+    
+    // Handle OIDC authentication callback - be more flexible with path matching
+    if (uri.scheme == 'pinepods' && uri.host == 'auth') {
+      print('Deep Link: OIDC callback detected (flexible match)');
+      await _handleOidcCallback(uri);
+      return;
+    }
+    
+    // Handle OIDC authentication callback - strict match
     if (uri.scheme == 'pinepods' && uri.host == 'auth' && uri.path == '/callback') {
+      print('Deep Link: OIDC callback detected (strict match)');
       await _handleOidcCallback(uri);
       return;
     }
@@ -404,22 +431,20 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
       }
       
       // Verify the API key works and get user details
-      final loginService = PinepodsLoginService();
-      
       // Verify API key
-      final isValidKey = await loginService.verifyApiKey(serverUrl, apiKey);
+      final isValidKey = await PinepodsLoginService.verifyApiKey(serverUrl, apiKey);
       if (!isValidKey) {
         throw Exception('API key verification failed');
       }
 
       // Get user ID
-      final userId = await loginService.getUserId(serverUrl, apiKey);
+      final userId = await PinepodsLoginService.getUserId(serverUrl, apiKey);
       if (userId == null) {
         throw Exception('Failed to get user ID');
       }
 
       // Get user details  
-      final userDetails = await loginService.getUserDetails(serverUrl, apiKey, userId);
+      final userDetails = await PinepodsLoginService.getUserDetails(serverUrl, apiKey, userId);
       if (userDetails == null) {
         throw Exception('Failed to get user details');
       }
@@ -449,6 +474,17 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
             backgroundColor: Colors.green,
           ),
         );
+        
+        // Log current settings state for debugging
+        final currentSettings = settingsBloc.currentSettings;
+        print('OIDC Callback: Current settings after update:');
+        print('  Server: ${currentSettings.pinepodsServer}');
+        print('  API Key: ${currentSettings.pinepodsApiKey != null ? '[SET]' : '[NOT SET]'}');
+        print('  User ID: ${currentSettings.pinepodsUserId}');
+        print('  Username: ${currentSettings.pinepodsUsername}');
+        
+        // Notify login success globally
+        AuthNotifier.notifyLoginSuccess();
       }
       
     } catch (e) {
