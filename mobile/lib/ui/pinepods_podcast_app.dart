@@ -285,6 +285,8 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
       if (initialUri != null) {
         print('Deep Link: App launched with initial link: $initialUri');
         _handleLinkEvent(initialUri);
+      } else {
+        print('Deep Link: No initial link found');
       }
     } catch (e) {
       print('Deep Link: Error getting initial link: $e');

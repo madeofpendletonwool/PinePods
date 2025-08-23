@@ -1100,9 +1100,15 @@ pub async fn store_oidc_state(
 
 // Helper function to create proper redirect URLs for both web and mobile
 fn create_oidc_redirect_url(frontend_base: &str, params: &str) -> String {
-    let redirect_url = if frontend_base.starts_with("pinepods://auth/callback") {
-        // Mobile deep link - append params directly
-        format!("{}?{}", frontend_base, params)
+    let redirect_url = if frontend_base.starts_with("pinepods://") {
+        // Mobile deep link - append params directly to the exact URL
+        if frontend_base.contains('?') {
+            // URL already has query params, append with &
+            format!("{}&{}", frontend_base, params)
+        } else {
+            // URL has no query params, append with ?
+            format!("{}?{}", frontend_base, params)
+        }
     } else {
         // Web callback - use traditional path
         format!("{}/oauth/callback?{}", frontend_base, params)

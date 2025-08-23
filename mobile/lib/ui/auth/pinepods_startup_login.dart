@@ -647,12 +647,30 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                         ],
 
                         // Debug button to test deep links
-                        ElevatedButton(
-                          onPressed: () {
-                            // Test if deep links work at all
-                            launchUrl(Uri.parse('pinepods://auth/callback?api_key=test123'));
-                          },
-                          child: Text('Test Deep Link'),
+                        Column(
+                          children: [
+                            ElevatedButton(
+                              onPressed: () {
+                                // Test basic deep link
+                                launchUrl(Uri.parse('pinepods://auth/callback?api_key=test123'));
+                              },
+                              child: Text('Test Basic Deep Link'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () {
+                                // Test with real API key format
+                                launchUrl(Uri.parse('pinepods://auth/callback?api_key=d5f8a2e7c1b9f3a2e8d5c9a1b7f4e3d8'));
+                              },
+                              child: Text('Test Real Format'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () {
+                                // Test without query params
+                                launchUrl(Uri.parse('pinepods://auth/callback'));
+                              },
+                              child: Text('Test No Params'),
+                            ),
+                          ],
                         ),
                         
                         const SizedBox(height: 16),
