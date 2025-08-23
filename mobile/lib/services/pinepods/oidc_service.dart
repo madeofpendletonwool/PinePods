@@ -250,11 +250,10 @@ class OidcService {
   /// Generate secure random code verifier
   static String _generateCodeVerifier() {
     final random = Random.secure();
-    final bytes = List<int>.generate(128, (i) => random.nextInt(256));
-    return base64UrlEncode(bytes)
-        .replaceAll('=', '')
-        .replaceAll('+', '-')
-        .replaceAll('/', '_');
+    // Generate 32 random bytes (256 bits) which will create a ~43 character base64url string
+    final bytes = List<int>.generate(32, (i) => random.nextInt(256));
+    // Use base64url encoding (- and _ instead of + and /) and remove padding
+    return base64UrlEncode(bytes).replaceAll('=', '');
   }
   
   /// Generate code challenge from verifier using SHA256
