@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    response::{Json, Html},
+    response::{Json, Html, IntoResponse},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
