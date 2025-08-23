@@ -1308,19 +1308,40 @@ pub async fn oidc_callback(
         tracing::info!("OIDC Debug - Including PKCE code verifier in token exchange");
     }
     
+    tracing::info!("OIDC Debug - Token exchange request to: {}", token_url);
+    tracing::info!("OIDC Debug - Token exchange form data: {:?}", form_data.iter().map(|(k, v)| if k == &"client_secret" || k == &"code_verifier" { (*k, "***REDACTED***") } else { (*k, *v) }).collect::<Vec<_>>());
+    
     let token_response = match client.post(&token_url)
         .form(&form_data)
         .header("Accept", "application/json")
         .send()
         .await
     {
-        Ok(response) if response.status().is_success() => {
-            match response.json::<serde_json::Value>().await {
-                Ok(token_data) => token_data,
-                Err(_) => return Ok(create_oidc_response(&frontend_base, "error=token_exchange_failed")),
+        Ok(response) => {
+            let status = response.status();
+            tracing::info!("OIDC Debug - Token exchange response status: {}", status);
+            
+            if status.is_success() {
+                match response.json::<serde_json::Value>().await {
+                    Ok(token_data) => {
+                        tracing::info!("OIDC Debug - Token exchange successful");
+                        token_data
+                    },
+                    Err(e) => {
+                        tracing::error!("OIDC Debug - Failed to parse token response JSON: {}", e);
+                        return Ok(create_oidc_response(&frontend_base, "error=token_exchange_failed"));
+                    }
+                }
+            } else {
+                let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+                tracing::error!("OIDC Debug - Token exchange failed with status {}: {}", status, error_text);
+                return Ok(create_oidc_response(&frontend_base, "error=token_exchange_failed"));
             }
         }
-        _ => return Ok(create_oidc_response(&frontend_base, "error=token_exchange_failed")),
+        Err(e) => {
+            tracing::error!("OIDC Debug - Token exchange request failed: {}", e);
+            return Ok(create_oidc_response(&frontend_base, "error=token_exchange_failed"));
+        }
     };
 
     let access_token = match token_response.get("access_token").and_then(|v| v.as_str()) {
