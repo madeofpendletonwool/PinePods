@@ -1100,13 +1100,15 @@ pub async fn store_oidc_state(
 
 // Helper function to create proper redirect URLs for both web and mobile
 fn create_oidc_redirect_url(frontend_base: &str, params: &str) -> String {
-    if frontend_base.starts_with("pinepods://auth/callback") {
+    let redirect_url = if frontend_base.starts_with("pinepods://auth/callback") {
         // Mobile deep link - append params directly
         format!("{}?{}", frontend_base, params)
     } else {
         // Web callback - use traditional path
         format!("{}/oauth/callback?{}", frontend_base, params)
-    }
+    };
+    tracing::info!("OIDC Debug - create_oidc_redirect_url: frontend_base={}, params={}, result={}", frontend_base, params, redirect_url);
+    redirect_url
 }
 
 // OIDC callback handler - matches Python /api/auth/callback endpoint
