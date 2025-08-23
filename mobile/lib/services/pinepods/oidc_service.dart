@@ -95,7 +95,6 @@ class OidcService {
   }) async {
     try {
       // Store state on server first - use web origin for in-app browser
-      print('OIDC: Storing state for in-app browser flow');
       final stateStored = await storeOidcState(
         serverUrl: serverUrl,
         state: state,
@@ -103,7 +102,6 @@ class OidcService {
         originUrl: '$serverUrl/oauth/callback', // Use web callback for in-app browser
         codeVerifier: pkce?.codeVerifier, // Include PKCE code verifier
       );
-      print('OIDC: State stored successfully: $stateStored');
       
       if (!stateStored) {
         return null;
@@ -127,11 +125,9 @@ class OidcService {
       
       final authUrl = authUri.replace(queryParameters: queryParams);
       
-      print('OIDC: Built authorization URL: $authUrl');
       return authUrl.toString();
       
     } catch (e) {
-      print('OIDC: Failed to build authorization URL: $e');
       return null;
     }
   }
@@ -148,7 +144,6 @@ class OidcService {
       
       return null;
     } catch (e) {
-      print('OIDC: Failed to extract API key from URL: $e');
       return null;
     }
   }

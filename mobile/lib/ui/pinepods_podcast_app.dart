@@ -786,7 +786,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                     }).toList();
 
                     return Container(
-                      height: 70,
+                      height: 70 + MediaQuery.of(context).padding.bottom,
                       decoration: BoxDecoration(
                         color: Theme.of(context).bottomAppBarTheme.color,
                         border: Border(
@@ -799,43 +799,29 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                       child:
                           MediaQuery.of(context).orientation ==
                               Orientation.landscape
-                          ? Center(
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: navItems.asMap().entries.map((entry) {
-                                  int itemIndex = entry.key;
-                                  BottomNavItem item = entry.value;
+                          ? Padding(
+                              padding: EdgeInsets.only(
+                                bottom: MediaQuery.of(context).padding.bottom,
+                              ),
+                              child: Center(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: navItems.asMap().entries.map((entry) {
+                                    int itemIndex = entry.key;
+                                    BottomNavItem item = entry.value;
 
-                                  return GestureDetector(
-                                    onTap: () => pager.changePage(itemIndex),
-                                    child: Container(
-                                      width: 80,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 8,
-                                      ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            item.icon,
-                                            color: item.isSelected
-                                                ? Theme.of(
-                                                    context,
-                                                  ).iconTheme.color
-                                                : HSLColor.fromColor(
-                                                        Theme.of(context)
-                                                            .bottomAppBarTheme
-                                                            .color!,
-                                                      )
-                                                      .withLightness(0.8)
-                                                      .toColor(),
-                                            size: 24,
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            item.label,
-                                            style: TextStyle(
-                                              fontSize: 11,
+                                    return GestureDetector(
+                                      onTap: () => pager.changePage(itemIndex),
+                                      child: Container(
+                                        width: 80,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 8,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              item.icon,
                                               color: item.isSelected
                                                   ? Theme.of(
                                                       context,
@@ -847,56 +833,61 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                                                         )
                                                         .withLightness(0.8)
                                                         .toColor(),
-                                              fontWeight: item.isSelected
-                                                  ? FontWeight.w600
-                                                  : FontWeight.normal,
+                                              size: 24,
                                             ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ],
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              item.label,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: item.isSelected
+                                                    ? Theme.of(
+                                                        context,
+                                                      ).iconTheme.color
+                                                    : HSLColor.fromColor(
+                                                            Theme.of(context)
+                                                                .bottomAppBarTheme
+                                                                .color!,
+                                                          )
+                                                          .withLightness(0.8)
+                                                          .toColor(),
+                                                fontWeight: item.isSelected
+                                                    ? FontWeight.w600
+                                                    : FontWeight.normal,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                }).toList(),
+                                    );
+                                  }).toList(),
+                                ),
                               ),
                             )
-                          : SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: navItems.asMap().entries.map((entry) {
-                                  int itemIndex = entry.key;
-                                  BottomNavItem item = entry.value;
+                          : Padding(
+                              padding: EdgeInsets.only(
+                                bottom: MediaQuery.of(context).padding.bottom,
+                              ),
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: navItems.asMap().entries.map((entry) {
+                                    int itemIndex = entry.key;
+                                    BottomNavItem item = entry.value;
 
-                                  return GestureDetector(
-                                    onTap: () => pager.changePage(itemIndex),
-                                    child: Container(
-                                      width: 80,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 8,
-                                      ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            item.icon,
-                                            color: item.isSelected
-                                                ? Theme.of(
-                                                    context,
-                                                  ).iconTheme.color
-                                                : HSLColor.fromColor(
-                                                        Theme.of(context)
-                                                            .bottomAppBarTheme
-                                                            .color!,
-                                                      )
-                                                      .withLightness(0.8)
-                                                      .toColor(),
-                                            size: 24,
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            item.label,
-                                            style: TextStyle(
-                                              fontSize: 11,
+                                    return GestureDetector(
+                                      onTap: () => pager.changePage(itemIndex),
+                                      child: Container(
+                                        width: 80,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 8,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              item.icon,
                                               color: item.isSelected
                                                   ? Theme.of(
                                                       context,
@@ -908,17 +899,36 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                                                         )
                                                         .withLightness(0.8)
                                                         .toColor(),
-                                              fontWeight: item.isSelected
-                                                  ? FontWeight.w600
-                                                  : FontWeight.normal,
+                                              size: 24,
                                             ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ],
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              item.label,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: item.isSelected
+                                                    ? Theme.of(
+                                                        context,
+                                                      ).iconTheme.color
+                                                    : HSLColor.fromColor(
+                                                            Theme.of(context)
+                                                                .bottomAppBarTheme
+                                                                .color!,
+                                                          )
+                                                          .withLightness(0.8)
+                                                          .toColor(),
+                                                fontWeight: item.isSelected
+                                                    ? FontWeight.w600
+                                                    : FontWeight.normal,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                }).toList(),
+                                    );
+                                  }).toList(),
+                                ),
                               ),
                             ),
                     );

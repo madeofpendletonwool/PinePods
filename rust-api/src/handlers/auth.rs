@@ -1116,7 +1116,6 @@ fn create_oidc_redirect_url(frontend_base: &str, params: &str) -> String {
         // Web callback - use traditional path
         format!("{}/oauth/callback?{}", frontend_base, params)
     };
-    tracing::info!("OIDC Debug - create_oidc_redirect_url: frontend_base={}, params={}, result={}", frontend_base, params, redirect_url);
     redirect_url
 }
 
@@ -1186,11 +1185,9 @@ fn create_oidc_response(frontend_base: &str, params: &str) -> axum::response::Re
 </body>
 </html>"#, redirect_url);
 
-        tracing::info!("OIDC Debug - Returning HTML response for mobile deep link: {}", redirect_url);
         Html(html_content).into_response()
     } else {
         // Web callback - use normal redirect
-        tracing::info!("OIDC Debug - Returning redirect response for web: {}", redirect_url);
         axum::response::Redirect::to(&redirect_url).into_response()
     }
 }
@@ -1216,7 +1213,7 @@ pub async fn oidc_callback(
     // Handle OAuth errors first - EXACT match to Python
     if let Some(error) = query.error {
         let error_desc = query.error_description.unwrap_or_else(|| "Unknown error".to_string());
-        tracing::error!("OIDC provider error: {} - {}", error, error_desc);
+        tracing::error!("OIDC: Provider error: {} - {}", error, error_desc);
         return Ok(create_oidc_response(&default_frontend_base, &format!("error=provider_error&description={}", urlencoding::encode(&error_desc))));
     }
 
@@ -1227,14 +1224,12 @@ pub async fn oidc_callback(
     // Get client_id, origin_url, and code_verifier from state
     let (client_id, stored_origin_url, code_verifier) = match state.redis_client.get_del(&format!("oidc_state:{}", state_param)).await {
         Ok(Some(state_json)) => {
-            tracing::info!("OIDC Debug - Retrieved stored state: {}", state_json);
             // Try to parse as new JSON format first
             if let Ok(stored_state) = serde_json::from_str::<StoredOidcState>(&state_json) {
-                tracing::info!("OIDC Debug - Parsed stored state: client_id={}, origin_url={:?}, code_verifier={}", stored_state.client_id, stored_state.origin_url, stored_state.code_verifier.as_ref().map(|cv| format!("{}...", &cv[..8.min(cv.len())])).unwrap_or_else(|| "None".to_string()));
+                tracing::info!("OIDC: Retrieved state for client_id={}", stored_state.client_id);
                 (stored_state.client_id, stored_state.origin_url, stored_state.code_verifier)
             } else {
                 // Fallback to old format (just client_id string) for backwards compatibility
-                tracing::info!("OIDC Debug - Using fallback format, client_id={}", state_json);
                 (state_json, None, None)
             }
         },
@@ -1248,14 +1243,11 @@ pub async fn oidc_callback(
 
     // Use stored origin URL if available, otherwise fall back to constructed URL
     let frontend_base = if let Some(ref origin_url) = stored_origin_url {
-        tracing::info!("OIDC Debug - Using stored origin_url: {}", origin_url);
         // Check if this is a mobile deep link callback
         if origin_url.starts_with("pinepods://auth/callback") {
-            tracing::info!("OIDC Debug - Detected mobile deep link origin");
             // For mobile deep links, use the full URL directly - don't try to parse as HTTP
             origin_url.clone()
         } else {
-            tracing::info!("OIDC Debug - Detected web origin, parsing base URL");
             // Extract just the base part (scheme + host + port) from the stored origin URL for web
             // Simple string parsing to avoid adding url dependency
             if let Some(protocol_end) = origin_url.find("://") {
@@ -1270,11 +1262,8 @@ pub async fn oidc_callback(
             }
         }
     } else {
-        tracing::info!("OIDC Debug - No stored origin_url, using default: {}", default_frontend_base);
         default_frontend_base.clone()
     };
-    
-    tracing::info!("OIDC Debug - Final frontend_base: {}", frontend_base);
 
     let registered_redirect_uri = format!("{}/api/auth/callback", base_url);
 
@@ -1305,11 +1294,8 @@ pub async fn oidc_callback(
     // Add PKCE code verifier if present
     if let Some(ref verifier) = code_verifier {
         form_data.push(("code_verifier", verifier));
-        tracing::info!("OIDC Debug - Including PKCE code verifier in token exchange");
+        tracing::info!("OIDC: Using PKCE flow");
     }
-    
-    tracing::info!("OIDC Debug - Token exchange request to: {}", token_url);
-    tracing::info!("OIDC Debug - Token exchange form data: {:?}", form_data.iter().map(|(k, v)| if k == &"client_secret" || k == &"code_verifier" { (*k, "***REDACTED***") } else { (*k, *v) }).collect::<Vec<_>>());
     
     let token_response = match client.post(&token_url)
         .form(&form_data)
@@ -1319,27 +1305,26 @@ pub async fn oidc_callback(
     {
         Ok(response) => {
             let status = response.status();
-            tracing::info!("OIDC Debug - Token exchange response status: {}", status);
             
             if status.is_success() {
                 match response.json::<serde_json::Value>().await {
                     Ok(token_data) => {
-                        tracing::info!("OIDC Debug - Token exchange successful");
+                        tracing::info!("OIDC: Token exchange successful");
                         token_data
                     },
                     Err(e) => {
-                        tracing::error!("OIDC Debug - Failed to parse token response JSON: {}", e);
+                        tracing::error!("OIDC: Failed to parse token response JSON: {}", e);
                         return Ok(create_oidc_response(&frontend_base, "error=token_exchange_failed"));
                     }
                 }
             } else {
                 let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-                tracing::error!("OIDC Debug - Token exchange failed with status {}: {}", status, error_text);
+                tracing::error!("OIDC: Token exchange failed with status {}: {}", status, error_text);
                 return Ok(create_oidc_response(&frontend_base, "error=token_exchange_failed"));
             }
         }
         Err(e) => {
-            tracing::error!("OIDC Debug - Token exchange request failed: {}", e);
+            tracing::error!("OIDC: Token exchange request failed: {}", e);
             return Ok(create_oidc_response(&frontend_base, "error=token_exchange_failed"));
         }
     };
@@ -1484,7 +1469,7 @@ pub async fn oidc_callback(
             }
         }
 
-        tracing::info!("OIDC Debug - Final redirect (existing user): frontend_base={}, api_key={}", frontend_base, api_key);
+        tracing::info!("OIDC: Login successful for existing user");
         return Ok(create_oidc_response(&frontend_base, &format!("api_key={}", api_key)));
     } else {
         // Create new user - EXACT match to Python
@@ -1533,7 +1518,7 @@ pub async fn oidc_callback(
     };
 
     // Success - handle both web and mobile redirects
-    tracing::info!("OIDC Debug - Final redirect: frontend_base={}, api_key={}", frontend_base, api_key);
+    tracing::info!("OIDC: Login successful for new user");
     Ok(create_oidc_response(&frontend_base, &format!("api_key={}", api_key)))
 }
 
