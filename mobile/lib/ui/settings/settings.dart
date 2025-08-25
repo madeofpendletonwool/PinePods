@@ -59,48 +59,70 @@ class _SettingsState extends State<Settings> {
               SettingsDividerLabel(label: L.of(context)!.settings_personalisation_divider_label),
               const Divider(),
               MergeSemantics(
-                child: ListTile(
-                  shape: const RoundedRectangleBorder(side: BorderSide.none),
-                  title: Text(L.of(context)!.settings_theme_switch_label),
-                  subtitle: Text(ThemeRegistry.getTheme(snapshot.data!.theme).description),
-                  trailing: DropdownButton<String>(
-                    value: snapshot.data!.theme,
-                    icon: const Icon(Icons.palette),
-                    underline: Container(),
-                    items: ThemeRegistry.themeList.map((theme) {
-                      return DropdownMenuItem<String>(
-                        value: theme.key,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 16,
-                              height: 16,
-                              decoration: BoxDecoration(
-                                color: theme.isDark ? Colors.grey[800] : Colors.grey[200],
-                                border: Border.all(
-                                  color: theme.themeData.colorScheme.primary,
-                                  width: 2,
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Flexible(
-                              child: Text(
-                                theme.name,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        L.of(context)!.settings_theme_switch_label,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        ThemeRegistry.getTheme(snapshot.data!.theme).description,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                         ),
-                      );
-                    }).toList(),
-                    onChanged: (String? newTheme) {
-                      if (newTheme != null) {
-                        settingsBloc.setTheme(newTheme);
-                      }
-                    },
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Icon(Icons.palette, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: DropdownButton<String>(
+                              value: snapshot.data!.theme,
+                              isExpanded: true,
+                              underline: Container(),
+                              items: ThemeRegistry.themeList.map((theme) {
+                                return DropdownMenuItem<String>(
+                                  value: theme.key,
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 16,
+                                        height: 16,
+                                        decoration: BoxDecoration(
+                                          color: theme.isDark ? Colors.grey[800] : Colors.grey[200],
+                                          border: Border.all(
+                                            color: theme.themeData.colorScheme.primary,
+                                            width: 2,
+                                          ),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          theme.name,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (String? newTheme) {
+                                if (newTheme != null) {
+                                  settingsBloc.setTheme(newTheme);
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ),

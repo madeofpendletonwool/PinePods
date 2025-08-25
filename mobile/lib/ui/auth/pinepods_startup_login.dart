@@ -220,6 +220,8 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
   }
 
   Future<void> _completeOidcLogin(String apiKey, String serverUrl) async {
+    if (!mounted) return;
+    
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -259,10 +261,12 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
       }
 
       // Fetch theme from server
-      await settingsBloc.fetchThemeFromServer();
+      try {
+        await settingsBloc.fetchThemeFromServer();
+      } catch (e) {
+        // Theme fetch failure is non-critical
+      }
 
-      print('OIDC Login: Completed successfully');
-      
       // Notify login success
       AuthNotifier.notifyLoginSuccess();
 
@@ -272,10 +276,12 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
       }
 
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Failed to complete login: ${e.toString()}';
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to complete login: ${e.toString()}';
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -440,37 +446,39 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         // App Logo/Title
-                        Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
+                        Center(
+                          child: Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: Image.asset(
+                                'assets/images/favicon.png',
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).primaryColor,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Icon(
+                                      Icons.headset,
+                                      size: 48,
+                                      color: Colors.white,
+                                    ),
+                                  );
+                                },
                               ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.asset(
-                              'assets/images/favicon.png',
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).primaryColor,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Icon(
-                                    Icons.headset,
-                                    size: 48,
-                                    color: Colors.white,
-                                  ),
-                                );
-                              },
                             ),
                           ),
                         ),
@@ -724,34 +732,6 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                           const SizedBox(height: 16),
                         ],
 
-                        // Debug button to test deep links
-                        Column(
-                          children: [
-                            ElevatedButton(
-                              onPressed: () {
-                                // Test basic deep link
-                                launchUrl(Uri.parse('pinepods://auth/callback?api_key=test123'));
-                              },
-                              child: Text('Test Basic Deep Link'),
-                            ),
-                            ElevatedButton(
-                              onPressed: () {
-                                // Test with real API key format
-                                launchUrl(Uri.parse('pinepods://auth/callback?api_key=d5f8a2e7c1b9f3a2e8d5c9a1b7f4e3d8'));
-                              },
-                              child: Text('Test Real Format'),
-                            ),
-                            ElevatedButton(
-                              onPressed: () {
-                                // Test without query params
-                                launchUrl(Uri.parse('pinepods://auth/callback'));
-                              },
-                              child: Text('Test No Params'),
-                            ),
-                          ],
-                        ),
-                        
-                        const SizedBox(height: 16),
 
                         // Additional Info
                         Text(
