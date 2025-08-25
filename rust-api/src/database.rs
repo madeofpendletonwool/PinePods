@@ -7471,10 +7471,10 @@ impl DatabasePool {
         Ok(serde_json::Value::Array(value_blocks))
     }
 
-    // Check if API key is web key - matches Python is_web_key check
+    // Legacy web key check - no longer used but kept for compatibility
+    // All authentication now uses User ID 1 (background_tasks) for system operations
     pub async fn is_web_key(&self, _api_key: &str) -> AppResult<bool> {
-        // This would need to be implemented based on your web key configuration
-        // For now, return false - implement according to your Python logic
+        // Always return false - web keys are deprecated in favor of background_tasks user (ID 1)
         Ok(false)
     }
 

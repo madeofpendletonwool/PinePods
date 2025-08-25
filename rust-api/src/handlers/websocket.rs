@@ -67,20 +67,22 @@ pub async fn task_progress_websocket(
     // Validate API key before upgrading websocket
     match state.db_pool.verify_api_key(&query.api_key).await {
         Ok(true) => {
-            // Also verify the API key belongs to this user or is a web key
+            // Verify the API key belongs to this user (or system user for background tasks)
             match state.db_pool.get_user_id_from_api_key(&query.api_key).await {
                 Ok(key_user_id) => {
-                    let is_web_key = state.db_pool.is_web_key(&query.api_key).await.unwrap_or(false);
-                    if key_user_id == user_id || is_web_key {
+                    // Allow access if API key matches the user or if it's the system user (ID 1)
+                    if key_user_id == user_id || key_user_id == 1 {
                         ws.on_upgrade(move |socket| handle_task_progress_socket(socket, user_id, state))
                     } else {
+                        tracing::warn!("WebSocket auth failed: API key user {} tried to access user {} tasks", key_user_id, user_id);
                         axum::response::Response::builder()
                             .status(403)
-                            .body("Unauthorized".into())
+                            .body("Unauthorized - API key does not belong to requested user".into())
                             .unwrap()
                     }
                 }
-                Err(_) => {
+                Err(e) => {
+                    tracing::error!("WebSocket auth error getting user ID from API key: {}", e);
                     axum::response::Response::builder()
                         .status(403)
                         .body("Invalid API key".into())
@@ -88,7 +90,8 @@ pub async fn task_progress_websocket(
                 }
             }
         }
-        _ => {
+        Ok(false) | Err(_) => {
+            tracing::warn!("WebSocket auth failed: Invalid API key");
             axum::response::Response::builder()
                 .status(403)
                 .body("Invalid API key".into())

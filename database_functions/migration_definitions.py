@@ -2132,6 +2132,68 @@ def migration_022_expand_downloaded_location_column(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("023", "add_missing_performance_indexes", "Add missing performance indexes for queue, saved, downloaded, and history tables", requires=["006", "007"])
+def migration_023_add_missing_performance_indexes(conn, db_type: str):
+    """Add missing performance indexes for queue, saved, downloaded, and history tables"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting missing performance indexes migration")
+        
+        table_prefix = '"' if db_type == 'postgresql' else ''
+        table_suffix = '"' if db_type == 'postgresql' else ''
+        
+        # EpisodeQueue indexes (critical for get_queued_episodes performance)
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_episodequeue_userid ON {table_prefix}EpisodeQueue{table_suffix}(UserID)', 'idx_episodequeue_userid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_episodequeue_episodeid ON {table_prefix}EpisodeQueue{table_suffix}(EpisodeID)', 'idx_episodequeue_episodeid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_episodequeue_queueposition ON {table_prefix}EpisodeQueue{table_suffix}(QueuePosition)', 'idx_episodequeue_queueposition')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_episodequeue_userid_queueposition ON {table_prefix}EpisodeQueue{table_suffix}(UserID, QueuePosition)', 'idx_episodequeue_userid_queueposition')
+        
+        # SavedEpisodes indexes (for return_episodes LEFT JOIN performance)
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_savedepisodes_userid ON {table_prefix}SavedEpisodes{table_suffix}(UserID)', 'idx_savedepisodes_userid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_savedepisodes_episodeid ON {table_prefix}SavedEpisodes{table_suffix}(EpisodeID)', 'idx_savedepisodes_episodeid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_savedepisodes_userid_episodeid ON {table_prefix}SavedEpisodes{table_suffix}(UserID, EpisodeID)', 'idx_savedepisodes_userid_episodeid')
+        
+        # SavedVideos indexes (for YouTube video queries)
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_savedvideos_userid ON {table_prefix}SavedVideos{table_suffix}(UserID)', 'idx_savedvideos_userid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_savedvideos_videoid ON {table_prefix}SavedVideos{table_suffix}(VideoID)', 'idx_savedvideos_videoid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_savedvideos_userid_videoid ON {table_prefix}SavedVideos{table_suffix}(UserID, VideoID)', 'idx_savedvideos_userid_videoid')
+        
+        # DownloadedEpisodes indexes (for return_episodes LEFT JOIN performance)
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_downloadedepisodes_userid ON {table_prefix}DownloadedEpisodes{table_suffix}(UserID)', 'idx_downloadedepisodes_userid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_downloadedepisodes_episodeid ON {table_prefix}DownloadedEpisodes{table_suffix}(EpisodeID)', 'idx_downloadedepisodes_episodeid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_downloadedepisodes_userid_episodeid ON {table_prefix}DownloadedEpisodes{table_suffix}(UserID, EpisodeID)', 'idx_downloadedepisodes_userid_episodeid')
+        
+        # DownloadedVideos indexes (for YouTube video queries)
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_downloadedvideos_userid ON {table_prefix}DownloadedVideos{table_suffix}(UserID)', 'idx_downloadedvideos_userid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_downloadedvideos_videoid ON {table_prefix}DownloadedVideos{table_suffix}(VideoID)', 'idx_downloadedvideos_videoid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_downloadedvideos_userid_videoid ON {table_prefix}DownloadedVideos{table_suffix}(UserID, VideoID)', 'idx_downloadedvideos_userid_videoid')
+        
+        # UserEpisodeHistory indexes (for return_episodes LEFT JOIN performance)
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_userepisodehistory_userid ON {table_prefix}UserEpisodeHistory{table_suffix}(UserID)', 'idx_userepisodehistory_userid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_userepisodehistory_episodeid ON {table_prefix}UserEpisodeHistory{table_suffix}(EpisodeID)', 'idx_userepisodehistory_episodeid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_userepisodehistory_userid_episodeid ON {table_prefix}UserEpisodeHistory{table_suffix}(UserID, EpisodeID)', 'idx_userepisodehistory_userid_episodeid')
+        
+        # UserVideoHistory indexes (for YouTube video queries)
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_uservideohistory_userid ON {table_prefix}UserVideoHistory{table_suffix}(UserID)', 'idx_uservideohistory_userid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_uservideohistory_videoid ON {table_prefix}UserVideoHistory{table_suffix}(VideoID)', 'idx_uservideohistory_videoid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_uservideohistory_userid_videoid ON {table_prefix}UserVideoHistory{table_suffix}(UserID, VideoID)', 'idx_uservideohistory_userid_videoid')
+        
+        # Additional useful indexes for query performance
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_episodes_completed ON {table_prefix}Episodes{table_suffix}(Completed)', 'idx_episodes_completed')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_youtubevideos_completed ON {table_prefix}YouTubeVideos{table_suffix}(Completed)', 'idx_youtubevideos_completed')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_youtubevideos_podcastid ON {table_prefix}YouTubeVideos{table_suffix}(PodcastID)', 'idx_youtubevideos_podcastid')
+        safe_add_index(cursor, db_type, f'CREATE INDEX idx_youtubevideos_publishedat ON {table_prefix}YouTubeVideos{table_suffix}(PublishedAt)', 'idx_youtubevideos_publishedat')
+        
+        logger.info("Missing performance indexes migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in missing performance indexes migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 def register_all_migrations():
     """Register all migrations with the migration manager"""
     # Migrations are auto-registered via decorators
