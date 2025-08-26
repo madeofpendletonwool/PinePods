@@ -2,6 +2,7 @@ use sqlx::{MySql, Pool, Postgres, Row};
 use std::time::Duration;
 use crate::{config::Config, error::{AppError, AppResult}};
 use chrono::{DateTime, Utc};
+use chrono_tz::Tz;
 use std::collections::HashMap;
 use bigdecimal::ToPrimitive;
 use std::sync::{Arc, Mutex};
@@ -15449,6 +15450,19 @@ impl DatabasePool {
         self.get_podcast_values(feed_url, 1, None, None).await
     }
 
+    // Helper function to normalize timezone names for database compatibility
+    fn normalize_timezone(tz_str: &str) -> String {
+        // Try to parse the timezone string with chrono-tz
+        if let Ok(tz) = tz_str.parse::<Tz>() {
+            // Return the canonical name for this timezone
+            tz.name().to_string()
+        } else {
+            // If parsing fails, return UTC as fallback
+            tracing::warn!("Unable to parse timezone '{}', falling back to UTC", tz_str);
+            "UTC".to_string()
+        }
+    }
+
     // COMPLETE PLAYLIST SYSTEM IMPLEMENTATION - matches Python functionality exactly
 
     // Update Fresh Releases playlist with timezone-aware logic - matches Python update_fresh_releases_playlist
@@ -15466,11 +15480,13 @@ impl DatabasePool {
         for user in users {
             let user_id: i32 = user.try_get("userid")?;
             let timezone: Option<String> = user.try_get("timezone").ok();
-            let tz = timezone.as_deref()
+            let raw_tz = timezone.as_deref()
                 .filter(|s| !s.is_empty()) // Filter out empty strings
                 .unwrap_or("UTC");
             
-            tracing::info!("Processing Fresh Releases for user {} with timezone {}", user_id, tz);
+            let normalized_tz = Self::normalize_timezone(raw_tz);
+            
+            tracing::info!("Processing Fresh Releases for user {} with timezone {} (normalized: {})", user_id, raw_tz, normalized_tz);
             
             // Get episodes from last 24 hours in user's timezone
             let episodes = sqlx::query(r#"
@@ -15481,7 +15497,7 @@ impl DatabasePool {
                       (CURRENT_TIMESTAMP AT TIME ZONE 'UTC' AT TIME ZONE $1 - INTERVAL '24 hours')
                 ORDER BY e.episodepubdate DESC
             "#)
-                .bind(tz)
+                .bind(&normalized_tz)
                 .fetch_all(pool)
                 .await?;
             
@@ -15628,11 +15644,13 @@ impl DatabasePool {
         for user in users {
             let user_id: i32 = user.try_get("UserID")?;
             let timezone: Option<String> = user.try_get("TimeZone").ok();
-            let tz = timezone.as_deref()
+            let raw_tz = timezone.as_deref()
                 .filter(|s| !s.is_empty()) // Filter out empty strings
                 .unwrap_or("UTC");
             
-            tracing::info!("Processing Fresh Releases for user {} with timezone {}", user_id, tz);
+            let normalized_tz = Self::normalize_timezone(raw_tz);
+            
+            tracing::info!("Processing Fresh Releases for user {} with timezone {} (normalized: {})", user_id, raw_tz, normalized_tz);
             
             // Get episodes from last 24 hours in user's timezone
             let episodes = sqlx::query("
@@ -15643,8 +15661,8 @@ impl DatabasePool {
                       DATE_SUB(CONVERT_TZ(NOW(), 'UTC', ?), INTERVAL 24 HOUR)
                 ORDER BY e.EpisodePubDate DESC
             ")
-                .bind(tz)
-                .bind(tz)
+                .bind(&normalized_tz)
+                .bind(&normalized_tz)
                 .fetch_all(pool)
                 .await?;
             

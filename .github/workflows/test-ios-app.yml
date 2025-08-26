@@ -24,7 +24,7 @@ jobs:
 
       - uses: hecrj/setup-rust-action@v2
         with:
-          rust-version: 1.86
+          rust-version: 1.89
           targets: wasm32-unknown-unknown
 
       - name: Install cargo-binstall
