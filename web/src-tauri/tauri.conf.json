@@ -1,6 +1,6 @@
 {
   "build": {
-    "beforeBuildCommand": "trunk build",
+    "beforeBuildCommand": "RUSTFLAGS='--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"' trunk build --features server_build",
     "beforeDevCommand": "RUSTFLAGS='--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"' trunk serve",
     "devUrl": "http://localhost:8080",
     "frontendDist": "../dist"
