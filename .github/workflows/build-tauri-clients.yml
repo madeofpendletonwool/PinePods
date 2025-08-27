@@ -154,9 +154,12 @@ jobs:
 
       - name: Build | Compile (Windows)
         env:
-          RUSTFLAGS: --cfg=web_sys_unstable_apis --cfg=getrandom_backend=wasm_js
+          RUSTFLAGS: '--cfg=web_sys_unstable_apis --cfg=getrandom_backend="wasm_js"'
         run: |
           cd web
+          Write-Host "Step-level RUSTFLAGS: $env:RUSTFLAGS"
+          $env:RUSTFLAGS='--cfg=web_sys_unstable_apis --cfg=getrandom_backend=\"wasm_js\"'
+          Write-Host "Command-level RUSTFLAGS: $env:RUSTFLAGS"
           trunk build --features server_build
           cd src-tauri
           Get-Content tauri.conf.json
