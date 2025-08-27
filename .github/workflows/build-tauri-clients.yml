@@ -153,9 +153,10 @@ jobs:
         if: ${{ matrix.os != 'windows-latest' }}
 
       - name: Build | Compile (Windows)
+        env:
+          RUSTFLAGS: '--cfg=web_sys_unstable_apis --cfg=getrandom_backend="wasm_js"'
         run: |
           cd web
-          $env:RUSTFLAGS='--cfg=web_sys_unstable_apis --cfg getrandom_backend="wasm_js"'
           trunk build --features server_build
           cd src-tauri
           Get-Content tauri.conf.json
