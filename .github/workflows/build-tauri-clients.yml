@@ -140,12 +140,12 @@ jobs:
         shell: pwsh
 
       - name: Build | Compile (UNIX)
-        env:
-          RUSTFLAGS: "--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\""
         run: |
-          cd web/src-tauri
+          cd web
+          RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"" trunk build --features server_build
+          cd src-tauri
           cat tauri.conf.json
-          cargo tauri build
+          cargo tauri build --skip-before-build-command
           pwd
           ls
           ls -la target/release/bundle
@@ -154,10 +154,12 @@ jobs:
 
       - name: Build | Compile (Windows)
         run: |
-          cd web/src-tauri
-          Get-Content tauri.conf.json
+          cd web
           $env:RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=`"wasm_js`""
-          cargo tauri build
+          trunk build --features server_build
+          cd src-tauri
+          Get-Content tauri.conf.json
+          cargo tauri build --skip-before-build-command
           ls target/release/bundle
         shell: pwsh
         if: ${{ matrix.os == 'windows-latest' }}
