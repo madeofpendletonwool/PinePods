@@ -140,10 +140,11 @@ jobs:
         shell: pwsh
 
       - name: Build | Compile (UNIX)
+        env:
+          RUSTFLAGS: "--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\""
         run: |
           cd web/src-tauri
           cat tauri.conf.json
-          export RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\""
           cargo tauri build
           pwd
           ls
