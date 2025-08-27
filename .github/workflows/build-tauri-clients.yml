@@ -154,7 +154,7 @@ jobs:
 
       - name: Build | Compile (Windows)
         env:
-          RUSTFLAGS: '--cfg=web_sys_unstable_apis --cfg=getrandom_backend="wasm_js"'
+          RUSTFLAGS: --cfg=web_sys_unstable_apis --cfg=getrandom_backend=wasm_js
         run: |
           cd web
           trunk build --features server_build
