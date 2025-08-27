@@ -78,18 +78,9 @@ jobs:
           rust-version: 1.89
           targets: wasm32-unknown-unknown
 
-      # Install cargo-binstall for macOS runners using direct download
-      - name: Install cargo-binstall on macOS
-        if: matrix.os == 'macos-latest'
-        run: |
-          export GITHUB_TOKEN=${{ secrets.RELEASE_TOKEN }}
-          curl -L https://github.com/cargo-bins/cargo-binstall/releases/download/v1.9.0/cargo-binstall-universal-apple-darwin.zip -o cargo-binstall.zip
-          unzip cargo-binstall.zip
-          ./cargo-binstall -y --force cargo-binstall
-
-      # Install cargo-binstall for other OSes using the standard method
+      # Install cargo-binstall for Linux/Windows
       - name: Install cargo-binstall
-        if: matrix.os != 'macos-latest'
+        if: matrix.os != 'macos-latest' && matrix.os != 'macOS-13'
         uses: cargo-bins/cargo-binstall@main
 
       - name: Depends install
@@ -103,7 +94,13 @@ jobs:
         run: |
           rustup target add wasm32-unknown-unknown
 
-      - name: Install Trunk
+      - name: Install Trunk (macOS)
+        if: matrix.os == 'macos-latest' || matrix.os == 'macOS-13'
+        run: |
+          brew install trunk
+
+      - name: Install Trunk (Linux/Windows)
+        if: matrix.os != 'macos-latest' && matrix.os != 'macOS-13'
         run: |
           cargo binstall trunk -y
 
