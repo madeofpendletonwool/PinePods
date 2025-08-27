@@ -1672,7 +1672,7 @@ pub async fn call_increment_played(
 
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct PodcastIdResponse {
-    pub episodes: i32,
+    pub podcast_id: Option<i32>,
 }
 
 pub async fn call_get_podcast_id(
@@ -1710,7 +1710,7 @@ pub async fn call_get_podcast_id(
     let response_text = response.text().await?;
 
     let response_data: PodcastIdResponse = serde_json::from_str(&response_text)?;
-    Ok(response_data.episodes)
+    response_data.podcast_id.ok_or_else(|| anyhow::Error::msg("Podcast ID not found"))
 }
 
 pub async fn call_get_episode_id(

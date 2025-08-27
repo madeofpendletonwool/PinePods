@@ -155,7 +155,7 @@ jobs:
       - name: Build | Compile (Windows)
         run: |
           cd web
-          .\build.ps1
+          powershell -ExecutionPolicy Bypass -File .\build.ps1
           cd src-tauri
           Get-Content tauri.conf.json
           cargo tauri build

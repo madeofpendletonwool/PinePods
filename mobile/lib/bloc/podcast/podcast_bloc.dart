@@ -12,6 +12,8 @@ import 'package:pinepods_mobile/services/download/download_service.dart';
 import 'package:pinepods_mobile/services/download/mobile_download_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
 import 'package:pinepods_mobile/services/settings/settings_service.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/state/bloc_state.dart';
 import 'package:collection/collection.dart' show IterableExtension;
 import 'package:logging/logging.dart';
@@ -305,19 +307,65 @@ class PodcastBloc extends Bloc {
       switch (event) {
         case PodcastEvent.subscribe:
           if (_podcast != null) {
+            // Emit loading state for subscription
+            _podcastStream.add(BlocLoadingState<Podcast>(_podcast));
+            
+            // First, subscribe locally
             _podcast = await podcastService.subscribe(_podcast!);
-            _podcastStream.add(BlocPopulatedState<Podcast>(results: _podcast));
-            _loadSubscriptions();
-            _episodesStream.add(_podcast?.episodes);
+            
+            // Check if we're in a PinePods environment and also add to server
+            if (_podcast != null) {
+              try {
+                final settings = settingsService.settings;
+                if (settings != null &&
+                    settings.pinepodsServer != null && 
+                    settings.pinepodsApiKey != null && 
+                    settings.pinepodsUserId != null) {
+                  
+                  // Also add to PinePods server
+                  final pinepodsService = PinepodsService();
+                  pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+                  
+                  final unifiedPodcast = UnifiedPinepodsPodcast(
+                    id: 0,
+                    indexId: 0,
+                    title: _podcast!.title,
+                    url: _podcast!.url ?? '',
+                    originalUrl: _podcast!.url ?? '',
+                    link: _podcast!.link ?? '',
+                    description: _podcast!.description ?? '',
+                    author: _podcast!.copyright ?? '',
+                    ownerName: _podcast!.copyright ?? '',
+                    image: _podcast!.imageUrl ?? '',
+                    artwork: _podcast!.imageUrl ?? '',
+                    lastUpdateTime: 0,
+                    explicit: false,
+                    episodeCount: 0,
+                  );
+                  
+                  await pinepodsService.addPodcast(unifiedPodcast, settings.pinepodsUserId!);
+                  log.fine('Added podcast to PinePods server');
+                }
+              } catch (e) {
+                log.warning('Failed to add podcast to PinePods server: $e');
+                // Continue with local subscription even if server add fails
+              }
+              
+              _episodes = _podcast!.episodes;
+              _podcastStream.add(BlocPopulatedState<Podcast>(results: _podcast));
+              _loadSubscriptions();
+              _refresh(); // Use _refresh to apply filters and update episode stream properly
+            }
           }
           break;
         case PodcastEvent.unsubscribe:
           if (_podcast != null) {
             await podcastService.unsubscribe(_podcast!);
             _podcast!.id = null;
+            _episodes = _podcast!.episodes;
             _podcastStream.add(BlocPopulatedState<Podcast>(results: _podcast));
             _loadSubscriptions();
-            _episodesStream.add(_podcast!.episodes);
+            _refresh(); // Use _refresh to apply filters and update episode stream properly
           }
           break;
         case PodcastEvent.markAllPlayed:

@@ -26,6 +26,9 @@ import 'package:pinepods_mobile/ui/widgets/podcast_html.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/widgets/sync_spinner.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
+import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
+import 'package:pinepods_mobile/entities/pinepods_search.dart';
+import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dialogs/flutter_dialogs.dart';
@@ -687,14 +690,45 @@ class NoEpisodesFound extends StatelessWidget {
   }
 }
 
-class FollowButton extends StatelessWidget {
+class FollowButton extends StatefulWidget {
   final Podcast podcast;
 
   const FollowButton(this.podcast, {super.key});
 
   @override
+  State<FollowButton> createState() => _FollowButtonState();
+}
+
+class _FollowButtonState extends State<FollowButton> {
+  bool _isLoading = false;
+
+  @override
   Widget build(BuildContext context) {
     final bloc = Provider.of<PodcastBloc>(context);
+
+    // If we're in loading state, show loading button immediately
+    if (_isLoading) {
+      print('Follow button: Showing loading spinner - _isLoading=$_isLoading');
+      return Semantics(
+        liveRegion: true,
+        child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.fromLTRB(10.0, 4.0, 10.0, 4.0),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+          ),
+          icon: const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 3.0,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+            ),
+          ),
+          label: Text(L.of(context)!.subscribe_label),
+          onPressed: null,
+        ),
+      );
+    }
 
     return StreamBuilder<BlocState<Podcast>>(
         stream: bloc.details,
@@ -707,11 +741,31 @@ class FollowButton extends StatelessWidget {
           if (snapshot.hasData) {
             final state = snapshot.data;
 
-            if (state is BlocPopulatedState<Podcast>) {
+            if (state is BlocLoadingState<Podcast>) {
+              ready = false;
+              subscribed = state.data?.subscribed ?? false;
+              print('Follow button: BlocLoadingState - ready=$ready, subscribed=$subscribed, _isLoading=$_isLoading');
+            } else if (state is BlocPopulatedState<Podcast>) {
               ready = true;
               subscribed = state.results!.subscribed;
+              print('Follow button: BlocPopulatedState - ready=$ready, subscribed=$subscribed, _isLoading=$_isLoading');
+              
+              // Reset loading state when we get populated data
+              if (_isLoading) {
+                print('Follow button: Resetting loading state');
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    setState(() {
+                      _isLoading = false;
+                    });
+                    print('Follow button: Loading state reset to false');
+                  }
+                });
+              }
             }
           }
+          print('Follow button: Rendering normal UI - ready=$ready, subscribed=$subscribed, _isLoading=$_isLoading');
+          
           return Semantics(
             liveRegion: true,
             child: subscribed
@@ -769,14 +823,121 @@ class FollowButton extends StatelessWidget {
                       Icons.add,
                     ),
                     label: Text(L.of(context)!.subscribe_label),
-                    onPressed: ready
-                        ? () {
+                    onPressed: ready && !_isLoading
+                        ? () async {
+                            print('Follow button: CLICKED - Setting loading to true');
+                            setState(() {
+                              _isLoading = true;
+                            });
+                            print('Follow button: Loading state set to: $_isLoading');
+                            
                             bloc.podcastEvent(PodcastEvent.subscribe);
+                            
+                            // Show loading indicator for a minimum time to be visible
+                            await Future.delayed(const Duration(milliseconds: 300));
+                            
+                            // After successful subscription, check if we should switch to PinePods context
+                            await _handlePostSubscriptionContextSwitch(context, bloc);
                           }
                         : null,
                   ),
           );
         });
+  }
+
+  Future<void> _handlePostSubscriptionContextSwitch(BuildContext context, PodcastBloc bloc) async {
+    print('Follow button: Starting context switch check');
+    // Wait a short moment for subscription to complete, then check if we should context switch
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    if (!mounted) {
+      print('Follow button: Widget not mounted, skipping context switch');
+      return;
+    }
+    
+    // Check if we're in PinePods environment and should switch contexts
+    final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+    final settings = settingsBloc.currentSettings;
+    
+    if (settings.pinepodsServer != null && 
+        settings.pinepodsApiKey != null && 
+        settings.pinepodsUserId != null) {
+      
+      // Check if the podcast is now subscribed to PinePods
+      final pinepodsService = PinepodsService();
+      pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+      
+      try {
+        final isSubscribed = await pinepodsService.checkPodcastExists(
+          widget.podcast.title,
+          widget.podcast.url ?? '',
+          settings.pinepodsUserId!
+        );
+        
+        if (isSubscribed && mounted) {
+          print('Follow button: Podcast is subscribed, switching to PinePods context');
+          
+          // Reset loading state before context switch
+          setState(() {
+            _isLoading = false;
+          });
+          
+          // Create unified podcast object for PinePods context
+          final unifiedPodcast = UnifiedPinepodsPodcast(
+            id: 0, // Will be fetched by PinePods component
+            indexId: 0, // Default for subscribed podcasts
+            title: widget.podcast.title,
+            url: widget.podcast.url ?? '',
+            originalUrl: widget.podcast.url ?? '',
+            link: widget.podcast.link ?? '',
+            description: widget.podcast.description ?? '',
+            author: widget.podcast.copyright ?? '',
+            ownerName: widget.podcast.copyright ?? '',
+            image: widget.podcast.imageUrl ?? '',
+            artwork: widget.podcast.imageUrl ?? '',
+            lastUpdateTime: 0,
+            explicit: false,
+            episodeCount: 0, // Will be loaded
+          );
+          
+          // Replace current route with PinePods podcast details
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute<void>(
+              settings: const RouteSettings(name: 'pinepodspodcastdetails'),
+              builder: (context) => PinepodsPodcastDetails(
+                podcast: unifiedPodcast,
+                isFollowing: true,
+              ),
+            ),
+          );
+        } else {
+          print('Follow button: Podcast not subscribed or widget not mounted, staying in current context');
+          // Reset loading state if not switching contexts
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+          }
+        }
+      } catch (e) {
+        print('Error checking post-subscription status: $e');
+        // Reset loading state on error
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
+    } else {
+      print('Follow button: Not in PinePods environment, staying in RSS context');
+      // Reset loading state if not in PinePods environment
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 }
 

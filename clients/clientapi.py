@@ -546,10 +546,8 @@ async def api_podcast_id(cnx=Depends(get_database_connection),
 
     # Allow the action if the API key belongs to the user, or it's the web API key
     if key_id == user_id or is_web_key:
-        episodes = database_functions.functions.get_podcast_id(database_type, cnx, user_id, podcast_feed, podcast_title)
-        if episodes is None:
-            episodes = []  # Return an empty list instead of raising an exception
-        return {"episodes": episodes}
+        podcast_id = database_functions.functions.get_podcast_id(database_type, cnx, user_id, podcast_feed, podcast_title)
+        return {"podcast_id": podcast_id}
     else:
         raise HTTPException(status_code=403,
                             detail="You can only return pocast ids of your own podcasts!")

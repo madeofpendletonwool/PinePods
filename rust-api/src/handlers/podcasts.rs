@@ -786,10 +786,8 @@ pub async fn get_podcast_id(
     // Get podcast ID from database
     let podcast_id = state.db_pool.get_podcast_id(query.user_id, &query.podcast_feed, &query.podcast_title).await?;
     
-    // Return single podcast_id or null, matching Python behavior
-    let episodes = podcast_id;
-    
-    Ok(Json(serde_json::json!({ "episodes": episodes })))
+    // Return podcast ID in properly named field
+    Ok(Json(serde_json::json!({ "podcast_id": podcast_id })))
 }
 
 // Query parameters for download_episode_list

@@ -1276,11 +1276,9 @@ class PinepodsService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         print('Podcast ID response: ${response.body}');
-        final episodes = data['episodes'];
-        if (episodes is int) {
-          return episodes;
-        } else if (episodes is List && episodes.isNotEmpty) {
-          return episodes.first as int?;
+        final podcastId = data['podcast_id'];
+        if (podcastId is int) {
+          return podcastId;
         }
         return null;
       } else {
