@@ -155,6 +155,7 @@ jobs:
       - name: Build | Compile (Windows)
         env:
           RUSTFLAGS: '--cfg=web_sys_unstable_apis --cfg=getrandom_backend="wasm_js"'
+          CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS: '--cfg=web_sys_unstable_apis --cfg=getrandom_backend="wasm_js"'
         run: |
           cd web
           Write-Host "RUSTFLAGS: $env:RUSTFLAGS"
