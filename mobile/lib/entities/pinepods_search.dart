@@ -279,8 +279,8 @@ class UnifiedPinepodsPodcast {
 
   factory UnifiedPinepodsPodcast.fromPodcast(PinepodsPodcast podcast) {
     return UnifiedPinepodsPodcast(
-      id: podcast.id,
-      indexId: podcast.id,
+      id: 0, // Internal database ID - will be fetched when needed
+      indexId: podcast.id, // Podcast index ID
       title: podcast.title,
       url: podcast.url,
       originalUrl: podcast.originalUrl,

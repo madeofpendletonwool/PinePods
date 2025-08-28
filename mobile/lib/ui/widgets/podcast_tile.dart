@@ -77,9 +77,16 @@ class PodcastTile extends StatelessWidget {
         );
         
         if (isSubscribed) {
+          // Get the internal PinePods database ID
+          final internalPodcastId = await pinepodsService.getPodcastId(
+            settings.pinepodsUserId!,
+            podcast.url!,
+            podcast.title
+          );
+          
           // Use PinePods podcast details for subscribed podcasts
           final unifiedPodcast = UnifiedPinepodsPodcast(
-            id: 0, // Will be fetched by PinePods component (API is now fixed)
+            id: internalPodcastId ?? 0,
             indexId: 0, // Default for subscribed podcasts
             title: podcast.title,
             url: podcast.url ?? '',
