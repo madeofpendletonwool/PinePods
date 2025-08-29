@@ -8,7 +8,6 @@ environment:
   flutter: ">=3.32.0"
 
 dependencies:
-  accessibility_tools: ^2.3.0
   app_links: ^6.3.0
   auto_size_text: ^3.0.0
   audio_service: ^0.18.17
@@ -59,6 +58,7 @@ dependencies:
     sdk: flutter
 
 dev_dependencies:
+  accessibility_tools: ^2.3.0
   mockito: ^5.4.5
   flutter_lints: ^6.0.0
   flutter_test:
@@ -104,15 +104,15 @@ flutter:
     - assets/images/favicon.png
     - assets/images/icon-192.png
     - assets/images/pinepods-logo.png
-    - assets/images/1.jpg
-    - assets/images/2.jpg
-    - assets/images/3.jpg
-    - assets/images/4.jpg
-    - assets/images/5.jpg
-    - assets/images/6.jpg
-    - assets/images/7.jpg
-    - assets/images/8.jpg
-    - assets/images/9.jpg
+    - assets/images/1.webp
+    - assets/images/2.webp
+    - assets/images/3.webp
+    - assets/images/4.webp
+    - assets/images/5.webp
+    - assets/images/6.webp
+    - assets/images/7.webp
+    - assets/images/8.webp
+    - assets/images/9.webp
 
     # Certificate authorities
     - assets/ca/lets-encrypt-r3.pem

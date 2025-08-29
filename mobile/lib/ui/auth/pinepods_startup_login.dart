@@ -43,15 +43,15 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
 
   // List of background images - you can add your own images to assets/images/
   final List<String> _backgroundImages = [
-    'assets/images/1.jpg',
-    'assets/images/2.jpg',
-    'assets/images/3.jpg',
-    'assets/images/4.jpg',
-    'assets/images/5.jpg',
-    'assets/images/6.jpg',
-    'assets/images/7.jpg',
-    'assets/images/8.jpg',
-    'assets/images/9.jpg',
+    'assets/images/1.webp',
+    'assets/images/2.webp',
+    'assets/images/3.webp',
+    'assets/images/4.webp',
+    'assets/images/5.webp',
+    'assets/images/6.webp',
+    'assets/images/7.webp',
+    'assets/images/8.webp',
+    'assets/images/9.webp',
   ];
 
   late String _selectedBackground;

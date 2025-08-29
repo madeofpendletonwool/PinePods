@@ -32,6 +32,13 @@ android {
     compileSdk 36
     ndkVersion flutter.ndkVersion
 
+    dependenciesInfo {
+        // Disables dependency metadata when building APKs (for IzzyOnDroid/F-Droid)
+        includeInApk = false
+        // Disables dependency metadata when building Android App Bundles (for Google Play)
+        includeInBundle = false
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -67,8 +74,9 @@ android {
 
         release {
             signingConfig signingConfigs.release
-            shrinkResources false
-            proguardFiles getDefaultProguardFile('proguard-android.txt')
+            shrinkResources true
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 
