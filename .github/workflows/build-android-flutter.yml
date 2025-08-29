@@ -76,11 +76,25 @@ jobs:
           cd mobile
           flutter build appbundle --release
 
+      - name: Rename APK files
+        run: |
+          cd mobile/build/app/outputs/flutter-apk
+          # Extract version from IMAGE_TAG (remove 'v' prefix if present)
+          VERSION=${IMAGE_TAG#v}
+          if [[ "$VERSION" == "latest" ]]; then
+            VERSION="0.0.0"
+          fi
+          
+          # Rename APK files with proper naming convention
+          mv app-armeabi-v7a-release.apk pinepods-armeabi-${VERSION}.apk
+          mv app-arm64-v8a-release.apk pinepods-arm64-${VERSION}.apk  
+          mv app-x86_64-release.apk pinepods-x86_64-${VERSION}.apk
+
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android-apk-builds
-          path: mobile/build/app/outputs/flutter-apk/*.apk
+          path: mobile/build/app/outputs/flutter-apk/pinepods-*.apk
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v4
