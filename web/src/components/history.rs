@@ -423,25 +423,63 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
         });
     }
 
-    // Effect for scroll handling
+    // Effect for scroll handling - prevent feedback loop with debouncing
     {
         let scroll_pos = scroll_pos.clone();
         let container_ref = container_ref.clone();
         use_effect_with(container_ref.clone(), move |container_ref| {
-            let container = container_ref.cast::<HtmlElement>().unwrap();
-            let listener = EventListener::new(&container, "scroll", move |event| {
-                let target = event.target().unwrap().unchecked_into::<Element>();
-                scroll_pos.set(target.scroll_top() as f64);
-            });
-            move || drop(listener)
+            if let Some(container) = container_ref.cast::<HtmlElement>() {
+                let scroll_pos_clone = scroll_pos.clone();
+                let is_updating = std::rc::Rc::new(std::cell::RefCell::new(false));
+                
+                let scroll_listener = EventListener::new(&container, "scroll", move |event| {
+                    // Prevent re-entrant calls that cause feedback loops
+                    if *is_updating.borrow() {
+                        return;
+                    }
+                    
+                    if let Some(target) = event.target() {
+                        if let Ok(element) = target.dyn_into::<Element>() {
+                            let new_scroll_top = element.scroll_top() as f64;
+                            let old_scroll_top = *scroll_pos_clone;
+                            
+                            // Always update scroll position for smoothest scrolling
+                            if new_scroll_top != old_scroll_top {
+                                *is_updating.borrow_mut() = true;
+                                
+                                // Use requestAnimationFrame to batch updates and prevent feedback
+                                let scroll_pos_clone2 = scroll_pos_clone.clone();
+                                let is_updating_clone = is_updating.clone();
+                                let callback = wasm_bindgen::closure::Closure::wrap(Box::new(move || {
+                                    scroll_pos_clone2.set(new_scroll_top);
+                                    *is_updating_clone.borrow_mut() = false;
+                                }) as Box<dyn FnMut()>);
+                                
+                                web_sys::window().unwrap().request_animation_frame(callback.as_ref().unchecked_ref()).unwrap();
+                                callback.forget();
+                            }
+                        }
+                    }
+                });
+                
+                Box::new(move || {
+                    drop(scroll_listener);
+                }) as Box<dyn FnOnce()>
+            } else {
+                Box::new(|| {}) as Box<dyn FnOnce()>
+            }
         });
     }
 
     let start_index = (*scroll_pos / *item_height).floor() as usize;
     let visible_count = ((*container_height / *item_height).ceil() as usize) + 1;
-    let end_index = (start_index + visible_count).min(props.episodes.len());
+    
+    // Add buffer episodes above and below for smooth scrolling
+    let buffer_size = 2; // Render 2 extra episodes above and below
+    let buffered_start = start_index.saturating_sub(buffer_size);
+    let buffered_end = (start_index + visible_count + buffer_size).min(props.episodes.len());
 
-    let visible_episodes = (start_index..end_index)
+    let visible_episodes = (buffered_start..buffered_end)
         .map(|index| {
             let episode = props.episodes[index].clone();
             html! {
@@ -455,19 +493,24 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
         .collect::<Html>();
 
     let total_height = props.episodes.len() as f64 * *item_height;
-    let offset_y = start_index as f64 * *item_height;
+    let offset_y = buffered_start as f64 * *item_height;
 
     html! {
         <div
             ref={container_ref}
             class="virtual-list-container flex-grow overflow-y-auto"
-            style="height: calc(100vh - 100px);" // Subtract height of header/nav
+            style="height: calc(100vh - 100px); -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain;"
         >
-            <div style={format!("height: {}px; position: relative;", total_height)}>
-                <div style={format!("position: absolute; top: {}px; left: 0; right: 0;", offset_y)}>
-                    { visible_episodes }
-                </div>
+            // Top spacer to push content down without using transforms
+            <div style={format!("height: {}px; flex-shrink: 0;", offset_y)}></div>
+            
+            // Visible episodes 
+            <div>
+                { visible_episodes }
             </div>
+            
+            // Bottom spacer to maintain total height
+            <div style={format!("height: {}px; flex-shrink: 0;", total_height - offset_y - (buffered_end - buffered_start) as f64 * *item_height)}></div>
         </div>
     }
 }

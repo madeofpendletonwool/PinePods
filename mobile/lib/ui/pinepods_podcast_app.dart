@@ -30,6 +30,9 @@ import 'package:pinepods_mobile/services/podcast/mobile_podcast_service.dart';
 import 'package:pinepods_mobile/services/podcast/podcast_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
+import 'package:pinepods_mobile/services/pinepods/oidc_service.dart';
+import 'package:pinepods_mobile/services/pinepods/login_service.dart';
+import 'package:pinepods_mobile/services/auth_notifier.dart';
 import 'package:pinepods_mobile/services/settings/mobile_settings_service.dart';
 import 'package:pinepods_mobile/ui/library/downloads.dart';
 import 'package:pinepods_mobile/ui/library/library.dart';
@@ -274,19 +277,58 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
   /// We listen to external links from outside the app. For example, someone may navigate
   /// to a web page that supports 'Open with Pinepods'.
   void _setupLinkListener() async {
+    print('Deep Link: Setting up link listener...');
     final appLinks = AppLinks(); // AppLinks is singleton
 
-    // Subscribe to all events (initial link and further)
+    // Handle initial link if app was launched by one (cold start)
+    try {
+      final initialUri = await appLinks.getInitialLink();
+      if (initialUri != null) {
+        print('Deep Link: App launched with initial link: $initialUri');
+        _handleLinkEvent(initialUri);
+      } else {
+        print('Deep Link: No initial link found');
+      }
+    } catch (e) {
+      print('Deep Link: Error getting initial link: $e');
+    }
+
+    // Subscribe to all events (further links while app is running)
+    print('Deep Link: Setting up stream listener...');
     deepLinkSubscription = appLinks.uriLinkStream.listen((uri) {
-      // Do something (navigation, ...)
+      print('Deep Link: App received link while running: $uri');
       _handleLinkEvent(uri);
+    }, onError: (err) {
+      print('Deep Link: Stream error: $err');
     });
+    
+    print('Deep Link: Link listener setup complete');
   }
 
   /// This method handles the actual link supplied from [uni_links], either
   /// at app startup or during running.
   void _handleLinkEvent(Uri uri) async {
-    if ((uri.scheme == 'anytime-subscribe' || uri.scheme == 'https') &&
+    print('Deep Link: Received link: $uri');
+    print('Deep Link: Scheme: ${uri.scheme}, Host: ${uri.host}, Path: ${uri.path}');
+    print('Deep Link: Query: ${uri.query}');
+    print('Deep Link: QueryParameters: ${uri.queryParameters}');
+    
+    // Handle OIDC authentication callback - be more flexible with path matching
+    if (uri.scheme == 'pinepods' && uri.host == 'auth') {
+      print('Deep Link: OIDC callback detected (flexible match)');
+      await _handleOidcCallback(uri);
+      return;
+    }
+    
+    // Handle OIDC authentication callback - strict match
+    if (uri.scheme == 'pinepods' && uri.host == 'auth' && uri.path == '/callback') {
+      print('Deep Link: OIDC callback detected (strict match)');
+      await _handleOidcCallback(uri);
+      return;
+    }
+    
+    // Handle podcast subscription links
+    if ((uri.scheme == 'pinepods-subscribe' || uri.scheme == 'https') &&
         (uri.query.startsWith('uri=') || uri.query.startsWith('url='))) {
       var path = uri.query.substring(4);
       var loadPodcastBloc = Provider.of<PodcastBloc>(context, listen: false);
@@ -327,6 +369,143 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
     }
   }
 
+  /// Handle OIDC authentication callback
+  Future<void> _handleOidcCallback(Uri uri) async {
+    try {
+      print('OIDC Callback: Received callback URL: $uri');
+      
+      // Parse the callback result
+      final callbackResult = OidcService.parseCallback(uri.toString());
+      
+      if (!callbackResult.isSuccess) {
+        print('OIDC Callback: Authentication failed: ${callbackResult.error}');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('OIDC authentication failed: ${callbackResult.error}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Check if we have an API key directly from the callback
+      if (callbackResult.hasApiKey) {
+        print('OIDC Callback: Found API key in callback, completing login');
+        await _completeOidcLogin(callbackResult.apiKey!);
+      } else {
+        print('OIDC Callback: No API key found, traditional OAuth flow not implemented yet');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('OIDC callback received but no API key found'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+      
+    } catch (e) {
+      print('OIDC Callback: Error processing callback: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error processing OIDC callback: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Complete OIDC login with the provided API key
+  Future<void> _completeOidcLogin(String apiKey) async {
+    try {
+      print('OIDC Callback: Completing login with API key');
+      
+      // We need to get the server URL - we can get it from the current settings
+      // since the user would have entered it during the initial OIDC flow
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      final settings = settingsBloc.currentSettings;
+      
+      // Check if we have a server URL from a previous attempt
+      String? serverUrl = settings.pinepodsServer;
+      
+      if (serverUrl == null || serverUrl.isEmpty) {
+        throw Exception('No server URL available for OIDC completion');
+      }
+      
+      // Verify the API key works and get user details
+      // Verify API key
+      final isValidKey = await PinepodsLoginService.verifyApiKey(serverUrl, apiKey);
+      if (!isValidKey) {
+        throw Exception('API key verification failed');
+      }
+
+      // Get user ID
+      final userId = await PinepodsLoginService.getUserId(serverUrl, apiKey);
+      if (userId == null) {
+        throw Exception('Failed to get user ID');
+      }
+
+      // Get user details  
+      final userDetails = await PinepodsLoginService.getUserDetails(serverUrl, apiKey, userId);
+      if (userDetails == null) {
+        throw Exception('Failed to get user details');
+      }
+
+      // Save the authentication details
+      settingsBloc.setPinepodsServer(serverUrl);
+      settingsBloc.setPinepodsApiKey(apiKey);
+      settingsBloc.setPinepodsUserId(userId);
+      
+      // Set additional user details if available
+      if (userDetails.username != null) {
+        settingsBloc.setPinepodsUsername(userDetails.username!);
+      }
+      if (userDetails.email != null) {
+        settingsBloc.setPinepodsEmail(userDetails.email!);  
+      }
+
+      // Fetch theme from server
+      await settingsBloc.fetchThemeFromServer();
+
+      print('OIDC Callback: Login completed successfully');
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('OIDC authentication successful!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Log current settings state for debugging
+        final currentSettings = settingsBloc.currentSettings;
+        print('OIDC Callback: Current settings after update:');
+        print('  Server: ${currentSettings.pinepodsServer}');
+        print('  API Key: ${currentSettings.pinepodsApiKey != null ? '[SET]' : '[NOT SET]'}');
+        print('  User ID: ${currentSettings.pinepodsUserId}');
+        print('  Username: ${currentSettings.pinepodsUsername}');
+        
+        // Notify login success globally
+        AuthNotifier.notifyLoginSuccess();
+      }
+      
+    } catch (e) {
+      print('OIDC Callback: Error completing login: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to complete OIDC login: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     final audioBloc = Provider.of<AudioBloc>(context, listen: false);
@@ -340,13 +519,28 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) async {
+    print('Deep Link: App lifecycle state changed to: $state');
     final audioBloc = Provider.of<AudioBloc>(context, listen: false);
 
     switch (state) {
       case AppLifecycleState.resumed:
+        print('Deep Link: App resumed - checking for pending deep links...');
         audioBloc.transitionLifecycleState(LifecycleState.resume);
+        
+        // Check for any pending deep links when app resumes
+        try {
+          final appLinks = AppLinks();
+          final initialUri = await appLinks.getInitialLink();
+          if (initialUri != null) {
+            print('Deep Link: Found pending link on resume: $initialUri');
+            _handleLinkEvent(initialUri);
+          }
+        } catch (e) {
+          print('Deep Link: Error checking for pending links on resume: $e');
+        }
         break;
       case AppLifecycleState.paused:
+        print('Deep Link: App paused');
         audioBloc.transitionLifecycleState(LifecycleState.pause);
         break;
       default:
@@ -592,7 +786,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                     }).toList();
 
                     return Container(
-                      height: 70,
+                      height: 70 + MediaQuery.of(context).padding.bottom,
                       decoration: BoxDecoration(
                         color: Theme.of(context).bottomAppBarTheme.color,
                         border: Border(
@@ -605,43 +799,29 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                       child:
                           MediaQuery.of(context).orientation ==
                               Orientation.landscape
-                          ? Center(
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: navItems.asMap().entries.map((entry) {
-                                  int itemIndex = entry.key;
-                                  BottomNavItem item = entry.value;
+                          ? Padding(
+                              padding: EdgeInsets.only(
+                                bottom: MediaQuery.of(context).padding.bottom,
+                              ),
+                              child: Center(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: navItems.asMap().entries.map((entry) {
+                                    int itemIndex = entry.key;
+                                    BottomNavItem item = entry.value;
 
-                                  return GestureDetector(
-                                    onTap: () => pager.changePage(itemIndex),
-                                    child: Container(
-                                      width: 80,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 8,
-                                      ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            item.icon,
-                                            color: item.isSelected
-                                                ? Theme.of(
-                                                    context,
-                                                  ).iconTheme.color
-                                                : HSLColor.fromColor(
-                                                        Theme.of(context)
-                                                            .bottomAppBarTheme
-                                                            .color!,
-                                                      )
-                                                      .withLightness(0.8)
-                                                      .toColor(),
-                                            size: 24,
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            item.label,
-                                            style: TextStyle(
-                                              fontSize: 11,
+                                    return GestureDetector(
+                                      onTap: () => pager.changePage(itemIndex),
+                                      child: Container(
+                                        width: 80,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 8,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              item.icon,
                                               color: item.isSelected
                                                   ? Theme.of(
                                                       context,
@@ -653,56 +833,61 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                                                         )
                                                         .withLightness(0.8)
                                                         .toColor(),
-                                              fontWeight: item.isSelected
-                                                  ? FontWeight.w600
-                                                  : FontWeight.normal,
+                                              size: 24,
                                             ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ],
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              item.label,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: item.isSelected
+                                                    ? Theme.of(
+                                                        context,
+                                                      ).iconTheme.color
+                                                    : HSLColor.fromColor(
+                                                            Theme.of(context)
+                                                                .bottomAppBarTheme
+                                                                .color!,
+                                                          )
+                                                          .withLightness(0.8)
+                                                          .toColor(),
+                                                fontWeight: item.isSelected
+                                                    ? FontWeight.w600
+                                                    : FontWeight.normal,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                }).toList(),
+                                    );
+                                  }).toList(),
+                                ),
                               ),
                             )
-                          : SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: navItems.asMap().entries.map((entry) {
-                                  int itemIndex = entry.key;
-                                  BottomNavItem item = entry.value;
+                          : Padding(
+                              padding: EdgeInsets.only(
+                                bottom: MediaQuery.of(context).padding.bottom,
+                              ),
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: navItems.asMap().entries.map((entry) {
+                                    int itemIndex = entry.key;
+                                    BottomNavItem item = entry.value;
 
-                                  return GestureDetector(
-                                    onTap: () => pager.changePage(itemIndex),
-                                    child: Container(
-                                      width: 80,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 8,
-                                      ),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            item.icon,
-                                            color: item.isSelected
-                                                ? Theme.of(
-                                                    context,
-                                                  ).iconTheme.color
-                                                : HSLColor.fromColor(
-                                                        Theme.of(context)
-                                                            .bottomAppBarTheme
-                                                            .color!,
-                                                      )
-                                                      .withLightness(0.8)
-                                                      .toColor(),
-                                            size: 24,
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            item.label,
-                                            style: TextStyle(
-                                              fontSize: 11,
+                                    return GestureDetector(
+                                      onTap: () => pager.changePage(itemIndex),
+                                      child: Container(
+                                        width: 80,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 8,
+                                        ),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              item.icon,
                                               color: item.isSelected
                                                   ? Theme.of(
                                                       context,
@@ -714,17 +899,36 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                                                         )
                                                         .withLightness(0.8)
                                                         .toColor(),
-                                              fontWeight: item.isSelected
-                                                  ? FontWeight.w600
-                                                  : FontWeight.normal,
+                                              size: 24,
                                             ),
-                                            textAlign: TextAlign.center,
-                                          ),
-                                        ],
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              item.label,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: item.isSelected
+                                                    ? Theme.of(
+                                                        context,
+                                                      ).iconTheme.color
+                                                    : HSLColor.fromColor(
+                                                            Theme.of(context)
+                                                                .bottomAppBarTheme
+                                                                .color!,
+                                                          )
+                                                          .withLightness(0.8)
+                                                          .toColor(),
+                                                fontWeight: item.isSelected
+                                                    ? FontWeight.w600
+                                                    : FontWeight.normal,
+                                              ),
+                                              textAlign: TextAlign.center,
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
-                                  );
-                                }).toList(),
+                                    );
+                                  }).toList(),
+                                ),
                               ),
                             ),
                     );

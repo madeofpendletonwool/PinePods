@@ -88,6 +88,8 @@ clients/mac-app/pinepods.spec
 web/target/*
 web/.idea/*
 keystore.properties
+key.properties
+**/key.properties
 
 
 # Virtual Environment

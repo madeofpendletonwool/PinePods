@@ -3,14 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
-import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
-import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/draggable_queue_episode_card.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
-import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/utils/position_utils.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
@@ -29,6 +26,10 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
   final PinepodsService _pinepodsService = PinepodsService();
   // Use global audio service instead of creating local instance
   int? _contextMenuEpisodeIndex;
+  
+  // Auto-scroll related variables
+  bool _isDragging = false;
+  bool _isAutoScrolling = false;
 
   @override
   void initState() {
@@ -197,7 +198,7 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     
     showDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.3),
+      barrierColor: Colors.black.withValues(alpha: 0.3),
       builder: (context) => EpisodeContextMenu(
         episode: episode,
         isDownloadedLocally: isDownloadedLocally,
@@ -555,8 +556,70 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     );
   }
 
+  void _startAutoScroll(bool scrollUp) async {
+    if (_isAutoScrolling) return;
+    _isAutoScrolling = true;
+
+    while (_isDragging && _isAutoScrolling) {
+      // Find the nearest ScrollView controller
+      final ScrollController? scrollController = Scrollable.maybeOf(context)?.widget.controller;
+      
+      if (scrollController != null && scrollController.hasClients) {
+        final currentOffset = scrollController.offset;
+        final maxScrollExtent = scrollController.position.maxScrollExtent;
+        
+        if (scrollUp && currentOffset > 0) {
+          // Scroll up
+          final newOffset = (currentOffset - 8.0).clamp(0.0, maxScrollExtent);
+          scrollController.jumpTo(newOffset);
+        } else if (!scrollUp && currentOffset < maxScrollExtent) {
+          // Scroll down
+          final newOffset = (currentOffset + 8.0).clamp(0.0, maxScrollExtent);
+          scrollController.jumpTo(newOffset);
+        } else {
+          break; // Reached the edge
+        }
+      }
+
+      await Future.delayed(const Duration(milliseconds: 16));
+    }
+
+    _isAutoScrolling = false;
+  }
+
+  void _stopAutoScroll() {
+    _isAutoScrolling = false;
+  }
+
+  void _checkAutoScroll(double globalY) {
+    if (!_isDragging) return;
+
+    final MediaQueryData mediaQuery = MediaQuery.of(context);
+    final double screenHeight = mediaQuery.size.height;
+    final double topPadding = mediaQuery.padding.top;
+    final double bottomPadding = mediaQuery.padding.bottom;
+    
+    const double autoScrollThreshold = 80.0;
+    
+    if (globalY < topPadding + autoScrollThreshold) {
+      // Near top, scroll up
+      if (!_isAutoScrolling) {
+        _startAutoScroll(true);
+      }
+    } else if (globalY > screenHeight - bottomPadding - autoScrollThreshold) {
+      // Near bottom, scroll down
+      if (!_isAutoScrolling) {
+        _startAutoScroll(false);
+      }
+    } else {
+      // In the middle, stop auto-scrolling
+      _stopAutoScroll();
+    }
+  }
+
   @override
   void dispose() {
+    _stopAutoScroll();
     // Don't dispose global audio service - it should persist across pages
     super.dispose();
   }
@@ -648,11 +711,11 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
   }
 
   Widget _buildEpisodesList() {
-    return SliverToBoxAdapter(
-      child: Column(
-        children: [
-          // Header
-          Padding(
+    return SliverMainAxisGroup(
+      slivers: [
+        // Header
+        SliverToBoxAdapter(
+          child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -683,39 +746,60 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
               ],
             ),
           ),
-          // Reorderable episodes list
-          ReorderableListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            buildDefaultDragHandles: false, // Disable automatic drag handles
-            onReorder: _reorderEpisodes,
-            itemCount: _episodes.length,
-            itemBuilder: (context, index) {
-              final episode = _episodes[index];
-              return Container(
-                key: ValueKey(episode.episodeId),
-                margin: const EdgeInsets.only(bottom: 4),
-                child: DraggableQueueEpisodeCard(
-                  episode: episode,
-                  index: index,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => PinepodsEpisodeDetails(
-                          initialEpisode: episode,
-                        ),
-                      ),
-                    );
-                  },
-                  onLongPress: () => _showContextMenu(index),
-                  onPlayPressed: () => _playEpisode(episode),
-                ),
-              );
+        ),
+        // Auto-scrolling reorderable episodes list wrapped with pointer detection
+        SliverToBoxAdapter(
+          child: Listener(
+            onPointerMove: (details) {
+              if (_isDragging) {
+                _checkAutoScroll(details.position.dy);
+              }
             },
+            child: ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              onReorderStart: (index) {
+                setState(() {
+                  _isDragging = true;
+                });
+              },
+              onReorderEnd: (index) {
+                setState(() {
+                  _isDragging = false;
+                });
+                _stopAutoScroll();
+              },
+              onReorder: _reorderEpisodes,
+              itemCount: _episodes.length,
+              itemBuilder: (context, index) {
+                final episode = _episodes[index];
+                return Container(
+                  key: ValueKey(episode.episodeId),
+                  margin: const EdgeInsets.only(bottom: 4),
+                  child: DraggableQueueEpisodeCard(
+                    episode: episode,
+                    index: index,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PinepodsEpisodeDetails(
+                            initialEpisode: episode,
+                          ),
+                        ),
+                      );
+                    },
+                    onLongPress: () => _showContextMenu(index),
+                    onPlayPressed: () => _playEpisode(episode),
+                  ),
+                );
+              },
+            ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
+

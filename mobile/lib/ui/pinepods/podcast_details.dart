@@ -43,6 +43,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   final PinepodsService _pinepodsService = PinepodsService();
   bool _isLoading = false;
   bool _isFollowing = false;
+  bool _isFollowButtonLoading = false;
   String? _errorMessage;
   List<PinepodsEpisode> _episodes = [];
   List<PinepodsEpisode> _filteredEpisodes = [];
@@ -198,7 +199,30 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           if (podcastId != null && podcastId > 0) {
             // Get episodes from server
             episodes = await _pinepodsService.getPodcastEpisodes(userId, podcastId);
-            print('Loaded ${episodes.length} episodes');
+            print('Loaded ${episodes.length} episodes from server for podcastId: $podcastId');
+            
+            // If server has no episodes, this podcast may need episode sync
+            if (episodes.isEmpty) {
+              print('Server has no episodes for subscribed podcast. This should not happen.');
+              print('Podcast ID: $podcastId, Title: ${widget.podcast.title}');
+              
+              // For subscribed podcasts, we should NOT fall back to RSS
+              // The server should have episodes. This indicates a server-side sync issue.
+              // Fall back to RSS ONLY as emergency backup, but episodes won't be clickable
+              try {
+                final podcastService = Provider.of<PodcastService>(context, listen: false);
+                final rssPodcast = Podcast.fromUrl(url: widget.podcast.url);
+                
+                final loadedPodcast = await podcastService.loadPodcast(podcast: rssPodcast);
+                
+                if (loadedPodcast != null && loadedPodcast.episodes.isNotEmpty) {
+                  episodes = loadedPodcast.episodes.map(_convertEpisodeToPinepodsEpisode).toList();
+                  print('Emergency RSS fallback: Loaded ${episodes.length} episodes (NOT CLICKABLE)');
+                }
+              } catch (e) {
+                print('Emergency RSS fallback also failed: $e');
+              }
+            }
             
             // Fetch podcast 2.0 data for hosts information
             try {
@@ -276,11 +300,19 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   }
 
   Future<void> _toggleFollow() async {
+    print('PinePods Follow button: CLICKED - Setting loading to true');
+    setState(() {
+      _isFollowButtonLoading = true;
+    });
+
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
+      setState(() {
+        _isFollowButtonLoading = false;
+      });
       _showSnackBar('Not logged in to PinePods server', Colors.red);
       return;
     }
@@ -326,6 +358,12 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       }
     } catch (e) {
       _showSnackBar('Error: $e', Colors.red);
+    } finally {
+      // Always reset loading state
+      setState(() {
+        _isFollowButtonLoading = false;
+      });
+      print('PinePods Follow button: Loading state reset to false');
     }
   }
 
@@ -790,11 +828,20 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
             ),
             actions: [
               IconButton(
-                onPressed: _toggleFollow,
-                icon: Icon(
-                  _isFollowing ? Icons.favorite : Icons.favorite_border,
-                  color: _isFollowing ? Colors.red : Colors.white,
-                ),
+                onPressed: _isFollowButtonLoading ? null : _toggleFollow,
+                icon: _isFollowButtonLoading
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.0,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : Icon(
+                      _isFollowing ? Icons.favorite : Icons.favorite_border,
+                      color: _isFollowing ? Colors.red : Colors.white,
+                    ),
                 tooltip: _isFollowing ? 'Unfollow' : 'Follow',
               ),
             ],
@@ -826,11 +873,20 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                         ),
                       ),
                       ElevatedButton.icon(
-                        onPressed: _toggleFollow,
-                        icon: Icon(
-                          _isFollowing ? Icons.remove : Icons.add,
-                          size: 16,
-                        ),
+                        onPressed: _isFollowButtonLoading ? null : _toggleFollow,
+                        icon: _isFollowButtonLoading 
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.0,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Icon(
+                              _isFollowing ? Icons.remove : Icons.add,
+                              size: 16,
+                            ),
                         label: Text(_isFollowing ? 'Unfollow' : 'Follow'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: _isFollowing ? Colors.red : Colors.green,
@@ -1137,10 +1193,16 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           final episode = _filteredEpisodes[index];
           // Find the original index for context menu operations
           final originalIndex = _episodes.indexOf(episode);
+          final bool hasValidServerEpisodeId = episode.episodeId > 0;
+          
+          if (!hasValidServerEpisodeId) {
+            print('Episode "${episode.episodeTitle}" has no server ID (RSS fallback) - disabling episode details navigation');
+          }
+          
           return PinepodsEpisodeCard(
             episode: episode,
-            onTap: _isFollowing ? () {
-              // Navigate to episode details only if following
+            onTap: _isFollowing && hasValidServerEpisodeId ? () {
+              // Navigate to episode details only if following AND has valid server episode ID
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -1149,13 +1211,13 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                   ),
                 ),
               );
-            } : null, // Disable tap if not following
-            onLongPress: _isFollowing ? () {
+            } : null, // Disable tap if not following or no valid episode ID
+            onLongPress: _isFollowing && hasValidServerEpisodeId ? () {
               _showEpisodeContextMenu(originalIndex);
-            } : null, // Disable long press if not following
+            } : null, // Disable long press if not following or no valid episode ID  
             onPlayPressed: _isFollowing ? () {
               _playEpisode(episode);
-            } : null, // Disable play if not following
+            } : null, // Allow play for RSS episodes since it uses direct URL
           );
         },
         childCount: _filteredEpisodes.length,

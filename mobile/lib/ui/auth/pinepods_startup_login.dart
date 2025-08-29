@@ -2,8 +2,13 @@
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/services/pinepods/login_service.dart';
+import 'package:pinepods_mobile/services/pinepods/oidc_service.dart';
+import 'package:pinepods_mobile/services/auth_notifier.dart';
+import 'package:pinepods_mobile/ui/auth/oidc_browser.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:math';
+import 'dart:async';
 
 class PinepodsStartupLogin extends StatefulWidget {
   final VoidCallback? onLoginSuccess;
@@ -26,11 +31,15 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
 
   bool _isLoading = false;
   bool _showMfaField = false;
+  bool _isLoadingOidc = false;
   String _errorMessage = '';
   String? _tempServerUrl;
   String? _tempUsername;
   int? _tempUserId;
   String? _tempMfaSessionToken;
+  List<OidcProvider> _oidcProviders = [];
+  bool _hasCheckedOidc = false;
+  Timer? _oidcCheckTimer;
 
   // List of background images - you can add your own images to assets/images/
   final List<String> _backgroundImages = [
@@ -53,6 +62,227 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
     // Select a random background image
     final random = Random();
     _selectedBackground = _backgroundImages[random.nextInt(_backgroundImages.length)];
+    
+    // Listen for server URL changes to check OIDC providers
+    _serverController.addListener(_onServerUrlChanged);
+    
+    // Register global login success callback
+    AuthNotifier.setGlobalLoginSuccessCallback(_handleLoginSuccess);
+  }
+
+  void _onServerUrlChanged() {
+    final serverUrl = _serverController.text.trim();
+    
+    // Cancel any existing timer
+    _oidcCheckTimer?.cancel();
+    
+    // Reset OIDC state
+    setState(() {
+      _oidcProviders.clear();
+      _hasCheckedOidc = false;
+      _isLoadingOidc = false;
+    });
+    
+    // Only check if URL looks complete and valid
+    if (serverUrl.isNotEmpty && 
+        (serverUrl.startsWith('http://') || serverUrl.startsWith('https://')) &&
+        _isValidUrl(serverUrl)) {
+      
+      // Debounce the API call - wait 1 second after user stops typing
+      _oidcCheckTimer = Timer(const Duration(seconds: 1), () {
+        _checkOidcProviders(serverUrl);
+      });
+    }
+  }
+
+  bool _isValidUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      // Check if it has a proper host (not just protocol)
+      return uri.hasScheme && 
+             uri.host.isNotEmpty && 
+             uri.host.contains('.') && // Must have at least one dot for domain
+             uri.host.length > 3; // Minimum reasonable length
+    } catch (e) {
+      return false;
+    }
+  }
+
+  Future<void> _checkOidcProviders(String serverUrl) async {
+    // Allow rechecking if server URL changed
+    final currentUrl = _serverController.text.trim();
+    if (currentUrl != serverUrl) return; // URL changed while we were waiting
+    
+    setState(() {
+      _isLoadingOidc = true;
+    });
+
+    try {
+      final providers = await OidcService.getPublicProviders(serverUrl);
+      // Double-check the URL hasn't changed during the API call
+      if (mounted && _serverController.text.trim() == serverUrl) {
+        setState(() {
+          _oidcProviders = providers;
+          _hasCheckedOidc = true;
+          _isLoadingOidc = false;
+        });
+      }
+    } catch (e) {
+      // Only update state if URL hasn't changed
+      if (mounted && _serverController.text.trim() == serverUrl) {
+        setState(() {
+          _oidcProviders.clear();
+          _hasCheckedOidc = true;
+          _isLoadingOidc = false;
+        });
+      }
+    }
+  }
+
+  // Manual retry when user focuses on other fields (like username)
+  void _retryOidcCheck() {
+    final serverUrl = _serverController.text.trim();
+    if (serverUrl.isNotEmpty && 
+        _isValidUrl(serverUrl) && 
+        !_hasCheckedOidc && 
+        !_isLoadingOidc) {
+      _checkOidcProviders(serverUrl);
+    }
+  }
+
+  Future<void> _handleOidcLogin(OidcProvider provider) async {
+    final serverUrl = _serverController.text.trim();
+    if (serverUrl.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter a server URL first';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      // Generate PKCE and state parameters for security
+      final pkce = OidcService.generatePkce();
+      final state = OidcService.generateState();
+      
+      // Build authorization URL for in-app browser
+      final authUrl = await OidcService.buildOidcLoginUrl(
+        provider: provider,
+        serverUrl: serverUrl,
+        state: state,
+        pkce: pkce,
+      );
+
+      if (authUrl == null) {
+        setState(() {
+          _errorMessage = 'Failed to prepare OIDC authentication URL';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Launch in-app browser
+      if (mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => OidcBrowser(
+              authUrl: authUrl,
+              serverUrl: serverUrl,
+              onSuccess: (apiKey) async {
+                Navigator.of(context).pop(); // Close the browser
+                await _completeOidcLogin(apiKey, serverUrl);
+              },
+              onError: (error) {
+                Navigator.of(context).pop(); // Close the browser
+                setState(() {
+                  _errorMessage = 'Authentication failed: $error';
+                });
+              },
+            ),
+          ),
+        );
+      }
+      
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'OIDC login error: ${e.toString()}';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _completeOidcLogin(String apiKey, String serverUrl) async {
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      // Verify API key
+      final isValidKey = await PinepodsLoginService.verifyApiKey(serverUrl, apiKey);
+      if (!isValidKey) {
+        throw Exception('API key verification failed');
+      }
+
+      // Get user ID
+      final userId = await PinepodsLoginService.getUserId(serverUrl, apiKey);
+      if (userId == null) {
+        throw Exception('Failed to get user ID');
+      }
+
+      // Get user details  
+      final userDetails = await PinepodsLoginService.getUserDetails(serverUrl, apiKey, userId);
+      if (userDetails == null) {
+        throw Exception('Failed to get user details');
+      }
+
+      // Store credentials
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      settingsBloc.setPinepodsServer(serverUrl);
+      settingsBloc.setPinepodsApiKey(apiKey);
+      settingsBloc.setPinepodsUserId(userId);
+      
+      // Set additional user details if available
+      if (userDetails.username != null) {
+        settingsBloc.setPinepodsUsername(userDetails.username!);
+      }
+      if (userDetails.email != null) {
+        settingsBloc.setPinepodsEmail(userDetails.email!);  
+      }
+
+      // Fetch theme from server
+      try {
+        await settingsBloc.fetchThemeFromServer();
+      } catch (e) {
+        // Theme fetch failure is non-critical
+      }
+
+      // Notify login success
+      AuthNotifier.notifyLoginSuccess();
+
+      // Call the callback if provided
+      if (widget.onLoginSuccess != null) {
+        widget.onLoginSuccess!();
+      }
+
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to complete login: ${e.toString()}';
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _connectToPinepods() async {
@@ -168,6 +398,21 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
     });
   }
 
+  /// Parse hex color string to Color object
+  Color _parseColor(String hexColor) {
+    try {
+      final hex = hexColor.replaceAll('#', '');
+      if (hex.length == 6) {
+        return Color(int.parse('FF$hex', radix: 16));
+      } else if (hex.length == 8) {
+        return Color(int.parse(hex, radix: 16));
+      }
+    } catch (e) {
+      // Fallback to default color on parsing error
+    }
+    return Theme.of(context).primaryColor;
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -201,37 +446,39 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         // App Logo/Title
-                        Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
+                        Center(
+                          child: Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: Image.asset(
+                                'assets/images/favicon.png',
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).primaryColor,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    child: Icon(
+                                      Icons.headset,
+                                      size: 48,
+                                      color: Colors.white,
+                                    ),
+                                  );
+                                },
                               ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: Image.asset(
-                              'assets/images/favicon.png',
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).primaryColor,
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: Icon(
-                                    Icons.headset,
-                                    size: 48,
-                                    color: Colors.white,
-                                  ),
-                                );
-                              },
                             ),
                           ),
                         ),
@@ -278,22 +525,30 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
                         const SizedBox(height: 16),
 
                         // Username Field
-                        TextFormField(
-                          controller: _usernameController,
-                          decoration: InputDecoration(
-                            labelText: 'Username',
-                            prefixIcon: const Icon(Icons.person),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter your username';
+                        Focus(
+                          onFocusChange: (hasFocus) {
+                            if (hasFocus) {
+                              // User focused on username field, retry OIDC check if needed
+                              _retryOidcCheck();
                             }
-                            return null;
                           },
-                          textInputAction: TextInputAction.next,
+                          child: TextFormField(
+                            controller: _usernameController,
+                            decoration: InputDecoration(
+                              labelText: 'Username',
+                              prefixIcon: const Icon(Icons.person),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter your username';
+                              }
+                              return null;
+                            },
+                            textInputAction: TextInputAction.next,
+                          ),
                         ),
                         const SizedBox(height: 16),
 
@@ -409,6 +664,75 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
 
                         const SizedBox(height: 16),
 
+                        // OIDC Providers Section
+                        if (_oidcProviders.isNotEmpty && !_showMfaField) ...[
+                          // Divider
+                          Row(
+                            children: [
+                              const Expanded(child: Divider()),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: Text(
+                                  'Or continue with',
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ),
+                              const Expanded(child: Divider()),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // OIDC Provider Buttons
+                          ..._oidcProviders.map((provider) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: _isLoading ? null : () => _handleOidcLogin(provider),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _parseColor(provider.buttonColorHex),
+                                  foregroundColor: _parseColor(provider.buttonTextColorHex),
+                                  padding: const EdgeInsets.all(16),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (provider.iconSvg != null && provider.iconSvg!.isNotEmpty)
+                                      Container(
+                                        width: 20,
+                                        height: 20,
+                                        margin: const EdgeInsets.only(right: 8),
+                                        child: const Icon(Icons.account_circle, size: 20),
+                                      ),
+                                    Text(
+                                      provider.displayText,
+                                      style: const TextStyle(fontSize: 16),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          )),
+                          
+                          const SizedBox(height: 16),
+                        ],
+                        
+                        // Loading indicator for OIDC discovery
+                        if (_isLoadingOidc) ...[
+                          const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
+
                         // Additional Info
                         Text(
                           'Don\'t have a PinePods server? Visit pinepods.online to learn more.',
@@ -429,12 +753,25 @@ class _PinepodsStartupLoginState extends State<PinepodsStartupLogin> {
     );
   }
 
+  /// Handle login success from any source (traditional or OIDC)
+  void _handleLoginSuccess() {
+    if (mounted) {
+      widget.onLoginSuccess?.call();
+    }
+  }
+
   @override
   void dispose() {
+    _oidcCheckTimer?.cancel();
+    _serverController.removeListener(_onServerUrlChanged);
     _serverController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     _mfaController.dispose();
+    
+    // Clear global callback to prevent memory leaks
+    AuthNotifier.clearGlobalLoginSuccessCallback();
+    
     super.dispose();
   }
 }

@@ -254,7 +254,7 @@ ThemeData _buildLightTheme() {
       error: Color(0xffd32f2f),
       onSurface: Color(0xfffb8c00),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xffffffff),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -324,7 +324,7 @@ ThemeData _buildDarkTheme() {
       error: Color(0xffd32f2f),
       onSurface: Color(0xffffffff),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff222222),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -401,7 +401,7 @@ ThemeData _buildNordTheme() {
       onSurface: Color(0xfff6f5f4),
       background: Color(0xff3C4252),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff2e3440),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -483,7 +483,7 @@ ThemeData _buildDraculaTheme() {
       onSurface: Color(0xfff6f5f4),
       background: Color(0xff282A36),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff262626),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -565,7 +565,7 @@ ThemeData _buildNordicTheme() {
       onSurface: Color(0xff656d76),
       background: Color(0xffeceff4),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xffe5e9f0),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -647,7 +647,7 @@ ThemeData _buildGruvboxDarkTheme() {
       onSurface: Color(0xff868729),
       background: Color(0xff32302f),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff282828),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -729,7 +729,7 @@ ThemeData _buildCatppuccinMochaTheme() {
       onSurface: Color(0xffcdd6f4),
       background: Color(0xff1e1e2e),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff11111b),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -829,7 +829,7 @@ ThemeData _buildAbyssTheme() {
       onSurface: Color(0xfff6f5f4),
       background: Color(0xff000C18),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff051336),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -911,7 +911,7 @@ ThemeData _buildCyberSynthwaveTheme() {
       onSurface: Color(0xffeee6ff),
       background: Color(0xff1a1721),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff2a1f3a),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -993,7 +993,7 @@ ThemeData _buildMidnightOceanTheme() {
       onSurface: Color(0xffe2e8f0),
       background: Color(0xff0f172a),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff1e293b),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -1075,7 +1075,7 @@ ThemeData _buildForestDepthsTheme() {
       onSurface: Color(0xffc9e4ca),
       background: Color(0xff1a2f1f),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff2d4a33),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -1157,7 +1157,7 @@ ThemeData _buildSunsetHorizonTheme() {
       onSurface: Color(0xffffd9c0),
       background: Color(0xff2b1c2c),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff432e44),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -1239,7 +1239,7 @@ ThemeData _buildArcticFrostTheme() {
       onSurface: Color(0xffeceff4),
       background: Color(0xff1a1d21),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff2a2f36),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -1321,7 +1321,7 @@ ThemeData _buildNeonTheme() {
       onSurface: Color(0xff9F9DA1),
       background: Color(0xff120e16),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff120e16),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -1403,7 +1403,7 @@ ThemeData _buildKimbieTheme() {
       onSurface: Color(0xffB1AD86),
       background: Color(0xff221a0f),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff131510),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -1485,7 +1485,7 @@ ThemeData _buildGruvboxLightTheme() {
       onSurface: Color(0xff5f5750),
       background: Color(0xfff9f5d7),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xfffbf1c7),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -1567,7 +1567,7 @@ ThemeData _buildGreenMeanieTheme() {
       onSurface: Color(0xff489D50),
       background: Color(0xff142e28),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff292A2E),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -1649,7 +1649,7 @@ ThemeData _buildWildberriesTheme() {
       onSurface: Color(0xffCF8B3E),
       background: Color(0xff240041),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xff19002E),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -1731,7 +1731,7 @@ ThemeData _buildSoftLavenderTheme() {
       onSurface: Color(0xff3e2851),
       background: Color(0xfff5f2ff),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xfff8f5ff),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -1813,7 +1813,7 @@ ThemeData _buildMintyFreshTheme() {
       onSurface: Color(0xff134e4a),
       background: Color(0xffecfdf5),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xfff0fdfa),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -1895,7 +1895,7 @@ ThemeData _buildWarmVanillaTheme() {
       onSurface: Color(0xff78350f),
       background: Color(0xfffef3c7),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xfffffbeb),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -1977,7 +1977,7 @@ ThemeData _buildCoastalBlueTheme() {
       onSurface: Color(0xff0c4a6e),
       background: Color(0xffe0f2fe),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xfff0f9ff),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -2059,7 +2059,7 @@ ThemeData _buildPaperCreamTheme() {
       onSurface: Color(0xff4a3728),
       background: Color(0xfff5f2ef),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xfff9f7f4),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -2141,7 +2141,7 @@ ThemeData _buildGithubLightTheme() {
       onSurface: Color(0xff1f2328),
       background: Color(0xfff6f8fa),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xffffffff),
     ),
     cardTheme: const CardThemeData().copyWith(
@@ -2223,7 +2223,7 @@ ThemeData _buildHotDogStandTheme() {
       onSurface: Color(0xff000000),
       background: Color(0xffffff00),
     ),
-    bottomAppBarTheme: const BottomAppBarTheme().copyWith(
+    bottomAppBarTheme: const BottomAppBarThemeData().copyWith(
       color: const Color(0xffffff00),
     ),
     cardTheme: const CardThemeData().copyWith(

@@ -137,7 +137,7 @@ fi
 # Set permissions for download and backup directories BEFORE starting services
 # Only do this if PUID and PGID are set
 if [[ -n "$PUID" && -n "$PGID" ]]; then
-    echo "Setting permissions for download and backup directories..."
+    echo "Setting permissions for download and backup directories...(Be patient this might take a while if you have a lot of downloads)"
     chown -R ${PUID}:${PGID} /opt/pinepods/downloads
     chown -R ${PUID}:${PGID} /opt/pinepods/backups
 else
