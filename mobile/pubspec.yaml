@@ -8,6 +8,7 @@ environment:
   flutter: ">=3.32.0"
 
 dependencies:
+  accessibility_tools: ^2.3.0
   app_links: ^6.3.0
   auto_size_text: ^3.0.0
   audio_service: ^0.18.17
@@ -58,7 +59,6 @@ dependencies:
     sdk: flutter
 
 dev_dependencies:
-  accessibility_tools: ^2.3.0
   mockito: ^5.4.5
   flutter_lints: ^6.0.0
   flutter_test:
