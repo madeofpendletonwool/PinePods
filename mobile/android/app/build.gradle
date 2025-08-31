@@ -83,6 +83,11 @@ android {
 
     namespace 'com.gooseberrydevelopment.pinepods'
 
+    // Disable PNG crunching for reproducible builds
+    aaptOptions {
+        cruncherEnabled = false
+    }
+    
     lint {
         abortOnError false
         disable 'InvalidPackage'
