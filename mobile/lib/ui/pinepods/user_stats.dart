@@ -43,6 +43,25 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
     }
   }
 
+  /// Calculate responsive cross axis count for stats grid
+  int _getStatsCrossAxisCount(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth > 1200) return 4;      // Very wide screens (large tablets, desktop)
+    if (screenWidth > 800) return 3;       // Wide tablets like iPad
+    if (screenWidth > 500) return 2;       // Standard phones and small tablets
+    return 1;                              // Very small phones (< 500px)
+  }
+
+  /// Calculate responsive aspect ratio for stats cards
+  double _getStatsAspectRatio(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth <= 500) {
+      // Single column on small screens - generous height for content + proper padding
+      return 2.2; // Allows space for icon + title + value + padding, handles text wrapping
+    }
+    return 1.0; // Square aspect ratio for multi-column layouts
+  }
+
   Future<void> _loadUserStats() async {
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
@@ -112,7 +131,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
     }
   }
 
-  Widget _buildStatCard(String label, String value, {IconData? icon}) {
+  Widget _buildStatCard(String label, String value, {IconData? icon, Color? iconColor}) {
     return Card(
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -125,7 +144,7 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
               Icon(
                 icon,
                 size: 32,
-                color: Theme.of(context).primaryColor,
+                color: iconColor ?? Theme.of(context).primaryColor,
               ),
               const SizedBox(height: 8),
             ],
@@ -150,6 +169,21 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Build sync status card that fits in the grid with consistent styling
+  Widget _buildSyncStatCard() {
+    if (_userStats == null) return const SizedBox.shrink();
+
+    final stats = _userStats!;
+    final isNotSyncing = stats.podSyncType.toLowerCase() == 'none';
+
+    return _buildStatCard(
+      'Sync Status',
+      stats.syncStatusDescription,
+      icon: isNotSyncing ? Icons.sync_disabled : Icons.sync,
+      iconColor: isNotSyncing ? Colors.grey : null,
     );
   }
 
@@ -415,10 +449,10 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
                     children: [
                       // Statistics Grid
                       GridView.count(
-                        crossAxisCount: 2,
+                        crossAxisCount: _getStatsCrossAxisCount(context),
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
-                        childAspectRatio: 1.0,
+                        childAspectRatio: _getStatsAspectRatio(context),
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
                         children: [
@@ -452,13 +486,10 @@ class _PinepodsUserStatsState extends State<PinepodsUserStats> {
                             _userStats?.episodesDownloaded.toString() ?? '',
                             icon: Icons.download,
                           ),
+                          // Add sync status as a stat card to maintain consistent layout
+                          _buildSyncStatCard(),
                         ],
                       ),
-
-                      const SizedBox(height: 16),
-
-                      // Sync Status Card
-                      _buildSyncStatusCard(),
 
                       const SizedBox(height: 16),
 

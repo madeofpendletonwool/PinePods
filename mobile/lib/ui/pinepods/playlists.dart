@@ -30,6 +30,25 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
     _loadPlaylists();
   }
 
+  /// Calculate responsive cross axis count for playlist grid
+  int _getPlaylistCrossAxisCount(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth > 1200) return 4;      // Very wide screens (large tablets, desktop)
+    if (screenWidth > 800) return 3;       // Wide tablets like iPad
+    if (screenWidth > 500) return 2;       // Standard phones and small tablets
+    return 1;                              // Very small phones (< 500px)
+  }
+
+  /// Calculate responsive aspect ratio for playlist cards
+  double _getPlaylistAspectRatio(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth <= 500) {
+      // Single column on small screens - generous height for multi-line descriptions + padding
+      return 1.8; // Allows space for title + 2-3 lines of description + proper padding
+    }
+    return 1.1; // Standard aspect ratio for multi-column layouts
+  }
+
   Future<void> _loadPlaylists() async {
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
@@ -391,11 +410,11 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
               GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: _getPlaylistCrossAxisCount(context),
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
-                  childAspectRatio: 1.1,
+                  childAspectRatio: _getPlaylistAspectRatio(context),
                 ),
                 itemCount: _playlists!.length,
                 itemBuilder: (context, index) {
@@ -413,6 +432,9 @@ class _PinepodsPlaylistsState extends State<PinepodsPlaylists> {
                     },
                     child: Card(
                       elevation: isSelected ? 8 : 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       color: isSelected 
                           ? Theme.of(context).primaryColor.withOpacity(0.1)
                           : null,
