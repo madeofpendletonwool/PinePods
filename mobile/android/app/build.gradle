@@ -76,8 +76,8 @@ android {
         release {
             signingConfig signingConfigs.release
             shrinkResources true
-            minifyEnabled true
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // minifyEnabled true // Disabled - causes audio metadata parsing issues
+            proguardFiles getDefaultProguardFile('proguard-android.txt')
         }
     }
 

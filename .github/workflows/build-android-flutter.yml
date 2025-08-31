@@ -38,7 +38,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.35.0"
+          flutter-version: "3.35.2"
           channel: "stable"
 
       - name: Install dependencies
@@ -64,6 +64,19 @@ jobs:
             VERSION_NAME=${IMAGE_TAG#v}
             BUILD_NUMBER=$(date +%Y%m%d)
             sed -i "s/^version: .*/version: ${VERSION_NAME}+${BUILD_NUMBER}/" pubspec.yaml
+            echo "Updated version to ${VERSION_NAME}+${BUILD_NUMBER}"
+          fi
+
+      - name: Commit version update
+        if: github.event_name == 'release'
+        run: |
+          cd mobile
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add pubspec.yaml
+          if ! git diff --staged --quiet; then
+            git commit -m "chore: update version to ${{ github.event.release.tag_name }} [skip ci]"
+            git push
           fi
 
       - name: Build APK

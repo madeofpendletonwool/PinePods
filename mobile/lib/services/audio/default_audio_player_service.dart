@@ -319,7 +319,14 @@ class DefaultAudioPlayerService extends AudioPlayerService {
         
         log.info('Started episode tracking at ${_episodeStartTime}');
 
-        _currentEpisode!.duration = _audioHandler.mediaItem.value?.duration?.inSeconds ?? 0;
+        // Get duration and apply safety bounds to prevent invalid metadata
+        var rawDuration = _audioHandler.mediaItem.value?.duration?.inSeconds ?? 0;
+        // Cap duration at 24 hours (86400 seconds) to prevent bogus metadata
+        if (rawDuration > 86400) {
+          log.warning('Invalid duration detected: ${rawDuration}s (${rawDuration/3600}h). Capping at 24 hours.');
+          rawDuration = 0; // Set to 0 to indicate unknown duration
+        }
+        _currentEpisode!.duration = rawDuration;
 
         await repository.saveEpisode(_currentEpisode!);
       } catch (e) {
