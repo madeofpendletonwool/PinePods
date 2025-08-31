@@ -13,6 +13,11 @@ on:
       version:
         description: "Manual override version tag (optional)"
         required: false
+      commit_version:
+        description: "Commit version update to git"
+        type: boolean
+        default: false
+        required: false
 
 jobs:
   build:
@@ -68,7 +73,7 @@ jobs:
           fi
 
       - name: Commit version update
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || github.event.inputs.commit_version == 'true'
         run: |
           cd mobile
           git config --local user.email "action@github.com"
