@@ -37,6 +37,14 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
+
+    dependenciesInfo {
+        // Disables dependency metadata when building APKs (for IzzyOnDroid/F-Droid)
+        includeInApk = false
+        // Disables dependency metadata when building Android App Bundles (for Google Play)
+        includeInBundle = false
+    }
+
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17
     }
@@ -67,13 +75,19 @@ android {
 
         release {
             signingConfig signingConfigs.release
-            shrinkResources false
+            shrinkResources true
+            // minifyEnabled true // Disabled - causes audio metadata parsing issues
             proguardFiles getDefaultProguardFile('proguard-android.txt')
         }
     }
 
     namespace 'com.gooseberrydevelopment.pinepods'
 
+    // Disable PNG crunching for reproducible builds
+    aaptOptions {
+        cruncherEnabled = false
+    }
+    
     lint {
         abortOnError false
         disable 'InvalidPackage'

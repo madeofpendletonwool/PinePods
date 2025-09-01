@@ -6,8 +6,10 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
+import 'package:pinepods_mobile/services/search_history_service.dart';
 import 'package:pinepods_mobile/ui/widgets/pinepods_episode_card.dart';
 import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
+import 'package:pinepods_mobile/ui/widgets/paginated_episode_list.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:provider/provider.dart';
 
@@ -24,13 +26,16 @@ class EpisodeSearchPage extends StatefulWidget {
 
 class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProviderStateMixin {
   final PinepodsService _pinepodsService = PinepodsService();
+  final SearchHistoryService _searchHistoryService = SearchHistoryService();
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   Timer? _debounceTimer;
   
   List<SearchEpisodeResult> _searchResults = [];
+  List<String> _searchHistory = [];
   bool _isLoading = false;
   bool _hasSearched = false;
+  bool _showHistory = false;
   String? _errorMessage;
   String _currentQuery = '';
   
@@ -91,6 +96,26 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
     }
 
     _searchController.addListener(_onSearchChanged);
+    _loadSearchHistory();
+  }
+
+  Future<void> _loadSearchHistory() async {
+    final history = await _searchHistoryService.getEpisodeSearchHistory();
+    if (mounted) {
+      setState(() {
+        _searchHistory = history;
+      });
+    }
+  }
+
+  void _selectHistoryItem(String searchTerm) {
+    _searchController.text = searchTerm;
+    _performSearch(searchTerm);
+  }
+
+  Future<void> _removeHistoryItem(String searchTerm) async {
+    await _searchHistoryService.removeEpisodeSearchTerm(searchTerm);
+    await _loadSearchHistory();
   }
 
   PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
@@ -343,6 +368,10 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   void _onSearchChanged() {
     final query = _searchController.text.trim();
     
+    setState(() {
+      _showHistory = query.isEmpty && _searchHistory.isNotEmpty;
+    });
+    
     if (_debounceTimer?.isActive ?? false) {
       _debounceTimer!.cancel();
     }
@@ -361,7 +390,12 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _showHistory = false;
     });
+
+    // Save search term to history
+    await _searchHistoryService.addEpisodeSearchTerm(query);
+    await _loadSearchHistory();
 
     // Animate search bar to top
     _slideAnimationController.forward();
@@ -401,6 +435,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
       _hasSearched = false;
       _errorMessage = null;
       _currentQuery = '';
+      _showHistory = _searchHistory.isNotEmpty;
     });
     _fadeAnimationController.reset();
     _slideAnimationController.reverse();
@@ -432,6 +467,11 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
               controller: _searchController,
               focusNode: _focusNode,
               style: Theme.of(context).textTheme.bodyLarge,
+              onTap: () {
+                setState(() {
+                  _showHistory = _searchController.text.isEmpty && _searchHistory.isNotEmpty;
+                });
+              },
               decoration: InputDecoration(
                 hintText: 'Search for episodes...',
                 hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -450,6 +490,7 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
                         onPressed: () {
                           _searchController.clear();
                           _clearResults();
+                          _focusNode.requestFocus();
                         },
                       )
                     : null,
@@ -584,32 +625,99 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
   }
 
   Widget _buildResults() {
+    // Convert search results to PinepodsEpisode objects
+    final episodes = _searchResults.map((result) => result.toPinepodsEpisode()).toList();
+    
     return FadeTransition(
       opacity: _fadeAnimation,
-      child: ListView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: _searchResults.length,
-        itemBuilder: (context, index) {
-          final result = _searchResults[index];
-          final episode = result.toPinepodsEpisode();
-          
-          return PinepodsEpisodeCard(
-            episode: episode,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PinepodsEpisodeDetails(
-                    initialEpisode: episode,
-                  ),
-                ),
-              );
-            },
-            onLongPress: () => _showContextMenu(index),
-            onPlayPressed: () => _playEpisode(episode),
+      child: PaginatedEpisodeList(
+        episodes: episodes,
+        isServerEpisodes: true,
+        pageSize: 20, // Show 20 episodes at a time for good performance
+        onEpisodeTap: (episode) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => PinepodsEpisodeDetails(
+                initialEpisode: episode,
+              ),
+            ),
           );
         },
+        onEpisodeLongPress: (episode, globalIndex) {
+          // Find the original index in _searchResults for context menu
+          final originalIndex = _searchResults.indexWhere(
+            (result) => result.episodeId == episode.episodeId
+          );
+          if (originalIndex != -1) {
+            _showContextMenu(originalIndex);
+          }
+        },
+        onPlayPressed: (episode) => _playEpisode(episode),
+      ),
+    );
+  }
+
+  Widget _buildSearchHistory() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Recent Searches',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: Theme.of(context).primaryColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const Spacer(),
+              if (_searchHistory.isNotEmpty)
+                TextButton(
+                  onPressed: () async {
+                    await _searchHistoryService.clearEpisodeSearchHistory();
+                    await _loadSearchHistory();
+                  },
+                  child: Text(
+                    'Clear All',
+                    style: TextStyle(
+                      color: Theme.of(context).hintColor,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ..._searchHistory.take(10).map((searchTerm) => Card(
+            margin: const EdgeInsets.symmetric(vertical: 2),
+            child: ListTile(
+              dense: true,
+              leading: Icon(
+                Icons.history,
+                color: Theme.of(context).hintColor,
+                size: 20,
+              ),
+              title: Text(
+                searchTerm,
+                style: Theme.of(context).textTheme.bodyMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: IconButton(
+                icon: Icon(
+                  Icons.close,
+                  size: 18,
+                  color: Theme.of(context).hintColor,
+                ),
+                onPressed: () => _removeHistoryItem(searchTerm),
+              ),
+              onTap: () => _selectHistoryItem(searchTerm),
+            ),
+          )).toList(),
+        ],
       ),
     );
   }
@@ -679,13 +787,15 @@ class _EpisodeSearchPageState extends State<EpisodeSearchPage> with TickerProvid
               child: SingleChildScrollView(
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
-                  child: _isLoading
-                      ? _buildLoadingIndicator()
-                      : _errorMessage != null
-                          ? _buildErrorState()
-                          : _searchResults.isEmpty
-                              ? _buildEmptyState()
-                              : _buildResults(),
+                  child: _showHistory
+                      ? _buildSearchHistory()
+                      : _isLoading
+                          ? _buildLoadingIndicator()
+                          : _errorMessage != null
+                              ? _buildErrorState()
+                              : _searchResults.isEmpty
+                                  ? _buildEmptyState()
+                                  : _buildResults(),
                 ),
               ),
             ),

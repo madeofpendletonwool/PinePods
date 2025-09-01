@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_service.dart';
+import 'package:pinepods_mobile/services/search_history_service.dart';
 import 'package:pinepods_mobile/ui/pinepods/podcast_details.dart';
 import 'package:pinepods_mobile/ui/widgets/platform_progress_indicator.dart';
 import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
@@ -28,11 +29,14 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
   late TextEditingController _searchController;
   late FocusNode _searchFocusNode;
   final PinepodsService _pinepodsService = PinepodsService();
+  final SearchHistoryService _searchHistoryService = SearchHistoryService();
 
   SearchProvider _selectedProvider = SearchProvider.podcastIndex;
   bool _isLoading = false;
+  bool _showHistory = false;
   String? _errorMessage;
   List<UnifiedPinepodsPodcast> _searchResults = [];
+  List<String> _searchHistory = [];
   Set<String> _addedPodcastUrls = {};
 
   @override
@@ -45,9 +49,12 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
     if (widget.searchTerm != null) {
       _searchController.text = widget.searchTerm!;
       _performSearch(widget.searchTerm!);
+    } else {
+      _loadSearchHistory();
     }
 
     _initializeCredentials();
+    _searchController.addListener(_onSearchChanged);
   }
 
   void _initializeCredentials() {
@@ -69,11 +76,39 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
     super.dispose();
   }
 
+  Future<void> _loadSearchHistory() async {
+    final history = await _searchHistoryService.getPodcastSearchHistory();
+    if (mounted) {
+      setState(() {
+        _searchHistory = history;
+        _showHistory = _searchController.text.isEmpty && history.isNotEmpty;
+      });
+    }
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.trim();
+    setState(() {
+      _showHistory = query.isEmpty && _searchHistory.isNotEmpty;
+    });
+  }
+
+  void _selectHistoryItem(String searchTerm) {
+    _searchController.text = searchTerm;
+    _performSearch(searchTerm);
+  }
+
+  Future<void> _removeHistoryItem(String searchTerm) async {
+    await _searchHistoryService.removePodcastSearchTerm(searchTerm);
+    await _loadSearchHistory();
+  }
+
   Future<void> _performSearch(String query) async {
     if (query.trim().isEmpty) {
       setState(() {
         _searchResults = [];
         _errorMessage = null;
+        _showHistory = _searchHistory.isNotEmpty;
       });
       return;
     }
@@ -81,7 +116,12 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _showHistory = false;
     });
+
+    // Save search term to history
+    await _searchHistoryService.addPodcastSearchTerm(query);
+    await _loadSearchHistory();
 
     try {
       final result = await _pinepodsService.searchPodcasts(query, _selectedProvider);
@@ -179,6 +219,103 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
         content: Text(message),
         backgroundColor: backgroundColor,
         duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Widget _buildSearchHistorySliver() {
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Recent Podcast Searches',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Theme.of(context).primaryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Spacer(),
+                if (_searchHistory.isNotEmpty)
+                  TextButton(
+                    onPressed: () async {
+                      await _searchHistoryService.clearPodcastSearchHistory();
+                      await _loadSearchHistory();
+                    },
+                    child: Text(
+                      'Clear All',
+                      style: TextStyle(
+                        color: Theme.of(context).hintColor,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_searchHistory.isEmpty)
+              Center(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 50),
+                    Icon(
+                      Icons.search,
+                      size: 64,
+                      color: Theme.of(context).primaryColor.withOpacity(0.5),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Search for Podcasts',
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        color: Theme.of(context).primaryColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Enter a search term above to find new podcasts to subscribe to',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).hintColor,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              )
+            else
+              ..._searchHistory.take(10).map((searchTerm) => Card(
+                margin: const EdgeInsets.symmetric(vertical: 2),
+                child: ListTile(
+                  dense: true,
+                  leading: Icon(
+                    Icons.history,
+                    color: Theme.of(context).hintColor,
+                    size: 20,
+                  ),
+                  title: Text(
+                    searchTerm,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: IconButton(
+                    icon: Icon(
+                      Icons.close,
+                      size: 18,
+                      color: Theme.of(context).hintColor,
+                    ),
+                    onPressed: () => _removeHistoryItem(searchTerm),
+                  ),
+                  onTap: () => _selectHistoryItem(searchTerm),
+                ),
+              )).toList(),
+          ],
+        ),
       ),
     );
   }
@@ -372,6 +509,11 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
               autofocus: widget.searchTerm != null ? false : true,
               keyboardType: TextInputType.text,
               textInputAction: TextInputAction.search,
+              onTap: () {
+                setState(() {
+                  _showHistory = _searchController.text.isEmpty && _searchHistory.isNotEmpty;
+                });
+              },
               decoration: const InputDecoration(
                 hintText: 'Search for podcasts',
                 border: InputBorder.none,
@@ -395,6 +537,7 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
                   setState(() {
                     _searchResults = [];
                     _errorMessage = null;
+                    _showHistory = _searchHistory.isNotEmpty;
                   });
                   FocusScope.of(context).requestFocus(_searchFocusNode);
                   SystemChannels.textInput.invokeMethod<String>('TextInput.show');
@@ -443,8 +586,10 @@ class _PinepodsSearchState extends State<PinepodsSearch> {
             ),
           ),
           
-          // Search results
-          if (_isLoading)
+          // Search results or history
+          if (_showHistory)
+            _buildSearchHistorySliver()
+          else if (_isLoading)
             const SliverFillRemaining(
               hasScrollBody: false,
               child: Center(child: PlatformProgressIndicator()),

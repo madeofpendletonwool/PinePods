@@ -1,4 +1,5 @@
 // lib/ui/debug/debug_logs_page.dart
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -17,11 +18,14 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
   List<LogEntry> _logs = [];
   LogLevel? _selectedLevel;
   bool _showDeviceInfo = true;
+  List<File> _sessionFiles = [];
+  bool _hasPreviousCrash = false;
 
   @override
   void initState() {
     super.initState();
     _loadLogs();
+    _loadSessionFiles();
   }
 
   void _loadLogs() {
@@ -53,6 +57,110 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to copy logs: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadSessionFiles() async {
+    try {
+      final files = await _logger.getSessionFiles();
+      final hasCrash = await _logger.hasPreviousCrash();
+      setState(() {
+        _sessionFiles = files;
+        _hasPreviousCrash = hasCrash;
+      });
+    } catch (e) {
+      print('Failed to load session files: $e');
+    }
+  }
+
+  Future<void> _copyCurrentSessionToClipboard() async {
+    try {
+      final formattedLogs = _logger.getFormattedLogsWithSessionInfo();
+      await Clipboard.setData(ClipboardData(text: formattedLogs));
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Current session logs copied to clipboard!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to copy logs: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+  
+  Future<void> _copySessionFileToClipboard(File sessionFile) async {
+    try {
+      final content = await sessionFile.readAsString();
+      final deviceInfo = _logger.deviceInfo?.formattedInfo ?? 'Device info not available';
+      final formattedContent = '$deviceInfo\n\n${'=' * 50}\nSession File: ${sessionFile.path.split('/').last}\n${'=' * 50}\n\n$content';
+      
+      await Clipboard.setData(ClipboardData(text: formattedContent));
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Session ${sessionFile.path.split('/').last} copied to clipboard!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to copy session file: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+  
+  Future<void> _copyCrashLogToClipboard() async {
+    try {
+      final crashPath = _logger.crashLogPath;
+      if (crashPath == null) {
+        throw Exception('Crash log path not available');
+      }
+      
+      final crashFile = File(crashPath);
+      final content = await crashFile.readAsString();
+      
+      await Clipboard.setData(ClipboardData(text: content));
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Crash log copied to clipboard!'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to copy crash log: $e'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -237,9 +345,9 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
                   children: [
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: _copyLogsToClipboard,
+                        onPressed: _copyCurrentSessionToClipboard,
                         icon: const Icon(Icons.copy),
-                        label: const Text('Copy to Clipboard'),
+                        label: const Text('Copy Current'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
                           foregroundColor: Colors.white,
@@ -264,6 +372,59 @@ class _DebugLogsPageState extends State<DebugLogsPage> {
             ),
           ),
           const Divider(height: 1),
+          
+          // Session Files Section
+          if (_sessionFiles.isNotEmpty || _hasPreviousCrash)
+            ExpansionTile(
+              title: const Text('Session Files & Crash Logs'),
+              leading: const Icon(Icons.folder),
+              initiallyExpanded: false,
+              children: [
+                if (_hasPreviousCrash)
+                  ListTile(
+                    leading: const Icon(Icons.warning, color: Colors.red),
+                    title: const Text('Previous Crash Log'),
+                    subtitle: const Text('Tap to copy crash log to clipboard'),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.copy),
+                      onPressed: _copyCrashLogToClipboard,
+                    ),
+                    onTap: _copyCrashLogToClipboard,
+                  ),
+                ..._sessionFiles.map((file) {
+                  final fileName = file.path.split('/').last;
+                  final isCurrentSession = fileName.contains(_logger.currentSessionPath?.split('/').last?.replaceFirst('session_', '').replaceFirst('.log', '') ?? '');
+                  
+                  return ListTile(
+                    leading: Icon(
+                      isCurrentSession ? Icons.play_circle : Icons.history,
+                      color: isCurrentSession ? Colors.green : Colors.grey,
+                    ),
+                    title: Text(fileName),
+                    subtitle: Text(
+                      'Modified: ${file.lastModifiedSync().toString().substring(0, 16)}${isCurrentSession ? ' (Current)' : ''}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isCurrentSession ? Colors.green : Colors.grey[600],
+                      ),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.copy),
+                      onPressed: () => _copySessionFileToClipboard(file),
+                    ),
+                    onTap: () => _copySessionFileToClipboard(file),
+                  );
+                }).toList(),
+                if (_sessionFiles.isEmpty && !_hasPreviousCrash)
+                  const Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: Text(
+                      'No session files available yet',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ),
+              ],
+            ),
           
           // Device info section (collapsible)
           if (_showDeviceInfo && _logger.deviceInfo != null)

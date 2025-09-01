@@ -785,6 +785,13 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                       );
                     }).toList();
 
+                    // Calculate if all icons fit in the current screen width
+                    final screenWidth = MediaQuery.of(context).size.width;
+                    final iconWidth = 80.0;
+                    final totalIconsWidth = navItems.length * iconWidth;
+                    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+                    final shouldCenterInPortrait = !isLandscape && totalIconsWidth <= screenWidth;
+
                     return Container(
                       height: 70 + MediaQuery.of(context).padding.bottom,
                       decoration: BoxDecoration(
@@ -796,9 +803,7 @@ class _PinepodsHomePageState extends State<PinepodsHomePage>
                           ),
                         ),
                       ),
-                      child:
-                          MediaQuery.of(context).orientation ==
-                              Orientation.landscape
+                      child: (isLandscape || shouldCenterInPortrait)
                           ? Padding(
                               padding: EdgeInsets.only(
                                 bottom: MediaQuery.of(context).padding.bottom,

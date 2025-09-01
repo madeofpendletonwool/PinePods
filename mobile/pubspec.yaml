@@ -1,7 +1,7 @@
 name: pinepods_mobile
 description: Pinepods Podcast Server
 
-version: 0.7.10+20250714
+version: 1.1.2+20250901
 
 environment:
   sdk: ">=3.8.0 <4.0.0"
@@ -104,15 +104,15 @@ flutter:
     - assets/images/favicon.png
     - assets/images/icon-192.png
     - assets/images/pinepods-logo.png
-    - assets/images/1.jpg
-    - assets/images/2.jpg
-    - assets/images/3.jpg
-    - assets/images/4.jpg
-    - assets/images/5.jpg
-    - assets/images/6.jpg
-    - assets/images/7.jpg
-    - assets/images/8.jpg
-    - assets/images/9.jpg
+    - assets/images/1.webp
+    - assets/images/2.webp
+    - assets/images/3.webp
+    - assets/images/4.webp
+    - assets/images/5.webp
+    - assets/images/6.webp
+    - assets/images/7.webp
+    - assets/images/8.webp
+    - assets/images/9.webp
 
     # Certificate authorities
     - assets/ca/lets-encrypt-r3.pem
