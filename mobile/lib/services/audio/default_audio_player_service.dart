@@ -30,6 +30,7 @@ import 'package:collection/collection.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:pinepods_mobile/services/logging/app_logger.dart';
 
 /// This is the default implementation of [AudioPlayerService].
 ///
@@ -1117,108 +1118,197 @@ class _DefaultAudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _initPlayer() {
-    if (Platform.isAndroid) {
-      _androidLoudnessEnhancer = AndroidLoudnessEnhancer();
-      _androidLoudnessEnhancer.setEnabled(true);
-      _audioPipeline = AudioPipeline(androidAudioEffects: [_androidLoudnessEnhancer]);
-      _player = AudioPlayer(
-        audioPipeline: _audioPipeline,
-        userAgent: Environment.userAgent(),
-      );
-    } else {
-      _player = AudioPlayer(
-          userAgent: Environment.userAgent(),
-          useProxyForRequestHeaders: false,
-          audioLoadConfiguration: const AudioLoadConfiguration(
-            androidLoadControl: AndroidLoadControl(
-              backBufferDuration: Duration(seconds: 45),
-            ),
-            darwinLoadControl: DarwinLoadControl(),
-          ));
+    final logger = AppLogger();
+    
+    try {
+      logger.info('AudioHandler', 'Initializing audio player for platform: ${Platform.operatingSystem}');
+      
+      if (Platform.isAndroid) {
+        logger.info('AudioHandler', 'Setting up Android audio pipeline with loudness enhancer');
+        
+        try {
+          _androidLoudnessEnhancer = AndroidLoudnessEnhancer();
+          _androidLoudnessEnhancer.setEnabled(true);
+          logger.info('AudioHandler', 'Android loudness enhancer created and enabled');
+          
+          _audioPipeline = AudioPipeline(androidAudioEffects: [_androidLoudnessEnhancer]);
+          logger.info('AudioHandler', 'Audio pipeline created with loudness enhancer');
+          
+          _player = AudioPlayer(
+            audioPipeline: _audioPipeline,
+            userAgent: Environment.userAgent(),
+          );
+          logger.info('AudioHandler', 'Android AudioPlayer created with pipeline');
+        } catch (e) {
+          logger.error('AudioHandler', 'Failed to create Android audio pipeline', e.toString());
+          logger.warning('AudioHandler', 'Falling back to basic AudioPlayer without effects');
+          
+          // Fallback to basic player without effects
+          _player = AudioPlayer(
+            userAgent: Environment.userAgent(),
+          );
+          logger.info('AudioHandler', 'Fallback AudioPlayer created');
+        }
+      } else {
+        logger.info('AudioHandler', 'Setting up iOS/other platform audio player');
+        _player = AudioPlayer(
+            userAgent: Environment.userAgent(),
+            useProxyForRequestHeaders: false,
+            audioLoadConfiguration: const AudioLoadConfiguration(
+              androidLoadControl: AndroidLoadControl(
+                backBufferDuration: Duration(seconds: 45),
+              ),
+              darwinLoadControl: DarwinLoadControl(),
+            ));
+        logger.info('AudioHandler', 'iOS AudioPlayer created with load configuration');
+      }
+      
+      logger.info('AudioHandler', 'AudioPlayer initialization completed successfully');
+    } catch (e, stackTrace) {
+      logger.critical('AudioHandler', 'Critical error during player initialization', '$e\nStack trace: $stackTrace');
+      rethrow;
     }
 
     /// List to events from the player itself, transform the player event to an audio service one
     /// and hand it off to the playback state stream to inform our client(s).
-    _player.playbackEventStream.map((event) => _transformEvent(event)).listen((data) {
-      if (playbackState.isClosed) {
-        log.warning('WARN: Playback state is already closed.');
-      } else {
-        playbackState.add(data);
-      }
-    }).onError((error) {
-      log.fine('Playback error received');
-      log.fine(error.toString());
-
-      _player.stop();
-    });
+    try {
+      _player.playbackEventStream.map((event) => _transformEvent(event)).listen((data) {
+        if (playbackState.isClosed) {
+          log.warning('WARN: Playback state is already closed.');
+          logger.warning('AudioHandler', 'Playback state stream is closed, cannot add data');
+        } else {
+          playbackState.add(data);
+        }
+      }).onError((error, stackTrace) {
+        log.fine('Playback error received');
+        log.fine(error.toString());
+        
+        logger.error('AudioHandler', 'Playback stream error received', '$error\nStack trace: $stackTrace');
+        
+        try {
+          _player.stop();
+          logger.info('AudioHandler', 'Player stopped after error');
+        } catch (e) {
+          logger.error('AudioHandler', 'Failed to stop player after error', e.toString());
+        }
+      });
+      
+      logger.info('AudioHandler', 'Playback event stream listener set up successfully');
+    } catch (e, stackTrace) {
+      logger.critical('AudioHandler', 'Failed to set up playback event stream', '$e\nStack trace: $stackTrace');
+      rethrow;
+    }
   }
 
   @override
   Future<void> playMediaItem(MediaItem mediaItem) async {
-    _currentItem = mediaItem;
-
-    var downloaded = mediaItem.extras!['downloaded'] as bool? ?? true;
-    var startPosition = mediaItem.extras!['position'] as int? ?? 0;
-    var playbackSpeed = mediaItem.extras!['speed'] as double? ?? 0.0;
-    var start = startPosition > 0 ? Duration(milliseconds: startPosition) : Duration.zero;
-    var boost = mediaItem.extras!['boost'] as bool? ?? true;
-    // Commented out until just audio position bug is fixed
-    // var trim = mediaItem.extras['trim'] as bool ?? true;
-
-    log.fine('loading new track ${mediaItem.id} - from position ${start.inSeconds} (${start.inMilliseconds})');
-
-    var source = downloaded
-        ? AudioSource.uri(
-            Uri.parse("file://${mediaItem.id}"),
-            tag: mediaItem.id,
-          )
-        : AudioSource.uri(Uri.parse(mediaItem.id), tag: mediaItem.id);
-
+    final logger = AppLogger();
+    
     try {
+      logger.info('AudioHandler', 'Starting playMediaItem for: ${mediaItem.title}');
+      logger.info('AudioHandler', 'Media ID: ${mediaItem.id}');
+      
+      _currentItem = mediaItem;
+
+      var downloaded = mediaItem.extras!['downloaded'] as bool? ?? true;
+      var startPosition = mediaItem.extras!['position'] as int? ?? 0;
+      var playbackSpeed = mediaItem.extras!['speed'] as double? ?? 0.0;
+      var start = startPosition > 0 ? Duration(milliseconds: startPosition) : Duration.zero;
+      var boost = mediaItem.extras!['boost'] as bool? ?? true;
+      // Commented out until just audio position bug is fixed
+      // var trim = mediaItem.extras['trim'] as bool ?? true;
+
+      logger.info('AudioHandler', 'Playback params - Downloaded: $downloaded, Start position: ${start.inSeconds}s, Speed: ${playbackSpeed}x, Boost: $boost');
+      
+      log.fine('loading new track ${mediaItem.id} - from position ${start.inSeconds} (${start.inMilliseconds})');
+
+      AudioSource source;
+      try {
+        source = downloaded
+            ? AudioSource.uri(
+                Uri.parse("file://${mediaItem.id}"),
+                tag: mediaItem.id,
+              )
+            : AudioSource.uri(Uri.parse(mediaItem.id), tag: mediaItem.id);
+        
+        logger.info('AudioHandler', 'Audio source created successfully - Downloaded: $downloaded');
+      } catch (e) {
+        logger.error('AudioHandler', 'Failed to create audio source', e.toString());
+        rethrow;
+      }
+
+      try {
+      logger.info('AudioHandler', 'Setting audio source and initial position');
       var duration = await _player.setAudioSource(source, initialPosition: start);
+      
+      logger.info('AudioHandler', 'Audio source set successfully. Duration: ${duration?.inSeconds ?? "unknown"}s');
 
       /// As duration returned from the player library can be different from the duration in the feed - usually
       /// because of DAI - if we have a duration from the player, use that.
       if (duration != null) {
         _currentItem = _currentItem!.copyWith(duration: duration);
+        logger.info('AudioHandler', 'Updated media item with player duration: ${duration.inSeconds}s');
       }
 
       if (_player.processingState != ProcessingState.idle) {
+        logger.info('AudioHandler', 'Player is ready, applying settings and starting playback');
+        
         try {
           if (_player.speed != playbackSpeed) {
+            logger.info('AudioHandler', 'Setting playback speed to ${playbackSpeed}x');
             await _player.setSpeed(playbackSpeed);
           }
 
           if (Platform.isAndroid) {
+            logger.info('AudioHandler', 'Applying Android-specific settings');
+            
             if (_player.skipSilenceEnabled != _trimSilence) {
+              logger.info('AudioHandler', 'Setting skip silence to $_trimSilence');
               await _player.setSkipSilenceEnabled(_trimSilence);
             }
 
+            logger.info('AudioHandler', 'Applying volume boost: $boost');
             volumeBoost(boost);
           }
 
+          logger.info('AudioHandler', 'Starting playback');
           _player.play();
-        } catch (e) {
+          logger.info('AudioHandler', 'Playback started successfully');
+        } catch (e, stackTrace) {
+          logger.error('AudioHandler', 'Error applying playback settings', '$e\nStack trace: $stackTrace');
           log.fine('State error ${e.toString()}');
         }
+      } else {
+        logger.warning('AudioHandler', 'Player processing state is idle, not starting playback');
       }
-    } on PlayerException catch (e) {
+    } on PlayerException catch (e, stackTrace) {
+      logger.critical('AudioHandler', 'PlayerException caught', 'Code: ${e.code}, Message: ${e.message}\nStack trace: $stackTrace');
       log.fine('PlayerException');
       log.fine(' - Error code ${e.code}');
       log.fine('  - ${e.message}');
       await stop();
       log.fine(e);
-    } on PlayerInterruptedException catch (e) {
+      rethrow;
+    } on PlayerInterruptedException catch (e, stackTrace) {
+      logger.error('AudioHandler', 'PlayerInterruptedException caught', '$e\nStack trace: $stackTrace');
       log.fine('PlayerInterruptedException');
       await stop();
       log.fine(e);
-    } catch (e) {
+      rethrow;
+    } catch (e, stackTrace) {
+      logger.critical('AudioHandler', 'General playback exception caught', '$e\nStack trace: $stackTrace');
       log.fine('General playback exception');
       await stop();
       log.fine(e);
+      rethrow;
     }
 
     super.mediaItem.add(_currentItem);
+    } catch (e, stackTrace) {
+      final logger = AppLogger();
+      logger.critical('AudioHandler', 'Fatal error in playMediaItem', '$e\nStack trace: $stackTrace');
+      rethrow;
+    }
   }
 
   @override
