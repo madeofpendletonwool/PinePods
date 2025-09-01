@@ -71,6 +71,11 @@ jobs:
             VERSION_NAME=${IMAGE_TAG#v}
             BUILD_NUMBER=$(date +%Y%m%d)
             sed -i "s/^version: .*/version: ${VERSION_NAME}+${BUILD_NUMBER}/" pubspec.yaml
+            
+            # Also update environment.dart constants
+            sed -i "s/static const _projectVersion = '[^']*';/static const _projectVersion = '${VERSION_NAME}';/" lib/core/environment.dart
+            sed -i "s/static const _build = '[^']*';/static const _build = '${BUILD_NUMBER}';/" lib/core/environment.dart
+            
             echo "Updated version to ${VERSION_NAME}+${BUILD_NUMBER}"
           fi
 
@@ -80,7 +85,7 @@ jobs:
           cd mobile
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add pubspec.yaml
+          git add pubspec.yaml lib/core/environment.dart
           if ! git diff --staged --quiet; then
             # Use the correct tag name based on trigger type
             if [[ "${{ github.event_name }}" == "release" ]]; then
