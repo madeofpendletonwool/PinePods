@@ -31,6 +31,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:pinepods_mobile/services/logging/app_logger.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 /// This is the default implementation of [AudioPlayerService].
 ///
@@ -109,6 +110,33 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     required this.settingsService,
     required this.podcastService,
   }) {
+    _initializeAudioService();
+  }
+
+  /// Initialize audio service with proper permissions
+  Future<void> _initializeAudioService() async {
+    final logger = AppLogger();
+    
+    // Request notification permission for Android 13+
+    if (Platform.isAndroid) {
+      try {
+        final status = await Permission.notification.status;
+        logger.info('DefaultAudioPlayerService', 'Current notification permission status: $status');
+        
+        if (status.isDenied) {
+          logger.info('DefaultAudioPlayerService', 'Requesting notification permission');
+          final result = await Permission.notification.request();
+          logger.info('DefaultAudioPlayerService', 'Notification permission result: $result');
+          
+          if (result.isDenied) {
+            logger.warning('DefaultAudioPlayerService', 'Notification permission denied - media controls may not appear');
+          }
+        }
+      } catch (e) {
+        logger.error('DefaultAudioPlayerService', 'Failed to request notification permission', e.toString());
+      }
+    }
+
     AudioService.init(
       builder: () => _DefaultAudioPlayerHandler(
         repository: repository,
