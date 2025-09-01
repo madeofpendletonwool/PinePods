@@ -110,33 +110,6 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     required this.settingsService,
     required this.podcastService,
   }) {
-    _initializeAudioService();
-  }
-
-  /// Initialize audio service with proper permissions
-  Future<void> _initializeAudioService() async {
-    final logger = AppLogger();
-    
-    // Request notification permission for Android 13+
-    if (Platform.isAndroid) {
-      try {
-        final status = await Permission.notification.status;
-        logger.info('DefaultAudioPlayerService', 'Current notification permission status: $status');
-        
-        if (status.isDenied) {
-          logger.info('DefaultAudioPlayerService', 'Requesting notification permission');
-          final result = await Permission.notification.request();
-          logger.info('DefaultAudioPlayerService', 'Notification permission result: $result');
-          
-          if (result.isDenied) {
-            logger.warning('DefaultAudioPlayerService', 'Notification permission denied - media controls may not appear');
-          }
-        }
-      } catch (e) {
-        logger.error('DefaultAudioPlayerService', 'Failed to request notification permission', e.toString());
-      }
-    }
-
     AudioService.init(
       builder: () => _DefaultAudioPlayerHandler(
         repository: repository,
@@ -148,7 +121,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
         androidNotificationChannelName: 'Pinepods Podcast Client',
         androidNotificationIcon: 'drawable/ic_stat_name',
         androidNotificationOngoing: false,
-        androidStopForegroundOnPause: true,
+        androidStopForegroundOnPause: false,
         rewindInterval: Duration(seconds: 10),
         fastForwardInterval: Duration(seconds: 30),
       ),
