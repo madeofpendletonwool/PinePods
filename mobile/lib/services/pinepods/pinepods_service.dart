@@ -127,9 +127,7 @@ class PinepodsService {
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print(
-        'Get user podcasts response: ${response.statusCode} - ${response.body}',
-      );
+      // User podcasts API response received
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -325,7 +323,7 @@ class PinepodsService {
         body: requestBody,
       );
 
-      print('Add history response: ${response.statusCode} - ${response.body}');
+      // History API response received
       return response.statusCode == 200;
     } catch (e) {
       print('Error adding history: $e');
@@ -355,7 +353,7 @@ class PinepodsService {
         body: requestBody,
       );
 
-      print('Queue pod response: ${response.statusCode} - ${response.body}');
+      // Queue API response received
       return response.statusCode == 200;
     } catch (e) {
       print('Error queueing episode: $e');
@@ -542,7 +540,7 @@ class PinepodsService {
         body: requestBody,
       );
 
-      print('Save episode response: ${response.statusCode} - ${response.body}');
+      // Save episode API response received
       return response.statusCode == 200;
     } catch (e) {
       print('Error saving episode: $e');
@@ -774,7 +772,7 @@ class PinepodsService {
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print('User history response: ${response.statusCode} - ${response.body}');
+      // User history API response received
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -872,9 +870,7 @@ class PinepodsService {
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      print(
-        'Saved episodes response: ${response.statusCode} - ${response.body}',
-      );
+      // Saved episodes API response received
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1054,7 +1050,7 @@ class PinepodsService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('Search response: ${response.body}');
+        // Search API response received
         return PinepodsSearchResult.fromJson(data);
       } else {
         throw Exception('Failed to search podcasts: ${response.statusCode}');
@@ -1203,7 +1199,7 @@ class PinepodsService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('Podcast details response: ${response.body}');
+        // Podcast details API response received
         return PodcastDetailsData.fromJson(data);
       } else {
         throw Exception(
@@ -1238,7 +1234,7 @@ class PinepodsService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('Podcast details by ID response: ${response.body}');
+        // Podcast details by ID API response received
         return data['details'];
       } else {
         throw Exception(
@@ -1275,7 +1271,7 @@ class PinepodsService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('Podcast ID response: ${response.body}');
+        // Podcast ID API response received
         final podcastId = data['podcast_id'];
         if (podcastId is int) {
           return podcastId;
@@ -1485,7 +1481,7 @@ class PinepodsService {
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
 
-      print('Playlists response: ${response.statusCode} - ${response.body}');
+      // Playlists API response received
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1514,7 +1510,7 @@ class PinepodsService {
         headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
       );
 
-      print('Get theme response: ${response.statusCode} - ${response.body}');
+      // Theme API response received
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -1546,7 +1542,7 @@ class PinepodsService {
         body: requestBody,
       );
 
-      print('Set theme response: ${response.statusCode} - ${response.body}');
+      // Set theme API response received
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

@@ -121,9 +121,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       final pinepodsEpisodes = allEpisodes.where((ep) => ep.guid.startsWith('pinepods_')).toList();
       logger.debug('Feed', 'Found ${pinepodsEpisodes.length} PinePods episodes in repository');
       
-      for (final localEp in pinepodsEpisodes) {
-        logger.debug('Feed', 'Local episode: ${localEp.title} - GUID: ${localEp.guid} - Downloaded: ${localEp.downloaded} - State: ${localEp.downloadState}');
-      }
+      // Found pinepods episodes in repository
       
       // Now check each feed episode against the repository
       for (final episode in _episodes) {
@@ -134,10 +132,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
           ep.guid == guid || ep.guid.startsWith('${guid}_')
         ).toList();
         
-        logger.debug('Feed', 'Looking for matches for $guid, found ${matchingEpisodes.length} episodes');
-        for (final match in matchingEpisodes) {
-          logger.debug('Feed', '  Match: ${match.guid} - Downloaded: ${match.downloaded} - State: ${match.downloadState}');
-        }
+        // Checking for matching episodes
         
         // Consider downloaded if ANY matching episode is downloaded
         final isDownloaded = matchingEpisodes.any((ep) => 
@@ -145,10 +140,10 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
         );
         
         _localDownloadStatus[guid] = isDownloaded;
-        logger.debug('Feed', 'Episode ${episode.episodeTitle} ($guid): ${isDownloaded ? 'DOWNLOADED' : 'NOT DOWNLOADED'}');
+        // Episode status checked
       }
       
-      logger.debug('Feed', 'Cached ${_localDownloadStatus.length} download statuses');
+      // Download statuses cached
       
     } catch (e) {
       logger.error('Feed', 'Error loading local download statuses', e.toString());
@@ -681,9 +676,7 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       
       logger.debug('Feed', 'Repository lookup for $guid: found ${matchingEpisodes.length} matching episodes');
       
-      for (final match in matchingEpisodes) {
-        logger.debug('Feed', 'Match: ${match.guid} - downloaded: ${match.downloaded}, downloadState: ${match.downloadState}, downloadPercentage: ${match.downloadPercentage}');
-      }
+      // Found matching episodes
       
       // Consider downloaded if ANY matching episode is downloaded
       final isDownloaded = matchingEpisodes.any((ep) => 

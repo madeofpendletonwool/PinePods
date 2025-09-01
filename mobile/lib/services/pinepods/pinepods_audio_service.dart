@@ -139,19 +139,29 @@ class PinepodsAudioService {
     // Episode position updates every 15 seconds (more frequent for reliability)
     _episodeUpdateTimer = Timer.periodic(
       const Duration(seconds: 15),
-      (_) => _updateEpisodePosition(),
+      (_) => _safeUpdateEpisodePosition(),
     );
 
     // User listen time updates every 60 seconds
     _userStatsTimer = Timer.periodic(
       const Duration(seconds: 60),
-      (_) => _updateUserListenTime(),
+      (_) => _safeUpdateUserListenTime(),
     );
+  }
+
+  /// Safely update episode position without affecting playback
+  void _safeUpdateEpisodePosition() async {
+    try {
+      await _updateEpisodePosition();
+    } catch (e) {
+      log.warning('Periodic sync completely failed but playback continues: $e');
+      // Completely isolate any network failures from affecting playback
+    }
   }
 
   /// Update episode position on server
   Future<void> _updateEpisodePosition() async {
-    log.info('_updateEpisodePosition called - episodeId: $_currentEpisodeId, userId: $_currentUserId');
+    // Updating episode position
     if (_currentEpisodeId == null || _currentUserId == null) {
       log.warning('Skipping scheduled sync - missing episode ID ($_currentEpisodeId) or user ID ($_currentUserId)');
       return;
@@ -167,7 +177,7 @@ class PinepodsAudioService {
       if ((currentPosition - _lastRecordedPosition).abs() > 2) {
         // Convert seconds to minutes for the API
         final currentPositionMinutes = currentPosition / 60.0;
-        log.info('Scheduled sync: position changed from ${_lastRecordedPosition}s to ${currentPosition}s');
+        // Position changed, syncing to server
         
         await _pinepodsService.recordListenDuration(
           _currentEpisodeId!,
@@ -177,10 +187,20 @@ class PinepodsAudioService {
         );
         
         _lastRecordedPosition = currentPosition;
-        log.info('Scheduled sync completed: ${currentPosition}s');
+        // Sync completed successfully
       }
     } catch (e) {
       log.warning('Failed to update episode position: $e');
+    }
+  }
+
+  /// Safely update user listen time without affecting playback
+  void _safeUpdateUserListenTime() async {
+    try {
+      await _updateUserListenTime();
+    } catch (e) {
+      log.warning('User stats sync completely failed but playback continues: $e');
+      // Completely isolate any network failures from affecting playback
     }
   }
 
@@ -190,7 +210,7 @@ class PinepodsAudioService {
 
     try {
       await _pinepodsService.incrementListenTime(_currentUserId!);
-      log.fine('Updated user listen time');
+      // User listen time updated
     } catch (e) {
       log.warning('Failed to update user listen time: $e');
     }
@@ -198,7 +218,7 @@ class PinepodsAudioService {
 
   /// Sync current position to server immediately (for pause/stop events)
   Future<void> syncCurrentPositionToServer() async {
-    log.info('syncCurrentPositionToServer called - episodeId: $_currentEpisodeId, userId: $_currentUserId');
+    // Syncing current position to server
     
     if (_currentEpisodeId == null || _currentUserId == null) {
       log.warning('Cannot sync - missing episode ID ($_currentEpisodeId) or user ID ($_currentUserId)');
@@ -284,16 +304,24 @@ class PinepodsAudioService {
 
   /// Handle pause event - sync position to server
   Future<void> onPause() async {
-    await syncCurrentPositionToServer();
+    try {
+      await syncCurrentPositionToServer();
+      log.info('Pause event handled - position synced to server');
+    } catch (e) {
+      log.warning('Pause sync failed but pause succeeded: $e');
+    }
     _onPauseCallback?.call();
-    log.info('Pause event handled - position synced to server');
   }
 
   /// Handle stop event - sync position to server
   Future<void> onStop() async {
-    await syncCurrentPositionToServer();
+    try {
+      await syncCurrentPositionToServer();
+      log.info('Stop event handled - position synced to server');
+    } catch (e) {
+      log.warning('Stop sync failed but stop succeeded: $e');
+    }
     _onStopCallback?.call();
-    log.info('Stop event handled - position synced to server');
   }
 
   /// Stop periodic updates
@@ -392,25 +420,25 @@ class PinepodsAudioService {
             final mimeType = transcriptData['mime_type'] ?? '';
             final type = transcriptData['type'] ?? '';
             
-            log.info('Processing transcript: url=$url, mimeType=$mimeType, type=$type');
+            // Processing transcript
             
             if (url.toLowerCase().contains('.json') || 
                 mimeType.toLowerCase().contains('json') || 
                 type.toLowerCase().contains('json')) {
               format = TranscriptFormat.json;
-              log.info('Detected JSON transcript format');
+              // Detected JSON transcript
             } else if (url.toLowerCase().contains('.srt') || 
                        mimeType.toLowerCase().contains('srt') || 
                        type.toLowerCase().contains('srt') || 
                        type.toLowerCase().contains('subrip') ||
                        url.toLowerCase().contains('subrip')) {
               format = TranscriptFormat.subrip;
-              log.info('Detected SubRip transcript format');
+              // Detected SubRip transcript
             } else if (url.toLowerCase().contains('transcript') || 
                        mimeType.toLowerCase().contains('html') || 
                        type.toLowerCase().contains('html')) {
               format = TranscriptFormat.html;
-              log.info('Detected HTML transcript format');
+              // Detected HTML transcript
             } else {
               log.warning('Transcript format not recognized: mimeType=$mimeType, type=$type');
             }

@@ -162,7 +162,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       _currentEpisode!.position = position;
       
       await repository.saveEpisode(_currentEpisode!);
-      log.fine('Saved local position: ${position}ms for episode ${_currentEpisode!.title}');
+      // Position saved locally
     }
   }
 
@@ -216,20 +216,36 @@ class DefaultAudioPlayerService extends AudioPlayerService {
 
   @override
   Future<void> pause() async {
-    // Record listen duration before pausing
-    await _recordListenDuration();
+    final logger = AppLogger();
     
-    // Sync position to PinePods server immediately
-    if (_pinepodsAudioService != null) {
-      await _pinepodsAudioService!.onPause();
-    }
-    
-    // Stop local position saver while paused
+    // Pause immediately - don't wait for server sync
+    await _audioHandler.pause();
     _stopLocalPositionSaver();
     
-    await _audioHandler.pause();
+    logger.info('DefaultAudioPlayerService', 'Episode paused - starting background sync');
     
-    log.info('Episode paused - listen duration recorded and synced to server');
+    // Do server sync in background without blocking pause
+    _performBackgroundSync();
+  }
+  
+  /// Perform server sync in background without blocking user actions
+  void _performBackgroundSync() async {
+    final logger = AppLogger();
+    
+    try {
+      // Record listen duration
+      await _recordListenDuration();
+      logger.info('DefaultAudioPlayerService', 'Listen duration recorded successfully');
+      
+      // Sync position to PinePods server
+      if (_pinepodsAudioService != null) {
+        await _pinepodsAudioService!.onPause();
+        logger.info('DefaultAudioPlayerService', 'Position synced to server successfully');
+      }
+    } catch (e) {
+      logger.warning('DefaultAudioPlayerService', 'Background sync failed (but pause still worked): $e');
+      // Pause still succeeded even if sync failed - user experience is not affected
+    }
   }
 
   @override
@@ -1417,7 +1433,7 @@ class _DefaultAudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   }
 
   PlaybackState _transformEvent(PlaybackEvent event) {
-    log.fine('_transformEvent Sending state ${_player.processingState}');
+    // Transform player state to audio service state
 
     // To enable skip next and previous for headphones on iOS we need the
     // add the skipToNext & skipToPrevious controls; however, on Android
