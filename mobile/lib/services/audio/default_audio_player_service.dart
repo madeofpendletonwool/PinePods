@@ -30,8 +30,6 @@ import 'package:collection/collection.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:logging/logging.dart';
 import 'package:rxdart/rxdart.dart';
-import 'package:pinepods_mobile/services/logging/app_logger.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 /// This is the default implementation of [AudioPlayerService].
 ///
@@ -118,11 +116,10 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       ),
       config: const AudioServiceConfig(
         androidResumeOnClick: true,
-        androidNotificationChannelName: 'Pinepods Media Playback',
-        androidNotificationChannelId: 'pinepods_media_playback',
+        androidNotificationChannelName: 'Pinepods Podcast Client',
         androidNotificationIcon: 'drawable/ic_stat_name',
         androidNotificationOngoing: false,
-        androidStopForegroundOnPause: false,
+        androidStopForegroundOnPause: true,
         rewindInterval: Duration(seconds: 10),
         fastForwardInterval: Duration(seconds: 30),
       ),
@@ -163,7 +160,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       _currentEpisode!.position = position;
       
       await repository.saveEpisode(_currentEpisode!);
-      // Position saved locally
+      log.fine('Saved local position: ${position}ms for episode ${_currentEpisode!.title}');
     }
   }
 
@@ -217,13 +214,13 @@ class DefaultAudioPlayerService extends AudioPlayerService {
 
   @override
   Future<void> pause() async {
-    final logger = AppLogger();
-    
     // Pause immediately - don't wait for server sync
     await _audioHandler.pause();
+    
+    // Stop local position saver while paused
     _stopLocalPositionSaver();
     
-    logger.info('DefaultAudioPlayerService', 'Episode paused - starting background sync');
+    log.info('Episode paused - starting background sync');
     
     // Do server sync in background without blocking pause
     _performBackgroundSync();
@@ -231,20 +228,18 @@ class DefaultAudioPlayerService extends AudioPlayerService {
   
   /// Perform server sync in background without blocking user actions
   void _performBackgroundSync() async {
-    final logger = AppLogger();
-    
     try {
       // Record listen duration
       await _recordListenDuration();
-      logger.info('DefaultAudioPlayerService', 'Listen duration recorded successfully');
+      log.info('Listen duration recorded successfully');
       
       // Sync position to PinePods server
       if (_pinepodsAudioService != null) {
         await _pinepodsAudioService!.onPause();
-        logger.info('DefaultAudioPlayerService', 'Position synced to server successfully');
+        log.info('Position synced to server successfully');
       }
     } catch (e) {
-      logger.warning('DefaultAudioPlayerService', 'Background sync failed (but pause still worked): $e');
+      log.warning('Background sync failed (but pause still worked): $e');
       // Pause still succeeded even if sync failed - user experience is not affected
     }
   }
@@ -338,14 +333,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
         
         log.info('Started episode tracking at ${_episodeStartTime}');
 
-        // Get duration and apply safety bounds to prevent invalid metadata
-        var rawDuration = _audioHandler.mediaItem.value?.duration?.inSeconds ?? 0;
-        // Cap duration at 24 hours (86400 seconds) to prevent bogus metadata
-        if (rawDuration > 86400) {
-          log.warning('Invalid duration detected: ${rawDuration}s (${rawDuration/3600}h). Capping at 24 hours.');
-          rawDuration = 0; // Set to 0 to indicate unknown duration
-        }
-        _currentEpisode!.duration = rawDuration;
+        _currentEpisode!.duration = _audioHandler.mediaItem.value?.duration?.inSeconds ?? 0;
 
         await repository.saveEpisode(_currentEpisode!);
       } catch (e) {
@@ -1136,197 +1124,108 @@ class _DefaultAudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   }
 
   void _initPlayer() {
-    final logger = AppLogger();
-    
-    try {
-      logger.info('AudioHandler', 'Initializing audio player for platform: ${Platform.operatingSystem}');
-      
-      if (Platform.isAndroid) {
-        logger.info('AudioHandler', 'Setting up Android audio pipeline with loudness enhancer');
-        
-        try {
-          _androidLoudnessEnhancer = AndroidLoudnessEnhancer();
-          _androidLoudnessEnhancer.setEnabled(true);
-          logger.info('AudioHandler', 'Android loudness enhancer created and enabled');
-          
-          _audioPipeline = AudioPipeline(androidAudioEffects: [_androidLoudnessEnhancer]);
-          logger.info('AudioHandler', 'Audio pipeline created with loudness enhancer');
-          
-          _player = AudioPlayer(
-            audioPipeline: _audioPipeline,
-            userAgent: Environment.userAgent(),
-          );
-          logger.info('AudioHandler', 'Android AudioPlayer created with pipeline');
-        } catch (e) {
-          logger.error('AudioHandler', 'Failed to create Android audio pipeline', e.toString());
-          logger.warning('AudioHandler', 'Falling back to basic AudioPlayer without effects');
-          
-          // Fallback to basic player without effects
-          _player = AudioPlayer(
-            userAgent: Environment.userAgent(),
-          );
-          logger.info('AudioHandler', 'Fallback AudioPlayer created');
-        }
-      } else {
-        logger.info('AudioHandler', 'Setting up iOS/other platform audio player');
-        _player = AudioPlayer(
-            userAgent: Environment.userAgent(),
-            useProxyForRequestHeaders: false,
-            audioLoadConfiguration: const AudioLoadConfiguration(
-              androidLoadControl: AndroidLoadControl(
-                backBufferDuration: Duration(seconds: 45),
-              ),
-              darwinLoadControl: DarwinLoadControl(),
-            ));
-        logger.info('AudioHandler', 'iOS AudioPlayer created with load configuration');
-      }
-      
-      logger.info('AudioHandler', 'AudioPlayer initialization completed successfully');
-    } catch (e, stackTrace) {
-      logger.critical('AudioHandler', 'Critical error during player initialization', '$e\nStack trace: $stackTrace');
-      rethrow;
+    if (Platform.isAndroid) {
+      _androidLoudnessEnhancer = AndroidLoudnessEnhancer();
+      _androidLoudnessEnhancer.setEnabled(true);
+      _audioPipeline = AudioPipeline(androidAudioEffects: [_androidLoudnessEnhancer]);
+      _player = AudioPlayer(
+        audioPipeline: _audioPipeline,
+        userAgent: Environment.userAgent(),
+      );
+    } else {
+      _player = AudioPlayer(
+          userAgent: Environment.userAgent(),
+          useProxyForRequestHeaders: false,
+          audioLoadConfiguration: const AudioLoadConfiguration(
+            androidLoadControl: AndroidLoadControl(
+              backBufferDuration: Duration(seconds: 45),
+            ),
+            darwinLoadControl: DarwinLoadControl(),
+          ));
     }
 
     /// List to events from the player itself, transform the player event to an audio service one
     /// and hand it off to the playback state stream to inform our client(s).
-    try {
-      _player.playbackEventStream.map((event) => _transformEvent(event)).listen((data) {
-        if (playbackState.isClosed) {
-          log.warning('WARN: Playback state is already closed.');
-          logger.warning('AudioHandler', 'Playback state stream is closed, cannot add data');
-        } else {
-          playbackState.add(data);
-        }
-      }).onError((error, stackTrace) {
-        log.fine('Playback error received');
-        log.fine(error.toString());
-        
-        logger.error('AudioHandler', 'Playback stream error received', '$error\nStack trace: $stackTrace');
-        
-        try {
-          _player.stop();
-          logger.info('AudioHandler', 'Player stopped after error');
-        } catch (e) {
-          logger.error('AudioHandler', 'Failed to stop player after error', e.toString());
-        }
-      });
-      
-      logger.info('AudioHandler', 'Playback event stream listener set up successfully');
-    } catch (e, stackTrace) {
-      logger.critical('AudioHandler', 'Failed to set up playback event stream', '$e\nStack trace: $stackTrace');
-      rethrow;
-    }
+    _player.playbackEventStream.map((event) => _transformEvent(event)).listen((data) {
+      if (playbackState.isClosed) {
+        log.warning('WARN: Playback state is already closed.');
+      } else {
+        playbackState.add(data);
+      }
+    }).onError((error) {
+      log.fine('Playback error received');
+      log.fine(error.toString());
+
+      _player.stop();
+    });
   }
 
   @override
   Future<void> playMediaItem(MediaItem mediaItem) async {
-    final logger = AppLogger();
-    
+    _currentItem = mediaItem;
+
+    var downloaded = mediaItem.extras!['downloaded'] as bool? ?? true;
+    var startPosition = mediaItem.extras!['position'] as int? ?? 0;
+    var playbackSpeed = mediaItem.extras!['speed'] as double? ?? 0.0;
+    var start = startPosition > 0 ? Duration(milliseconds: startPosition) : Duration.zero;
+    var boost = mediaItem.extras!['boost'] as bool? ?? true;
+    // Commented out until just audio position bug is fixed
+    // var trim = mediaItem.extras['trim'] as bool ?? true;
+
+    log.fine('loading new track ${mediaItem.id} - from position ${start.inSeconds} (${start.inMilliseconds})');
+
+    var source = downloaded
+        ? AudioSource.uri(
+            Uri.parse("file://${mediaItem.id}"),
+            tag: mediaItem.id,
+          )
+        : AudioSource.uri(Uri.parse(mediaItem.id), tag: mediaItem.id);
+
     try {
-      logger.info('AudioHandler', 'Starting playMediaItem for: ${mediaItem.title}');
-      logger.info('AudioHandler', 'Media ID: ${mediaItem.id}');
-      
-      _currentItem = mediaItem;
-
-      var downloaded = mediaItem.extras!['downloaded'] as bool? ?? true;
-      var startPosition = mediaItem.extras!['position'] as int? ?? 0;
-      var playbackSpeed = mediaItem.extras!['speed'] as double? ?? 0.0;
-      var start = startPosition > 0 ? Duration(milliseconds: startPosition) : Duration.zero;
-      var boost = mediaItem.extras!['boost'] as bool? ?? true;
-      // Commented out until just audio position bug is fixed
-      // var trim = mediaItem.extras['trim'] as bool ?? true;
-
-      logger.info('AudioHandler', 'Playback params - Downloaded: $downloaded, Start position: ${start.inSeconds}s, Speed: ${playbackSpeed}x, Boost: $boost');
-      
-      log.fine('loading new track ${mediaItem.id} - from position ${start.inSeconds} (${start.inMilliseconds})');
-
-      AudioSource source;
-      try {
-        source = downloaded
-            ? AudioSource.uri(
-                Uri.parse("file://${mediaItem.id}"),
-                tag: mediaItem.id,
-              )
-            : AudioSource.uri(Uri.parse(mediaItem.id), tag: mediaItem.id);
-        
-        logger.info('AudioHandler', 'Audio source created successfully - Downloaded: $downloaded');
-      } catch (e) {
-        logger.error('AudioHandler', 'Failed to create audio source', e.toString());
-        rethrow;
-      }
-
-      try {
-      logger.info('AudioHandler', 'Setting audio source and initial position');
       var duration = await _player.setAudioSource(source, initialPosition: start);
-      
-      logger.info('AudioHandler', 'Audio source set successfully. Duration: ${duration?.inSeconds ?? "unknown"}s');
 
       /// As duration returned from the player library can be different from the duration in the feed - usually
       /// because of DAI - if we have a duration from the player, use that.
       if (duration != null) {
         _currentItem = _currentItem!.copyWith(duration: duration);
-        logger.info('AudioHandler', 'Updated media item with player duration: ${duration.inSeconds}s');
       }
 
       if (_player.processingState != ProcessingState.idle) {
-        logger.info('AudioHandler', 'Player is ready, applying settings and starting playback');
-        
         try {
           if (_player.speed != playbackSpeed) {
-            logger.info('AudioHandler', 'Setting playback speed to ${playbackSpeed}x');
             await _player.setSpeed(playbackSpeed);
           }
 
           if (Platform.isAndroid) {
-            logger.info('AudioHandler', 'Applying Android-specific settings');
-            
             if (_player.skipSilenceEnabled != _trimSilence) {
-              logger.info('AudioHandler', 'Setting skip silence to $_trimSilence');
               await _player.setSkipSilenceEnabled(_trimSilence);
             }
 
-            logger.info('AudioHandler', 'Applying volume boost: $boost');
             volumeBoost(boost);
           }
 
-          logger.info('AudioHandler', 'Starting playback');
           _player.play();
-          logger.info('AudioHandler', 'Playback started successfully');
-        } catch (e, stackTrace) {
-          logger.error('AudioHandler', 'Error applying playback settings', '$e\nStack trace: $stackTrace');
+        } catch (e) {
           log.fine('State error ${e.toString()}');
         }
-      } else {
-        logger.warning('AudioHandler', 'Player processing state is idle, not starting playback');
       }
-    } on PlayerException catch (e, stackTrace) {
-      logger.critical('AudioHandler', 'PlayerException caught', 'Code: ${e.code}, Message: ${e.message}\nStack trace: $stackTrace');
+    } on PlayerException catch (e) {
       log.fine('PlayerException');
       log.fine(' - Error code ${e.code}');
       log.fine('  - ${e.message}');
       await stop();
       log.fine(e);
-      rethrow;
-    } on PlayerInterruptedException catch (e, stackTrace) {
-      logger.error('AudioHandler', 'PlayerInterruptedException caught', '$e\nStack trace: $stackTrace');
+    } on PlayerInterruptedException catch (e) {
       log.fine('PlayerInterruptedException');
       await stop();
       log.fine(e);
-      rethrow;
-    } catch (e, stackTrace) {
-      logger.critical('AudioHandler', 'General playback exception caught', '$e\nStack trace: $stackTrace');
+    } catch (e) {
       log.fine('General playback exception');
       await stop();
       log.fine(e);
-      rethrow;
     }
 
     super.mediaItem.add(_currentItem);
-    } catch (e, stackTrace) {
-      final logger = AppLogger();
-      logger.critical('AudioHandler', 'Fatal error in playMediaItem', '$e\nStack trace: $stackTrace');
-      rethrow;
-    }
   }
 
   @override
@@ -1434,7 +1333,7 @@ class _DefaultAudioPlayerHandler extends BaseAudioHandler with SeekHandler {
   }
 
   PlaybackState _transformEvent(PlaybackEvent event) {
-    // Transform player state to audio service state
+    log.fine('_transformEvent Sending state ${_player.processingState}');
 
     // To enable skip next and previous for headphones on iOS we need the
     // add the skipToNext & skipToPrevious controls; however, on Android

@@ -6,7 +6,6 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
@@ -30,7 +29,7 @@
             android:largeHeap="true"
             android:networkSecurityConfig="@xml/network_security_config">
         <activity
-                android:name=".MainActivity"
+                android:name="com.ryanheise.audioservice.AudioServiceActivity"
                 android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density"
                 android:hardwareAccelerated="true"
                 android:launchMode="singleTop"

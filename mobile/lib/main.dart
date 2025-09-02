@@ -12,7 +12,6 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:logging/logging.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 // ignore_for_file: avoid_print
 void main() async {
@@ -57,8 +56,6 @@ void main() async {
   var mobileSettingsService = (await MobileSettingsService.instance())!;
   certificateAuthorityBytes = await setupCertificateAuthority();
   
-  // Request notification permission for Android 13+ (API 33+)
-  await requestNotificationPermission();
 
   runApp(RestartWidget(
     child: PinepodsPodcastApp(
@@ -100,33 +97,3 @@ Future<List<int>> setupCertificateAuthority() async {
   return ca;
 }
 
-/// Request notification permission for Android 13+ (API 33+)
-Future<void> requestNotificationPermission() async {
-  if (Platform.isAndroid) {
-    final appLogger = AppLogger();
-    
-    try {
-      final status = await Permission.notification.status;
-      appLogger.info('NotificationPermission', 'Current notification permission status: $status');
-      
-      if (status.isDenied || status.isPermanentlyDenied) {
-        appLogger.info('NotificationPermission', 'Requesting notification permission for media controls');
-        
-        final result = await Permission.notification.request();
-        appLogger.info('NotificationPermission', 'Permission request result: $result');
-        
-        if (result.isGranted) {
-          appLogger.info('NotificationPermission', 'Notification permission granted - media controls should work');
-        } else if (result.isDenied) {
-          appLogger.warning('NotificationPermission', 'Notification permission denied - media controls may not appear');
-        } else if (result.isPermanentlyDenied) {
-          appLogger.warning('NotificationPermission', 'Notification permission permanently denied - user needs to enable in settings');
-        }
-      } else {
-        appLogger.info('NotificationPermission', 'Notification permission already granted');
-      }
-    } catch (e) {
-      appLogger.error('NotificationPermission', 'Error requesting notification permission', e.toString());
-    }
-  }
-}
