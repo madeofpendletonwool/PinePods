@@ -59,7 +59,7 @@ yew-router = { version = "0.18.0" }
 serde = { version = "1.0.219", features = ["derive"] }
 gloo-net = { version = "0.6.0", features = ["websocket"] }
 gloo = "0.11.0"
-anyhow = { version = "1.0.98", features = [] }
+anyhow = { version = "1.0.99", features = [] }
 wasm-bindgen-futures = "0.4.50"
 gloo-timers = "0.3.0"
 base64 = "0.22.1"
