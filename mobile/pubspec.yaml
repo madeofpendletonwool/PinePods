@@ -1,7 +1,7 @@
 name: pinepods_mobile
 description: Pinepods Podcast Server
 
-version: 1.1.2+b610a8e
+version: 1.1.2+917f1ad
 
 environment:
   sdk: ">=3.8.0 <4.0.0"
