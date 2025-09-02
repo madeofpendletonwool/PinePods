@@ -118,7 +118,8 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       ),
       config: const AudioServiceConfig(
         androidResumeOnClick: true,
-        androidNotificationChannelName: 'Pinepods Podcast Client',
+        androidNotificationChannelName: 'Pinepods Media Playback',
+        androidNotificationChannelId: 'pinepods_media_playback',
         androidNotificationIcon: 'drawable/ic_stat_name',
         androidNotificationOngoing: false,
         androidStopForegroundOnPause: false,

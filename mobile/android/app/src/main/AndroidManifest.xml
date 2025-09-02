@@ -30,7 +30,7 @@
             android:largeHeap="true"
             android:networkSecurityConfig="@xml/network_security_config">
         <activity
-                android:name="com.ryanheise.audioservice.AudioServiceActivity"
+                android:name=".MainActivity"
                 android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density"
                 android:hardwareAccelerated="true"
                 android:launchMode="singleTop"
