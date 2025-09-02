@@ -47,9 +47,7 @@ class LocalDownloadUtils {
       
       logger.debug('LocalDownload', 'Repository lookup for $guid: found ${matchingEpisodes.length} matching episodes');
       
-      for (final match in matchingEpisodes) {
-        logger.debug('LocalDownload', 'Match: ${match.guid} - downloaded: ${match.downloaded}, downloadState: ${match.downloadState}, downloadPercentage: ${match.downloadPercentage}');
-      }
+      // Found matching episodes
       
       // Consider downloaded if ANY matching episode is downloaded
       final isDownloaded = matchingEpisodes.any((ep) => 
@@ -93,9 +91,7 @@ class LocalDownloadUtils {
       final pinepodsEpisodes = allEpisodes.where((ep) => ep.guid.startsWith('pinepods_')).toList();
       logger.debug('LocalDownload', 'Found ${pinepodsEpisodes.length} PinePods episodes in repository');
       
-      for (final localEp in pinepodsEpisodes) {
-        logger.debug('LocalDownload', 'Local episode: ${localEp.title} - GUID: ${localEp.guid} - Downloaded: ${localEp.downloaded} - State: ${localEp.downloadState}');
-      }
+      // Found pinepods episodes in repository
       
       // Now check each episode against the repository
       for (final episode in episodes) {
@@ -106,10 +102,7 @@ class LocalDownloadUtils {
           ep.guid == guid || ep.guid.startsWith('${guid}_')
         ).toList();
         
-        logger.debug('LocalDownload', 'Looking for matches for $guid, found ${matchingEpisodes.length} episodes');
-        for (final match in matchingEpisodes) {
-          logger.debug('LocalDownload', '  Match: ${match.guid} - Downloaded: ${match.downloaded} - State: ${match.downloadState}');
-        }
+        // Checking for matching episodes
         
         // Consider downloaded if ANY matching episode is downloaded
         final isDownloaded = matchingEpisodes.any((ep) => 
@@ -117,10 +110,10 @@ class LocalDownloadUtils {
         );
         
         _localDownloadStatusCache[guid] = isDownloaded;
-        logger.debug('LocalDownload', 'Episode ${episode.episodeTitle} ($guid): ${isDownloaded ? 'DOWNLOADED' : 'NOT DOWNLOADED'}');
+        // Episode status checked
       }
       
-      logger.debug('LocalDownload', 'Cached ${_localDownloadStatusCache.length} download statuses');
+      // Download statuses cached
       
     } catch (e) {
       logger.error('LocalDownload', 'Error loading local download statuses', e.toString());

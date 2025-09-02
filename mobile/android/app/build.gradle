@@ -37,14 +37,6 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-
-    dependenciesInfo {
-        // Disables dependency metadata when building APKs (for IzzyOnDroid/F-Droid)
-        includeInApk = false
-        // Disables dependency metadata when building Android App Bundles (for Google Play)
-        includeInBundle = false
-    }
-
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17
     }
@@ -56,6 +48,13 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+    }
+
+    dependenciesInfo {
+        // Disables dependency metadata when building APKs (for IzzyOnDroid/F-Droid)
+        includeInApk = false
+        // Disables dependency metadata when building Android App Bundles (for Google Play)
+        includeInBundle = false
     }
 
     signingConfigs {
@@ -75,22 +74,21 @@ android {
 
         release {
             signingConfig signingConfigs.release
-            shrinkResources true
-            // minifyEnabled true // Disabled - causes audio metadata parsing issues
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android.txt')
         }
     }
 
     namespace 'com.gooseberrydevelopment.pinepods'
 
-    // Disable PNG crunching for reproducible builds
-    aaptOptions {
-        cruncherEnabled = false
-    }
-    
     lint {
         abortOnError false
         disable 'InvalidPackage'
+    }
+
+    // Disable PNG crunching for reproducible builds
+    aaptOptions {
+        cruncherEnabled = false
     }
 }
 
