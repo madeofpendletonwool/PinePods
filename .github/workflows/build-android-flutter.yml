@@ -31,6 +31,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0  # Fetch full git history for accurate commit count
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up JDK 17
