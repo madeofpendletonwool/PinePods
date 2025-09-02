@@ -55,6 +55,7 @@ void main() async {
 
   var mobileSettingsService = (await MobileSettingsService.instance())!;
   certificateAuthorityBytes = await setupCertificateAuthority();
+  
 
   runApp(RestartWidget(
     child: PinepodsPodcastApp(
@@ -95,3 +96,4 @@ Future<List<int>> setupCertificateAuthority() async {
 
   return ca;
 }
+
