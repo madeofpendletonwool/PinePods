@@ -22,6 +22,14 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+// Get git info from dart-define for reproducible builds
+def gitCommitHash = project.hasProperty('dart-defines') ? 
+    project.getProperty('dart-defines').split(',').find { it.startsWith('GIT_COMMIT_HASH=') }?.split('=', 2)[1] : 'unknown'
+def gitBranch = project.hasProperty('dart-defines') ? 
+    project.getProperty('dart-defines').split(',').find { it.startsWith('GIT_BRANCH=') }?.split('=', 2)[1] : 'unknown'
+def gitIsDirty = project.hasProperty('dart-defines') ? 
+    project.getProperty('dart-defines').split(',').find { it.startsWith('GIT_IS_DIRTY=') }?.split('=', 2)[1] : 'unknown'
+
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
@@ -48,6 +56,18 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        
+        // Add git commit info for reproducible builds and vcsInfo
+        buildConfigField "String", "GIT_COMMIT_HASH", "\"${gitCommitHash}\""
+        buildConfigField "String", "GIT_BRANCH", "\"${gitBranch}\""
+        buildConfigField "String", "GIT_IS_DIRTY", "\"${gitIsDirty}\""
+        
+        // Set VCS info for reproducible builds (this helps with META-INF/version-control-info.textproto)
+        manifestPlaceholders.putAll([
+            gitCommitHash: gitCommitHash,
+            gitBranch: gitBranch,
+            gitIsDirty: gitIsDirty
+        ])
     }
 
     dependenciesInfo {

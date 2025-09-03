@@ -101,12 +101,24 @@ jobs:
       - name: Build APK
         run: |
           cd mobile
-          flutter build apk --release --split-per-abi
+          # Set git info for reproducible builds
+          export GIT_COMMIT_HASH=$(git rev-parse HEAD)
+          export GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          export GIT_IS_DIRTY=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)
+          echo "Building APK with commit: $GIT_COMMIT_HASH"
+          echo "Branch: $GIT_BRANCH"
+          echo "Dirty: $GIT_IS_DIRTY"
+          flutter build apk --release --split-per-abi --dart-define=GIT_COMMIT_HASH="$GIT_COMMIT_HASH" --dart-define=GIT_BRANCH="$GIT_BRANCH" --dart-define=GIT_IS_DIRTY="$GIT_IS_DIRTY"
 
       - name: Build AAB
         run: |
           cd mobile
-          flutter build appbundle --release
+          # Set git info for reproducible builds
+          export GIT_COMMIT_HASH=$(git rev-parse HEAD)
+          export GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          export GIT_IS_DIRTY=$(if git diff-index --quiet HEAD --; then echo "false"; else echo "true"; fi)
+          echo "Building AAB with commit: $GIT_COMMIT_HASH"
+          flutter build appbundle --release --dart-define=GIT_COMMIT_HASH="$GIT_COMMIT_HASH" --dart-define=GIT_BRANCH="$GIT_BRANCH" --dart-define=GIT_IS_DIRTY="$GIT_IS_DIRTY"
 
       - name: Rename APK files
         run: |
