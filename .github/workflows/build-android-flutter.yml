@@ -31,6 +31,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0  # Fetch full git history for accurate commit count
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up JDK 17
@@ -67,9 +68,9 @@ jobs:
           cd mobile
           # Update pubspec.yaml version to use Flutter format (version+build)
           if [[ "$IMAGE_TAG" != "latest" ]]; then
-            # Remove 'v' prefix if present and create build number from commit hash
+            # Remove 'v' prefix if present and create build number from git count with offset
             VERSION_NAME=${IMAGE_TAG#v}
-            BUILD_NUMBER=$(git rev-parse --short HEAD)
+            BUILD_NUMBER=$(($(git rev-list --count HEAD) + 20250000))
             sed -i "s/^version: .*/version: ${VERSION_NAME}+${BUILD_NUMBER}/" pubspec.yaml
             
             # Also update environment.dart constants
