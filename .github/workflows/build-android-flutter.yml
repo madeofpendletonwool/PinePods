@@ -101,11 +101,15 @@ jobs:
       - name: Build APK
         run: |
           cd mobile
+          export GIT_DIR=../.git
+          export GIT_WORK_TREE=..
           flutter build apk --release --split-per-abi
 
       - name: Build AAB
         run: |
           cd mobile
+          export GIT_DIR=../.git
+          export GIT_WORK_TREE=..
           flutter build appbundle --release
 
       - name: Rename APK files
