@@ -22,36 +22,6 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
-// Get git info for reproducible builds
-def getGitCommitHash = { ->
-    try {
-        return 'git rev-parse HEAD'.execute().text.trim()
-    } catch (Exception e) {
-        return 'unknown'
-    }
-}
-
-def getGitBranch = { ->
-    try {
-        return 'git rev-parse --abbrev-ref HEAD'.execute().text.trim()
-    } catch (Exception e) {
-        return 'unknown'
-    }
-}
-
-def isGitDirty = { ->
-    try {
-        def result = 'git diff-index --quiet HEAD'.execute()
-        return result.exitValue() != 0
-    } catch (Exception e) {
-        return false
-    }
-}
-
-def gitCommitHash = getGitCommitHash()
-def gitBranch = getGitBranch()  
-def gitIsDirty = isGitDirty()
-
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
 if (keystorePropertiesFile.exists()) {
@@ -78,16 +48,8 @@ android {
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
-        
-        // Add git commit info for reproducible builds and vcsInfo
-        buildConfigField "String", "GIT_COMMIT_HASH", "\"${gitCommitHash}\""
-        buildConfigField "String", "GIT_BRANCH", "\"${gitBranch}\""
-        buildConfigField "String", "GIT_IS_DIRTY", "\"${gitIsDirty}\""
     }
 
-    buildFeatures {
-        buildConfig = true
-    }
 
     dependenciesInfo {
         // Disables dependency metadata when building APKs (for IzzyOnDroid/F-Droid)
