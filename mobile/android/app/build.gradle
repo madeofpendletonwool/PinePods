@@ -22,13 +22,35 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
-// Get git info from dart-define for reproducible builds
-def gitCommitHash = project.hasProperty('dart-defines') ? 
-    project.getProperty('dart-defines').split(',').find { it.startsWith('GIT_COMMIT_HASH=') }?.split('=', 2)[1] : 'unknown'
-def gitBranch = project.hasProperty('dart-defines') ? 
-    project.getProperty('dart-defines').split(',').find { it.startsWith('GIT_BRANCH=') }?.split('=', 2)[1] : 'unknown'
-def gitIsDirty = project.hasProperty('dart-defines') ? 
-    project.getProperty('dart-defines').split(',').find { it.startsWith('GIT_IS_DIRTY=') }?.split('=', 2)[1] : 'unknown'
+// Get git info from environment variables for reproducible builds
+def getGitCommitHash = { ->
+    try {
+        return 'git rev-parse HEAD'.execute().text.trim()
+    } catch (Exception e) {
+        return 'unknown'
+    }
+}
+
+def getGitBranch = { ->
+    try {
+        return 'git rev-parse --abbrev-ref HEAD'.execute().text.trim()
+    } catch (Exception e) {
+        return 'unknown'
+    }
+}
+
+def isGitDirty = { ->
+    try {
+        def result = 'git diff-index --quiet HEAD'.execute()
+        return result.exitValue() != 0
+    } catch (Exception e) {
+        return false
+    }
+}
+
+def gitCommitHash = getGitCommitHash()
+def gitBranch = getGitBranch()  
+def gitIsDirty = isGitDirty()
 
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('key.properties')
