@@ -4898,16 +4898,38 @@ impl DatabasePool {
         username: Option<&str>,
         password: Option<&str>,
     ) -> AppResult<String> {
-        let client = reqwest::Client::new();
-        let mut request = client.get(url).header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+        println!("try_fetch_feed called with URL: {}", url);
+        if let (Some(user), Some(pass)) = (username, password) {
+            println!("Using basic authentication for feed: {}", url);
+        } else {
+            println!("No authentication for feed: {}", url);
+        }
+        
+        // Build HTTP client with proper configuration for container environment
+        let client = reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| {
+                println!("Failed to build HTTP client: {}", e);
+                AppError::Http(e)
+            })?;
+            
+        let mut request = client.get(url);
         
         if let (Some(user), Some(pass)) = (username, password) {
+            println!("Adding basic auth to request for user: {}", user);
             request = request.basic_auth(user, Some(pass));
         }
         
-        let response = request.send().await.map_err(|e| AppError::Http(e))?;
+        println!("Sending HTTP request to: {}", url);
+        let response = request.send().await.map_err(|e| {
+            println!("HTTP request failed for {}: {}", url, e);
+            AppError::Http(e)
+        })?;
         
         if !response.status().is_success() {
+            println!("Initial request failed with status: {}, trying alternate URL", response.status());
             // Try alternate URL (www vs non-www)
             let alternate_url = if url.contains("://www.") {
                 url.replace("://www.", "://")
@@ -4915,21 +4937,29 @@ impl DatabasePool {
                 url.replace("://", "://www.")
             };
             
-            let mut alt_request = client.get(&alternate_url).header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+            println!("Trying alternate URL: {}", alternate_url);
+            let mut alt_request = client.get(&alternate_url);
             
             if let (Some(user), Some(pass)) = (username, password) {
+                println!("Adding basic auth to alternate request for user: {}", user);
                 alt_request = alt_request.basic_auth(user, Some(pass));
             }
             
-            let alt_response = alt_request.send().await.map_err(|e| AppError::Http(e))?;
+            let alt_response = alt_request.send().await.map_err(|e| {
+                println!("Alternate HTTP request failed for {}: {}", alternate_url, e);
+                AppError::Http(e)
+            })?;
             
             if !alt_response.status().is_success() {
-                return Err(AppError::bad_request("Invalid username or password"));
+                println!("Alternate request also failed with status: {}", alt_response.status());
+                return Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", alt_response.status())));
             }
             
+            println!("Alternate request succeeded with status: {}", alt_response.status());
             return Ok(alt_response.text().await.map_err(|e| AppError::Http(e))?);
         }
         
+        println!("Request succeeded with status: {}", response.status());
         Ok(response.text().await.map_err(|e| AppError::Http(e))?)
     }
 
@@ -9363,7 +9393,7 @@ impl DatabasePool {
         let podcasts = match self {
             DatabasePool::Postgres(pool) => {
                 let rows = sqlx::query(
-                    r#"SELECT podcastname, feedurl FROM "Podcasts" WHERE userid = $1"#
+                    r#"SELECT podcastname, feedurl FROM "Podcasts" WHERE userid = $1 AND (username IS NULL OR username = '') AND (password IS NULL OR password = '')"#
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -9380,7 +9410,7 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let rows = sqlx::query(
-                    "SELECT PodcastName, FeedURL FROM Podcasts WHERE UserID = ?"
+                    "SELECT PodcastName, FeedURL FROM Podcasts WHERE UserID = ? AND (Username IS NULL OR Username = '') AND (Password IS NULL OR Password = '')"
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -11662,7 +11692,7 @@ impl DatabasePool {
     async fn get_user_podcast_feeds(&self, user_id: i32) -> AppResult<Vec<String>> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let rows = sqlx::query(r#"SELECT feedurl FROM "Podcasts" WHERE userid = $1"#)
+                let rows = sqlx::query(r#"SELECT feedurl FROM "Podcasts" WHERE userid = $1 AND (username IS NULL OR username = '') AND (password IS NULL OR password = '')"#)
                     .bind(user_id)
                     .fetch_all(pool)
                     .await?;
@@ -11674,7 +11704,7 @@ impl DatabasePool {
                 Ok(feeds)
             }
             DatabasePool::MySQL(pool) => {
-                let rows = sqlx::query("SELECT FeedURL FROM Podcasts WHERE UserID = ?")
+                let rows = sqlx::query("SELECT FeedURL FROM Podcasts WHERE UserID = ? AND (Username IS NULL OR Username = '') AND (Password IS NULL OR Password = '')")
                     .bind(user_id)
                     .fetch_all(pool)
                     .await?;
@@ -12444,6 +12474,42 @@ impl DatabasePool {
         }
     }
     
+    // Get stored authentication credentials for a feed URL
+    pub async fn get_feed_auth_credentials(&self, feed_url: &str, user_id: i32) -> AppResult<(Option<String>, Option<String>)> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"SELECT username, password FROM "Podcasts" WHERE feedurl = $1 AND userid = $2 LIMIT 1"#)
+                    .bind(feed_url)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = result {
+                    let username: Option<String> = row.try_get("username").ok().flatten();
+                    let password: Option<String> = row.try_get("password").ok().flatten();
+                    Ok((username, password))
+                } else {
+                    Ok((None, None))
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("SELECT Username, Password FROM Podcasts WHERE FeedURL = ? AND UserID = ? LIMIT 1")
+                    .bind(feed_url)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = result {
+                    let username: Option<String> = row.try_get("Username").ok().flatten();
+                    let password: Option<String> = row.try_get("Password").ok().flatten();
+                    Ok((username, password))
+                } else {
+                    Ok((None, None))
+                }
+            }
+        }
+    }
+    
     // Get podcast values from RSS feed - matches Python get_podcast_values function exactly
     pub async fn get_podcast_values(&self, feed_url: &str, user_id: i32, username: Option<&str>, password: Option<&str>) -> AppResult<std::collections::HashMap<String, String>> {
         use reqwest::header::AUTHORIZATION;
@@ -12451,20 +12517,33 @@ impl DatabasePool {
         
         println!("Fetching podcast values from feed URL: {}", feed_url);
         
-        // Build HTTP client with optional authentication
-        let client = reqwest::Client::new();
+        // Build HTTP client with proper configuration for container environment
+        let client = reqwest::Client::builder()
+            .user_agent("PinePods/1.0")
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| AppError::external_error(&format!("Failed to build HTTP client: {}", e)))?;
+        
         let mut request = client.get(feed_url);
         
         if let (Some(user), Some(pass)) = (username, password) {
+            println!("Using basic authentication for feed: {}", feed_url);
             use base64::Engine;
             let encoded = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
             request = request.header(AUTHORIZATION, format!("Basic {}", encoded));
         }
         
-        // Fetch RSS feed
-        let response = request.send().await?;
+        // Fetch RSS feed with better error handling
+        println!("Sending HTTP request to: {}", feed_url);
+        let response = request.send().await
+            .map_err(|e| {
+                println!("HTTP request failed for {}: {}", feed_url, e);
+                AppError::external_error(&format!("HTTP request failed: {}", e))
+            })?;
+        
+        println!("Received response with status: {}", response.status());
         if !response.status().is_success() {
-            return Err(AppError::external_error(&format!("Failed to fetch RSS feed: {}", response.status())));
+            return Err(AppError::external_error(&format!("HTTP request returned error status: {}", response.status())));
         }
         
         let content = response.text().await?;
@@ -12514,12 +12593,32 @@ impl DatabasePool {
     }
 
     // Parse feed episodes using feed-rs and return JSON data (for frontend consumption)
-    pub async fn parse_feed_episodes(&self, feed_url: &str) -> AppResult<Vec<serde_json::Value>> {
+    pub async fn parse_feed_episodes(&self, feed_url: &str, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
         use feed_rs::parser;
+        use reqwest::header::AUTHORIZATION;
+        
+        // Get stored authentication credentials for this feed
+        let (username, password) = self.get_feed_auth_credentials(feed_url, user_id).await?;
+        
+        // Build HTTP client with proper configuration
+        let client = reqwest::Client::builder()
+            .user_agent("PinePods/1.0")
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .map_err(|e| AppError::external_error(&format!("Failed to build HTTP client: {}", e)))?;
+        
+        let mut request = client.get(feed_url);
+        
+        // Add authentication if available
+        if let (Some(user), Some(pass)) = (username.as_deref(), password.as_deref()) {
+            println!("Using stored authentication for feed: {}", feed_url);
+            use base64::Engine;
+            let encoded = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
+            request = request.header(AUTHORIZATION, format!("Basic {}", encoded));
+        }
         
         // Fetch RSS feed
-        let client = reqwest::Client::new();
-        let response = client.get(feed_url).send().await?;
+        let response = request.send().await?;
         if !response.status().is_success() {
             return Err(AppError::external_error(&format!("Failed to fetch RSS feed: {}", response.status())));
         }
@@ -12773,7 +12872,7 @@ impl DatabasePool {
     }
 
     // Add podcast from RSS values - wrapper function for custom podcast addition
-    pub async fn add_podcast_from_values(&self, podcast_values: &std::collections::HashMap<String, String>, user_id: i32, _feed_cutoff: i32) -> AppResult<(i32, Option<i32>)> {
+    pub async fn add_podcast_from_values(&self, podcast_values: &std::collections::HashMap<String, String>, user_id: i32, _feed_cutoff: i32, username: Option<&str>, password: Option<&str>) -> AppResult<(i32, Option<i32>)> {
         // Convert HashMap values to PodcastValues struct
         let podcast_data = crate::handlers::podcasts::PodcastValues {
             user_id,
@@ -12793,7 +12892,7 @@ impl DatabasePool {
             .parse::<i64>()
             .unwrap_or(0);
 
-        self.add_podcast(&podcast_data, podcast_index_id, None, None).await
+        self.add_podcast(&podcast_data, podcast_index_id, username, password).await
     }
     
     // // Get podcast details - matches Python get_podcast_details function exactly
@@ -17288,7 +17387,7 @@ impl DatabasePool {
                 match self.get_podcast_values(feed_url, user_id, None, None).await {
                     Ok(podcast_values) => {
                         let feed_cutoff = 30; // Default cutoff like Python
-                        if let Err(e) = self.add_podcast_from_values(&podcast_values, user_id, feed_cutoff).await {
+                        if let Err(e) = self.add_podcast_from_values(&podcast_values, user_id, feed_cutoff, None, None).await {
                             eprintln!("Failed to add PinePods news feed for user {}: {}", user_id, e);
                             // Continue with other users even if one fails
                         }
@@ -20522,7 +20621,7 @@ impl DatabasePool {
         let podcast_values = self.get_podcast_values(feed_url, user_id, None, None).await?;
         
         // Add podcast using existing function
-        let _result = self.add_podcast_from_values(&podcast_values, user_id, 30).await?;
+        let _result = self.add_podcast_from_values(&podcast_values, user_id, 30, None, None).await?;
         
         tracing::info!("Successfully added podcast {} for user {}", feed_url, user_id);
         Ok(())
@@ -20704,6 +20803,213 @@ impl DatabasePool {
                 
                 tx.commit().await?;
                 Ok(true)
+            }
+        }
+    }
+
+    // Check if a user exists with the given username and email
+    pub async fn check_reset_user(&self, username: &str, email: &str) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"SELECT userid FROM "Users" WHERE username = $1 AND email = $2"#)
+                    .bind(username)
+                    .bind(email)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(result.is_some())
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("SELECT UserID FROM Users WHERE Username = ? AND Email = ?")
+                    .bind(username)
+                    .bind(email)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(result.is_some())
+            }
+        }
+    }
+
+    // Create a password reset code for the user
+    pub async fn reset_password_create_code(&self, user_email: &str) -> AppResult<Option<String>> {
+        use rand::Rng;
+        use chrono::{Utc, Duration};
+        
+        // Generate 6-character reset code with uppercase letters and digits
+        let reset_code: String = (0..6)
+            .map(|_| {
+                let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+                chars[rand::rng().random_range(0..chars.len())] as char
+            })
+            .collect();
+
+        let reset_expiry: sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc> = (Utc::now() + Duration::hours(1)).into();
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Check if user exists first
+                let user_exists = sqlx::query(r#"SELECT userid FROM "Users" WHERE email = $1"#)
+                    .bind(user_email)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if user_exists.is_none() {
+                    return Ok(None);
+                }
+
+                // Update reset code and expiry
+                let result = sqlx::query(r#"
+                    UPDATE "Users"
+                    SET reset_code = $1, reset_expiry = $2
+                    WHERE email = $3
+                "#)
+                    .bind(&reset_code)
+                    .bind(reset_expiry)
+                    .bind(user_email)
+                    .execute(pool)
+                    .await?;
+
+                if result.rows_affected() > 0 {
+                    Ok(Some(reset_code))
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                // Check if user exists first
+                let user_exists = sqlx::query("SELECT UserID FROM Users WHERE Email = ?")
+                    .bind(user_email)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if user_exists.is_none() {
+                    return Ok(None);
+                }
+
+                // Update reset code and expiry
+                let result = sqlx::query(r#"
+                    UPDATE Users
+                    SET Reset_Code = ?, Reset_Expiry = ?
+                    WHERE Email = ?
+                "#)
+                    .bind(&reset_code)
+                    .bind(reset_expiry)
+                    .bind(user_email)
+                    .execute(pool)
+                    .await?;
+
+                if result.rows_affected() > 0 {
+                    Ok(Some(reset_code))
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Remove reset code from user (used when email sending fails)
+    pub async fn reset_password_remove_code(&self, email: &str) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Users" SET reset_code = NULL, reset_expiry = NULL WHERE email = $1"#)
+                    .bind(email)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Users SET Reset_Code = NULL, Reset_Expiry = NULL WHERE Email = ?")
+                    .bind(email)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Verify reset code is valid and not expired
+    pub async fn verify_reset_code(&self, user_email: &str, reset_code: &str) -> AppResult<Option<bool>> {
+        use chrono::Utc;
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"SELECT reset_code, reset_expiry FROM "Users" WHERE email = $1"#)
+                    .bind(user_email)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = result {
+                    let stored_code: Option<String> = row.try_get("reset_code").ok();
+                    let expiry: Option<chrono::NaiveDateTime> = row.try_get("reset_expiry").ok();
+                    
+                    if let (Some(stored_code), Some(expiry)) = (stored_code.clone(), expiry.clone()) {
+                        // Convert NaiveDateTime to UTC for comparison
+                        let expiry_utc = expiry.and_utc();
+                        let is_valid = stored_code == reset_code && Utc::now() < expiry_utc;
+                        Ok(Some(is_valid))
+                    } else {
+                        Ok(Some(false)) // No reset code set
+                    }
+                } else {
+                    Ok(None) // User not found
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("SELECT Reset_Code, Reset_Expiry FROM Users WHERE Email = ?")
+                    .bind(user_email)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = result {
+                    let stored_code: Option<String> = row.try_get("Reset_Code").ok();
+                    let expiry: Option<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>> = row.try_get("Reset_Expiry").ok();
+                    
+                    if let (Some(stored_code), Some(expiry)) = (stored_code, expiry) {
+                        Ok(Some(stored_code == reset_code && Utc::now() < expiry))
+                    } else {
+                        Ok(Some(false)) // No reset code set
+                    }
+                } else {
+                    Ok(None) // User not found
+                }
+            }
+        }
+    }
+
+    // Reset password and clear reset code/expiry
+    pub async fn reset_password_prompt(&self, user_email: &str, hashed_password: &str) -> AppResult<Option<String>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"
+                    UPDATE "Users"
+                    SET hashed_pw = $1, reset_code = NULL, reset_expiry = NULL
+                    WHERE email = $2
+                "#)
+                    .bind(hashed_password)
+                    .bind(user_email)
+                    .execute(pool)
+                    .await?;
+                
+                if result.rows_affected() > 0 {
+                    Ok(Some("Password Reset Successfully".to_string()))
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(r#"
+                    UPDATE Users
+                    SET Hashed_PW = ?, Reset_Code = NULL, Reset_Expiry = NULL
+                    WHERE Email = ?
+                "#)
+                    .bind(hashed_password)
+                    .bind(user_email)
+                    .execute(pool)
+                    .await?;
+                
+                if result.rows_affected() > 0 {
+                    Ok(Some("Password Reset Successfully".to_string()))
+                } else {
+                    Ok(None)
+                }
             }
         }
     }

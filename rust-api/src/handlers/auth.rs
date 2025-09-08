@@ -130,6 +130,29 @@ pub struct OPMLImportRequest {
     pub user_id: i32,
 }
 
+#[derive(Deserialize)]
+pub struct ResetCodeRequest {
+    pub email: String,
+    pub username: String,
+}
+
+#[derive(Serialize)]
+pub struct ResetCodeResponse {
+    pub code_created: bool,
+}
+
+#[derive(Deserialize)]
+pub struct VerifyAndResetPasswordRequest {
+    pub reset_code: String,
+    pub email: String,
+    pub new_password: String,
+}
+
+#[derive(Serialize)]
+pub struct VerifyAndResetPasswordResponse {
+    pub message: String,
+}
+
 #[derive(Serialize)]
 pub struct CreateFirstAdminResponse {
     pub message: String,
@@ -1679,6 +1702,78 @@ pub async fn update_auto_complete_seconds(
         })))
     } else {
         Err(AppError::not_found("User not found"))
+    }
+}
+
+// Password reset endpoint - Always returns success for security (prevents username enumeration)
+pub async fn reset_password_create_code(
+    State(state): State<AppState>,
+    Json(request): Json<ResetCodeRequest>,
+) -> Result<Json<ResetCodeResponse>, AppError> {
+    // Get email settings to check if they're configured
+    let email_settings = state.db_pool.get_email_settings().await?;
+    if let Some(settings) = email_settings {
+        if settings.server_name == "default_server" {
+            // Even if email isn't configured, return success to prevent enumeration
+            return Ok(Json(ResetCodeResponse { code_created: true }));
+        }
+        
+        // Check if user exists with given username and email
+        let user_exists = state.db_pool.check_reset_user(&request.username.to_lowercase(), &request.email).await.unwrap_or(false);
+        
+        if user_exists {
+            // Create password reset code only if user exists
+            if let Ok(Some(code)) = state.db_pool.reset_password_create_code(&request.email).await {
+                // Create email payload
+                let email_request = crate::handlers::settings::SendEmailRequest {
+                    to_email: request.email.clone(),
+                    subject: "Pinepods Password Reset Code".to_string(),
+                    message: format!("Your password reset code is {}", code),
+                };
+                
+                // Try to send the email - if it fails, silently remove the reset code
+                if crate::handlers::settings::send_email_with_settings(&settings, &email_request).await.is_err() {
+                    let _ = state.db_pool.reset_password_remove_code(&request.email).await;
+                }
+            }
+        }
+        
+        // Always return success regardless of user existence or email sending result
+        Ok(Json(ResetCodeResponse { code_created: true }))
+    } else {
+        // Always return success even if email settings aren't configured
+        Ok(Json(ResetCodeResponse { code_created: true }))
+    }
+}
+
+// Verify reset code and reset password endpoint - matches Python api_verify_and_reset_password_route exactly  
+pub async fn verify_and_reset_password(
+    State(state): State<AppState>,
+    Json(request): Json<VerifyAndResetPasswordRequest>,
+) -> Result<Json<VerifyAndResetPasswordResponse>, AppError> {
+    // Verify the reset code
+    let code_valid = state.db_pool.verify_reset_code(&request.email, &request.reset_code).await?;
+    
+    match code_valid {
+        None => {
+            // User not found
+            return Err(AppError::not_found("User not found"));
+        }
+        Some(false) => {
+            // Code is invalid or expired
+            return Err(AppError::bad_request("Code is invalid"));
+        }
+        Some(true) => {
+            // Code is valid, proceed with password reset
+        }
+    }
+    
+    // Reset the password (the new_password should already be hashed by the frontend)
+    let message = state.db_pool.reset_password_prompt(&request.email, &request.new_password).await?;
+    
+    match message {
+        Some(msg) => Ok(Json(VerifyAndResetPasswordResponse { message: msg })),
+        None => Err(AppError::internal("Failed to reset password")),
     }
 }
 
