@@ -2273,6 +2273,41 @@ def migration_025_fix_people_table_columns(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("026", "limit_quick_listens_episodes", "Add MaxEpisodes limit to Quick Listens system playlist", requires=["012"])
+def migration_026_limit_quick_listens_episodes(conn, db_type: str):
+    """Add MaxEpisodes limit to Quick Listens system playlist"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting Quick Listens MaxEpisodes limit migration")
+        
+        if db_type == "postgresql":
+            # Update Quick Listens playlist to have maxepisodes = 1000
+            safe_execute_sql(cursor, '''
+                UPDATE "Playlists" 
+                SET maxepisodes = 1000 
+                WHERE name = 'Quick Listens' AND issystemplaylist = TRUE
+            ''', conn=conn)
+            logger.info("Updated Quick Listens system playlist maxepisodes=1000 (PostgreSQL)")
+        
+        else:  # MySQL
+            # Update Quick Listens playlist to have MaxEpisodes = 1000
+            safe_execute_sql(cursor, '''
+                UPDATE Playlists 
+                SET MaxEpisodes = 1000 
+                WHERE Name = 'Quick Listens' AND IsSystemPlaylist = TRUE
+            ''', conn=conn)
+            logger.info("Updated Quick Listens system playlist MaxEpisodes=1000 (MySQL)")
+        
+        logger.info("Quick Listens MaxEpisodes limit migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in Quick Listens MaxEpisodes limit migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 def register_all_migrations():
     """Register all migrations with the migration manager"""
     # Migrations are auto-registered via decorators

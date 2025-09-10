@@ -15827,7 +15827,7 @@ impl DatabasePool {
     async fn update_quick_listens_playlist_postgres(&self, pool: &Pool<Postgres>, playlist_id: i32) -> AppResult<i32> {
         tracing::info!("Updating Quick Listens playlist");
         
-        // Get all episodes under 15 minutes (900 seconds) and over 1 second from ALL podcasts
+        // Get shortest 1000 episodes under 15 minutes (900 seconds) and over 1 second from ALL podcasts
         let episodes = sqlx::query(r#"
             SELECT e.episodeid
             FROM "Episodes" e
@@ -15836,6 +15836,7 @@ impl DatabasePool {
             AND e.episodeduration <= 900
             AND e.completed = FALSE
             ORDER BY e.episodeduration ASC
+            LIMIT 1000
         "#)
             .fetch_all(pool)
             .await?;
@@ -15863,7 +15864,7 @@ impl DatabasePool {
     async fn update_quick_listens_playlist_mysql(&self, pool: &Pool<MySql>, playlist_id: i32) -> AppResult<i32> {
         tracing::info!("Updating Quick Listens playlist");
         
-        // Get all episodes under 15 minutes (900 seconds) and over 1 second from ALL podcasts
+        // Get shortest 1000 episodes under 15 minutes (900 seconds) and over 1 second from ALL podcasts
         let episodes = sqlx::query("
             SELECT e.EpisodeID
             FROM Episodes e
@@ -15872,6 +15873,7 @@ impl DatabasePool {
             AND e.EpisodeDuration <= 900
             AND e.Completed = FALSE
             ORDER BY e.EpisodeDuration ASC
+            LIMIT 1000
         ")
             .fetch_all(pool)
             .await?;
