@@ -2194,10 +2194,159 @@ def migration_023_add_missing_performance_indexes(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("025", "fix_people_table_columns", "Add missing PersonImg, PeopleDBID, and AssociatedPodcasts columns to existing People tables", requires=["009"])
+def migration_025_fix_people_table_columns(conn, db_type: str):
+    """Add missing columns to existing People tables for users who upgraded from older versions"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting People table columns fix migration")
+        
+        if db_type == "postgresql":
+            # Check if PersonImg column exists, if not add it
+            safe_execute_sql(cursor, '''
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'People' AND column_name = 'personimg'
+                    ) THEN
+                        ALTER TABLE "People" ADD COLUMN PersonImg TEXT;
+                    END IF;
+                END $$;
+            ''', conn=conn)
+            
+            # Check if PeopleDBID column exists, if not add it
+            safe_execute_sql(cursor, '''
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'People' AND column_name = 'peopledbid'
+                    ) THEN
+                        ALTER TABLE "People" ADD COLUMN PeopleDBID INT;
+                    END IF;
+                END $$;
+            ''', conn=conn)
+            
+            # Check if AssociatedPodcasts column exists, if not add it
+            safe_execute_sql(cursor, '''
+                DO $$ 
+                BEGIN 
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns 
+                        WHERE table_name = 'People' AND column_name = 'associatedpodcasts'
+                    ) THEN
+                        ALTER TABLE "People" ADD COLUMN AssociatedPodcasts TEXT;
+                    END IF;
+                END $$;
+            ''', conn=conn)
+            
+            logger.info("Added missing columns to People table (PostgreSQL)")
+        
+        else:  # MySQL
+            # For MySQL, use IF NOT EXISTS syntax or try-catch approach
+            try:
+                safe_execute_sql(cursor, 'ALTER TABLE People ADD COLUMN PersonImg TEXT', conn=conn)
+                logger.info("Added PersonImg column to People table (MySQL)")
+            except Exception:
+                logger.debug("PersonImg column already exists in People table (MySQL)")
+            
+            try:
+                safe_execute_sql(cursor, 'ALTER TABLE People ADD COLUMN PeopleDBID INT', conn=conn)
+                logger.info("Added PeopleDBID column to People table (MySQL)")
+            except Exception:
+                logger.debug("PeopleDBID column already exists in People table (MySQL)")
+                
+            try:
+                safe_execute_sql(cursor, 'ALTER TABLE People ADD COLUMN AssociatedPodcasts TEXT', conn=conn)
+                logger.info("Added AssociatedPodcasts column to People table (MySQL)")
+            except Exception:
+                logger.debug("AssociatedPodcasts column already exists in People table (MySQL)")
+        
+        logger.info("People table columns fix migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in People table columns fix migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("026", "limit_quick_listens_episodes", "Add MaxEpisodes limit to Quick Listens system playlist", requires=["012"])
+def migration_026_limit_quick_listens_episodes(conn, db_type: str):
+    """Add MaxEpisodes limit to Quick Listens system playlist"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting Quick Listens MaxEpisodes limit migration")
+        
+        if db_type == "postgresql":
+            # Update Quick Listens playlist to have maxepisodes = 1000
+            safe_execute_sql(cursor, '''
+                UPDATE "Playlists" 
+                SET maxepisodes = 1000 
+                WHERE name = 'Quick Listens' AND issystemplaylist = TRUE
+            ''', conn=conn)
+            logger.info("Updated Quick Listens system playlist maxepisodes=1000 (PostgreSQL)")
+        
+        else:  # MySQL
+            # Update Quick Listens playlist to have MaxEpisodes = 1000
+            safe_execute_sql(cursor, '''
+                UPDATE Playlists 
+                SET MaxEpisodes = 1000 
+                WHERE Name = 'Quick Listens' AND IsSystemPlaylist = TRUE
+            ''', conn=conn)
+            logger.info("Updated Quick Listens system playlist MaxEpisodes=1000 (MySQL)")
+        
+        logger.info("Quick Listens MaxEpisodes limit migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in Quick Listens MaxEpisodes limit migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 def register_all_migrations():
     """Register all migrations with the migration manager"""
     # Migrations are auto-registered via decorators
     logger.info("All migrations registered")
+
+
+@register_migration("024", "fix_quick_listens_min_duration", "Update Quick Listens playlist to exclude 0-duration episodes", requires=["012"])
+def migration_024_fix_quick_listens_min_duration(conn, db_type: str):
+    """Update Quick Listens system playlist to exclude episodes with 0 duration"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting Quick Listens min duration fix migration")
+        
+        if db_type == "postgresql":
+            # Update Quick Listens playlist to have min_duration = 1 second
+            safe_execute_sql(cursor, '''
+                UPDATE "Playlists" 
+                SET minduration = 1 
+                WHERE name = 'Quick Listens' AND issystemplaylist = TRUE
+            ''', conn=conn)
+            logger.info("Updated Quick Listens system playlist minduration=1 (PostgreSQL)")
+        
+        else:  # MySQL
+            # Update Quick Listens playlist to have MinDuration = 1 second
+            safe_execute_sql(cursor, '''
+                UPDATE Playlists 
+                SET MinDuration = 1 
+                WHERE Name = 'Quick Listens' AND IsSystemPlaylist = TRUE
+            ''', conn=conn)
+            logger.info("Updated Quick Listens system playlist MinDuration=1 (MySQL)")
+        
+        logger.info("Quick Listens min duration fix migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in Quick Listens min duration fix migration: {e}")
+        raise
+    finally:
+        cursor.close()
 
 
 if __name__ == "__main__":

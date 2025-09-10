@@ -275,6 +275,8 @@ fn create_data_routes() -> Router<AppState> {
         .route("/get_email_settings", get(handlers::settings::get_email_settings))
         .route("/send_test_email", post(handlers::settings::send_test_email))
         .route("/send_email", post(handlers::settings::send_email))
+        .route("/reset_password_create_code", post(handlers::auth::reset_password_create_code))
+        .route("/verify_and_reset_password", post(handlers::auth::verify_and_reset_password))
         .route("/get_api_info/{user_id}", get(handlers::settings::get_api_info))
         .route("/create_api_key", post(handlers::settings::create_api_key))
         .route("/delete_api_key", delete(handlers::settings::delete_api_key))

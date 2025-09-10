@@ -41,6 +41,7 @@ pub fn login() -> Html {
     let forgot_email = use_state(|| "".to_string());
     let forgot_username = use_state(|| "".to_string());
     let reset_password = use_state(|| "".to_string());
+    let reset_password_confirm = use_state(|| "".to_string());
     let reset_code = use_state(|| "".to_string());
     let new_password = use_state(|| "".to_string());
     let email = use_state(|| "".to_string());
@@ -618,6 +619,7 @@ pub fn login() -> Html {
         Default,
         CreateUser,
         ForgotPassword,
+        ForgotPasswordLoading,
         TimeZone,
         MFAPrompt,
         EnterCode,
@@ -903,7 +905,10 @@ pub fn login() -> Html {
             let server_name = server_name.trim_end_matches('/').to_string();
             let dispatch = dispatch_wasm.clone();
             let page_state = page_state.clone();
-            page_state.set(PageState::Default);
+            
+            // Show loading state immediately
+            page_state.set(PageState::ForgotPasswordLoading);
+            
             let reset_code_request = Some(ResetCodePayload {
                 username: forgot_username.clone(),
                 email: forgot_email.clone(),
@@ -913,24 +918,13 @@ pub fn login() -> Html {
                 match call_reset_password_create_code(server_name, &reset_code_request.unwrap())
                     .await
                 {
-                    Ok(success) => {
-                        if success {
-                            page_state.set(PageState::EnterCode);
-                        } else {
-                            page_state.set(PageState::Default);
-                            dispatch.reduce_mut(|state| {
-                                state.error_message =
-                                    Option::from(format!("Error Sending Reset Email"))
-                            });
-                        }
+                    Ok(_success) => {
+                        // Always show success - don't reveal if user exists or not
+                        page_state.set(PageState::EnterCode);
                     }
-                    Err(e) => {
-                        page_state.set(PageState::Default);
-                        let formatted_error = format_error_message(&e.to_string());
-                        dispatch.reduce_mut(|state| {
-                            state.error_message =
-                                Option::from(format!("Error sending reset: {:?}", formatted_error))
-                        });
+                    Err(_e) => {
+                        // Still show success for security - prevents user enumeration 
+                        page_state.set(PageState::EnterCode);
                     }
                 }
             });
@@ -993,21 +987,54 @@ pub fn login() -> Html {
         })
     };
 
+    let on_reset_password_confirm_change = {
+        let reset_password_confirm = reset_password_confirm.clone();
+        Callback::from(move |e: InputEvent| {
+            reset_password_confirm.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
+        })
+    };
+
     let on_reset_code_submit = {
         let page_state = page_state.clone();
         let reset_password = reset_password.clone().to_string();
+        let reset_password_confirm = reset_password_confirm.clone().to_string();
         let forgot_email = forgot_email.clone().to_string();
         let reset_code = reset_code.clone().to_string();
         let dispatch_wasm = dispatch.clone();
         Callback::from(move |_e: yew::events::MouseEvent| {
+            let dispatch = dispatch_wasm.clone();
+            let page_state = page_state.clone();
+            
+            // Validate password confirmation
+            if reset_password.is_empty() || reset_password_confirm.is_empty() {
+                dispatch.reduce_mut(|state| {
+                    state.error_message = Option::from("Please fill in both password fields".to_string());
+                });
+                return;
+            }
+            
+            if reset_password != reset_password_confirm {
+                dispatch.reduce_mut(|state| {
+                    state.error_message = Option::from("Passwords do not match".to_string());
+                });
+                return;
+            }
+            
+            if reset_code.is_empty() {
+                dispatch.reduce_mut(|state| {
+                    state.error_message = Option::from("Please enter the reset code from your email".to_string());
+                });
+                return;
+            }
+            
             let window = window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location.href().expect("should have a href");
             let server_name = server_name.trim_end_matches('/').to_string();
-            let dispatch = dispatch_wasm.clone();
-            let page_state = page_state.clone();
-            page_state.set(PageState::Default);
-            // let forgot__deref = (*forgot_username.clone();
+            
             match encode_password(&reset_password) {
                 Ok(hash_pw) => {
                     let reset_password_request = Some(ResetForgotPasswordPayload {
@@ -1025,22 +1052,18 @@ pub fn login() -> Html {
                             Ok(success) => {
                                 if success.message == "Password Reset Successfully" {
                                     page_state.set(PageState::Default);
-                                } else {
-                                    page_state.set(PageState::Default);
                                     dispatch.reduce_mut(|state| {
-                                        state.error_message =
-                                            Option::from(format!("Error Sending Reset Email"))
+                                        state.info_message = Option::from("Password reset successfully! Please log in with your new password.".to_string());
+                                    });
+                                } else {
+                                    dispatch.reduce_mut(|state| {
+                                        state.error_message = Option::from("Invalid reset code or code has expired. Please request a new reset code.".to_string());
                                     });
                                 }
                             }
-                            Err(e) => {
-                                page_state.set(PageState::Default);
-                                let formatted_error = format_error_message(&e.to_string());
+                            Err(_e) => {
                                 dispatch.reduce_mut(|state| {
-                                    state.error_message = Option::from(format!(
-                                        "Error Resetting Password: {:?}",
-                                        formatted_error
-                                    ))
+                                    state.error_message = Option::from("Invalid reset code or code has expired. Please request a new reset code.".to_string());
                                 });
                             }
                         }
@@ -1078,12 +1101,38 @@ pub fn login() -> Html {
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
                             <p class="text-m font-semibold">
-                            {"An email has been sent to your email address. Please enter a new password and the code contained within the email to reset your password."}
+                            {"If an account exists, a reset code has been sent to your email. Please enter the code and your new password."}
                             </p>
-                            <input oninput={on_reset_code_change} type="text" id="reset_code" name="reset_code" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="Enter Password Reset Code" />
-                            <input oninput={on_reset_password_change} type="text" id="reset_password" name="reset_password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="Enter your new password" />
-                            <button type="submit" onclick={on_reset_code_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
+                            <div>
+                                <label for="reset_code" class="block mb-2 text-sm font-medium">{"Reset Code"}</label>
+                                <input oninput={on_reset_code_change} type="text" id="reset_code" name="reset_code" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="Enter Password Reset Code" required=true />
+                            </div>
+                            <div>
+                                <label for="reset_password" class="block mb-2 text-sm font-medium">{"New Password"}</label>
+                                <input oninput={on_reset_password_change} type="password" id="reset_password" name="reset_password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="Enter your new password" required=true />
+                            </div>
+                            <div>
+                                <label for="reset_password_confirm" class="block mb-2 text-sm font-medium">{"Confirm New Password"}</label>
+                                <input oninput={on_reset_password_confirm_change} type="password" id="reset_password_confirm" name="reset_password_confirm" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="Confirm your new password" required=true />
+                            </div>
+                            <button type="submit" onclick={on_reset_code_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Reset Password"}</button>
                         </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    };
+
+    let forgot_password_loading_modal = html! {
+        <div id="forgot-password-loading-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
+            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow">
+                <div class="modal-container relative rounded-lg shadow">
+                    <div class="flex items-center justify-center p-8">
+                        <div class="text-center">
+                            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto mb-4"></div>
+                            <h3 class="text-lg font-semibold mb-2">{"Sending Reset Code..."}</h3>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">{"Please wait while we process your request."}</p>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1619,6 +1668,7 @@ pub fn login() -> Html {
             match *page_state {
             PageState::CreateUser => create_user_modal,
             PageState::ForgotPassword => forgot_password_modal,
+            PageState::ForgotPasswordLoading => forgot_password_loading_modal,
             PageState::TimeZone => time_zone_setup_modal,
             PageState::MFAPrompt => mfa_code_modal,
             PageState::EnterCode => enter_code_modal,

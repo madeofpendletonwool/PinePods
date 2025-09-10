@@ -562,7 +562,7 @@ pub async fn save_email_settings(
     }
 
     state.db_pool.save_email_settings(&request.email_settings).await?;
-    Ok(Json(serde_json::json!({ "message": "Email settings saved." })))
+    Ok(Json(serde_json::json!({ "detail": "Email settings saved." })))
 }
 
 // Email settings response struct
@@ -647,6 +647,133 @@ pub async fn send_test_email(
     Ok(Json(serde_json::json!({ "email_status": email_status })))
 }
 
+// HTML email template functions
+async fn read_logo_as_base64() -> Result<String, AppError> {
+    use std::path::Path;
+    use tokio::fs;
+    
+    let logo_path = Path::new("/var/www/html/static/assets/favicon.png");
+    
+    if !logo_path.exists() {
+        return Err(AppError::internal("Logo file not found"));
+    }
+    
+    let logo_bytes = fs::read(logo_path).await
+        .map_err(|e| AppError::internal(&format!("Failed to read logo file: {}", e)))?;
+    
+    let base64_logo = base64::encode(&logo_bytes);
+    Ok(base64_logo)
+}
+
+fn create_html_email_template(subject: &str, content: &str, logo_base64: &str) -> String {
+    format!(r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{}</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fa;
+            color: #333333;
+        }}
+        .email-container {{
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }}
+        .header {{
+            background: linear-gradient(135deg, #539e8a 0%, #4a8b7a 100%);
+            padding: 32px 24px;
+            text-align: center;
+        }}
+        .logo {{
+            width: 64px;
+            height: 64px;
+            margin: 0 auto 16px;
+            display: block;
+            border-radius: 12px;
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 8px;
+        }}
+        .header h1 {{
+            color: #ffffff;
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }}
+        .content {{
+            padding: 32px 24px;
+            line-height: 1.6;
+        }}
+        .content h2 {{
+            color: #539e8a;
+            margin: 0 0 16px 0;
+            font-size: 22px;
+            font-weight: 600;
+        }}
+        .content p {{
+            margin: 0 0 16px 0;
+            font-size: 16px;
+        }}
+        .code-block {{
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 16px;
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 18px;
+            font-weight: 600;
+            color: #539e8a;
+            text-align: center;
+            margin: 24px 0;
+            letter-spacing: 2px;
+        }}
+        .footer {{
+            background-color: #f8f9fa;
+            padding: 24px;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+        }}
+        .footer p {{
+            margin: 0;
+            font-size: 14px;
+            color: #6c757d;
+        }}
+        .footer a {{
+            color: #539e8a;
+            text-decoration: none;
+        }}
+        .footer a:hover {{
+            text-decoration: underline;
+        }}
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <img src="data:image/png;base64,{}" alt="PinePods Logo" class="logo">
+            <h1>PinePods</h1>
+        </div>
+        <div class="content">
+            {}
+        </div>
+        <div class="footer">
+            <p>This email was sent from your PinePods server.</p>
+            <p>Visit <a href="https://github.com/madeofpendletonwool/PinePods">PinePods on GitHub</a> for more information.</p>
+        </div>
+    </div>
+</body>
+</html>"#, subject, logo_base64, content)
+}
+
 // Internal email sending function using lettre
 async fn send_email_internal(request: &SendTestEmailRequest) -> Result<String, AppError> {
     use lettre::{
@@ -660,15 +787,27 @@ async fn send_email_internal(request: &SendTestEmailRequest) -> Result<String, A
     let port: u16 = request.server_port.parse()
         .map_err(|_| AppError::bad_request("Invalid server port"))?;
 
-    // Create email message
+    // Read logo and create HTML content
+    let logo_base64 = read_logo_as_base64().await.unwrap_or_default();
+    let html_content = format!(r#"
+        <h2>📧 Test Email</h2>
+        <p>This is a test email from your PinePods server to verify your email configuration is working correctly.</p>
+        <p><strong>Your message:</strong></p>
+        <p style="background-color: #f8f9fa; padding: 16px; border-radius: 6px; border-left: 4px solid #539e8a;">{}</p>
+        <p>If you received this email, your email settings are configured properly! 🎉</p>
+    "#, request.message);
+    
+    let html_body = create_html_email_template("Test Email", &html_content, &logo_base64);
+
+    // Create email message with HTML
     let email = Message::builder()
         .from(request.from_email.parse()
             .map_err(|_| AppError::bad_request("Invalid from email"))?)
         .to(request.to_email.parse()
             .map_err(|_| AppError::bad_request("Invalid to email"))?)
-        .subject("Test Email")
-        .header(ContentType::TEXT_PLAIN)
-        .body(request.message.clone())
+        .subject("PinePods - Test Email")
+        .header(ContentType::TEXT_HTML)
+        .body(html_body)
         .map_err(|e| AppError::internal(&format!("Failed to build email: {}", e)))?;
 
     // Configure SMTP transport based on encryption
@@ -733,8 +872,29 @@ async fn send_email_internal(request: &SendTestEmailRequest) -> Result<String, A
     let email_future = mailer.send(email);
     match timeout(Duration::from_secs(30), email_future).await {
         Ok(Ok(_)) => Ok("Email sent successfully".to_string()),
-        Ok(Err(e)) => Err(AppError::internal(&format!("Failed to send email: {}", e))),
-        Err(_) => Err(AppError::internal("Email sending timed out after 30 seconds. Please check your SMTP server settings.".to_string())),
+        Ok(Err(e)) => {
+            let error_msg = format!("{}", e);
+            
+            // Provide more helpful error messages for common issues
+            if error_msg.contains("InvalidContentType") || error_msg.contains("corrupt message") {
+                let suggestion = if port == 587 {
+                    "Port 587 typically requires StartTLS encryption, not SSL/TLS. Try changing encryption to 'StartTLS'."
+                } else if port == 465 {
+                    "Port 465 typically requires SSL/TLS encryption."
+                } else {
+                    "This may be a TLS/SSL configuration issue. Verify your encryption settings match your SMTP server requirements."
+                };
+                Err(AppError::internal(&format!("SMTP connection failed: {}. {}. Original error: {}", 
+                    "TLS/SSL handshake error", suggestion, error_msg)))
+            } else if error_msg.contains("authentication") || error_msg.contains("auth") {
+                Err(AppError::internal(&format!("SMTP authentication failed: {}. Please verify your username and password.", error_msg)))
+            } else if error_msg.contains("connection") || error_msg.contains("timeout") {
+                Err(AppError::internal(&format!("SMTP connection failed: {}. Please verify server name and port.", error_msg)))
+            } else {
+                Err(AppError::internal(&format!("Failed to send email: {}", error_msg)))
+            }
+        },
+        Err(_) => Err(AppError::internal("Email sending timed out after 30 seconds. Please check your SMTP server settings and network connectivity.".to_string())),
     }
 }
 
@@ -767,7 +927,7 @@ pub async fn send_email(
 }
 
 // Send email using database settings
-async fn send_email_with_settings(
+pub async fn send_email_with_settings(
     settings: &EmailSettingsResponse,
     request: &SendEmailRequest,
 ) -> Result<String, AppError> {
@@ -778,15 +938,49 @@ async fn send_email_with_settings(
     };
     use tokio::time::{timeout, Duration};
 
-    // Create email message
+    // Read logo and create HTML content
+    let logo_base64 = read_logo_as_base64().await.unwrap_or_default();
+    
+    // Check if this is a password reset email and format accordingly
+    let (html_content, final_subject) = if request.subject.contains("Password Reset") {
+        // Extract the reset code from the message
+        let reset_code = request.message.trim_start_matches("Your password reset code is ");
+        let content = format!(r#"
+            <h2>🔐 Password Reset Request</h2>
+            <p>You have requested a password reset for your PinePods account.</p>
+            <p>Please use the following code to reset your password:</p>
+            <div class="code-block">{}</div>
+            <p><strong>Important:</strong></p>
+            <ul style="margin: 16px 0; padding-left: 20px;">
+                <li>This code will expire in <strong>10 minutes</strong></li>
+                <li>Only use this code if you requested a password reset</li>
+                <li>If you didn't request this, you can safely ignore this email</li>
+            </ul>
+            <p>For security reasons, never share this code with anyone.</p>
+        "#, reset_code);
+        (content, "PinePods - Password Reset Code".to_string())
+    } else {
+        // For other emails, wrap the message content
+        let content = format!(r#"
+            <h2>📧 {}</h2>
+            <div style="background-color: #f8f9fa; padding: 16px; border-radius: 6px; border-left: 4px solid #539e8a;">
+                {}
+            </div>
+        "#, request.subject, request.message.replace("\n", "<br>"));
+        (content, request.subject.clone())
+    };
+    
+    let html_body = create_html_email_template(&final_subject, &html_content, &logo_base64);
+
+    // Create email message with HTML
     let email = Message::builder()
         .from(settings.from_email.parse()
             .map_err(|_| AppError::bad_request("Invalid from email in settings"))?)
         .to(request.to_email.parse()
             .map_err(|_| AppError::bad_request("Invalid to email"))?)
-        .subject(&request.subject)
-        .header(ContentType::TEXT_PLAIN)
-        .body(request.message.clone())
+        .subject(&final_subject)
+        .header(ContentType::TEXT_HTML)
+        .body(html_body)
         .map_err(|e| AppError::internal(&format!("Failed to build email: {}", e)))?;
 
     // Configure SMTP transport based on encryption
@@ -851,8 +1045,30 @@ async fn send_email_with_settings(
     let email_future = mailer.send(email);
     match timeout(Duration::from_secs(30), email_future).await {
         Ok(Ok(_)) => Ok("Email sent successfully".to_string()),
-        Ok(Err(e)) => Err(AppError::internal(&format!("Failed to send email: {}", e))),
-        Err(_) => Err(AppError::internal("Email sending timed out after 30 seconds. Please check your SMTP server settings.".to_string())),
+        Ok(Err(e)) => {
+            let error_msg = format!("{}", e);
+            let port = settings.server_port as u16;
+            
+            // Provide more helpful error messages for common issues
+            if error_msg.contains("InvalidContentType") || error_msg.contains("corrupt message") {
+                let suggestion = if port == 587 {
+                    "Port 587 typically requires StartTLS encryption, not SSL/TLS. Try changing encryption to 'StartTLS'."
+                } else if port == 465 {
+                    "Port 465 typically requires SSL/TLS encryption."
+                } else {
+                    "This may be a TLS/SSL configuration issue. Verify your encryption settings match your SMTP server requirements."
+                };
+                Err(AppError::internal(&format!("SMTP connection failed: {}. {}. Original error: {}", 
+                    "TLS/SSL handshake error", suggestion, error_msg)))
+            } else if error_msg.contains("authentication") || error_msg.contains("auth") {
+                Err(AppError::internal(&format!("SMTP authentication failed: {}. Please verify your username and password.", error_msg)))
+            } else if error_msg.contains("connection") || error_msg.contains("timeout") {
+                Err(AppError::internal(&format!("SMTP connection failed: {}. Please verify server name and port.", error_msg)))
+            } else {
+                Err(AppError::internal(&format!("Failed to send email: {}", error_msg)))
+            }
+        },
+        Err(_) => Err(AppError::internal("Email sending timed out after 30 seconds. Please check your SMTP server settings and network connectivity.".to_string())),
     }
 }
 
@@ -2157,7 +2373,9 @@ pub async fn add_custom_podcast(
     let (podcast_id, _) = state.db_pool.add_podcast_from_values(
         &podcast_values,
         request.user_id,
-        30
+        30,
+        request.username.as_deref(),
+        request.password.as_deref()
     ).await?;
 
     // Get complete podcast details for response
@@ -2208,7 +2426,9 @@ pub async fn import_opml(
                     let _ = state_clone.db_pool.add_podcast_from_values(
                         &podcast_values,
                         user_id,
-                        30  // feed_cutoff
+                        30,  // feed_cutoff
+                        None, // username
+                        None  // password
                     ).await;
                 }
                 Err(e) => {

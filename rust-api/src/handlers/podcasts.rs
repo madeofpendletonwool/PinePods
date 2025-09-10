@@ -2219,10 +2219,11 @@ pub async fn fetch_podcast_feed(
     Query(query): Query<FetchPodcastFeedQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    let _user_id = validate_api_key(&state, &api_key).await?;
+    validate_api_key(&state, &api_key).await?;
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     // Parse feed and extract episodes using feed-rs (same logic as add_episodes but without DB insertion)
-    let episodes = state.db_pool.parse_feed_episodes(&query.podcast_feed).await
+    let episodes = state.db_pool.parse_feed_episodes(&query.podcast_feed, user_id).await
         .map_err(|e| AppError::external_error(&format!("Failed to parse podcast feed: {}", e)))?;
     
     Ok(Json(serde_json::json!({ "episodes": episodes })))
