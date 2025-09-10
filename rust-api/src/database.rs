@@ -4491,8 +4491,8 @@ impl DatabasePool {
         // Fetch the RSS feed
         let content = self.try_fetch_feed(feed_url, username, password).await?;
         
-        // Parse the RSS feed
-        let episodes = self.parse_rss_feed(&content, podcast_id, artwork_url).await?;
+        // Parse the RSS feed - enable duration estimation for initial podcast adding
+        let episodes = self.parse_rss_feed_with_options(&content, podcast_id, artwork_url, true).await?;
         
         let mut first_episode_id = None;
         
@@ -4600,7 +4600,7 @@ impl DatabasePool {
         
         let mut new_episodes = Vec::new();
         
-        for episode in episodes {
+        for mut episode in episodes {
             // Check if episode already exists
             let exists = match self {
                 DatabasePool::Postgres(pool) => {
@@ -4623,6 +4623,21 @@ impl DatabasePool {
             
             if exists {
                 continue; // Episode already exists, skip it
+            }
+            
+            // This is a NEW episode - estimate duration if missing
+            if episode.duration == 0 {
+                let audio_url = &episode.url;
+                if !audio_url.is_empty() {
+                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                        if let Some(estimated_duration) = tokio::task::block_in_place(|| {
+                            handle.block_on(self.estimate_duration_from_audio_url_async(audio_url))
+                        }) {
+                            episode.duration = estimated_duration;
+                            println!("Estimated duration {} seconds for new episode: {}", estimated_duration, episode.title);
+                        }
+                    }
+                }
             }
             
             // Insert new episode
@@ -5031,6 +5046,16 @@ impl DatabasePool {
         _podcast_id: i32,
         artwork_url: &str,
     ) -> AppResult<Vec<EpisodeData>> {
+        self.parse_rss_feed_with_options(content, _podcast_id, artwork_url, false).await
+    }
+    
+    async fn parse_rss_feed_with_options(
+        &self,
+        content: &str,
+        _podcast_id: i32,
+        artwork_url: &str,
+        estimate_missing_durations: bool,
+    ) -> AppResult<Vec<EpisodeData>> {
         use chrono::Utc;
         use feed_rs::parser;
         use std::collections::HashMap;
@@ -5144,7 +5169,7 @@ impl DatabasePool {
             // Debug what we're passing to duration parsing
             
             // Apply all the Python-style parsing logic with ALL fallbacks
-            self.apply_python_style_parsing(&mut episode, &episode_data, artwork_url);
+            self.apply_python_style_parsing(&mut episode, &episode_data, artwork_url, estimate_missing_durations);
             
             if !episode.title.is_empty() {
                 episodes.push(episode);
@@ -5155,7 +5180,7 @@ impl DatabasePool {
     }
     
     // Apply Python-style parsing logic with all fallbacks
-    fn apply_python_style_parsing(&self, episode: &mut EpisodeData, data: &HashMap<String, String>, default_artwork: &str) {
+    fn apply_python_style_parsing(&self, episode: &mut EpisodeData, data: &HashMap<String, String>, default_artwork: &str, estimate_missing_durations: bool) {
         // Title - REQUIRED field with robust cleaning
         if let Some(title) = data.get("title") {
             episode.title = self.clean_and_normalize_title(title);
@@ -5180,7 +5205,7 @@ impl DatabasePool {
         episode.pub_date = self.parse_publication_date_comprehensive(data);
         
         // Duration parsing with extensive fallbacks like Python
-        episode.duration = self.parse_duration_comprehensive(data);
+        episode.duration = self.parse_duration_comprehensive(data, estimate_missing_durations);
     }
     
     // Clean and normalize titles like Python version
@@ -5558,7 +5583,7 @@ impl DatabasePool {
     }
     
     // Comprehensive duration parsing matching Python logic
-    fn parse_duration_comprehensive(&self, data: &HashMap<String, String>) -> i32 {
+    fn parse_duration_comprehensive(&self, data: &HashMap<String, String>, estimate_missing_durations: bool) -> i32 {
         // Priority order like Python version
         let duration_candidates = [
             data.get("itunes:duration"),
@@ -5585,7 +5610,21 @@ impl DatabasePool {
             }
         }
         
-        // Default duration
+        // Only estimate duration from HTTP if we're adding a new episode AND the flag is enabled
+        if estimate_missing_durations {
+            if let Some(audio_url) = data.get("enclosure_url") {
+                // Check if we're in an async context and can make the HTTP request
+                if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                    if let Some(estimated_duration) = tokio::task::block_in_place(|| {
+                        handle.block_on(self.estimate_duration_from_audio_url_async(audio_url))
+                    }) {
+                        return estimated_duration;
+                    }
+                }
+            }
+        }
+        
+        // Default to 0 if no duration can be determined
         0
     }
     
@@ -5688,6 +5727,52 @@ impl DatabasePool {
         let bitrate_kbps = 128;
         let bytes_per_second = (bitrate_kbps * 1000) / 8;
         (file_size_bytes / bytes_per_second) as i32
+    }
+    
+    // NEW: Estimate duration by fetching HTTP HEAD request to get Content-Length
+    // This is a fallback for when RSS feeds don't include duration or file size
+    async fn estimate_duration_from_audio_url_async(&self, audio_url: &str) -> Option<i32> {
+        println!("Attempting to estimate duration from audio URL: {}", audio_url);
+        
+        // Build HTTP client with timeout to avoid hanging
+        let client = match reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .timeout(std::time::Duration::from_secs(10)) // Short timeout
+            .build()
+        {
+            Ok(client) => client,
+            Err(e) => {
+                println!("Failed to build HTTP client for duration estimation: {}", e);
+                return None;
+            }
+        };
+        
+        // Make HEAD request to get Content-Length without downloading the file
+        match client.head(audio_url).send().await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    if let Some(content_length) = response.headers().get("content-length") {
+                        if let Ok(content_length_str) = content_length.to_str() {
+                            if let Ok(file_size) = content_length_str.parse::<i64>() {
+                                if file_size > 1_000_000 { // > 1MB, reasonable audio file
+                                    let estimated_duration = self.estimate_duration_from_file_size(file_size);
+                                    println!("Estimated duration from file size {}: {} seconds", file_size, estimated_duration);
+                                    return Some(estimated_duration);
+                                }
+                            }
+                        }
+                    }
+                    println!("No Content-Length header found in response");
+                } else {
+                    println!("HEAD request failed with status: {}", response.status());
+                }
+            }
+            Err(e) => {
+                println!("HTTP HEAD request failed for {}: {}", audio_url, e);
+            }
+        }
+        
+        None
     }
 
 
@@ -12519,10 +12604,13 @@ impl DatabasePool {
         
         // Build HTTP client with proper configuration for container environment
         let client = reqwest::Client::builder()
-            .user_agent("PinePods/1.0")
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .map_err(|e| AppError::external_error(&format!("Failed to build HTTP client: {}", e)))?;
+            .map_err(|e| {
+                println!("Failed to build HTTP client in get_podcast_values: {}", e);
+                AppError::Http(e)
+            })?;
         
         let mut request = client.get(feed_url);
         
@@ -12538,12 +12626,12 @@ impl DatabasePool {
         let response = request.send().await
             .map_err(|e| {
                 println!("HTTP request failed for {}: {}", feed_url, e);
-                AppError::external_error(&format!("HTTP request failed: {}", e))
+                AppError::Http(e)
             })?;
         
         println!("Received response with status: {}", response.status());
         if !response.status().is_success() {
-            return Err(AppError::external_error(&format!("HTTP request returned error status: {}", response.status())));
+            return Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", response.status())));
         }
         
         let content = response.text().await?;
@@ -15053,6 +15141,9 @@ impl DatabasePool {
                 } else if playlist_name == "Almost Done" && is_system_playlist {
                     // Special handling for Almost Done  
                     self.update_almost_done_playlist_postgres(pool, playlist_id).await?
+                } else if playlist_name == "Quick Listens" && is_system_playlist {
+                    // Special handling for Quick Listens
+                    self.update_quick_listens_playlist_postgres(pool, playlist_id).await?
                 } else {
                     // Standard playlist query building
                     self.build_and_execute_playlist_query_postgres(pool, &playlist).await?
@@ -15098,6 +15189,9 @@ impl DatabasePool {
                 } else if playlist_name == "Almost Done" && is_system_playlist {
                     // Special handling for Almost Done
                     self.update_almost_done_playlist_mysql(pool, playlist_id).await?
+                } else if playlist_name == "Quick Listens" && is_system_playlist {
+                    // Special handling for Quick Listens
+                    self.update_quick_listens_playlist_mysql(pool, playlist_id).await?
                 } else {
                     // Standard playlist query building
                     self.build_and_execute_playlist_query_mysql(pool, &playlist).await?
@@ -15727,6 +15821,79 @@ impl DatabasePool {
         
         tracing::info!("Almost Done playlist updated with {} episodes", added_episodes.len());
         Ok(added_episodes.len() as i32)
+    }
+
+    // Update Quick Listens playlist - episodes under 15 minutes from ALL users' podcasts
+    async fn update_quick_listens_playlist_postgres(&self, pool: &Pool<Postgres>, playlist_id: i32) -> AppResult<i32> {
+        tracing::info!("Updating Quick Listens playlist");
+        
+        // Get all episodes under 15 minutes (900 seconds) and over 1 second from ALL podcasts
+        let episodes = sqlx::query(r#"
+            SELECT e.episodeid
+            FROM "Episodes" e
+            JOIN "Podcasts" p ON e.podcastid = p.podcastid
+            WHERE e.episodeduration >= 1
+            AND e.episodeduration <= 900
+            AND e.completed = FALSE
+            ORDER BY e.episodeduration ASC
+        "#)
+            .fetch_all(pool)
+            .await?;
+        
+        let mut position = 1;
+        
+        // Add episodes to playlist
+        for episode in episodes {
+            let episode_id: i32 = episode.try_get("episodeid")?;
+            sqlx::query(r#"INSERT INTO "PlaylistContents" (playlistid, episodeid, position) VALUES ($1, $2, $3)"#)
+                .bind(playlist_id)
+                .bind(episode_id)
+                .bind(position)
+                .execute(pool)
+                .await?;
+            
+            position += 1;
+        }
+        
+        let episode_count = position - 1;
+        tracing::info!("Quick Listens playlist updated with {} episodes", episode_count);
+        Ok(episode_count)
+    }
+
+    async fn update_quick_listens_playlist_mysql(&self, pool: &Pool<MySql>, playlist_id: i32) -> AppResult<i32> {
+        tracing::info!("Updating Quick Listens playlist");
+        
+        // Get all episodes under 15 minutes (900 seconds) and over 1 second from ALL podcasts
+        let episodes = sqlx::query("
+            SELECT e.EpisodeID
+            FROM Episodes e
+            JOIN Podcasts p ON e.PodcastID = p.PodcastID
+            WHERE e.EpisodeDuration >= 1
+            AND e.EpisodeDuration <= 900
+            AND e.Completed = FALSE
+            ORDER BY e.EpisodeDuration ASC
+        ")
+            .fetch_all(pool)
+            .await?;
+        
+        let mut position = 1;
+        
+        // Add episodes to playlist
+        for episode in episodes {
+            let episode_id: i32 = episode.try_get("EpisodeID")?;
+            sqlx::query("INSERT INTO PlaylistContents (PlaylistID, EpisodeID, Position) VALUES (?, ?, ?)")
+                .bind(playlist_id)
+                .bind(episode_id)
+                .bind(position)
+                .execute(pool)
+                .await?;
+            
+            position += 1;
+        }
+        
+        let episode_count = position - 1;
+        tracing::info!("Quick Listens playlist updated with {} episodes", episode_count);
+        Ok(episode_count)
     }
 
     async fn update_fresh_releases_playlist_mysql(&self, pool: &Pool<MySql>, playlist_id: i32) -> AppResult<i32> {
@@ -17076,45 +17243,91 @@ impl DatabasePool {
                 let playlist_description: String = row.try_get("description").unwrap_or_default();
                 let episode_count: i64 = row.try_get("episode_count")?;
                 let icon_name: String = row.try_get("iconname").unwrap_or_default();
+                let is_system_playlist: bool = row.try_get("issystemplaylist")?;
 
-                // Get episodes in playlist - query PlaylistContents table joined with Episodes and Podcasts (matches Python)
-                let episodes_rows = sqlx::query(r#"
-                    SELECT DISTINCT
-                        "Episodes".episodeid,
-                        "Episodes".episodetitle,
-                        "Episodes".episodepubdate,
-                        "Episodes".episodedescription,
-                        "Episodes".episodeartwork,
-                        "Episodes".episodeurl,
-                        "Episodes".episodeduration,
-                        "Episodes".completed,
-                        "Podcasts".podcastname,
-                        "Podcasts".podcastid,
-                        "Podcasts".isyoutubechannel as is_youtube,
-                        "UserEpisodeHistory".listenduration,
-                        CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
-                        CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
-                        CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                        "PlaylistContents".dateadded
-                    FROM "PlaylistContents"
-                    JOIN "Episodes" ON "PlaylistContents".episodeid = "Episodes".episodeid
-                    JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
-                    LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid
-                        AND "UserEpisodeHistory".userid = $1
-                    LEFT JOIN "SavedEpisodes" ON "Episodes".episodeid = "SavedEpisodes".episodeid
-                        AND "SavedEpisodes".userid = $1
-                    LEFT JOIN "EpisodeQueue" ON "Episodes".episodeid = "EpisodeQueue".episodeid
-                        AND "EpisodeQueue".userid = $1
-                        AND "EpisodeQueue".is_youtube = FALSE
-                    LEFT JOIN "DownloadedEpisodes" ON "Episodes".episodeid = "DownloadedEpisodes".episodeid
-                        AND "DownloadedEpisodes".userid = $1
-                    WHERE "PlaylistContents".playlistid = $2
-                    ORDER BY "PlaylistContents".dateadded DESC
-                "#)
-                    .bind(user_id)
-                    .bind(playlist_id)
-                    .fetch_all(pool)
-                    .await?;
+                let episodes_rows = if is_system_playlist {
+                    // For system playlists, update playlist first to get current episodes, then filter to user's podcasts
+                    self.update_playlist_contents(playlist_id).await?;
+                    
+                    // Same query as user playlists but with additional filter for user's podcasts
+                    sqlx::query(r#"
+                        SELECT DISTINCT
+                            "Episodes".episodeid,
+                            "Episodes".episodetitle,
+                            "Episodes".episodepubdate,
+                            "Episodes".episodedescription,
+                            "Episodes".episodeartwork,
+                            "Episodes".episodeurl,
+                            "Episodes".episodeduration,
+                            "Episodes".completed,
+                            "Podcasts".podcastname,
+                            "Podcasts".podcastid,
+                            "Podcasts".isyoutubechannel as is_youtube,
+                            "UserEpisodeHistory".listenduration,
+                            CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                            CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                            "PlaylistContents".dateadded
+                        FROM "PlaylistContents"
+                        JOIN "Episodes" ON "PlaylistContents".episodeid = "Episodes".episodeid
+                        JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid
+                            AND "UserEpisodeHistory".userid = $1
+                        LEFT JOIN "SavedEpisodes" ON "Episodes".episodeid = "SavedEpisodes".episodeid
+                            AND "SavedEpisodes".userid = $1
+                        LEFT JOIN "EpisodeQueue" ON "Episodes".episodeid = "EpisodeQueue".episodeid
+                            AND "EpisodeQueue".userid = $1
+                            AND "EpisodeQueue".is_youtube = FALSE
+                        LEFT JOIN "DownloadedEpisodes" ON "Episodes".episodeid = "DownloadedEpisodes".episodeid
+                            AND "DownloadedEpisodes".userid = $1
+                        WHERE "PlaylistContents".playlistid = $2 
+                            AND "Podcasts".userid = $1
+                        ORDER BY "PlaylistContents".dateadded DESC
+                    "#)
+                        .bind(user_id)
+                        .bind(playlist_id)
+                        .fetch_all(pool)
+                        .await?
+                } else {
+                    // For user playlists, use existing PlaylistContents logic
+                    sqlx::query(r#"
+                        SELECT DISTINCT
+                            "Episodes".episodeid,
+                            "Episodes".episodetitle,
+                            "Episodes".episodepubdate,
+                            "Episodes".episodedescription,
+                            "Episodes".episodeartwork,
+                            "Episodes".episodeurl,
+                            "Episodes".episodeduration,
+                            "Episodes".completed,
+                            "Podcasts".podcastname,
+                            "Podcasts".podcastid,
+                            "Podcasts".isyoutubechannel as is_youtube,
+                            "UserEpisodeHistory".listenduration,
+                            CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                            CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                            CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                            "PlaylistContents".dateadded
+                        FROM "PlaylistContents"
+                        JOIN "Episodes" ON "PlaylistContents".episodeid = "Episodes".episodeid
+                        JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid
+                            AND "UserEpisodeHistory".userid = $1
+                        LEFT JOIN "SavedEpisodes" ON "Episodes".episodeid = "SavedEpisodes".episodeid
+                            AND "SavedEpisodes".userid = $1
+                        LEFT JOIN "EpisodeQueue" ON "Episodes".episodeid = "EpisodeQueue".episodeid
+                            AND "EpisodeQueue".userid = $1
+                            AND "EpisodeQueue".is_youtube = FALSE
+                        LEFT JOIN "DownloadedEpisodes" ON "Episodes".episodeid = "DownloadedEpisodes".episodeid
+                            AND "DownloadedEpisodes".userid = $1
+                        WHERE "PlaylistContents".playlistid = $2
+                        ORDER BY "PlaylistContents".dateadded DESC
+                    "#)
+                        .bind(user_id)
+                        .bind(playlist_id)
+                        .fetch_all(pool)
+                        .await?
+                };
 
                 let mut episodes = Vec::new();
                 for row in episodes_rows {
@@ -17207,43 +17420,87 @@ impl DatabasePool {
                 let playlist_description: String = row.try_get("Description").unwrap_or_default();
                 let episode_count: i64 = row.try_get("episode_count")?;
                 let icon_name: String = row.try_get("IconName").unwrap_or_default();
+                let is_system_playlist: bool = row.try_get::<i8, _>("IsSystemPlaylist")? != 0;
 
-                // Get episodes in playlist - query PlaylistEpisodes table joined with Episodes and Podcasts
-                let episodes_rows = sqlx::query(
-                    "SELECT DISTINCT
-                        e.EpisodeID as episodeid,
-                        e.EpisodeTitle as episodetitle,
-                        e.EpisodePubDate as episodepubdate,
-                        e.EpisodeDescription as episodedescription,
-                        e.EpisodeArtwork as episodeartwork,
-                        e.EpisodeURL as episodeurl,
-                        e.EpisodeDuration as episodeduration,
-                        e.Completed as completed,
-                        p.PodcastName as podcastname,
-                        p.PodcastID as podcastid,
-                        p.IsYouTubeChannel as is_youtube,
-                        ueh.ListenDuration as listenduration,
-                        CASE WHEN se.EpisodeID IS NOT NULL THEN 1 ELSE 0 END AS saved,
-                        CASE WHEN eq.EpisodeID IS NOT NULL THEN 1 ELSE 0 END AS queued,
-                        CASE WHEN de.EpisodeID IS NOT NULL THEN 1 ELSE 0 END AS downloaded,
-                        pc.DateAdded as addeddate
-                     FROM PlaylistContents pc
-                     JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
-                     JOIN Podcasts p ON e.PodcastID = p.PodcastID
-                     LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
-                     LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
-                     LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ? AND eq.is_youtube = 0
-                     LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
-                     WHERE pc.PlaylistID = ?
-                     ORDER BY pc.DateAdded DESC"
-                )
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(user_id)
-                    .bind(playlist_id)
-                    .fetch_all(pool)
-                    .await?;
+                let episodes_rows = if is_system_playlist {
+                    // For system playlists, update playlist first to get current episodes, then filter to user's podcasts
+                    self.update_playlist_contents(playlist_id).await?;
+                    
+                    // Same query as user playlists but with additional filter for user's podcasts
+                    sqlx::query(
+                        "SELECT DISTINCT
+                            e.EpisodeID as episodeid,
+                            e.EpisodeTitle as episodetitle,
+                            e.EpisodePubDate as episodepubdate,
+                            e.EpisodeDescription as episodedescription,
+                            e.EpisodeArtwork as episodeartwork,
+                            e.EpisodeURL as episodeurl,
+                            e.EpisodeDuration as episodeduration,
+                            e.Completed as completed,
+                            p.PodcastName as podcastname,
+                            p.PodcastID as podcastid,
+                            p.IsYouTubeChannel as is_youtube,
+                            ueh.ListenDuration as listenduration,
+                            CASE WHEN se.EpisodeID IS NOT NULL THEN 1 ELSE 0 END AS saved,
+                            CASE WHEN eq.EpisodeID IS NOT NULL THEN 1 ELSE 0 END AS queued,
+                            CASE WHEN de.EpisodeID IS NOT NULL THEN 1 ELSE 0 END AS downloaded,
+                            pc.DateAdded as addeddate
+                         FROM PlaylistContents pc
+                         JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
+                         JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                         LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
+                         LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
+                         LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ? AND eq.is_youtube = 0
+                         LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
+                         WHERE pc.PlaylistID = ? AND p.UserID = ?
+                         ORDER BY pc.DateAdded DESC"
+                    )
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(playlist_id)
+                        .bind(user_id)
+                        .fetch_all(pool)
+                        .await?
+                } else {
+                    // For user playlists, use existing PlaylistContents logic
+                    sqlx::query(
+                        "SELECT DISTINCT
+                            e.EpisodeID as episodeid,
+                            e.EpisodeTitle as episodetitle,
+                            e.EpisodePubDate as episodepubdate,
+                            e.EpisodeDescription as episodedescription,
+                            e.EpisodeArtwork as episodeartwork,
+                            e.EpisodeURL as episodeurl,
+                            e.EpisodeDuration as episodeduration,
+                            e.Completed as completed,
+                            p.PodcastName as podcastname,
+                            p.PodcastID as podcastid,
+                            p.IsYouTubeChannel as is_youtube,
+                            ueh.ListenDuration as listenduration,
+                            CASE WHEN se.EpisodeID IS NOT NULL THEN 1 ELSE 0 END AS saved,
+                            CASE WHEN eq.EpisodeID IS NOT NULL THEN 1 ELSE 0 END AS queued,
+                            CASE WHEN de.EpisodeID IS NOT NULL THEN 1 ELSE 0 END AS downloaded,
+                            pc.DateAdded as addeddate
+                         FROM PlaylistContents pc
+                         JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
+                         JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                         LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
+                         LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
+                         LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ? AND eq.is_youtube = 0
+                         LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
+                         WHERE pc.PlaylistID = ?
+                         ORDER BY pc.DateAdded DESC"
+                    )
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(user_id)
+                        .bind(playlist_id)
+                        .fetch_all(pool)
+                        .await?
+                };
 
                 let mut episodes = Vec::new();
                 for row in episodes_rows {
