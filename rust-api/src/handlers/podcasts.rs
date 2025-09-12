@@ -1042,6 +1042,43 @@ pub async fn get_podcast_id_from_ep_name(
     Ok(Json(serde_json::json!({ "podcast_id": podcast_id })))
 }
 
+// Query parameters for get_episode_id_ep_name
+#[derive(Deserialize)]
+pub struct GetEpisodeIdFromEpNameQuery {
+    pub episode_title: String,
+    pub episode_url: String,
+    pub user_id: i32,
+    pub is_youtube: bool,
+}
+
+// Get episode ID from episode URL - matches frontend call_get_episode_id function
+pub async fn get_episode_id_ep_name(
+    Query(query): Query<GetEpisodeIdFromEpNameQuery>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
+    if !check_user_access(&state, &api_key, query.user_id).await? {
+        return Err(AppError::forbidden("You can only return episode ids of your own episodes!"));
+    }
+
+    // Get episode ID from URL
+    let episode_id = state.db_pool.get_episode_id_from_url(&query.episode_url, query.user_id).await?;
+    
+    match episode_id {
+        Some(id) => Ok(Json(serde_json::json!(id))),
+        None => Err(AppError::not_found("Episode not found"))
+    }
+}
+
 // Request for get_episode_metadata - matches Python EpisodeMetadata model
 #[derive(Deserialize)]
 pub struct EpisodeMetadataRequest {

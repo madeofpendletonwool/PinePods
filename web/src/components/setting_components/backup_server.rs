@@ -1,9 +1,9 @@
 use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
-use crate::requests::setting_reqs::call_backup_server;
+use crate::requests::setting_reqs::{call_backup_server, call_schedule_backup, call_get_scheduled_backup, call_manual_backup_to_directory};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
-use web_sys::{window, Blob, BlobPropertyBag, Url};
+use web_sys::{window, Blob, BlobPropertyBag, Url, HtmlInputElement, HtmlSelectElement};
 use yew::prelude::*;
 use yewdux::prelude::*;
 
@@ -14,7 +14,49 @@ pub fn backup_server() -> Html {
     let (state, _dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+    let user_id = state.user_details.as_ref().map(|ud| ud.UserID);
     let blob_property_bag = BlobPropertyBag::new();
+
+    // Scheduled backup states
+    let schedule_enabled = use_state(|| false);
+    let cron_schedule = use_state(|| "0 0 2 * * *".to_string()); // Default: daily at 2 AM
+    let schedule_loading = use_state(|| false);
+    let current_schedule = use_state(|| None::<serde_json::Value>);
+
+    // Load current schedule on mount
+    {
+        let current_schedule = current_schedule.clone();
+        let schedule_enabled = schedule_enabled.clone();
+        let cron_schedule = cron_schedule.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let _dispatch = _dispatch.clone();
+
+        use_effect_with((), move |_| {
+                if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key.clone(), server_name.clone(), user_id) {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match call_get_scheduled_backup(&server_name, &api_key.unwrap(), user_id).await {
+                            Ok(schedule_info) => {
+                                current_schedule.set(Some(schedule_info.clone()));
+                                if let Some(enabled) = schedule_info.get("enabled").and_then(|v| v.as_bool()) {
+                                    schedule_enabled.set(enabled);
+                                }
+                                if let Some(schedule) = schedule_info.get("schedule").and_then(|v| v.as_str()) {
+                                    cron_schedule.set(schedule.to_string());
+                                }
+                            }
+                            Err(e) => {
+                                _dispatch.reduce_mut(|state| {
+                                    state.error_message = Some(format!("Failed to load backup schedule: {}", format_error_message(&e.to_string())));
+                                });
+                            }
+                        }
+                    });
+                }
+                || ()
+            },
+        );
+    }
 
     let on_download_click = {
         let database_password = database_password.clone();
@@ -84,12 +126,168 @@ pub fn backup_server() -> Html {
         })
     };
 
+    // Schedule handlers
+    let on_schedule_time_change = {
+        let cron_schedule = cron_schedule.clone();
+        Callback::from(move |e: Event| {
+            let select: HtmlSelectElement = e.target_unchecked_into();
+            cron_schedule.set(select.value());
+        })
+    };
+
+    let on_schedule_toggle = {
+        let schedule_enabled = schedule_enabled.clone();
+        let cron_schedule = cron_schedule.clone();
+        let schedule_loading = schedule_loading.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let _dispatch = _dispatch.clone();
+        
+        Callback::from(move |_| {
+            if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key.clone(), server_name.clone(), user_id) {
+                schedule_loading.set(true);
+                let new_enabled = !*schedule_enabled;
+                schedule_enabled.set(new_enabled);
+                
+                let schedule = (*cron_schedule).clone();
+                let schedule_loading = schedule_loading.clone();
+                let schedule_enabled_for_async = schedule_enabled.clone();
+                let _dispatch = _dispatch.clone();
+                
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_schedule_backup(&server_name, &api_key.unwrap(), user_id, &schedule, new_enabled).await {
+                        Ok(_) => {
+                            _dispatch.reduce_mut(|state| {
+                                state.info_message = Some(format!(
+                                    "Scheduled backup {}",
+                                    if new_enabled { "enabled" } else { "disabled" }
+                                ));
+                            });
+                        }
+                        Err(e) => {
+                            schedule_enabled_for_async.set(!new_enabled); // Revert on error
+                            _dispatch.reduce_mut(|state| {
+                                state.error_message = Some(format!("Failed to update backup schedule: {}", format_error_message(&e.to_string())));
+                            });
+                        }
+                    }
+                    schedule_loading.set(false);
+                });
+            }
+        })
+    };
+
+    let on_manual_backup_to_directory = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let _dispatch = _dispatch.clone();
+        let is_loading = is_loading.clone();
+        
+        Callback::from(move |_: MouseEvent| {
+            if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key.clone(), server_name.clone(), user_id) {
+                is_loading.set(true);
+                let _dispatch = _dispatch.clone();
+                let is_loading = is_loading.clone();
+                
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_manual_backup_to_directory(&server_name, &api_key.unwrap(), user_id).await {
+                        Ok(response) => {
+                            let filename = response.get("filename").and_then(|f| f.as_str()).unwrap_or("backup file");
+                            _dispatch.reduce_mut(|state| {
+                                state.info_message = Some(format!(
+                                    "Manual backup '{}' started successfully. Check the backup directory.",
+                                    filename
+                                ));
+                            });
+                        }
+                        Err(e) => {
+                            _dispatch.reduce_mut(|state| {
+                                state.error_message = Some(format!("Failed to start manual backup: {}", format_error_message(&e.to_string())));
+                            });
+                        }
+                    }
+                    is_loading.set(false);
+                });
+            }
+        })
+    };
+
     html! {
-        <div class="p-4">
-            <p class="item_container-text text-lg font-bold mb-4">{"Backup Server Data:"}</p>
-            <p class="item_container-text text-md mb-4">{"Download a backup of the entire server database here. This includes all users, podcasts, episodes, settings, and API keys. Use this to migrate to a new server or restore your current server."}</p>
-            <br/>
-            <div class="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4">
+        <div class="p-4 space-y-8">
+            <div class="backup-section">
+                <div class="flex items-center gap-3 mb-4">
+                    <i class="ph ph-clock-clockwise text-2xl text-blue-600"></i>
+                    <h2 class="item_container-text text-lg font-bold">{"Scheduled Backups"}</h2>
+                </div>
+                <p class="item_container-text text-md mb-4">
+                    {"Configure automatic backups to run on a schedule. Backups are saved to the mounted backup directory and use the database credentials from your container environment."}
+                </p>
+                
+                <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium item_container-text mb-2">
+                                {"Schedule Time"}
+                            </label>
+                            <select
+                                value={(*cron_schedule).clone()}
+                                onchange={on_schedule_time_change}
+                                disabled={*schedule_loading}
+                                class="w-full p-2 border rounded-lg search-bar-input"
+                                key={(*cron_schedule).clone()}
+                            >
+                                <option value="0 0 2 * * *" selected={*cron_schedule == "0 0 2 * * *"}>{"Daily at 2:00 AM"}</option>
+                                <option value="0 0 3 * * 0" selected={*cron_schedule == "0 0 3 * * 0"}>{"Weekly on Sunday at 3:00 AM"}</option>
+                                <option value="0 0 1 1 * *" selected={*cron_schedule == "0 0 1 1 * *"}>{"Monthly on 1st at 1:00 AM"}</option>
+                                <option value="0 0 */6 * * *" selected={*cron_schedule == "0 0 */6 * * *"}>{"Every 6 hours"}</option>
+                                <option value="0 0 */12 * * *" selected={*cron_schedule == "0 0 */12 * * *"}>{"Every 12 hours"}</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-medium item_container-text mb-2">
+                                {"Status"}
+                            </label>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input 
+                                    type="checkbox" 
+                                    checked={*schedule_enabled} 
+                                    disabled={*schedule_loading}
+                                    onclick={on_schedule_toggle}
+                                    class="sr-only peer" 
+                                />
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                <span class="ms-3 text-sm font-medium item_container-text">
+                                    {if *schedule_enabled { "Enabled" } else { "Disabled" }}
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    if let Some(schedule_info) = &*current_schedule {
+                        if let Some(updated_at) = schedule_info.get("updated_at").and_then(|v| v.as_str()) {
+                            <div class="mt-4 text-sm text-gray-600 dark:text-gray-400">
+                                <i class="ph ph-info mr-1"></i>
+                                {format!("Last updated: {}", updated_at)}
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <div class="backup-section">
+                <div class="flex items-center gap-3 mb-4">
+                    <i class="ph ph-download-simple text-2xl text-green-600"></i>
+                    <h2 class="item_container-text text-lg font-bold">{"Manual Backup"}</h2>
+                </div>
+                <p class="item_container-text text-md mb-4">{"Create a backup of the entire server database immediately. Choose to download the backup file or save it to the server's backup directory."}</p>
+            
+            <div class="space-y-4">
+                // Download backup section
+                <div class="backup-option">
+                    <h4 class="item_container-text font-semibold mb-2">{"Download Backup File"}</h4>
+                    <p class="item_container-text text-sm mb-3">{"Downloads a .sql backup file directly to your computer."}</p>
+                    <div class="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4">
                 <input
                     type="password"
                     id="db-pw"
@@ -140,6 +338,44 @@ pub fn backup_server() -> Html {
                         {"Authenticate"}
                     }
                 </button>
+                    </div>
+                </div>
+                
+                // Backup to directory section
+                <div class="backup-option">
+                    <h4 class="item_container-text font-semibold mb-2">{"Save to Backup Directory"}</h4>
+                    <p class="item_container-text text-sm mb-3">{"Creates a backup file in the server's mounted backup directory using container credentials."}</p>
+                    <button
+                        onclick={on_manual_backup_to_directory}
+                        disabled={*is_loading}
+                        class={classes!(
+                            "settings-button",
+                            "font-bold",
+                            "py-2",
+                            "px-6",
+                            "rounded",
+                            "focus:outline-none",
+                            "focus:shadow-outline",
+                            "inline-flex",
+                            "items-center",
+                            "justify-center",
+                            "min-w-[120px]",
+                            if *is_loading { "opacity-75 cursor-not-allowed" } else { "" }
+                        )}
+                    >
+                        if *is_loading {
+                            <div class="inline-flex items-center">
+                                <svg class="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 818-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                {"Creating..."}
+                            </div>
+                        } else {
+                            {"Create Backup"}
+                        }
+                    </button>
+                </div>
             </div>
 
             if *is_loading {
@@ -162,6 +398,7 @@ pub fn backup_server() -> Html {
                     </div>
                 </div>
             }
+            </div>
         </div>
     }
 }

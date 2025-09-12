@@ -2892,7 +2892,11 @@ pub async fn toggle_podcast_notifications(
 
     let success = state.db_pool.toggle_podcast_notifications(request.user_id, request.podcast_id, request.enabled).await?;
 
-    Ok(Json(serde_json::json!(success)))
+    if success {
+        Ok(Json(serde_json::json!({ "detail": "Notification settings updated successfully" })))
+    } else {
+        Ok(Json(serde_json::json!({ "detail": "Failed to update notification settings" })))
+    }
 }
 
 // Request struct for adjust_skip_times - matches Python SkipTimesRequest model
@@ -3052,5 +3056,344 @@ pub async fn verify_mfa(
     } else {
         Ok(Json(serde_json::json!({ "verified": false })))
     }
+}
+
+// Scheduled backup management
+#[derive(Deserialize)]
+pub struct ScheduleBackupRequest {
+    pub user_id: i32,
+    pub cron_schedule: String, // e.g., "0 2 * * *" for daily at 2 AM
+    pub enabled: bool,
+}
+
+#[derive(Deserialize)]
+pub struct GetScheduledBackupRequest {
+    pub user_id: i32,
+}
+
+#[derive(Deserialize)]
+pub struct ListBackupFilesRequest {
+    pub user_id: i32,
+}
+
+#[derive(Deserialize)]
+pub struct RestoreBackupFileRequest {
+    pub user_id: i32,
+    pub backup_filename: String,
+}
+
+// Schedule automatic backup - admin only
+pub async fn schedule_backup(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ScheduleBackupRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
+    
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+
+    // Validate cron expression using tokio-cron-scheduler
+    use tokio_cron_scheduler::Job;
+    if let Err(_) = Job::new(&request.cron_schedule, |_uuid, _lock| {}) {
+        return Err(AppError::bad_request("Invalid cron schedule format"));
+    }
+
+    // Store the schedule in database
+    state.db_pool.set_scheduled_backup(request.user_id, &request.cron_schedule, request.enabled).await?;
+
+    Ok(Json(serde_json::json!({ 
+        "detail": "Backup schedule updated successfully",
+        "schedule": request.cron_schedule,
+        "enabled": request.enabled
+    })))
+}
+
+// Get scheduled backup settings - admin only
+pub async fn get_scheduled_backup(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<GetScheduledBackupRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
+    
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+
+    let schedule_info = state.db_pool.get_scheduled_backup(request.user_id).await?;
+    
+    Ok(Json(serde_json::json!(schedule_info)))
+}
+
+// List backup files in mounted backup directory - admin only
+pub async fn list_backup_files(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ListBackupFilesRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
+    
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+
+    use std::fs;
+    
+    let backup_dir = "/opt/pinepods/backups";
+    let backup_files = match fs::read_dir(backup_dir) {
+        Ok(entries) => {
+            let mut files = Vec::new();
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    if path.is_file() && path.extension().map_or(false, |ext| ext == "sql") {
+                        if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
+                            let metadata = entry.metadata().ok();
+                            let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+                            let modified = metadata.as_ref()
+                                .and_then(|m| m.modified().ok())
+                                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                .map(|d| d.as_secs())
+                                .unwrap_or(0);
+                            
+                            files.push(serde_json::json!({
+                                "filename": filename,
+                                "size": size,
+                                "modified": modified
+                            }));
+                        }
+                    }
+                }
+            }
+            files.sort_by(|a, b| {
+                let a_modified = a["modified"].as_u64().unwrap_or(0);
+                let b_modified = b["modified"].as_u64().unwrap_or(0);
+                b_modified.cmp(&a_modified) // Sort by modified date desc (newest first)
+            });
+            files
+        }
+        Err(_) => {
+            return Err(AppError::internal("Failed to read backup directory"));
+        }
+    };
+
+    Ok(Json(serde_json::json!({
+        "backup_files": backup_files
+    })))
+}
+
+// Restore from backup file in mounted directory - admin only
+pub async fn restore_from_backup_file(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<RestoreBackupFileRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
+    
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+
+    // Validate filename to prevent path traversal
+    let backup_filename = request.backup_filename.clone();
+    if backup_filename.contains("..") || backup_filename.contains("/") || !backup_filename.ends_with(".sql") {
+        return Err(AppError::bad_request("Invalid backup filename"));
+    }
+
+    let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
+    
+    // Check if file exists
+    if !std::path::Path::new(&backup_path).exists() {
+        return Err(AppError::not_found("Backup file not found"));
+    }
+
+    // Clone for the async closure
+    let backup_filename_for_closure = backup_filename.clone();
+
+    // Spawn restoration task
+    let task_id = state.task_spawner.spawn_progress_task(
+        "restore_from_backup_file".to_string(),
+        0, // System user
+        move |reporter| {
+            let backup_path = backup_path.clone();
+            let backup_filename = backup_filename_for_closure;
+            async move {
+                reporter.update_progress(10.0, Some("Starting restoration from backup file...".to_string())).await?;
+                
+                // Get database password from environment
+                let db_password = std::env::var("DB_PASSWORD")
+                    .map_err(|_| AppError::internal("Database password not found in environment"))?;
+                
+                reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
+
+                // Execute restoration
+                use tokio::process::Command;
+                let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
+                let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
+                let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
+                let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_database".to_string());
+
+                let mut cmd = Command::new("psql");
+                cmd.arg("-h").arg(&db_host)
+                   .arg("-p").arg(&db_port)
+                   .arg("-U").arg(&db_user)
+                   .arg("-d").arg(&db_name)
+                   .arg("-f").arg(&backup_path)
+                   .env("PGPASSWORD", &db_password);
+
+                let output = cmd.output().await
+                    .map_err(|e| AppError::internal(&format!("Failed to execute restore: {}", e)))?;
+
+                if !output.status.success() {
+                    let error_msg = String::from_utf8_lossy(&output.stderr);
+                    return Err(AppError::internal(&format!("Restore failed: {}", error_msg)));
+                }
+
+                reporter.update_progress(100.0, Some("Restoration completed successfully".to_string())).await?;
+                
+                Ok(serde_json::json!({
+                    "status": "Restoration completed successfully",
+                    "backup_file": backup_filename
+                }))
+            }
+        }
+    ).await?;
+
+    Ok(Json(serde_json::json!({
+        "detail": "Restoration started",
+        "task_id": task_id
+    })))
+}
+
+// Request struct for manual backup to directory
+#[derive(Deserialize)]
+pub struct ManualBackupRequest {
+    pub user_id: i32,
+}
+
+// Manual backup to directory - admin only
+pub async fn manual_backup_to_directory(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ManualBackupRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
+    
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required"));
+    }
+
+    // Generate filename with timestamp
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    let backup_filename = format!("manual_backup_{}.sql", timestamp);
+    let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
+
+    // Ensure backup directory exists
+    if let Err(e) = std::fs::create_dir_all("/opt/pinepods/backups") {
+        return Err(AppError::internal(&format!("Failed to create backup directory: {}", e)));
+    }
+
+    // Clone for the async closure
+    let backup_filename_for_closure = backup_filename.clone();
+
+    // Spawn backup task
+    let task_id = state.task_spawner.spawn_progress_task(
+        "manual_backup_to_directory".to_string(),
+        0, // System user
+        move |reporter| {
+            let backup_path = backup_path.clone();
+            let backup_filename = backup_filename_for_closure;
+            async move {
+                reporter.update_progress(10.0, Some("Starting manual backup...".to_string())).await?;
+                
+                // Get database credentials from environment
+                let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
+                let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
+                let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_db".to_string());
+                let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
+                let db_password = std::env::var("DB_PASSWORD")
+                    .map_err(|_| AppError::internal("Database password not found in environment"))?;
+                
+                reporter.update_progress(30.0, Some("Creating database backup...".to_string())).await?;
+                
+                // Run pg_dump to create backup
+                let output = tokio::process::Command::new("pg_dump")
+                    .env("PGPASSWORD", db_password)
+                    .args(&[
+                        "-h", &db_host,
+                        "-p", &db_port,
+                        "-U", &db_user,
+                        "-d", &db_name,
+                        "--clean",
+                        "--if-exists",
+                        "--no-owner",
+                        "--no-privileges",
+                        "-f", &backup_path
+                    ])
+                    .output()
+                    .await
+                    .map_err(|e| AppError::internal(&format!("Failed to execute pg_dump: {}", e)))?;
+
+                if !output.status.success() {
+                    let error_msg = String::from_utf8_lossy(&output.stderr);
+                    return Err(AppError::internal(&format!("Backup failed: {}", error_msg)));
+                }
+
+                reporter.update_progress(90.0, Some("Finalizing backup...".to_string())).await?;
+
+                // Check if backup file was created and get its size
+                let backup_info = match std::fs::metadata(&backup_path) {
+                    Ok(metadata) => serde_json::json!({
+                        "filename": backup_filename,
+                        "size": metadata.len(),
+                        "path": backup_path
+                    }),
+                    Err(_) => {
+                        return Err(AppError::internal("Backup file was not created"));
+                    }
+                };
+
+                reporter.update_progress(100.0, Some("Manual backup completed successfully".to_string())).await?;
+                
+                Ok(serde_json::json!({
+                    "status": "Manual backup completed successfully",
+                    "backup_info": backup_info
+                }))
+            }
+        }
+    ).await?;
+
+    Ok(Json(serde_json::json!({
+        "detail": "Manual backup started",
+        "task_id": task_id,
+        "filename": backup_filename
+    })))
 }
 

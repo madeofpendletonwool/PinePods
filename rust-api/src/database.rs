@@ -2493,6 +2493,11 @@ impl DatabasePool {
         }
     }
 
+    // Get episode ID from episode URL - public version of find_episode_by_url
+    pub async fn get_episode_id_from_url(&self, episode_url: &str, user_id: i32) -> AppResult<Option<i32>> {
+        self.find_episode_by_url(user_id, episode_url).await
+    }
+
     // Get PinePods version - matches Python get_pinepods_version function
     pub async fn get_pinepods_version(&self) -> AppResult<String> {
         match std::fs::read_to_string("/pinepods/current_version") {
@@ -6655,10 +6660,14 @@ impl DatabasePool {
                         let episode_pubdate = naive_date.format("%Y-%m-%dT%H:%M:%S").to_string();
                         let real_episode_id: i32 = row.try_get("real_episode_id")?;
                         
-                        // Get listen history using the real episode ID
+                        // Get listen history using the real episode ID - matches Python implementation
                         let listen_history = sqlx::query(
-                            r#"SELECT listenduration, completed FROM "UserEpisodeHistory" 
-                               WHERE episodeid = $1 AND userid = $2"#
+                            r#"SELECT "UserEpisodeHistory".listenduration, "Episodes".completed
+                               FROM "Episodes"
+                               LEFT JOIN "UserEpisodeHistory" ON 
+                                   "Episodes".episodeid = "UserEpisodeHistory".episodeid
+                                   AND "UserEpisodeHistory".userid = $2
+                               WHERE "Episodes".episodeid = $1"#
                         )
                         .bind(real_episode_id)
                         .bind(user_id)
@@ -18164,7 +18173,9 @@ impl DatabasePool {
             }
         }
         
-        let podcast_filter = explicit_podcast_filter || (!effective_podcast_ids.is_empty() && !effective_podcast_ids.contains(&-1));
+        // Only use podcast filter if explicitly requested via URL parameter
+        // RSS key podcast_ids should not affect "All Podcasts" feed behavior
+        let podcast_filter = explicit_podcast_filter;
         
         // Check if RSS feeds are enabled for user
         if !self.get_rss_feed_status(user_id).await? {
@@ -18211,11 +18222,11 @@ impl DatabasePool {
                     if let Some(row) = row {
                         (
                             row.try_get::<String, _>("podcastname").unwrap_or_else(|_| "Unknown Podcast".to_string()),
-                            row.try_get::<Option<String>, _>("artworkurl").unwrap_or_default().unwrap_or_else(|| "/var/www/html/static/assets/favicon.png".to_string()),
+                            row.try_get::<Option<String>, _>("artworkurl").unwrap_or_default().unwrap_or_else(|| format!("{}/static/assets/favicon.png", domain)),
                             row.try_get::<String, _>("description").unwrap_or_else(|_| "No description available".to_string()),
                         )
                     } else {
-                        ("Unknown Podcast".to_string(), "/var/www/html/static/assets/favicon.png".to_string(), "No description available".to_string())
+                        ("Unknown Podcast".to_string(), format!("{}/static/assets/favicon.png", domain), "No description available".to_string())
                     }
                 }
                 DatabasePool::MySQL(pool) => {
@@ -18228,11 +18239,11 @@ impl DatabasePool {
                         if let Some(row) = row {
                             (
                                 row.try_get::<String, _>("PodcastName").unwrap_or_else(|_| "Unknown Podcast".to_string()),
-                                row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default().unwrap_or_else(|| "/var/www/html/static/assets/favicon.png".to_string()),
+                                row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default().unwrap_or_else(|| format!("{}/static/assets/favicon.png", domain)),
                                 row.try_get::<String, _>("Description").unwrap_or_else(|_| "No description available".to_string()),
                             )
                         } else {
-                            ("Unknown Podcast".to_string(), "/var/www/html/static/assets/favicon.png".to_string(), "No description available".to_string())
+                            ("Unknown Podcast".to_string(), format!("{}/static/assets/favicon.png", domain), "No description available".to_string())
                         }
                     } else {
                         let placeholders = vec!["?"; effective_podcast_ids.len()].join(",");
@@ -18246,36 +18257,85 @@ impl DatabasePool {
                         if let Some(row) = row {
                             (
                                 row.try_get::<String, _>("PodcastName").unwrap_or_else(|_| "Unknown Podcast".to_string()),
-                                row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default().unwrap_or_else(|| "/var/www/html/static/assets/favicon.png".to_string()),
+                                row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default().unwrap_or_else(|| format!("{}/static/assets/favicon.png", domain)),
                                 row.try_get::<String, _>("Description").unwrap_or_else(|_| "No description available".to_string()),
                             )
                         } else {
-                            ("Unknown Podcast".to_string(), "/var/www/html/static/assets/favicon.png".to_string(), "No description available".to_string())
+                            ("Unknown Podcast".to_string(), format!("{}/static/assets/favicon.png", domain), "No description available".to_string())
                         }
                     }
                 }
             }
         } else {
-            ("All Podcasts".to_string(), "/var/www/html/static/assets/favicon.png".to_string(), "RSS feed for all podcasts from Pinepods".to_string())
+            ("All Podcasts".to_string(), format!("{}/static/assets/favicon.png", domain), "RSS feed for all podcasts from Pinepods".to_string())
         };
 
-        // Build RSS feed content with proper iTunes namespace - exact Python format
-        let mut rss_content = String::new();
-        rss_content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        rss_content.push_str("<rss version=\"2.0\" xmlns:itunes=\"http://www.itunes.com/dtds/podcast-1.0.dtd\">\n");
-        rss_content.push_str("<channel>\n");
-        rss_content.push_str(&format!("  <title>Pinepods - {}</title>\n", podcast_name));
-        rss_content.push_str("  <link>https://github.com/madeofpendletonwool/pinepods</link>\n");
-        rss_content.push_str(&format!("  <description>{}</description>\n", feed_description));
-        rss_content.push_str("  <language>en</language>\n");
-        rss_content.push_str(&format!("  <itunes:author>{}</itunes:author>\n", username));
-        rss_content.push_str(&format!("  <itunes:image href=\"{}\" />\n", feed_image));
-        rss_content.push_str("  <image>\n");
-        rss_content.push_str(&format!("    <url>{}</url>\n", feed_image));
-        rss_content.push_str(&format!("    <title>{}</title>\n", podcast_name));
-        rss_content.push_str("    <link>https://github.com/madeofpendletonwool/pinepods</link>\n");
-        rss_content.push_str("  </image>\n");
-        rss_content.push_str("  <ttl>60</ttl>\n");
+        // Build RSS feed using quick-xml for proper XML escaping
+        use quick_xml::events::{Event, BytesStart, BytesEnd, BytesText, BytesCData};
+        use quick_xml::Writer;
+        use std::io::Cursor;
+
+        let mut writer = Writer::new(Cursor::new(Vec::new()));
+        
+        // XML declaration
+        writer.write_event(Event::Decl(quick_xml::events::BytesDecl::new("1.0", Some("UTF-8"), None)))?;
+        
+        // RSS root element with namespace
+        let mut rss_elem = BytesStart::new("rss");
+        rss_elem.push_attribute(("version", "2.0"));
+        rss_elem.push_attribute(("xmlns:itunes", "http://www.itunes.com/dtds/podcast-1.0.dtd"));
+        writer.write_event(Event::Start(rss_elem))?;
+        
+        // Channel
+        writer.write_event(Event::Start(BytesStart::new("channel")))?;
+        
+        // Channel metadata
+        writer.write_event(Event::Start(BytesStart::new("title")))?;
+        writer.write_event(Event::Text(BytesText::new(&format!("Pinepods - {}", podcast_name))))?;
+        writer.write_event(Event::End(BytesEnd::new("title")))?;
+        
+        writer.write_event(Event::Start(BytesStart::new("link")))?;
+        writer.write_event(Event::Text(BytesText::new("https://github.com/madeofpendletonwool/pinepods")))?;
+        writer.write_event(Event::End(BytesEnd::new("link")))?;
+        
+        writer.write_event(Event::Start(BytesStart::new("description")))?;
+        writer.write_event(Event::Text(BytesText::new(&feed_description)))?;
+        writer.write_event(Event::End(BytesEnd::new("description")))?;
+        
+        writer.write_event(Event::Start(BytesStart::new("language")))?;
+        writer.write_event(Event::Text(BytesText::new("en")))?;
+        writer.write_event(Event::End(BytesEnd::new("language")))?;
+        
+        writer.write_event(Event::Start(BytesStart::new("itunes:author")))?;
+        writer.write_event(Event::Text(BytesText::new(&username)))?;
+        writer.write_event(Event::End(BytesEnd::new("itunes:author")))?;
+        
+        // iTunes image
+        let mut itunes_image = BytesStart::new("itunes:image");
+        itunes_image.push_attribute(("href", feed_image.as_str()));
+        writer.write_event(Event::Empty(itunes_image))?;
+        
+        // RSS image block
+        writer.write_event(Event::Start(BytesStart::new("image")))?;
+        
+        writer.write_event(Event::Start(BytesStart::new("url")))?;
+        writer.write_event(Event::Text(BytesText::new(&feed_image)))?;
+        writer.write_event(Event::End(BytesEnd::new("url")))?;
+        
+        writer.write_event(Event::Start(BytesStart::new("title")))?;
+        writer.write_event(Event::Text(BytesText::new(&format!("Pinepods - {}", podcast_name))))?;
+        writer.write_event(Event::End(BytesEnd::new("title")))?;
+        
+        writer.write_event(Event::Start(BytesStart::new("link")))?;
+        writer.write_event(Event::Text(BytesText::new("https://github.com/madeofpendletonwool/pinepods")))?;
+        writer.write_event(Event::End(BytesEnd::new("link")))?;
+        
+        writer.write_event(Event::End(BytesEnd::new("image")))?;
+        
+        // TTL
+        writer.write_event(Event::Start(BytesStart::new("ttl")))?;
+        writer.write_event(Event::Text(BytesText::new("60")))?;
+        writer.write_event(Event::End(BytesEnd::new("ttl")))?;
         
         // Get or create RSS key for this user to use in stream URLs
         let user_rss_key = self.get_or_create_user_rss_key(user_id).await?;
@@ -18283,26 +18343,84 @@ impl DatabasePool {
         // Get episodes (use the user's RSS key for stream URLs, not the requesting key)
         let episodes = self.get_rss_episodes(user_id, limit, source_type, &effective_podcast_ids, podcast_filter, domain, &user_rss_key).await?;
         
+        // Write episodes
         for episode in episodes {
-            rss_content.push_str("  <item>\n");
-            rss_content.push_str(&format!("    <title><![CDATA[{}]]></title>\n", episode.title));
-            rss_content.push_str(&format!("    <link>{}</link>\n", episode.url));
-            rss_content.push_str(&format!("    <description><![CDATA[{}]]></description>\n", episode.description));
-            rss_content.push_str(&format!("    <guid>{}</guid>\n", episode.url));
-            rss_content.push_str(&format!("    <pubDate>{}</pubDate>\n", episode.pub_date));
+            writer.write_event(Event::Start(BytesStart::new("item")))?;
+            
+            // Title (using CDATA for safety)
+            writer.write_event(Event::Start(BytesStart::new("title")))?;
+            writer.write_event(Event::CData(BytesCData::new(&episode.title)))?;
+            writer.write_event(Event::End(BytesEnd::new("title")))?;
+            
+            // Link (URL will be properly escaped)
+            writer.write_event(Event::Start(BytesStart::new("link")))?;
+            writer.write_event(Event::Text(BytesText::new(&episode.url)))?;
+            writer.write_event(Event::End(BytesEnd::new("link")))?;
+            
+            // Description (using CDATA for safety)
+            writer.write_event(Event::Start(BytesStart::new("description")))?;
+            writer.write_event(Event::CData(BytesCData::new(&episode.description)))?;
+            writer.write_event(Event::End(BytesEnd::new("description")))?;
+            
+            // GUID
+            writer.write_event(Event::Start(BytesStart::new("guid")))?;
+            writer.write_event(Event::Text(BytesText::new(&episode.url)))?;
+            writer.write_event(Event::End(BytesEnd::new("guid")))?;
+            
+            // Pub date
+            writer.write_event(Event::Start(BytesStart::new("pubDate")))?;
+            writer.write_event(Event::Text(BytesText::new(&episode.pub_date)))?;
+            writer.write_event(Event::End(BytesEnd::new("pubDate")))?;
+            
+            // Author (if present)
             if let Some(ref author) = episode.author {
-                rss_content.push_str(&format!("    <itunes:author>{}</itunes:author>\n", author));
+                writer.write_event(Event::Start(BytesStart::new("itunes:author")))?;
+                writer.write_event(Event::Text(BytesText::new(author)))?;
+                writer.write_event(Event::End(BytesEnd::new("itunes:author")))?;
             }
+            
+            // Artwork (if present)
             if let Some(ref artwork_url) = episode.artwork_url {
-                rss_content.push_str(&format!("    <itunes:image href=\"{}\" />\n", artwork_url));
+                let mut itunes_img = BytesStart::new("itunes:image");
+                itunes_img.push_attribute(("href", artwork_url.as_str()));
+                writer.write_event(Event::Empty(itunes_img))?;
             }
-            rss_content.push_str(&format!("    <enclosure url=\"{}\" length=\"{}\" type=\"audio/mpeg\" />\n", 
-                episode.url, episode.duration.unwrap_or(0)));
-            rss_content.push_str("  </item>\n");
+            
+            // Duration (iTunes format: HH:MM:SS or MM:SS)
+            if let Some(duration_seconds) = episode.duration {
+                let hours = duration_seconds / 3600;
+                let minutes = (duration_seconds % 3600) / 60;
+                let seconds = duration_seconds % 60;
+                
+                let duration_str = if hours > 0 {
+                    format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+                } else {
+                    format!("{:02}:{:02}", minutes, seconds)
+                };
+                
+                writer.write_event(Event::Start(BytesStart::new("itunes:duration")))?;
+                writer.write_event(Event::Text(BytesText::new(&duration_str)))?;
+                writer.write_event(Event::End(BytesEnd::new("itunes:duration")))?;
+            }
+            
+            // Enclosure (length should be file size in bytes, using duration as placeholder)
+            let mut enclosure = BytesStart::new("enclosure");
+            enclosure.push_attribute(("url", episode.url.as_str()));
+            enclosure.push_attribute(("length", episode.duration.unwrap_or(0).to_string().as_str()));
+            enclosure.push_attribute(("type", "audio/mpeg"));
+            writer.write_event(Event::Empty(enclosure))?;
+            
+            writer.write_event(Event::End(BytesEnd::new("item")))?;
         }
         
-        rss_content.push_str("</channel>\n");
-        rss_content.push_str("</rss>\n");
+        // Close channel and RSS
+        writer.write_event(Event::End(BytesEnd::new("channel")))?;
+        writer.write_event(Event::End(BytesEnd::new("rss")))?;
+        
+        // Convert to string
+        let result = writer.into_inner().into_inner();
+        let rss_content = String::from_utf8(result)
+            .map_err(|e| AppError::internal(&format!("Failed to convert RSS to UTF-8: {}", e)))?;
         
         Ok(rss_content)
     }
@@ -18481,7 +18599,10 @@ impl DatabasePool {
                     let url: String = row.try_get("episodeurl").unwrap_or_else(|_| String::new());
                     let duration: Option<i32> = row.try_get("episodeduration").ok();
                     let author: Option<String> = row.try_get("author").ok();
-                    let artwork_url: Option<String> = row.try_get("episodeartwork").ok();
+                    // Use episode-specific artwork if available, otherwise fall back to podcast artwork
+                    let episode_artwork: Option<String> = row.try_get("episodeartwork").ok();
+                    let podcast_artwork: Option<String> = row.try_get("artworkurl").ok();
+                    let artwork_url = episode_artwork.filter(|url| !url.is_empty()).or(podcast_artwork);
                     
                     let pub_date = if let Ok(dt) = row.try_get::<DateTime<Utc>, _>("episodepubdate") {
                         dt.format("%a, %d %b %Y %H:%M:%S %z").to_string()
@@ -18595,7 +18716,10 @@ impl DatabasePool {
                     let url: String = row.try_get("EpisodeURL").unwrap_or_else(|_| String::new());
                     let duration: Option<i32> = row.try_get("EpisodeDuration").ok();
                     let author: Option<String> = row.try_get("Author").ok();
-                    let artwork_url: Option<String> = row.try_get("EpisodeArtwork").ok();
+                    // Use episode-specific artwork if available, otherwise fall back to podcast artwork
+                    let episode_artwork: Option<String> = row.try_get("EpisodeArtwork").ok();
+                    let podcast_artwork: Option<String> = row.try_get("ArtworkURL").ok();
+                    let artwork_url = episode_artwork.filter(|url| !url.is_empty()).or(podcast_artwork);
                     
                     let pub_date = if let Ok(dt) = row.try_get::<DateTime<Utc>, _>("EpisodePubDate") {
                         dt.format("%a, %d %b %Y %H:%M:%S %z").to_string()
@@ -21271,6 +21395,170 @@ impl DatabasePool {
                 }
             }
         }
+    }
+
+    // Set scheduled backup configuration
+    pub async fn set_scheduled_backup(&self, user_id: i32, cron_schedule: &str, enabled: bool) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"
+                    INSERT INTO "ScheduledBackups" (userid, cron_schedule, enabled, created_at, updated_at)
+                    VALUES ($1, $2, $3, NOW(), NOW())
+                    ON CONFLICT (userid)
+                    DO UPDATE SET 
+                        cron_schedule = EXCLUDED.cron_schedule,
+                        enabled = EXCLUDED.enabled,
+                        updated_at = NOW()
+                "#)
+                .bind(user_id)
+                .bind(cron_schedule)
+                .bind(enabled)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query(r#"
+                    INSERT INTO ScheduledBackups (UserID, CronSchedule, Enabled, CreatedAt, UpdatedAt)
+                    VALUES (?, ?, ?, NOW(), NOW())
+                    ON DUPLICATE KEY UPDATE 
+                        CronSchedule = VALUES(CronSchedule),
+                        Enabled = VALUES(Enabled),
+                        UpdatedAt = NOW()
+                "#)
+                .bind(user_id)
+                .bind(cron_schedule)
+                .bind(enabled)
+                .execute(pool)
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Get scheduled backup configuration
+    pub async fn get_scheduled_backup(&self, user_id: i32) -> AppResult<serde_json::Value> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT cron_schedule, enabled, created_at, updated_at
+                    FROM "ScheduledBackups"
+                    WHERE userid = $1
+                "#)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    Ok(serde_json::json!({
+                        "schedule": row.get::<String, _>("cron_schedule"),
+                        "enabled": row.get::<bool, _>("enabled"),
+                        "created_at": row.get::<chrono::NaiveDateTime, _>("created_at").format("%Y-%m-%dT%H:%M:%S").to_string(),
+                        "updated_at": row.get::<chrono::NaiveDateTime, _>("updated_at").format("%Y-%m-%dT%H:%M:%S").to_string()
+                    }))
+                } else {
+                    Ok(serde_json::json!({
+                        "schedule": null,
+                        "enabled": false,
+                        "created_at": null,
+                        "updated_at": null
+                    }))
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(r#"
+                    SELECT CronSchedule, Enabled, CreatedAt, UpdatedAt
+                    FROM ScheduledBackups
+                    WHERE UserID = ?
+                "#)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    Ok(serde_json::json!({
+                        "schedule": row.get::<String, _>("CronSchedule"),
+                        "enabled": row.get::<bool, _>("Enabled"),
+                        "created_at": row.get::<chrono::NaiveDateTime, _>("CreatedAt").format("%Y-%m-%dT%H:%M:%S").to_string(),
+                        "updated_at": row.get::<chrono::NaiveDateTime, _>("UpdatedAt").format("%Y-%m-%dT%H:%M:%S").to_string()
+                    }))
+                } else {
+                    Ok(serde_json::json!({
+                        "schedule": null,
+                        "enabled": false,
+                        "created_at": null,
+                        "updated_at": null
+                    }))
+                }
+            }
+        }
+    }
+
+    // Execute backup to file (called by scheduler)
+    pub async fn execute_scheduled_backup(&self, _user_id: i32) -> AppResult<String> {
+        use tokio::process::Command;
+        use chrono::Utc;
+
+        // Generate backup filename with timestamp
+        let timestamp = Utc::now().format("%Y%m%d_%H%M%S");
+        let backup_filename = format!("scheduled_backup_{}.sql", timestamp);
+        let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
+
+        // Get database password from environment
+        let db_password = std::env::var("DB_PASSWORD")
+            .map_err(|_| AppError::internal("Database password not found in environment"))?;
+
+        match self {
+            DatabasePool::Postgres(_) => {
+                let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
+                let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
+                let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
+                let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_database".to_string());
+
+                let mut cmd = Command::new("pg_dump");
+                cmd.arg("-h").arg(&db_host)
+                   .arg("-p").arg(&db_port)
+                   .arg("-U").arg(&db_user)
+                   .arg("-d").arg(&db_name)
+                   .arg("-f").arg(&backup_path)
+                   .arg("--verbose")
+                   .env("PGPASSWORD", &db_password);
+
+                let output = cmd.output().await
+                    .map_err(|e| AppError::internal(&format!("Failed to execute backup: {}", e)))?;
+
+                if !output.status.success() {
+                    let error_msg = String::from_utf8_lossy(&output.stderr);
+                    return Err(AppError::internal(&format!("Backup failed: {}", error_msg)));
+                }
+            }
+            DatabasePool::MySQL(_) => {
+                let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
+                let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
+                let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "mysql".to_string());
+                let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_database".to_string());
+
+                let mut cmd = Command::new("mysqldump");
+                cmd.arg("-h").arg(&db_host)
+                   .arg("-P").arg(&db_port)
+                   .arg("-u").arg(&db_user)
+                   .arg(format!("-p{}", &db_password))
+                   .arg(&db_name)
+                   .arg("--result-file").arg(&backup_path)
+                   .arg("--single-transaction")
+                   .arg("--routines")
+                   .arg("--triggers");
+
+                let output = cmd.output().await
+                    .map_err(|e| AppError::internal(&format!("Failed to execute backup: {}", e)))?;
+
+                if !output.status.success() {
+                    let error_msg = String::from_utf8_lossy(&output.stderr);
+                    return Err(AppError::internal(&format!("Backup failed: {}", error_msg)));
+                }
+            }
+        }
+
+        Ok(backup_filename)
     }
 }
 

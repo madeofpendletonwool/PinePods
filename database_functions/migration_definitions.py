@@ -2349,6 +2349,69 @@ def migration_024_fix_quick_listens_min_duration(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("027", "add_scheduled_backups_table", "Create ScheduledBackups table for automated backup management", requires=["026"])
+def migration_027_add_scheduled_backups_table(conn, db_type: str):
+    """Create ScheduledBackups table for automated backup management"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting ScheduledBackups table creation migration")
+        
+        if db_type == "postgresql":
+            # Create ScheduledBackups table for PostgreSQL
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS "ScheduledBackups" (
+                    id SERIAL PRIMARY KEY,
+                    userid INTEGER NOT NULL,
+                    cron_schedule VARCHAR(50) NOT NULL,
+                    enabled BOOLEAN NOT NULL DEFAULT false,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(userid),
+                    FOREIGN KEY (userid) REFERENCES "Users"(userid) ON DELETE CASCADE
+                )
+            ''', conn=conn)
+            logger.info("Created ScheduledBackups table (PostgreSQL)")
+            
+            # Create index for performance
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_scheduled_backups_enabled 
+                ON "ScheduledBackups"(enabled)
+            ''', conn=conn)
+            logger.info("Created index on enabled column (PostgreSQL)")
+        
+        else:  # MySQL
+            # Create ScheduledBackups table for MySQL
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS ScheduledBackups (
+                    ID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    CronSchedule VARCHAR(50) NOT NULL,
+                    Enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_user (UserID),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            ''', conn=conn)
+            logger.info("Created ScheduledBackups table (MySQL)")
+            
+            # Create index for performance
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_scheduled_backups_enabled 
+                ON ScheduledBackups(Enabled)
+            ''', conn=conn)
+            logger.info("Created index on Enabled column (MySQL)")
+        
+        logger.info("ScheduledBackups table creation migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in ScheduledBackups table creation migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 if __name__ == "__main__":
     # Register all migrations and run them
     register_all_migrations()
