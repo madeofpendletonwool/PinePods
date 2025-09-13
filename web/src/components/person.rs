@@ -154,9 +154,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 let mut found_subscription = false;
 
                                 for sub in subs {
-                                    let associated_podcasts = sub
-                                        .associatedpodcasts
-                                        .unwrap_or_default()
+                                    let associated_podcasts = sub.associatedpodcasts.to_string()
                                         .split(',')
                                         .filter_map(|s| s.parse::<i32>().ok())
                                         .collect::<Vec<i32>>();

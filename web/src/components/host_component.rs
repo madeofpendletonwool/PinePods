@@ -195,9 +195,7 @@ pub fn host_dropdown(
                                 let mut sub_map = HashMap::new();
                                 let mut pid_map = HashMap::new();
                                 for sub in subs {
-                                    let associated_podcasts = sub
-                                        .associatedpodcasts
-                                        .unwrap_or_default()
+                                    let associated_podcasts = sub.associatedpodcasts.to_string()
                                         .split(',')
                                         .filter_map(|s| s.parse::<i32>().ok())
                                         .collect::<Vec<i32>>();

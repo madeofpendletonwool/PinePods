@@ -11,6 +11,7 @@ pub mod nextcloud_options;
 pub mod notifications;
 pub mod oidc;
 pub mod playback_settings;
+pub mod podcast_index_matching;
 pub mod restore_server;
 pub mod rss_feeds;
 pub mod start_page_options;

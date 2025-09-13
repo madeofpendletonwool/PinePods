@@ -9,7 +9,8 @@ pub struct PersonSubscription {
     pub name: String,
     pub image: String,
     pub peopledbid: Option<i32>,
-    pub associatedpodcasts: Option<String>,
+    pub associatedpodcasts: usize,
+    pub episode_count: i64,
 }
 
 #[allow(dead_code)]

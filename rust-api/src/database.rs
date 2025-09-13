@@ -14079,13 +14079,43 @@ impl DatabasePool {
                     .await?;
                 
                 for row in rows {
+                    let person_id = row.try_get::<i32, _>("personid")?;
+                    let associated_podcasts_str = row.try_get::<Option<String>, _>("associatedpodcasts")?;
+                    
+                    // Count associated podcasts by splitting the comma-separated string and filtering out empty/0 values
+                    let podcast_count = if let Some(podcasts_str) = &associated_podcasts_str {
+                        if podcasts_str.is_empty() {
+                            0
+                        } else {
+                            podcasts_str.split(',')
+                                .filter(|s| !s.trim().is_empty() && s.trim() != "0")
+                                .count()
+                        }
+                    } else {
+                        0
+                    };
+
+                    // Count episodes for this person from PeopleEpisodes table
+                    let episode_count: i64 = sqlx::query_scalar(r#"
+                        SELECT COUNT(*) 
+                        FROM "PeopleEpisodes" pe
+                        INNER JOIN "Podcasts" p ON pe.podcastid = p.podcastid
+                        WHERE pe.personid = $1 AND p.userid = $2
+                    "#)
+                    .bind(person_id)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await
+                    .unwrap_or(0);
+
                     let subscription = serde_json::json!({
-                        "personid": row.try_get::<i32, _>("personid")?,
+                        "personid": person_id,
                         "userid": row.try_get::<i32, _>("userid")?,
                         "name": row.try_get::<String, _>("name")?,
                         "image": row.try_get::<String, _>("personimg")?,
                         "peopledbid": row.try_get::<i32, _>("peopledbid")?,
-                        "associatedpodcasts": row.try_get::<Option<String>, _>("associatedpodcasts")?
+                        "associatedpodcasts": podcast_count,
+                        "episode_count": episode_count
                     });
                     subscriptions.push(subscription);
                 }
@@ -14102,13 +14132,43 @@ impl DatabasePool {
                     .await?;
                 
                 for row in rows {
+                    let person_id = row.try_get::<i32, _>("PersonID")?;
+                    let associated_podcasts_str = row.try_get::<Option<String>, _>("AssociatedPodcasts")?;
+                    
+                    // Count associated podcasts by splitting the comma-separated string and filtering out empty/0 values
+                    let podcast_count = if let Some(podcasts_str) = &associated_podcasts_str {
+                        if podcasts_str.is_empty() {
+                            0
+                        } else {
+                            podcasts_str.split(',')
+                                .filter(|s| !s.trim().is_empty() && s.trim() != "0")
+                                .count()
+                        }
+                    } else {
+                        0
+                    };
+
+                    // Count episodes for this person from PeopleEpisodes table
+                    let episode_count: i64 = sqlx::query_scalar("
+                        SELECT COUNT(*) 
+                        FROM PeopleEpisodes pe
+                        INNER JOIN Podcasts p ON pe.PodcastID = p.PodcastID
+                        WHERE pe.PersonID = ? AND p.UserID = ?
+                    ")
+                    .bind(person_id)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await
+                    .unwrap_or(0);
+
                     let subscription = serde_json::json!({
-                        "personid": row.try_get::<i32, _>("PersonID")?,
+                        "personid": person_id,
                         "userid": row.try_get::<i32, _>("UserID")?,
                         "name": row.try_get::<String, _>("Name")?,
                         "image": row.try_get::<String, _>("PersonImg")?,
                         "peopledbid": row.try_get::<i32, _>("PeopleDBID")?,
-                        "associatedpodcasts": row.try_get::<Option<String>, _>("AssociatedPodcasts")?
+                        "associatedpodcasts": podcast_count,
+                        "episode_count": episode_count
                     });
                     subscriptions.push(subscription);
                 }
@@ -21559,6 +21619,186 @@ impl DatabasePool {
         }
 
         Ok(backup_filename)
+    }
+
+    // Get podcasts that have podcast_index_id = 0 (imported without podcast index match)
+    pub async fn get_unmatched_podcasts(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(
+                    r#"SELECT podcastid, podcastname, artworkurl, author, description, feedurl
+                       FROM "Podcasts" 
+                       WHERE userid = $1 AND (podcastindexid = 0 OR podcastindexid IS NULL) 
+                       AND (ignorepodcastindex = FALSE OR ignorepodcastindex IS NULL)
+                       ORDER BY podcastname"#
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut podcasts = Vec::new();
+                for row in rows {
+                    let podcast = serde_json::json!({
+                        "podcast_id": row.try_get::<i32, _>("podcastid")?,
+                        "podcast_name": row.try_get::<String, _>("podcastname")?,
+                        "artwork_url": row.try_get::<Option<String>, _>("artworkurl")?,
+                        "author": row.try_get::<Option<String>, _>("author")?,
+                        "description": row.try_get::<Option<String>, _>("description")?,
+                        "feed_url": row.try_get::<String, _>("feedurl")?
+                    });
+                    podcasts.push(podcast);
+                }
+
+                Ok(podcasts)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    "SELECT PodcastID, PodcastName, ArtworkURL, Author, Description, FeedURL
+                     FROM Podcasts 
+                     WHERE UserID = ? AND (PodcastIndexID = 0 OR PodcastIndexID IS NULL) 
+                     AND (IgnorePodcastIndex = 0 OR IgnorePodcastIndex IS NULL)
+                     ORDER BY PodcastName"
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut podcasts = Vec::new();
+                for row in rows {
+                    let podcast = serde_json::json!({
+                        "podcast_id": row.try_get::<i32, _>("PodcastID")?,
+                        "podcast_name": row.try_get::<String, _>("PodcastName")?,
+                        "artwork_url": row.try_get::<Option<String>, _>("ArtworkURL")?,
+                        "author": row.try_get::<Option<String>, _>("Author")?,
+                        "description": row.try_get::<Option<String>, _>("Description")?,
+                        "feed_url": row.try_get::<String, _>("FeedURL")?
+                    });
+                    podcasts.push(podcast);
+                }
+
+                Ok(podcasts)
+            }
+        }
+    }
+
+    // Update a podcast's podcast_index_id
+    pub async fn update_podcast_index_id(&self, user_id: i32, podcast_id: i32, podcast_index_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    r#"UPDATE "Podcasts" 
+                       SET podcastindexid = $1 
+                       WHERE podcastid = $2 AND userid = $3"#
+                )
+                .bind(podcast_index_id)
+                .bind(podcast_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query(
+                    "UPDATE Podcasts 
+                     SET PodcastIndexID = ? 
+                     WHERE PodcastID = ? AND UserID = ?"
+                )
+                .bind(podcast_index_id)
+                .bind(podcast_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Ignore/unignore a podcast's index ID requirement
+    pub async fn ignore_podcast_index_id(&self, user_id: i32, podcast_id: i32, ignore: bool) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    r#"UPDATE "Podcasts" 
+                       SET ignorepodcastindex = $1 
+                       WHERE podcastid = $2 AND userid = $3"#
+                )
+                .bind(ignore)
+                .bind(podcast_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query(
+                    "UPDATE Podcasts 
+                     SET IgnorePodcastIndex = ? 
+                     WHERE PodcastID = ? AND UserID = ?"
+                )
+                .bind(ignore)
+                .bind(podcast_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Get ignored podcasts for a user  
+    pub async fn get_ignored_podcasts(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(
+                    r#"SELECT podcastid, podcastname, artworkurl, author, description, feedurl
+                       FROM "Podcasts" 
+                       WHERE userid = $1 AND ignorepodcastindex = TRUE
+                       ORDER BY podcastname"#
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut podcasts = Vec::new();
+                for row in rows {
+                    let podcast = serde_json::json!({
+                        "podcast_id": row.try_get::<i32, _>("podcastid")?,
+                        "podcast_name": row.try_get::<String, _>("podcastname")?,
+                        "artwork_url": row.try_get::<Option<String>, _>("artworkurl")?,
+                        "author": row.try_get::<Option<String>, _>("author")?,
+                        "description": row.try_get::<Option<String>, _>("description")?,
+                        "feed_url": row.try_get::<String, _>("feedurl")?
+                    });
+                    podcasts.push(podcast);
+                }
+
+                Ok(podcasts)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    "SELECT PodcastID, PodcastName, ArtworkURL, Author, Description, FeedURL
+                     FROM Podcasts 
+                     WHERE UserID = ? AND IgnorePodcastIndex = 1
+                     ORDER BY PodcastName"
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut podcasts = Vec::new();
+                for row in rows {
+                    let podcast = serde_json::json!({
+                        "podcast_id": row.try_get::<i32, _>("PodcastID")?,
+                        "podcast_name": row.try_get::<String, _>("PodcastName")?,
+                        "artwork_url": row.try_get::<Option<String>, _>("ArtworkURL")?,
+                        "author": row.try_get::<Option<String>, _>("Author")?,
+                        "description": row.try_get::<Option<String>, _>("Description")?,
+                        "feed_url": row.try_get::<String, _>("FeedURL")?
+                    });
+                    podcasts.push(podcast);
+                }
+
+                Ok(podcasts)
+            }
+        }
     }
 }
 

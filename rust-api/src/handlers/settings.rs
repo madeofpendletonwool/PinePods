@@ -3397,3 +3397,152 @@ pub async fn manual_backup_to_directory(
     })))
 }
 
+// Request for getting podcasts with podcast_index_id = 0
+#[derive(Deserialize)]
+pub struct GetUnmatchedPodcastsRequest {
+    pub user_id: i32,
+}
+
+// Get podcasts that have podcast_index_id = 0 (imported via OPML without podcast index match)
+pub async fn get_unmatched_podcasts(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<GetUnmatchedPodcastsRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check if it's web key or user's own key
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == request.user_id || is_web_key {
+        let podcasts = state.db_pool.get_unmatched_podcasts(request.user_id).await?;
+        Ok(Json(serde_json::json!({"podcasts": podcasts})))
+    } else {
+        Err(AppError::forbidden("You can only access your own podcasts"))
+    }
+}
+
+// Request for updating podcast index ID
+#[derive(Deserialize)]
+pub struct UpdatePodcastIndexIdRequest {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub podcast_index_id: i32,
+}
+
+// Update a podcast's podcast_index_id
+pub async fn update_podcast_index_id(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<UpdatePodcastIndexIdRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check if it's web key or user's own key
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == request.user_id || is_web_key {
+        state.db_pool.update_podcast_index_id(
+            request.user_id,
+            request.podcast_id,
+            request.podcast_index_id
+        ).await?;
+        
+        Ok(Json(serde_json::json!({
+            "detail": "Podcast index ID updated successfully"
+        })))
+    } else {
+        Err(AppError::forbidden("You can only update your own podcasts"))
+    }
+}
+
+// Request for ignoring a podcast index ID
+#[derive(Deserialize)]
+pub struct IgnorePodcastIndexIdRequest {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub ignore: bool,
+}
+
+#[derive(Deserialize)]
+pub struct GetIgnoredPodcastsRequest {
+    pub user_id: i32,
+}
+
+// Ignore/unignore a podcast's index ID requirement
+pub async fn ignore_podcast_index_id(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<IgnorePodcastIndexIdRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check if it's web key or user's own key
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == request.user_id || is_web_key {
+        state.db_pool.ignore_podcast_index_id(
+            request.user_id,
+            request.podcast_id,
+            request.ignore
+        ).await?;
+        
+        let action = if request.ignore { "ignored" } else { "unignored" };
+        Ok(Json(serde_json::json!({
+            "detail": format!("Podcast index ID requirement {}", action)
+        })))
+    } else {
+        Err(AppError::forbidden("You can only update your own podcasts"))
+    }
+}
+
+// Get podcasts that are ignored from podcast index matching
+pub async fn get_ignored_podcasts(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<GetIgnoredPodcastsRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check if it's web key or user's own key
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    if key_id == request.user_id || is_web_key {
+        let podcasts = state.db_pool.get_ignored_podcasts(request.user_id).await?;
+        
+        Ok(Json(serde_json::json!({
+            "podcasts": podcasts
+        })))
+    } else {
+        Err(AppError::forbidden("You can only view your own podcasts"))
+    }
+}
+

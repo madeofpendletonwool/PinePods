@@ -335,6 +335,10 @@ fn create_data_routes() -> Router<AppState> {
         .route("/list_backup_files", post(handlers::settings::list_backup_files))
         .route("/restore_backup_file", post(handlers::settings::restore_from_backup_file))
         .route("/manual_backup_to_directory", post(handlers::settings::manual_backup_to_directory))
+        .route("/get_unmatched_podcasts", post(handlers::settings::get_unmatched_podcasts))
+        .route("/update_podcast_index_id", post(handlers::settings::update_podcast_index_id))
+        .route("/ignore_podcast_index_id", post(handlers::settings::ignore_podcast_index_id))
+        .route("/get_ignored_podcasts", post(handlers::settings::get_ignored_podcasts))
         // Add more data routes as needed
 }
 

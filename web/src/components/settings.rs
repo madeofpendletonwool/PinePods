@@ -210,6 +210,7 @@ pub fn settings() -> Html {
                             <AccordionItem title="Add Custom Feed" content={html!{ <setting_components::custom_feed::CustomFeed /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Podcast Sync" content={html!{ <setting_components::nextcloud_options::SyncOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Enable/Disable RSS Feeds" content={html!{ <setting_components::rss_feeds::RSSFeedSettings /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title="Match Podcasts to Podcast Index" content={html!{ <setting_components::podcast_index_matching::PodcastIndexMatching /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Api Keys" content={html!{ <setting_components::api_keys::APIKeys /> }} position={AccordionItemPosition::Middle}/>
                         </div>
                         }

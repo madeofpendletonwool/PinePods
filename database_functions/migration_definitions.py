@@ -2412,6 +2412,51 @@ def migration_027_add_scheduled_backups_table(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("028", "add_ignore_podcast_index_column", "Add IgnorePodcastIndex column to Podcasts table", requires=["027"])
+def migration_028_add_ignore_podcast_index_column(conn, db_type: str):
+    """
+    Migration 028: Add IgnorePodcastIndex column to Podcasts table
+    """
+    logger.info("Starting migration 028: Add IgnorePodcastIndex column to Podcasts table")
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "Podcasts" 
+                ADD COLUMN IF NOT EXISTS IgnorePodcastIndex BOOLEAN DEFAULT FALSE
+            ''', conn=conn)
+            logger.info("Added IgnorePodcastIndex column to Podcasts table (PostgreSQL)")
+        
+        else:  # MySQL
+            # Check if column already exists to avoid duplicate column error
+            safe_execute_sql(cursor, '''
+                SELECT COUNT(*) 
+                FROM information_schema.columns 
+                WHERE table_name = 'Podcasts' 
+                AND column_name = 'IgnorePodcastIndex' 
+                AND table_schema = DATABASE()
+            ''', conn=conn)
+            
+            result = cursor.fetchone()
+            if result[0] == 0:  # Column doesn't exist
+                safe_execute_sql(cursor, '''
+                    ALTER TABLE Podcasts 
+                    ADD COLUMN IgnorePodcastIndex TINYINT(1) DEFAULT 0
+                ''', conn=conn)
+                logger.info("Added IgnorePodcastIndex column to Podcasts table (MySQL)")
+            else:
+                logger.info("IgnorePodcastIndex column already exists in Podcasts table (MySQL)")
+        
+        logger.info("IgnorePodcastIndex column migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in IgnorePodcastIndex column migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 if __name__ == "__main__":
     # Register all migrations and run them
     register_all_migrations()
