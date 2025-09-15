@@ -2457,6 +2457,112 @@ def migration_028_add_ignore_podcast_index_column(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("029", "fix_people_episodes_table_schema", "Fix PeopleEpisodes table schema to match expected format", requires=["009"])
+def migration_029_fix_people_episodes_table_schema(conn, db_type: str):
+    """
+    Migration 029: Fix PeopleEpisodes table schema
+    
+    This migration ensures the PeopleEpisodes table has the correct schema with all required columns.
+    Some databases may have an incomplete PeopleEpisodes table from migration 009.
+    """
+    logger.info("Starting migration 029: Fix PeopleEpisodes table schema")
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == 'postgresql':
+            # For PostgreSQL, we'll recreate the table with the correct schema
+            # First check if table exists and get its current structure
+            safe_execute_sql(cursor, '''
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'PeopleEpisodes' 
+                AND table_schema = current_schema()
+            ''', conn=conn)
+            
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'podcastid' not in [col.lower() for col in existing_columns]:
+                logger.info("PeopleEpisodes table missing required columns, recreating...")
+                
+                # Drop existing table if it exists with wrong schema
+                safe_execute_sql(cursor, 'DROP TABLE IF EXISTS "PeopleEpisodes"', conn=conn)
+                
+                # Create with correct schema
+                safe_execute_sql(cursor, '''
+                    CREATE TABLE "PeopleEpisodes" (
+                        EpisodeID SERIAL PRIMARY KEY,
+                        PersonID INT,
+                        PodcastID INT,
+                        EpisodeTitle TEXT,
+                        EpisodeDescription TEXT,
+                        EpisodeURL TEXT,
+                        EpisodeArtwork TEXT,
+                        EpisodePubDate TIMESTAMP,
+                        EpisodeDuration INT,
+                        AddedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (PersonID) REFERENCES "People"(PersonID),
+                        FOREIGN KEY (PodcastID) REFERENCES "Podcasts"(PodcastID)
+                    )
+                ''', conn=conn)
+                logger.info("Recreated PeopleEpisodes table with correct schema (PostgreSQL)")
+            else:
+                logger.info("PeopleEpisodes table already has correct schema (PostgreSQL)")
+        
+        else:  # MySQL
+            # For MySQL, check current table structure
+            safe_execute_sql(cursor, '''
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'PeopleEpisodes' 
+                AND table_schema = DATABASE()
+            ''', conn=conn)
+            
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            logger.info(f"Current PeopleEpisodes columns: {existing_columns}")
+            
+            if 'PodcastID' not in existing_columns:
+                logger.info("PeopleEpisodes table missing required columns, recreating...")
+                
+                # Backup any existing data first (if the table has useful data)
+                safe_execute_sql(cursor, '''
+                    CREATE TABLE IF NOT EXISTS PeopleEpisodes_backup AS 
+                    SELECT * FROM PeopleEpisodes
+                ''', conn=conn)
+                logger.info("Created backup of existing PeopleEpisodes table")
+                
+                # Drop existing table
+                safe_execute_sql(cursor, 'DROP TABLE IF EXISTS PeopleEpisodes', conn=conn)
+                
+                # Create with correct schema
+                safe_execute_sql(cursor, '''
+                    CREATE TABLE PeopleEpisodes (
+                        EpisodeID INT AUTO_INCREMENT PRIMARY KEY,
+                        PersonID INT,
+                        PodcastID INT,
+                        EpisodeTitle TEXT,
+                        EpisodeDescription TEXT,
+                        EpisodeURL TEXT,
+                        EpisodeArtwork TEXT,
+                        EpisodePubDate TIMESTAMP,
+                        EpisodeDuration INT,
+                        AddedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (PersonID) REFERENCES People(PersonID),
+                        FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
+                    )
+                ''', conn=conn)
+                logger.info("Recreated PeopleEpisodes table with correct schema (MySQL)")
+            else:
+                logger.info("PeopleEpisodes table already has correct schema (MySQL)")
+        
+        logger.info("PeopleEpisodes table schema fix completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in PeopleEpisodes table schema fix migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 if __name__ == "__main__":
     # Register all migrations and run them
     register_all_migrations()

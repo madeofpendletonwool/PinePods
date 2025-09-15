@@ -21535,11 +21535,14 @@ impl DatabasePool {
                 .await?;
 
                 if let Some(row) = row {
+                    let created_datetime = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("CreatedAt")?;
+                    let updated_datetime = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("UpdatedAt")?;
+                    
                     Ok(serde_json::json!({
-                        "schedule": row.get::<String, _>("CronSchedule"),
-                        "enabled": row.get::<bool, _>("Enabled"),
-                        "created_at": row.get::<chrono::NaiveDateTime, _>("CreatedAt").format("%Y-%m-%dT%H:%M:%S").to_string(),
-                        "updated_at": row.get::<chrono::NaiveDateTime, _>("UpdatedAt").format("%Y-%m-%dT%H:%M:%S").to_string()
+                        "schedule": row.try_get::<String, _>("CronSchedule")?,
+                        "enabled": row.try_get::<bool, _>("Enabled")?,
+                        "created_at": created_datetime.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                        "updated_at": updated_datetime.format("%Y-%m-%dT%H:%M:%S").to_string()
                     }))
                 } else {
                     Ok(serde_json::json!({
@@ -21797,6 +21800,283 @@ impl DatabasePool {
                 }
 
                 Ok(podcasts)
+            }
+        }
+    }
+
+    // Add shared episode - uses current database schema with ShareCode
+    pub async fn add_shared_episode(&self, episode_id: i32, shared_by: i32, share_code: &str, expiration_date: chrono::DateTime<chrono::Utc>) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"
+                    INSERT INTO "SharedEpisodes" (episodeid, sharedby, sharecode, expirationdate)
+                    VALUES ($1, $2, $3, $4)
+                "#)
+                .bind(episode_id)
+                .bind(shared_by)
+                .bind(share_code)
+                .bind(expiration_date)
+                .execute(pool)
+                .await;
+
+                match result {
+                    Ok(_) => Ok(true),
+                    Err(e) => {
+                        tracing::error!("Error sharing episode: {}", e);
+                        Ok(false)
+                    }
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(
+                    "INSERT INTO SharedEpisodes (EpisodeID, SharedBy, ShareCode, ExpirationDate) VALUES (?, ?, ?, ?)"
+                )
+                .bind(episode_id)
+                .bind(shared_by)
+                .bind(share_code)
+                .bind(expiration_date)
+                .execute(pool)
+                .await;
+
+                match result {
+                    Ok(_) => Ok(true),
+                    Err(e) => {
+                        tracing::error!("Error sharing episode: {}", e);
+                        Ok(false)
+                    }
+                }
+            }
+        }
+    }
+
+    // Get episode ID by share code (for shared episode access)
+    pub async fn get_episode_id_by_share_code(&self, share_code: &str) -> AppResult<Option<i32>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query_as::<_, (i32,)>(r#"
+                    SELECT episodeid FROM "SharedEpisodes" 
+                    WHERE sharecode = $1 AND expirationdate > NOW()
+                "#)
+                .bind(share_code)
+                .fetch_optional(pool)
+                .await?;
+                
+                Ok(result.map(|row| row.0))
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query_as::<_, (i32,)>(
+                    "SELECT EpisodeID FROM SharedEpisodes 
+                     WHERE ShareCode = ? AND ExpirationDate > NOW()"
+                )
+                .bind(share_code)
+                .fetch_optional(pool)
+                .await?;
+                
+                Ok(result.map(|row| row.0))
+            }
+        }
+    }
+
+    // Get shared episode metadata - bypasses user restrictions for public access
+    pub async fn get_shared_episode_metadata(&self, episode_id: i32) -> AppResult<serde_json::Value> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // First try regular episodes
+                let row = sqlx::query(
+                    r#"SELECT 
+                        "Podcasts".podcastid, 
+                        "Podcasts".feedurl,
+                        "Podcasts".podcastname, 
+                        "Podcasts".artworkurl,
+                        "Episodes".episodetitle,
+                        "Episodes".episodepubdate,
+                        "Episodes".episodedescription,
+                        "Episodes".episodeartwork,
+                        "Episodes".episodeurl,
+                        "Episodes".episodeduration,
+                        "Episodes".episodeid,
+                        "Podcasts".websiteurl,
+                        "Episodes".completed,
+                        FALSE::boolean as is_youtube
+                    FROM "Episodes"
+                    INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                    WHERE "Episodes".episodeid = $1"#
+                )
+                .bind(episode_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    let episodepubdate = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?
+                        .format("%Y-%m-%dT%H:%M:%S").to_string();
+                    
+                    Ok(serde_json::json!({
+                        "podcastid": row.try_get::<i32, _>("podcastid")?,
+                        "feedurl": row.try_get::<Option<String>, _>("feedurl")?,
+                        "podcastname": row.try_get::<String, _>("podcastname")?,
+                        "artworkurl": row.try_get::<Option<String>, _>("artworkurl")?,
+                        "episodetitle": row.try_get::<String, _>("episodetitle")?,
+                        "episodepubdate": episodepubdate,
+                        "episodedescription": row.try_get::<Option<String>, _>("episodedescription")?,
+                        "episodeartwork": row.try_get::<Option<String>, _>("episodeartwork")?,
+                        "episodeurl": row.try_get::<String, _>("episodeurl")?,
+                        "episodeduration": row.try_get::<Option<i32>, _>("episodeduration")?,
+                        "episodeid": row.try_get::<i32, _>("episodeid")?,
+                        "websiteurl": row.try_get::<Option<String>, _>("websiteurl")?,
+                        "listenduration": None::<i32>, // No user-specific data for shared episodes
+                        "completed": row.try_get::<Option<bool>, _>("completed")?,
+                        "is_youtube": false
+                    }))
+                } else {
+                    // Try YouTube videos
+                    let row = sqlx::query(
+                        r#"SELECT 
+                            "Podcasts".podcastid, 
+                            "Podcasts".feedurl,
+                            "Podcasts".podcastname, 
+                            "Podcasts".artworkurl,
+                            "YouTubeVideos".videotitle as episodetitle,
+                            "YouTubeVideos".publishedat as episodepubdate,
+                            "YouTubeVideos".videodescription as episodedescription,
+                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            "YouTubeVideos".videourl as episodeurl,
+                            "YouTubeVideos".duration as episodeduration,
+                            "YouTubeVideos".videoid as episodeid,
+                            "Podcasts".websiteurl,
+                            "YouTubeVideos".completed,
+                            TRUE::boolean as is_youtube
+                        FROM "YouTubeVideos"
+                        INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        WHERE "YouTubeVideos".videoid = $1"#
+                    )
+                    .bind(episode_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                    if let Some(row) = row {
+                        let episodepubdate = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?
+                            .format("%Y-%m-%dT%H:%M:%S").to_string();
+                        
+                        Ok(serde_json::json!({
+                            "podcastid": row.try_get::<i32, _>("podcastid")?,
+                            "feedurl": row.try_get::<Option<String>, _>("feedurl")?,
+                            "podcastname": row.try_get::<String, _>("podcastname")?,
+                            "artworkurl": row.try_get::<Option<String>, _>("artworkurl")?,
+                            "episodetitle": row.try_get::<String, _>("episodetitle")?,
+                            "episodepubdate": episodepubdate,
+                            "episodedescription": row.try_get::<Option<String>, _>("episodedescription")?,
+                            "episodeartwork": row.try_get::<Option<String>, _>("episodeartwork")?,
+                            "episodeurl": row.try_get::<String, _>("episodeurl")?,
+                            "episodeduration": row.try_get::<Option<i32>, _>("episodeduration")?,
+                            "episodeid": row.try_get::<i32, _>("episodeid")?,
+                            "websiteurl": row.try_get::<Option<String>, _>("websiteurl")?,
+                            "listenposition": None::<i32>, // No user-specific data for shared episodes  
+                            "completed": row.try_get::<Option<bool>, _>("completed")?,
+                            "is_youtube": true
+                        }))
+                    } else {
+                        Err(AppError::not_found("Episode not found"))
+                    }
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                // First try regular episodes
+                let row = sqlx::query(
+                    "SELECT 
+                        Podcasts.PodcastID, 
+                        Podcasts.FeedURL,
+                        Podcasts.PodcastName, 
+                        Podcasts.ArtworkURL,
+                        Episodes.EpisodeTitle,
+                        Episodes.EpisodePubDate,
+                        Episodes.EpisodeDescription,
+                        Episodes.EpisodeArtwork,
+                        Episodes.EpisodeURL,
+                        Episodes.EpisodeDuration,
+                        Episodes.EpisodeID,
+                        Podcasts.WebsiteURL,
+                        Episodes.Completed,
+                        FALSE as is_youtube
+                    FROM Episodes
+                    INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                    WHERE Episodes.EpisodeID = ?"
+                )
+                .bind(episode_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    let episodepubdate = row.try_get::<chrono::NaiveDateTime, _>("EpisodePubDate")?
+                        .format("%Y-%m-%dT%H:%M:%S").to_string();
+                    
+                    Ok(serde_json::json!({
+                        "podcastid": row.try_get::<i32, _>("PodcastID")?,
+                        "feedurl": row.try_get::<Option<String>, _>("FeedURL")?,
+                        "podcastname": row.try_get::<String, _>("PodcastName")?,
+                        "artworkurl": row.try_get::<Option<String>, _>("ArtworkURL")?,
+                        "episodetitle": row.try_get::<String, _>("EpisodeTitle")?,
+                        "episodepubdate": episodepubdate,
+                        "episodedescription": row.try_get::<Option<String>, _>("EpisodeDescription")?,
+                        "episodeartwork": row.try_get::<Option<String>, _>("EpisodeArtwork")?,
+                        "episodeurl": row.try_get::<String, _>("EpisodeURL")?,
+                        "episodeduration": row.try_get::<Option<i32>, _>("EpisodeDuration")?,
+                        "episodeid": row.try_get::<i32, _>("EpisodeID")?,
+                        "websiteurl": row.try_get::<Option<String>, _>("WebsiteURL")?,
+                        "listenduration": None::<i32>, // No user-specific data for shared episodes
+                        "completed": row.try_get::<Option<bool>, _>("Completed")?,
+                        "is_youtube": false
+                    }))
+                } else {
+                    // Try YouTube videos
+                    let row = sqlx::query(
+                        "SELECT 
+                            Podcasts.PodcastID, 
+                            Podcasts.FeedURL,
+                            Podcasts.PodcastName, 
+                            Podcasts.ArtworkURL,
+                            YouTubeVideos.VideoTitle as EpisodeTitle,
+                            YouTubeVideos.PublishedAt as EpisodePubDate,
+                            YouTubeVideos.VideoDescription as EpisodeDescription,
+                            YouTubeVideos.ThumbnailURL as EpisodeArtwork,
+                            YouTubeVideos.VideoURL as EpisodeURL,
+                            YouTubeVideos.Duration as EpisodeDuration,
+                            YouTubeVideos.VideoID as EpisodeID,
+                            Podcasts.WebsiteURL,
+                            YouTubeVideos.Completed,
+                            TRUE as is_youtube
+                        FROM YouTubeVideos
+                        INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        WHERE YouTubeVideos.VideoID = ?"
+                    )
+                    .bind(episode_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                    if let Some(row) = row {
+                        let episodepubdate = row.try_get::<chrono::NaiveDateTime, _>("EpisodePubDate")?
+                            .format("%Y-%m-%dT%H:%M:%S").to_string();
+                        
+                        Ok(serde_json::json!({
+                            "podcastid": row.try_get::<i32, _>("PodcastID")?,
+                            "feedurl": row.try_get::<Option<String>, _>("FeedURL")?,
+                            "podcastname": row.try_get::<String, _>("PodcastName")?,
+                            "artworkurl": row.try_get::<Option<String>, _>("ArtworkURL")?,
+                            "episodetitle": row.try_get::<String, _>("EpisodeTitle")?,
+                            "episodepubdate": episodepubdate,
+                            "episodedescription": row.try_get::<Option<String>, _>("EpisodeDescription")?,
+                            "episodeartwork": row.try_get::<Option<String>, _>("EpisodeArtwork")?,
+                            "episodeurl": row.try_get::<String, _>("EpisodeURL")?,
+                            "episodeduration": row.try_get::<Option<i32>, _>("EpisodeDuration")?,
+                            "episodeid": row.try_get::<i32, _>("EpisodeID")?,
+                            "websiteurl": row.try_get::<Option<String>, _>("WebsiteURL")?,
+                            "listenposition": None::<i32>, // No user-specific data for shared episodes  
+                            "completed": row.try_get::<Option<bool>, _>("Completed")?,
+                            "is_youtube": true
+                        }))
+                    } else {
+                        Err(AppError::not_found("Episode not found"))
+                    }
+                }
             }
         }
     }

@@ -3248,23 +3248,57 @@ pub async fn restore_from_backup_file(
                 
                 reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
 
-                // Execute restoration
+                // Execute restoration based on database type
                 use tokio::process::Command;
+                let db_type = std::env::var("DB_TYPE").unwrap_or_else(|_| "postgresql".to_string());
                 let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
-                let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
-                let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
                 let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_database".to_string());
-
-                let mut cmd = Command::new("psql");
-                cmd.arg("-h").arg(&db_host)
-                   .arg("-p").arg(&db_port)
-                   .arg("-U").arg(&db_user)
-                   .arg("-d").arg(&db_name)
-                   .arg("-f").arg(&backup_path)
-                   .env("PGPASSWORD", &db_password);
-
-                let output = cmd.output().await
-                    .map_err(|e| AppError::internal(&format!("Failed to execute restore: {}", e)))?;
+                
+                let output = if db_type.to_lowercase().contains("mysql") || db_type.to_lowercase().contains("mariadb") {
+                    let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
+                    let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
+                    
+                    let mut cmd = Command::new("mysql");
+                    cmd.arg("-h").arg(&db_host)
+                       .arg("-P").arg(&db_port)
+                       .arg("-u").arg(&db_user)
+                       .arg(&format!("-p{}", db_password))
+                       .arg("--ssl-verify-server-cert=0")
+                       .arg(&db_name);
+                    
+                    // For MySQL, we need to pipe the file content to stdin
+                    cmd.stdin(std::process::Stdio::piped());
+                    let mut child = cmd.spawn()
+                        .map_err(|e| AppError::internal(&format!("Failed to execute mysql: {}", e)))?;
+                    
+                    // Read the backup file and send to mysql stdin
+                    let backup_content = tokio::fs::read_to_string(&backup_path).await
+                        .map_err(|e| AppError::internal(&format!("Failed to read backup file: {}", e)))?;
+                    
+                    if let Some(stdin) = child.stdin.as_mut() {
+                        use tokio::io::AsyncWriteExt;
+                        stdin.write_all(backup_content.as_bytes()).await
+                            .map_err(|e| AppError::internal(&format!("Failed to write to mysql stdin: {}", e)))?;
+                    }
+                    
+                    child.wait_with_output().await
+                        .map_err(|e| AppError::internal(&format!("Failed to wait for mysql: {}", e)))?
+                } else {
+                    // PostgreSQL
+                    let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
+                    let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
+                    
+                    let mut cmd = Command::new("psql");
+                    cmd.arg("-h").arg(&db_host)
+                       .arg("-p").arg(&db_port)
+                       .arg("-U").arg(&db_user)
+                       .arg("-d").arg(&db_name)
+                       .arg("-f").arg(&backup_path)
+                       .env("PGPASSWORD", &db_password);
+                    
+                    cmd.output().await
+                        .map_err(|e| AppError::internal(&format!("Failed to execute psql: {}", e)))?
+                };
 
                 if !output.status.success() {
                     let error_msg = String::from_utf8_lossy(&output.stderr);
@@ -3334,32 +3368,57 @@ pub async fn manual_backup_to_directory(
                 reporter.update_progress(10.0, Some("Starting manual backup...".to_string())).await?;
                 
                 // Get database credentials from environment
+                let db_type = std::env::var("DB_TYPE").unwrap_or_else(|_| "postgresql".to_string());
                 let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
-                let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
-                let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_db".to_string());
-                let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
+                let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_database".to_string());
                 let db_password = std::env::var("DB_PASSWORD")
                     .map_err(|_| AppError::internal("Database password not found in environment"))?;
                 
                 reporter.update_progress(30.0, Some("Creating database backup...".to_string())).await?;
                 
-                // Run pg_dump to create backup
-                let output = tokio::process::Command::new("pg_dump")
-                    .env("PGPASSWORD", db_password)
-                    .args(&[
-                        "-h", &db_host,
-                        "-p", &db_port,
-                        "-U", &db_user,
-                        "-d", &db_name,
-                        "--clean",
-                        "--if-exists",
-                        "--no-owner",
-                        "--no-privileges",
-                        "-f", &backup_path
-                    ])
-                    .output()
-                    .await
-                    .map_err(|e| AppError::internal(&format!("Failed to execute pg_dump: {}", e)))?;
+                // Use appropriate backup command based on database type
+                let output = if db_type.to_lowercase().contains("mysql") || db_type.to_lowercase().contains("mariadb") {
+                    let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
+                    let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
+                    
+                    tokio::process::Command::new("mysqldump")
+                        .args(&[
+                            "-h", &db_host,
+                            "-P", &db_port,
+                            "-u", &db_user,
+                            &format!("-p{}", db_password),
+                            "--single-transaction",
+                            "--routines",
+                            "--triggers",
+                            "--ssl-verify-server-cert=0",
+                            "--result-file", &backup_path,
+                            &db_name
+                        ])
+                        .output()
+                        .await
+                        .map_err(|e| AppError::internal(&format!("Failed to execute mysqldump: {}", e)))?
+                } else {
+                    // PostgreSQL
+                    let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
+                    let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
+                    
+                    tokio::process::Command::new("pg_dump")
+                        .env("PGPASSWORD", db_password)
+                        .args(&[
+                            "-h", &db_host,
+                            "-p", &db_port,
+                            "-U", &db_user,
+                            "-d", &db_name,
+                            "--clean",
+                            "--if-exists",
+                            "--no-owner",
+                            "--no-privileges",
+                            "-f", &backup_path
+                        ])
+                        .output()
+                        .await
+                        .map_err(|e| AppError::internal(&format!("Failed to execute pg_dump: {}", e)))?
+                };
 
                 if !output.status.success() {
                     let error_msg = String::from_utf8_lossy(&output.stderr);

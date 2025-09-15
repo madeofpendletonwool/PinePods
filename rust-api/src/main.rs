@@ -231,6 +231,8 @@ fn create_data_routes() -> Router<AppState> {
         .route("/bulk_queue_episodes", post(handlers::episodes::bulk_queue_episodes))
         .route("/bulk_download_episodes", post(handlers::episodes::bulk_download_episodes))
         .route("/bulk_delete_downloaded_episodes", post(handlers::episodes::bulk_delete_downloaded_episodes))
+        .route("/share_episode/{episode_id}", post(handlers::episodes::share_episode))
+        .route("/episode_by_url/{url_key}", get(handlers::episodes::get_episode_by_url_key))
         .route("/increment_played/{user_id}", put(handlers::podcasts::increment_played))
         .route("/record_listen_duration", post(handlers::podcasts::record_listen_duration))
         .route("/get_podcast_id_from_ep_id", get(handlers::podcasts::get_podcast_id_from_ep_id))

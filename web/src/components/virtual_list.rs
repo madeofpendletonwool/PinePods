@@ -577,7 +577,8 @@ pub fn person_episode_virtual_list(props: &PersonEpisodeVirtualListProps) -> Htm
         >
             <div style={format!("height: {}px; position: relative;", total_height)}>
                 <div style={format!("transform: translateY({}px);", offset_y)}>
-                    { for props.episodes.iter().skip(visible_start).take(visible_end - visible_start).map(|episode| {
+                    { (visible_start..visible_end).map(|index| {
+                        let episode = &props.episodes[index];
                         html! {
                             <PersonEpisodeComponent
                                 key={format!("{}", episode.episodeid)}
@@ -592,7 +593,7 @@ pub fn person_episode_virtual_list(props: &PersonEpisodeVirtualListProps) -> Htm
                                 api_key={props.api_key.clone()}
                             />
                         }
-                    }) }
+                    }).collect::<Html>() }
                 </div>
             </div>
         </div>
