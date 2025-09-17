@@ -13,11 +13,30 @@ RUN apk add trunk@edge
 # Install wasm target and build tools
 RUN rustup target add wasm32-unknown-unknown && \
     cargo install wasm-bindgen-cli
+
+# Test wasm-bindgen installation before full build
+RUN echo "Testing wasm-bindgen installation..." && \
+    which wasm-bindgen && \
+    wasm-bindgen --version && \
+    ls -la /usr/local/cargo/bin/ && \
+    echo "wasm-bindgen test completed"
+
+# Test trunk installation
+RUN echo "Testing trunk installation..." && \
+    which trunk && \
+    trunk --version && \
+    echo "trunk test completed"
+
 # Add application files to the builder stage
 COPY ./web/Cargo.lock ./web/Cargo.toml ./web/dev-info.md ./web/index.html ./web/tailwind.config.js ./web/Trunk.toml /app/
 COPY ./web/src /app/src
 COPY ./web/static /app/static
 WORKDIR /app
+
+# Test that trunk can find wasm-bindgen before full build
+RUN echo "Testing if trunk can find wasm-bindgen..." && \
+    RUST_LOG=debug trunk build --help && \
+    echo "trunk can find wasm-bindgen"
 # Build the Yew application in release mode
 RUN RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"" trunk build --features server_build --release
 
