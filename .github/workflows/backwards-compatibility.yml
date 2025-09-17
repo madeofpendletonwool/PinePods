@@ -118,22 +118,6 @@ jobs:
           docker compose -f docker-compose.previous.yml stop pinepods_previous
           echo "✅ Previous version stopped (database preserved)"
 
-      - name: Build current version validator
-        run: |
-          echo "🔨 Building database validator for current version"
-          docker build -f Dockerfile.validator -t pinepods-validator .
-
-      - name: Validate database schema
-        run: |
-          echo "🔍 Validating database schema compatibility"
-          docker run --rm --network pinepods_test_network \
-            -e DB_TYPE=mysql \
-            -e DB_HOST=mysql \
-            -e DB_PORT=3306 \
-            -e DB_USER=root \
-            -e DB_PASSWORD=${{ env.TEST_DB_PASSWORD }} \
-            -e DB_NAME=${{ env.TEST_DB_NAME }} \
-            pinepods-validator
 
       - name: Build current version
         run: |
@@ -201,9 +185,12 @@ jobs:
           timeout 120 bash -c 'while ! curl -f http://localhost:8040/api/pinepods_check; do echo "Waiting for current version..."; sleep 10; done'
           echo "✅ Current version is ready"
 
-      - name: Final validation
+      - name: Build validator and validate upgraded database
         run: |
-          echo "🔍 Running final database validation"
+          echo "🔨 Building database validator"
+          docker build -f Dockerfile.validator -t pinepods-validator .
+          
+          echo "🔍 Validating upgraded database schema"
           docker run --rm --network pinepods_test_network \
             -e DB_TYPE=mysql \
             -e DB_HOST=mysql \
@@ -325,20 +312,11 @@ jobs:
           sleep 30
           timeout 60 bash -c 'while ! curl -f http://localhost:8040/api/pinepods_check; do sleep 5; done'
 
-      - name: Stop previous version and validate with current
+      - name: Stop previous version
         run: |
+          echo "🛑 Stopping previous PinePods version"
           docker compose -f docker-compose.postgres-previous.yml stop pinepods_previous
-
-          # Build and run PostgreSQL validator
-          docker build -f Dockerfile.validator.postgres -t pinepods-validator-postgres .
-          docker run --rm --network pinepods_test_network \
-            -e DB_TYPE=postgresql \
-            -e DB_HOST=postgres \
-            -e DB_PORT=5432 \
-            -e DB_USER=postgres \
-            -e DB_PASSWORD=${{ env.TEST_DB_PASSWORD }} \
-            -e DB_NAME=${{ env.TEST_DB_NAME }} \
-            pinepods-validator-postgres
+          echo "✅ Previous version stopped (database preserved)"
 
       - name: Build current version (PostgreSQL)
         run: |
@@ -406,8 +384,12 @@ jobs:
           timeout 120 bash -c 'while ! curl -f http://localhost:8040/api/pinepods_check; do echo "Waiting for current version..."; sleep 10; done'
           echo "✅ Current version is ready"
 
-          # Final validation with current version running
-          echo "🔍 Running final database validation with current version"
+      - name: Build validator and validate upgraded database (PostgreSQL)
+        run: |
+          echo "🔨 Building PostgreSQL database validator"
+          docker build -f Dockerfile.validator.postgres -t pinepods-validator-postgres .
+          
+          echo "🔍 Validating upgraded database schema"
           docker run --rm --network pinepods_test_network \
             -e DB_TYPE=postgresql \
             -e DB_HOST=postgres \
