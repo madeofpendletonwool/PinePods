@@ -135,16 +135,21 @@ jobs:
             -e DB_NAME=${{ env.TEST_DB_NAME }} \
             pinepods-validator
 
+      - name: Build current version
+        run: |
+          echo "🔨 Building current PinePods version from source"
+          docker build -f dockerfile -t pinepods-current:test .
+          echo "✅ Build complete"
+
       - name: Start current version
         run: |
-          echo "🚀 Starting current PinePods version"
 
           # Create docker-compose for current version
           cat > docker-compose.current.yml << EOF
           version: '3.8'
           services:
             pinepods_current:
-              build: .
+              image: pinepods-current:test
               environment:
                 DB_TYPE: mysql
                 DB_HOST: mysql
@@ -184,15 +189,16 @@ jobs:
               driver: bridge
           EOF
 
+          echo "🚀 Starting current PinePods version"
           # Start current version
           docker compose -f docker-compose.current.yml up -d pinepods_current
 
           # Wait for current version to be ready
           echo "⏳ Waiting for current version to initialize..."
-          sleep 30
+          sleep 60
 
           # Check if current version is responding
-          timeout 60 bash -c 'while ! curl -f http://localhost:8040/api/pinepods_check; do sleep 5; done'
+          timeout 120 bash -c 'while ! curl -f http://localhost:8040/api/pinepods_check; do echo "Waiting for current version..."; sleep 10; done'
           echo "✅ Current version is ready"
 
       - name: Final validation
@@ -325,6 +331,83 @@ jobs:
 
           # Build and run PostgreSQL validator
           docker build -f Dockerfile.validator.postgres -t pinepods-validator-postgres .
+          docker run --rm --network pinepods_test_network \
+            -e DB_TYPE=postgresql \
+            -e DB_HOST=postgres \
+            -e DB_PORT=5432 \
+            -e DB_USER=postgres \
+            -e DB_PASSWORD=${{ env.TEST_DB_PASSWORD }} \
+            -e DB_NAME=${{ env.TEST_DB_NAME }} \
+            pinepods-validator-postgres
+
+      - name: Build current version (PostgreSQL)
+        run: |
+          echo "🔨 Building current PinePods version from source"
+          docker build -f dockerfile -t pinepods-current:test .
+          echo "✅ Build complete"
+
+      - name: Test current version (PostgreSQL)
+        run: |
+          echo "🚀 Starting current PinePods version with PostgreSQL"
+
+          # Create docker-compose for current version
+          cat > docker-compose.postgres-current.yml << EOF
+          version: '3.8'
+          services:
+            pinepods_current:
+              image: pinepods-current:test
+              environment:
+                DB_TYPE: postgresql
+                DB_HOST: postgres
+                DB_PORT: 5432
+                DB_USER: postgres
+                DB_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
+                DB_NAME: ${{ env.TEST_DB_NAME }}
+                VALKEY_HOST: valkey
+                VALKEY_PORT: 6379
+                HOSTNAME: 'http://localhost:8040'
+                DEBUG_MODE: true
+                SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+                PEOPLE_API_URL: 'https://people.pinepods.online'
+              ports:
+                - "8040:8040"
+              depends_on:
+                - postgres
+                - valkey
+              networks:
+                - test_network
+
+            postgres:
+              image: postgres:latest
+              environment:
+                POSTGRES_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
+                POSTGRES_DB: ${{ env.TEST_DB_NAME }}
+              networks:
+                - test_network
+
+            valkey:
+              image: valkey/valkey:8-alpine
+              networks:
+                - test_network
+
+          networks:
+            test_network:
+              driver: bridge
+          EOF
+
+          # Start current version
+          docker compose -f docker-compose.postgres-current.yml up -d pinepods_current
+
+          # Wait for current version to be ready
+          echo "⏳ Waiting for current version to initialize..."
+          sleep 60
+
+          # Check if current version is responding
+          timeout 120 bash -c 'while ! curl -f http://localhost:8040/api/pinepods_check; do echo "Waiting for current version..."; sleep 10; done'
+          echo "✅ Current version is ready"
+
+          # Final validation with current version running
+          echo "🔍 Running final database validation with current version"
           docker run --rm --network pinepods_test_network \
             -e DB_TYPE=postgresql \
             -e DB_HOST=postgres \
