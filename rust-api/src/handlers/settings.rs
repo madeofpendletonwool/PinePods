@@ -3353,6 +3353,15 @@ pub async fn manual_backup_to_directory(
     if let Err(e) = std::fs::create_dir_all("/opt/pinepods/backups") {
         return Err(AppError::internal(&format!("Failed to create backup directory: {}", e)));
     }
+    
+    // Set ownership using PUID/PGID environment variables
+    let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
+    let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
+    
+    // Set directory ownership (ignore errors for NFS mounts)
+    let _ = std::process::Command::new("chown")
+        .args(&[format!("{}:{}", puid, pgid), "/opt/pinepods/backups".to_string()])
+        .output();
 
     // Clone for the async closure
     let backup_filename_for_closure = backup_filename.clone();
@@ -3426,6 +3435,15 @@ pub async fn manual_backup_to_directory(
                 }
 
                 reporter.update_progress(90.0, Some("Finalizing backup...".to_string())).await?;
+
+                // Set file ownership using PUID/PGID environment variables
+                let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
+                let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
+                
+                // Set backup file ownership (ignore errors for NFS mounts)
+                let _ = std::process::Command::new("chown")
+                    .args(&[format!("{}:{}", puid, pgid), backup_path.clone()])
+                    .output();
 
                 // Check if backup file was created and get its size
                 let backup_info = match std::fs::metadata(&backup_path) {

@@ -102,6 +102,12 @@ mkdir -p /opt/pinepods/downloads
 mkdir -p /opt/pinepods/certs
 mkdir -p /var/log/pinepods  # Make sure log directory exists
 
+# Create nginx runtime directories
+mkdir -p /var/log/nginx
+mkdir -p /var/lib/nginx
+mkdir -p /var/lib/nginx/tmp
+mkdir -p /run/nginx
+
 # Database Setup
 echo "Using $DB_TYPE database"
 # Use compiled database setup binary (no Python dependency)
@@ -134,15 +140,68 @@ else
     echo "Starting Horust in production mode (logs to files)..."
 fi
 
-# Set permissions for download and backup directories BEFORE starting services
-# Only do this if PUID and PGID are set
-if [[ -n "$PUID" && -n "$PGID" ]]; then
-    echo "Setting permissions for download and backup directories...(Be patient this might take a while if you have a lot of downloads)"
-    chown -R ${PUID}:${PGID} /opt/pinepods/downloads
-    chown -R ${PUID}:${PGID} /opt/pinepods/backups
+# Set up user permissions for download and backup directories
+# Set defaults if PUID/PGID are not provided
+export PUID=${PUID:-1000}
+export PGID=${PGID:-1000}
+
+echo "Setting up user permissions (PUID=${PUID}, PGID=${PGID})..."
+
+# Create group if it doesn't exist
+if ! getent group $PGID > /dev/null 2>&1; then
+    echo "Creating group with GID $PGID"
+    addgroup -g $PGID pinepods
 else
-    echo "Skipping permission setting as PUID/PGID are not set"
+    echo "Group with GID $PGID already exists"
 fi
+
+# Create user if it doesn't exist
+if ! getent passwd $PUID > /dev/null 2>&1; then
+    echo "Creating user with UID $PUID"
+    adduser -D -u $PUID -G $(getent group $PGID | cut -d: -f1) pinepods
+else
+    echo "User with UID $PUID already exists"
+fi
+
+# Get the actual group name for the GID
+GROUP_NAME=$(getent group $PGID | cut -d: -f1)
+
+# Set permissions for directories where possible
+echo "Setting permissions for download and backup directories (this may take time if you have many files)..."
+
+# Try to set ownership, but handle failures gracefully (e.g., NFS with root squashing)
+set +e  # Don't exit on error for permission setting
+
+# Set ownership of main directories
+chown ${PUID}:${PGID} /opt/pinepods/downloads 2>/dev/null || echo "Warning: Could not change ownership of /opt/pinepods/downloads (possibly NFS with root squashing)"
+chown ${PUID}:${PGID} /opt/pinepods/backups 2>/dev/null || echo "Warning: Could not change ownership of /opt/pinepods/backups (possibly NFS with root squashing)"
+
+# Try to set ownership recursively, but don't fail the entire startup if it fails
+if ! chown -R ${PUID}:${PGID} /opt/pinepods/downloads 2>/dev/null; then
+    echo "Warning: Could not recursively change ownership of /opt/pinepods/downloads"
+    echo "This is normal for NFS mounts with root squashing. Files will be created with the correct permissions."
+fi
+
+if ! chown -R ${PUID}:${PGID} /opt/pinepods/backups 2>/dev/null; then
+    echo "Warning: Could not recursively change ownership of /opt/pinepods/backups"
+    echo "This is normal for NFS mounts with root squashing. Files will be created with the correct permissions."
+fi
+
+set -e  # Re-enable exit on error
+
+# Set permissions for nginx runtime directories
+chown -R ${PUID}:${PGID} /var/log/nginx 2>/dev/null || echo "Warning: Could not change ownership of /var/log/nginx"
+chown -R ${PUID}:${PGID} /var/lib/nginx 2>/dev/null || echo "Warning: Could not change ownership of /var/lib/nginx"
+chown -R ${PUID}:${PGID} /var/tmp/nginx 2>/dev/null || echo "Warning: Could not change ownership of /var/tmp/nginx (may not exist)"
+chown -R ${PUID}:${PGID} /run/nginx 2>/dev/null || echo "Warning: Could not change ownership of /run/nginx (may not exist)"
+
+# Set permissions for application log directory  
+chown -R ${PUID}:${PGID} /var/log/pinepods 2>/dev/null || echo "Warning: Could not change ownership of /var/log/pinepods"
+
+# Make sure cache directory has correct permissions
+chown -R ${PUID}:${PGID} /pinepods/cache 2>/dev/null || echo "Warning: Could not change ownership of /pinepods/cache"
+
+echo "User and permission setup complete"
 
 # Copy service configurations to Horust directory
 cp /pinepods/startup/services/*.toml /etc/horust/services/

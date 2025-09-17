@@ -76,6 +76,15 @@ async fn download_episode_and_wait(
     if !download_dir.exists() {
         std::fs::create_dir_all(&download_dir)
             .map_err(|e| crate::error::AppError::Internal(format!("Failed to create download directory: {}", e)))?;
+        
+        // Set ownership using PUID/PGID environment variables
+        let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
+        let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
+        
+        // Set directory ownership (ignore errors for NFS mounts)
+        let _ = std::process::Command::new("chown")
+            .args(&[format!("{}:{}", puid, pgid), download_dir.to_string_lossy().to_string()])
+            .output();
     }
     
     let pub_date_str = if let Some(date) = pub_date {
@@ -106,6 +115,18 @@ async fn download_episode_and_wait(
         std::io::Write::write_all(&mut file, &chunk)
             .map_err(|e| crate::error::AppError::Internal(format!("Failed to write file: {}", e)))?;
     }
+    
+    // Close the file before setting ownership
+    drop(file);
+    
+    // Set file ownership using PUID/PGID environment variables
+    let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
+    let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
+    
+    // Set file ownership (ignore errors for NFS mounts)
+    let _ = std::process::Command::new("chown")
+        .args(&[format!("{}:{}", puid, pgid), file_path.to_string_lossy().to_string()])
+        .output();
     
     // Record download in database  
     let file_size = tokio::fs::metadata(&file_path).await
@@ -342,6 +363,15 @@ impl TaskSpawner {
                 if !download_dir.exists() {
                     std::fs::create_dir_all(&download_dir)
                         .map_err(|e| crate::error::AppError::internal(&format!("Failed to create download directory: {}", e)))?;
+                    
+                    // Set ownership using PUID/PGID environment variables
+                    let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
+                    let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
+                    
+                    // Set directory ownership (ignore errors for NFS mounts)
+                    let _ = std::process::Command::new("chown")
+                        .args(&[format!("{}:{}", puid, pgid), download_dir.to_string_lossy().to_string()])
+                        .output();
                 }
                 
                 // Format date for filename (like Python version)
@@ -412,6 +442,15 @@ impl TaskSpawner {
                     .map_err(|e| crate::error::AppError::internal(&format!("Failed to flush file: {}", e)))?;
                 
                 drop(file); // Close the file handle before metadata operations
+                
+                // Set file ownership using PUID/PGID environment variables
+                let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
+                let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
+                
+                // Set file ownership (ignore errors for NFS mounts)
+                let _ = std::process::Command::new("chown")
+                    .args(&[format!("{}:{}", puid, pgid), file_path.to_string_lossy().to_string()])
+                    .output();
                 
                 let status_message = format!("Processing {}", episode_title);
                 task_manager.update_task_progress_with_details(&task_id_clone, 85.0, Some(status_message), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
