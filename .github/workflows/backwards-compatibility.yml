@@ -73,6 +73,8 @@ jobs:
                 VALKEY_PORT: 6379
                 HOSTNAME: 'http://localhost:8040'
                 DEBUG_MODE: true
+                SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+                PEOPLE_API_URL: 'https://people.pinepods.online'
               ports:
                 - "8040:8040"
               depends_on:
@@ -154,6 +156,8 @@ jobs:
                 VALKEY_PORT: 6379
                 HOSTNAME: 'http://localhost:8040'
                 DEBUG_MODE: true
+                SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+                PEOPLE_API_URL: 'https://people.pinepods.online'
               ports:
                 - "8040:8040"
               depends_on:
@@ -283,6 +287,8 @@ jobs:
                 VALKEY_PORT: 6379
                 HOSTNAME: 'http://localhost:8040'
                 DEBUG_MODE: true
+                SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+                PEOPLE_API_URL: 'https://people.pinepods.online'
               ports:
                 - "8040:8040"
               depends_on:
