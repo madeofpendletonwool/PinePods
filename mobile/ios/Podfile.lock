@@ -1,5 +1,5 @@
 PODS:
-  - app_links (6.4.1):
+  - app_links (0.0.2):
     - Flutter
   - audio_service (0.0.1):
     - Flutter
@@ -138,7 +138,7 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/webview_flutter_wkwebview/darwin"
 
 SPEC CHECKSUMS:
-  app_links: 3dbc685f76b1693c66a6d9dd1e9ab6f73d97dc0a
+  app_links: 76b66b60cc809390ca1ad69bfd66b998d2387ac7
   audio_service: aa99a6ba2ae7565996015322b0bb024e1d25c6fd
   audio_session: 9bb7f6c970f21241b19f5a3658097ae459681ba0
   connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd

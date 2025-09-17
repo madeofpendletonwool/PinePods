@@ -1,0 +1,406 @@
+name: Database Backwards Compatibility Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  TEST_DB_PASSWORD: "test_password_123!"
+  TEST_DB_NAME: "pinepods_test_db"
+
+jobs:
+  test-mysql-compatibility:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:latest
+        env:
+          MYSQL_ROOT_PASSWORD: test_password_123!
+          MYSQL_DATABASE: pinepods_test_db
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get previous release tag
+        id: get_previous_tag
+        run: |
+          # Get the latest stable release (exclude rc, alpha, beta)
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No stable release tag found, using 0.7.9 as baseline"
+            PREVIOUS_TAG="0.7.9"
+          fi
+
+          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+          echo "Using previous tag: $PREVIOUS_TAG"
+
+      - name: Start previous PinePods version
+        run: |
+          echo "🚀 Starting PinePods ${{ steps.get_previous_tag.outputs.previous_tag }}"
+
+          # Create docker-compose for previous version
+          cat > docker-compose.previous.yml << EOF
+          version: '3.8'
+          services:
+            pinepods_previous:
+              image: madeofpendletonwool/pinepods:${{ steps.get_previous_tag.outputs.previous_tag }}
+              environment:
+                DB_TYPE: mysql
+                DB_HOST: mysql
+                DB_PORT: 3306
+                DB_USER: root
+                DB_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
+                DB_NAME: ${{ env.TEST_DB_NAME }}
+                VALKEY_HOST: valkey
+                VALKEY_PORT: 6379
+                HOSTNAME: 'http://localhost:8040'
+                DEBUG_MODE: true
+                SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+                PEOPLE_API_URL: 'https://people.pinepods.online'
+              ports:
+                - "8040:8040"
+              depends_on:
+                - mysql
+                - valkey
+              networks:
+                - test_network
+
+            mysql:
+              image: mysql:8.0
+              environment:
+                MYSQL_ROOT_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
+                MYSQL_DATABASE: ${{ env.TEST_DB_NAME }}
+              networks:
+                - test_network
+
+            valkey:
+              image: valkey/valkey:8-alpine
+              networks:
+                - test_network
+
+          networks:
+            test_network:
+              driver: bridge
+          EOF
+
+          # Start previous version and wait for it to be ready
+          docker compose -f docker-compose.previous.yml up -d
+
+          # Wait for services to be ready
+          echo "⏳ Waiting for previous version to initialize..."
+          sleep 30
+
+          # Check if previous version is responding
+          timeout 60 bash -c 'while ! curl -f http://localhost:8040/api/pinepods_check; do sleep 5; done'
+          echo "✅ Previous version (${{ steps.get_previous_tag.outputs.previous_tag }}) is ready"
+
+      - name: Stop previous version
+        run: |
+          echo "🛑 Stopping previous PinePods version"
+          docker compose -f docker-compose.previous.yml stop pinepods_previous
+          echo "✅ Previous version stopped (database preserved)"
+
+
+      - name: Build current version
+        run: |
+          echo "🔨 Building current PinePods version from source"
+          docker build -f dockerfile -t pinepods-current:test .
+          echo "✅ Build complete"
+
+      - name: Start current version
+        run: |
+
+          # Create docker-compose for current version
+          cat > docker-compose.current.yml << EOF
+          version: '3.8'
+          services:
+            pinepods_current:
+              image: pinepods-current:test
+              environment:
+                DB_TYPE: mysql
+                DB_HOST: mysql
+                DB_PORT: 3306
+                DB_USER: root
+                DB_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
+                DB_NAME: ${{ env.TEST_DB_NAME }}
+                VALKEY_HOST: valkey
+                VALKEY_PORT: 6379
+                HOSTNAME: 'http://localhost:8040'
+                DEBUG_MODE: true
+                SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+                PEOPLE_API_URL: 'https://people.pinepods.online'
+              ports:
+                - "8040:8040"
+              depends_on:
+                - mysql
+                - valkey
+              networks:
+                - test_network
+
+            mysql:
+              image: mysql:8.0
+              environment:
+                MYSQL_ROOT_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
+                MYSQL_DATABASE: ${{ env.TEST_DB_NAME }}
+              networks:
+                - test_network
+
+            valkey:
+              image: valkey/valkey:8-alpine
+              networks:
+                - test_network
+
+          networks:
+            test_network:
+              driver: bridge
+          EOF
+
+          echo "🚀 Starting current PinePods version"
+          # Start current version
+          docker compose -f docker-compose.current.yml up -d pinepods_current
+
+          # Wait for current version to be ready
+          echo "⏳ Waiting for current version to initialize..."
+          sleep 60
+
+          # Check if current version is responding
+          timeout 120 bash -c 'while ! curl -f http://localhost:8040/api/pinepods_check; do echo "Waiting for current version..."; sleep 10; done'
+          echo "✅ Current version is ready"
+
+      - name: Build validator and validate upgraded database
+        run: |
+          echo "🔨 Building database validator"
+          docker build -f Dockerfile.validator -t pinepods-validator .
+          
+          echo "🔍 Validating upgraded database schema"
+          docker run --rm --network pinepods_test_network \
+            -e DB_TYPE=mysql \
+            -e DB_HOST=mysql \
+            -e DB_PORT=3306 \
+            -e DB_USER=root \
+            -e DB_PASSWORD=${{ env.TEST_DB_PASSWORD }} \
+            -e DB_NAME=${{ env.TEST_DB_NAME }} \
+            pinepods-validator
+
+      - name: Test basic functionality
+        run: |
+          echo "🧪 Testing basic API functionality"
+
+          # Test health endpoint
+          curl -f http://localhost:8040/api/health || exit 1
+
+          # Test pinepods check endpoint
+          curl -f http://localhost:8040/api/pinepods_check || exit 1
+
+          echo "✅ Basic functionality tests passed"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "🧹 Cleaning up test environment"
+          docker compose -f docker-compose.previous.yml down -v || true
+          docker compose -f docker-compose.current.yml down -v || true
+
+  test-postgresql-compatibility:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test_password_123!
+          POSTGRES_DB: pinepods_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get previous release tag
+        id: get_previous_tag
+        run: |
+          # Get the latest stable release (exclude rc, alpha, beta)
+          PREVIOUS_TAG=$(git tag --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No stable release tag found, using 0.7.9 as baseline"
+            PREVIOUS_TAG="0.7.9"
+          fi
+
+          echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
+          echo "Using previous tag: $PREVIOUS_TAG"
+
+      - name: Start previous PinePods version
+        run: |
+          echo "🚀 Starting PinePods ${{ steps.get_previous_tag.outputs.previous_tag }} (PostgreSQL)"
+
+          cat > docker-compose.postgres-previous.yml << EOF
+          version: '3.8'
+          services:
+            pinepods_previous:
+              image: madeofpendletonwool/pinepods:${{ steps.get_previous_tag.outputs.previous_tag }}
+              environment:
+                DB_TYPE: postgresql
+                DB_HOST: postgres
+                DB_PORT: 5432
+                DB_USER: postgres
+                DB_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
+                DB_NAME: ${{ env.TEST_DB_NAME }}
+                VALKEY_HOST: valkey
+                VALKEY_PORT: 6379
+                HOSTNAME: 'http://localhost:8040'
+                DEBUG_MODE: true
+                SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+                PEOPLE_API_URL: 'https://people.pinepods.online'
+              ports:
+                - "8040:8040"
+              depends_on:
+                - postgres
+                - valkey
+              networks:
+                - test_network
+
+            postgres:
+              image: postgres:latest
+              environment:
+                POSTGRES_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
+                POSTGRES_DB: ${{ env.TEST_DB_NAME }}
+              networks:
+                - test_network
+
+            valkey:
+              image: valkey/valkey:8-alpine
+              networks:
+                - test_network
+
+          networks:
+            test_network:
+              driver: bridge
+          EOF
+
+          docker compose -f docker-compose.postgres-previous.yml up -d
+          sleep 30
+          timeout 60 bash -c 'while ! curl -f http://localhost:8040/api/pinepods_check; do sleep 5; done'
+
+      - name: Stop previous version
+        run: |
+          echo "🛑 Stopping previous PinePods version"
+          docker compose -f docker-compose.postgres-previous.yml stop pinepods_previous
+          echo "✅ Previous version stopped (database preserved)"
+
+      - name: Build current version (PostgreSQL)
+        run: |
+          echo "🔨 Building current PinePods version from source"
+          docker build -f dockerfile -t pinepods-current:test .
+          echo "✅ Build complete"
+
+      - name: Test current version (PostgreSQL)
+        run: |
+          echo "🚀 Starting current PinePods version with PostgreSQL"
+
+          # Create docker-compose for current version
+          cat > docker-compose.postgres-current.yml << EOF
+          version: '3.8'
+          services:
+            pinepods_current:
+              image: pinepods-current:test
+              environment:
+                DB_TYPE: postgresql
+                DB_HOST: postgres
+                DB_PORT: 5432
+                DB_USER: postgres
+                DB_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
+                DB_NAME: ${{ env.TEST_DB_NAME }}
+                VALKEY_HOST: valkey
+                VALKEY_PORT: 6379
+                HOSTNAME: 'http://localhost:8040'
+                DEBUG_MODE: true
+                SEARCH_API_URL: 'https://search.pinepods.online/api/search'
+                PEOPLE_API_URL: 'https://people.pinepods.online'
+              ports:
+                - "8040:8040"
+              depends_on:
+                - postgres
+                - valkey
+              networks:
+                - test_network
+
+            postgres:
+              image: postgres:latest
+              environment:
+                POSTGRES_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
+                POSTGRES_DB: ${{ env.TEST_DB_NAME }}
+              networks:
+                - test_network
+
+            valkey:
+              image: valkey/valkey:8-alpine
+              networks:
+                - test_network
+
+          networks:
+            test_network:
+              driver: bridge
+          EOF
+
+          # Start current version
+          docker compose -f docker-compose.postgres-current.yml up -d pinepods_current
+
+          # Wait for current version to be ready
+          echo "⏳ Waiting for current version to initialize..."
+          sleep 60
+
+          # Check if current version is responding
+          timeout 120 bash -c 'while ! curl -f http://localhost:8040/api/pinepods_check; do echo "Waiting for current version..."; sleep 10; done'
+          echo "✅ Current version is ready"
+
+      - name: Build validator and validate upgraded database (PostgreSQL)
+        run: |
+          echo "🔨 Building PostgreSQL database validator"
+          docker build -f Dockerfile.validator.postgres -t pinepods-validator-postgres .
+          
+          echo "🔍 Validating upgraded database schema"
+          docker run --rm --network pinepods_test_network \
+            -e DB_TYPE=postgresql \
+            -e DB_HOST=postgres \
+            -e DB_PORT=5432 \
+            -e DB_USER=postgres \
+            -e DB_PASSWORD=${{ env.TEST_DB_PASSWORD }} \
+            -e DB_NAME=${{ env.TEST_DB_NAME }} \
+            pinepods-validator-postgres
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose -f docker-compose.postgres-previous.yml down -v || true
+          docker compose -f docker-compose.postgres-current.yml down -v || true
