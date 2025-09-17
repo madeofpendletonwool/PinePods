@@ -86,15 +86,11 @@ jobs:
               environment:
                 MYSQL_ROOT_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
                 MYSQL_DATABASE: ${{ env.TEST_DB_NAME }}
-              ports:
-                - "3306:3306"
               networks:
                 - test_network
 
             valkey:
               image: valkey/valkey:8-alpine
-              ports:
-                - "6379:6379"
               networks:
                 - test_network
 
@@ -128,9 +124,9 @@ jobs:
       - name: Validate database schema
         run: |
           echo "🔍 Validating database schema compatibility"
-          docker run --rm --network host \
+          docker run --rm --network pinepods_test_network \
             -e DB_TYPE=mysql \
-            -e DB_HOST=localhost \
+            -e DB_HOST=mysql \
             -e DB_PORT=3306 \
             -e DB_USER=root \
             -e DB_PASSWORD=${{ env.TEST_DB_PASSWORD }} \
@@ -171,15 +167,11 @@ jobs:
               environment:
                 MYSQL_ROOT_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
                 MYSQL_DATABASE: ${{ env.TEST_DB_NAME }}
-              ports:
-                - "3306:3306"
               networks:
                 - test_network
 
             valkey:
               image: valkey/valkey:8-alpine
-              ports:
-                - "6379:6379"
               networks:
                 - test_network
 
@@ -202,9 +194,9 @@ jobs:
       - name: Final validation
         run: |
           echo "🔍 Running final database validation"
-          docker run --rm --network host \
+          docker run --rm --network pinepods_test_network \
             -e DB_TYPE=mysql \
-            -e DB_HOST=localhost \
+            -e DB_HOST=mysql \
             -e DB_PORT=3306 \
             -e DB_USER=root \
             -e DB_PASSWORD=${{ env.TEST_DB_PASSWORD }} \
@@ -304,15 +296,11 @@ jobs:
               environment:
                 POSTGRES_PASSWORD: ${{ env.TEST_DB_PASSWORD }}
                 POSTGRES_DB: ${{ env.TEST_DB_NAME }}
-              ports:
-                - "5432:5432"
               networks:
                 - test_network
 
             valkey:
               image: valkey/valkey:8-alpine
-              ports:
-                - "6379:6379"
               networks:
                 - test_network
 
@@ -331,9 +319,9 @@ jobs:
 
           # Build and run PostgreSQL validator
           docker build -f Dockerfile.validator.postgres -t pinepods-validator-postgres .
-          docker run --rm --network host \
+          docker run --rm --network pinepods_test_network \
             -e DB_TYPE=postgresql \
-            -e DB_HOST=localhost \
+            -e DB_HOST=postgres \
             -e DB_PORT=5432 \
             -e DB_USER=postgres \
             -e DB_PASSWORD=${{ env.TEST_DB_PASSWORD }} \
