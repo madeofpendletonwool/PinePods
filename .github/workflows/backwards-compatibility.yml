@@ -421,3 +421,4 @@ jobs:
         if: always()
         run: |
           docker compose -f docker-compose.postgres-previous.yml down -v || true
+          docker compose -f docker-compose.postgres-current.yml down -v || true
