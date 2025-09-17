@@ -16,12 +16,12 @@ COPY validate_db.py /app/
 # Set working directory
 WORKDIR /app
 
-# Set default environment variables for PostgreSQL
+# Set default environment variables for PostgreSQL (TEST ONLY - NOT SECURE)
 ENV DB_TYPE=postgresql
 ENV DB_HOST=postgres_db
 ENV DB_PORT=5432
 ENV DB_USER=postgres
-ENV DB_PASSWORD=WWJYV7#zstbD7wz!s92m
+ENV DB_PASSWORD=test_password_123
 ENV DB_NAME=pinepods_database
 
 # Run validator
