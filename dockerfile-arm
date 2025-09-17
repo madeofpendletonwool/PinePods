@@ -12,7 +12,8 @@ RUN apk update
 RUN apk add trunk@edge
 # Install wasm target and build tools
 RUN rustup target add wasm32-unknown-unknown && \
-    cargo install wasm-bindgen-cli
+    cargo install wasm-bindgen-cli && \
+    cargo install horust --locked
 
 # Test wasm-bindgen installation before full build
 RUN echo "Testing wasm-bindgen installation..." && \
@@ -37,8 +38,15 @@ WORKDIR /app
 RUN echo "Testing if trunk can find wasm-bindgen..." && \
     RUST_LOG=debug trunk build --help && \
     echo "trunk can find wasm-bindgen"
-# Build the Yew application in release mode
-RUN RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"" trunk build --features server_build --release
+# Auto-detect wasm-bindgen version and replace trunk's glibc binary with our musl one
+RUN WASM_BINDGEN_VERSION=$(grep -A1 "name = \"wasm-bindgen\"" /app/Cargo.lock | grep "version = " | cut -d'"' -f2) && \
+    echo "Detected wasm-bindgen version: $WASM_BINDGEN_VERSION" && \
+    RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"" timeout 30 trunk build --features server_build --release || \
+    (echo "Build failed as expected, replacing downloaded binary..." && \
+     mkdir -p /root/.cache/trunk/wasm-bindgen-$WASM_BINDGEN_VERSION && \
+     cp /usr/local/cargo/bin/wasm-bindgen /root/.cache/trunk/wasm-bindgen-$WASM_BINDGEN_VERSION/ && \
+     echo "Retrying build with musl binary..." && \
+     RUSTFLAGS="--cfg=web_sys_unstable_apis --cfg getrandom_backend=\"wasm_js\"" trunk build --features server_build --release)
 
 # Go builder stage for the gpodder API
 FROM golang:alpine AS go-builder
@@ -125,12 +133,8 @@ RUN LATEST_VERSION=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases
     wget -O /usr/local/bin/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/download/${LATEST_VERSION}/yt-dlp_linux_aarch64" && \
     chmod +x /usr/local/bin/yt-dlp
 
-# Download and install Horust (aarch64)  
-RUN wget -O /tmp/horust.tar.gz "https://github.com/FedericoPonzi/Horust/releases/download/v0.1.7/horust-aarch64-unknown-linux-gnu.tar.gz" && \
-    cd /tmp && tar -xzf horust.tar.gz && \
-    mv horust /usr/local/bin/ && \
-    chmod +x /usr/local/bin/horust && \
-    rm -f /tmp/horust.tar.gz
+# Copy Horust binary from builder stage
+COPY --from=builder /usr/local/cargo/bin/horust /usr/local/bin/
 
 ENV TZ=UTC
 # Copy compiled database setup binary (replaces Python dependency)
