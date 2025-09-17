@@ -1,0 +1,28 @@
+FROM python:3.11-slim
+
+# Install PostgreSQL dev libraries and required packages
+RUN apt-get update && apt-get install -y \
+    libpq-dev \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install required packages
+RUN pip install psycopg[binary] mysql-connector-python cryptography passlib argon2-cffi
+
+# Copy validation scripts
+COPY database_functions/ /app/database_functions/
+COPY validate_db.py /app/
+
+# Set working directory
+WORKDIR /app
+
+# Set default environment variables for MySQL (TEST ONLY - NOT SECURE)
+ENV DB_TYPE=mysql
+ENV DB_HOST=mysql_db
+ENV DB_PORT=3306
+ENV DB_USER=root
+ENV DB_PASSWORD=test_password_123
+ENV DB_NAME=pinepods_database
+
+# Run validator
+CMD ["python", "validate_db.py", "--verbose"]
