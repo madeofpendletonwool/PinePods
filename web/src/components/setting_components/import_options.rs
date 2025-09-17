@@ -143,7 +143,7 @@ pub fn import_options() -> Html {
                                                     });
                                                     dispatch_wasm.reduce_mut(|audio_state| {
                                                         audio_state.info_message = Option::from(
-                                                            "OPML Import Completed!".to_string(),
+                                                            "OPML Import Completed! After importing head over the Match Podcast Index area to match podcasts with their index counterpart. This allows for host and guest integration throughout PinePods.".to_string(),
                                                         )
                                                     });
                                                 }
@@ -192,6 +192,11 @@ pub fn import_options() -> Html {
         <div class="p-4">
             <p class="item_container-text text-lg font-bold mb-4">{"Import Options:"}</p>
             <p class="item_container-text text-md mb-4">{"You can Import an OPML of podcasts here. If you're migrating from a different podcast app this is probably the solution you want. Most podcast apps allow you to export a backup of your saved podcasts to an OPML file and this option can easily import them into Pinepods. Note that this process can take awhile and you don't have to stay on this page while it imports. If you think it might be stuck, it's probably not."}</p>
+            <div class="import-box mb-4">
+                <p class="item_container-text text-sm">
+                    {"💡 After importing, head over to the Match Podcast Index area to match podcasts with their index counterpart. This allows for host and guest integration throughout PinePods."}
+                </p>
+            </div>
             // <input class="settings-button" type="file" accept=".opml" onchange={onclick} />
             <label class="input-button-label" for="fileInput">{ "Choose File" }</label>
             <input id="fileInput" class="input-button" type="file" accept=".opml" onchange={onclick} />

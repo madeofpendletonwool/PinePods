@@ -2349,6 +2349,632 @@ def migration_024_fix_quick_listens_min_duration(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("027", "add_scheduled_backups_table", "Create ScheduledBackups table for automated backup management", requires=["026"])
+def migration_027_add_scheduled_backups_table(conn, db_type: str):
+    """Create ScheduledBackups table for automated backup management"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting ScheduledBackups table creation migration")
+        
+        if db_type == "postgresql":
+            # Create ScheduledBackups table for PostgreSQL
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS "ScheduledBackups" (
+                    id SERIAL PRIMARY KEY,
+                    userid INTEGER NOT NULL,
+                    cron_schedule VARCHAR(50) NOT NULL,
+                    enabled BOOLEAN NOT NULL DEFAULT false,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(userid),
+                    FOREIGN KEY (userid) REFERENCES "Users"(userid) ON DELETE CASCADE
+                )
+            ''', conn=conn)
+            logger.info("Created ScheduledBackups table (PostgreSQL)")
+            
+            # Create index for performance
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_scheduled_backups_enabled 
+                ON "ScheduledBackups"(enabled)
+            ''', conn=conn)
+            logger.info("Created index on enabled column (PostgreSQL)")
+        
+        else:  # MySQL
+            # Create ScheduledBackups table for MySQL
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS ScheduledBackups (
+                    ID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    CronSchedule VARCHAR(50) NOT NULL,
+                    Enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_user (UserID),
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            ''', conn=conn)
+            logger.info("Created ScheduledBackups table (MySQL)")
+            
+            # Create index for performance
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_scheduled_backups_enabled 
+                ON ScheduledBackups(Enabled)
+            ''', conn=conn)
+            logger.info("Created index on Enabled column (MySQL)")
+        
+        logger.info("ScheduledBackups table creation migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in ScheduledBackups table creation migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("028", "add_ignore_podcast_index_column", "Add IgnorePodcastIndex column to Podcasts table", requires=["027"])
+def migration_028_add_ignore_podcast_index_column(conn, db_type: str):
+    """
+    Migration 028: Add IgnorePodcastIndex column to Podcasts table
+    """
+    logger.info("Starting migration 028: Add IgnorePodcastIndex column to Podcasts table")
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "Podcasts" 
+                ADD COLUMN IF NOT EXISTS IgnorePodcastIndex BOOLEAN DEFAULT FALSE
+            ''', conn=conn)
+            logger.info("Added IgnorePodcastIndex column to Podcasts table (PostgreSQL)")
+        
+        else:  # MySQL
+            # Check if column already exists to avoid duplicate column error
+            safe_execute_sql(cursor, '''
+                SELECT COUNT(*) 
+                FROM information_schema.columns 
+                WHERE table_name = 'Podcasts' 
+                AND column_name = 'IgnorePodcastIndex' 
+                AND table_schema = DATABASE()
+            ''', conn=conn)
+            
+            result = cursor.fetchone()
+            if result[0] == 0:  # Column doesn't exist
+                safe_execute_sql(cursor, '''
+                    ALTER TABLE Podcasts 
+                    ADD COLUMN IgnorePodcastIndex TINYINT(1) DEFAULT 0
+                ''', conn=conn)
+                logger.info("Added IgnorePodcastIndex column to Podcasts table (MySQL)")
+            else:
+                logger.info("IgnorePodcastIndex column already exists in Podcasts table (MySQL)")
+        
+        logger.info("IgnorePodcastIndex column migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in IgnorePodcastIndex column migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("029", "fix_people_episodes_table_schema", "Fix PeopleEpisodes table schema to match expected format", requires=["009"])
+def migration_029_fix_people_episodes_table_schema(conn, db_type: str):
+    """
+    Migration 029: Fix PeopleEpisodes table schema
+    
+    This migration ensures the PeopleEpisodes table has the correct schema with all required columns.
+    Some databases may have an incomplete PeopleEpisodes table from migration 009.
+    """
+    logger.info("Starting migration 029: Fix PeopleEpisodes table schema")
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == 'postgresql':
+            # For PostgreSQL, we'll recreate the table with the correct schema
+            # First check if table exists and get its current structure
+            safe_execute_sql(cursor, '''
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'PeopleEpisodes' 
+                AND table_schema = current_schema()
+            ''', conn=conn)
+            
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'podcastid' not in [col.lower() for col in existing_columns]:
+                logger.info("PeopleEpisodes table missing required columns, recreating...")
+                
+                # Drop existing table if it exists with wrong schema
+                safe_execute_sql(cursor, 'DROP TABLE IF EXISTS "PeopleEpisodes"', conn=conn)
+                
+                # Create with correct schema
+                safe_execute_sql(cursor, '''
+                    CREATE TABLE "PeopleEpisodes" (
+                        EpisodeID SERIAL PRIMARY KEY,
+                        PersonID INT,
+                        PodcastID INT,
+                        EpisodeTitle TEXT,
+                        EpisodeDescription TEXT,
+                        EpisodeURL TEXT,
+                        EpisodeArtwork TEXT,
+                        EpisodePubDate TIMESTAMP,
+                        EpisodeDuration INT,
+                        AddedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (PersonID) REFERENCES "People"(PersonID),
+                        FOREIGN KEY (PodcastID) REFERENCES "Podcasts"(PodcastID)
+                    )
+                ''', conn=conn)
+                logger.info("Recreated PeopleEpisodes table with correct schema (PostgreSQL)")
+            else:
+                logger.info("PeopleEpisodes table already has correct schema (PostgreSQL)")
+        
+        else:  # MySQL
+            # For MySQL, check current table structure
+            safe_execute_sql(cursor, '''
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'PeopleEpisodes' 
+                AND table_schema = DATABASE()
+            ''', conn=conn)
+            
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            logger.info(f"Current PeopleEpisodes columns: {existing_columns}")
+            
+            if 'PodcastID' not in existing_columns:
+                logger.info("PeopleEpisodes table missing required columns, recreating...")
+                
+                # Backup any existing data first (if the table has useful data)
+                safe_execute_sql(cursor, '''
+                    CREATE TABLE IF NOT EXISTS PeopleEpisodes_backup AS 
+                    SELECT * FROM PeopleEpisodes
+                ''', conn=conn)
+                logger.info("Created backup of existing PeopleEpisodes table")
+                
+                # Drop existing table
+                safe_execute_sql(cursor, 'DROP TABLE IF EXISTS PeopleEpisodes', conn=conn)
+                
+                # Create with correct schema
+                safe_execute_sql(cursor, '''
+                    CREATE TABLE PeopleEpisodes (
+                        EpisodeID INT AUTO_INCREMENT PRIMARY KEY,
+                        PersonID INT,
+                        PodcastID INT,
+                        EpisodeTitle TEXT,
+                        EpisodeDescription TEXT,
+                        EpisodeURL TEXT,
+                        EpisodeArtwork TEXT,
+                        EpisodePubDate TIMESTAMP,
+                        EpisodeDuration INT,
+                        AddedDate TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (PersonID) REFERENCES People(PersonID),
+                        FOREIGN KEY (PodcastID) REFERENCES Podcasts(PodcastID)
+                    )
+                ''', conn=conn)
+                logger.info("Recreated PeopleEpisodes table with correct schema (MySQL)")
+            else:
+                logger.info("PeopleEpisodes table already has correct schema (MySQL)")
+        
+        logger.info("PeopleEpisodes table schema fix completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in PeopleEpisodes table schema fix migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+# ============================================================================
+# GPODDER SYNC MIGRATIONS
+# These migrations match the gpodder-api service migrations from Go code
+# ============================================================================
+
+@register_migration("100", "gpodder_initial_schema", "Create initial gpodder sync tables")
+def migration_100_gpodder_initial_schema(conn, db_type: str):
+    """Create initial gpodder sync schema - matches Go migration version 1"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting gpodder migration 100: Initial schema creation")
+        
+        if db_type == 'postgresql':
+            # Create all gpodder sync tables for PostgreSQL
+            tables_sql = [
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncMigrations" (
+                    Version INT PRIMARY KEY,
+                    Description TEXT NOT NULL,
+                    AppliedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncDeviceState" (
+                    DeviceStateID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    SubscriptionCount INT DEFAULT 0,
+                    LastUpdated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID)
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncSubscriptions" (
+                    SubscriptionID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    PodcastURL TEXT NOT NULL,
+                    Action VARCHAR(10) NOT NULL,
+                    Timestamp BIGINT NOT NULL,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncEpisodeActions" (
+                    ActionID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT,
+                    PodcastURL TEXT NOT NULL,
+                    EpisodeURL TEXT NOT NULL,
+                    Action VARCHAR(20) NOT NULL,
+                    Timestamp BIGINT NOT NULL,
+                    Started INT,
+                    Position INT,
+                    Total INT,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncPodcastLists" (
+                    ListID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(255) NOT NULL,
+                    Title VARCHAR(255) NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, Name)
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncPodcastListEntries" (
+                    EntryID SERIAL PRIMARY KEY,
+                    ListID INT NOT NULL,
+                    PodcastURL TEXT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (ListID) REFERENCES "GpodderSyncPodcastLists"(ListID) ON DELETE CASCADE
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncDevicePairs" (
+                    PairID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID1 INT NOT NULL,
+                    DeviceID2 INT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID1) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID2) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID1, DeviceID2)
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncSettings" (
+                    SettingID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Scope VARCHAR(20) NOT NULL,
+                    DeviceID INT,
+                    PodcastURL TEXT,
+                    EpisodeURL TEXT,
+                    SettingKey VARCHAR(255) NOT NULL,
+                    SettingValue TEXT,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    LastUpdated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE
+                )
+                '''
+            ]
+            
+            # Create indexes
+            indexes_sql = [
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sync_subscriptions_userid ON "GpodderSyncSubscriptions"(UserID)',
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sync_subscriptions_deviceid ON "GpodderSyncSubscriptions"(DeviceID)',
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sync_episode_actions_userid ON "GpodderSyncEpisodeActions"(UserID)',
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sync_podcast_lists_userid ON "GpodderSyncPodcastLists"(UserID)'
+            ]
+            
+        else:  # mysql
+            # Create all gpodder sync tables for MySQL
+            tables_sql = [
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncMigrations (
+                    Version INT PRIMARY KEY,
+                    Description TEXT NOT NULL,
+                    AppliedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncDeviceState (
+                    DeviceStateID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    SubscriptionCount INT DEFAULT 0,
+                    LastUpdated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID)
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncSubscriptions (
+                    SubscriptionID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    PodcastURL TEXT NOT NULL,
+                    Action VARCHAR(10) NOT NULL,
+                    Timestamp BIGINT NOT NULL,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncEpisodeActions (
+                    ActionID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT,
+                    PodcastURL TEXT NOT NULL,
+                    EpisodeURL TEXT NOT NULL,
+                    Action VARCHAR(20) NOT NULL,
+                    Timestamp BIGINT NOT NULL,
+                    Started INT,
+                    Position INT,
+                    Total INT,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncPodcastLists (
+                    ListID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(255) NOT NULL,
+                    Title VARCHAR(255) NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, Name)
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncPodcastListEntries (
+                    EntryID INT AUTO_INCREMENT PRIMARY KEY,
+                    ListID INT NOT NULL,
+                    PodcastURL TEXT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (ListID) REFERENCES GpodderSyncPodcastLists(ListID) ON DELETE CASCADE
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncDevicePairs (
+                    PairID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID1 INT NOT NULL,
+                    DeviceID2 INT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID1) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID2) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID1, DeviceID2)
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncSettings (
+                    SettingID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Scope VARCHAR(20) NOT NULL,
+                    DeviceID INT,
+                    PodcastURL TEXT,
+                    EpisodeURL TEXT,
+                    SettingKey VARCHAR(255) NOT NULL,
+                    SettingValue TEXT,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    LastUpdated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE
+                )
+                '''
+            ]
+            
+            # Create indexes
+            indexes_sql = [
+                'CREATE INDEX idx_gpodder_sync_subscriptions_userid ON GpodderSyncSubscriptions(UserID)',
+                'CREATE INDEX idx_gpodder_sync_subscriptions_deviceid ON GpodderSyncSubscriptions(DeviceID)',
+                'CREATE INDEX idx_gpodder_sync_episode_actions_userid ON GpodderSyncEpisodeActions(UserID)',
+                'CREATE INDEX idx_gpodder_sync_podcast_lists_userid ON GpodderSyncPodcastLists(UserID)'
+            ]
+        
+        # Execute table creation
+        for sql in tables_sql:
+            safe_execute_sql(cursor, sql, conn=conn)
+        
+        # Execute index creation
+        for sql in indexes_sql:
+            safe_execute_sql(cursor, sql, conn=conn)
+        
+        logger.info("Created gpodder sync initial schema successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 100: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("101", "gpodder_add_api_version", "Add API version column to GpodderSyncSettings")
+def migration_101_gpodder_add_api_version(conn, db_type: str):
+    """Add API version column - matches Go migration version 2"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting gpodder migration 101: Add API version column")
+        
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "GpodderSyncSettings"
+                ADD COLUMN IF NOT EXISTS APIVersion VARCHAR(10) DEFAULT '2.0'
+            ''', conn=conn)
+        else:  # mysql
+            # Check if column exists first, then add if it doesn't
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'GpodderSyncSettings'
+                AND COLUMN_NAME = 'APIVersion'
+                AND TABLE_SCHEMA = DATABASE()
+            """)
+            
+            if cursor.fetchone()[0] == 0:
+                safe_execute_sql(cursor, '''
+                    ALTER TABLE GpodderSyncSettings
+                    ADD COLUMN APIVersion VARCHAR(10) DEFAULT '2.0'
+                ''', conn=conn)
+                logger.info("Added APIVersion column to GpodderSyncSettings")
+            else:
+                logger.info("APIVersion column already exists in GpodderSyncSettings")
+        
+        logger.info("Gpodder API version migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 101: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("102", "gpodder_create_sessions", "Create GpodderSessions table for API sessions")
+def migration_102_gpodder_create_sessions(conn, db_type: str):
+    """Create GpodderSessions table - matches Go migration version 3"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting gpodder migration 102: Create GpodderSessions table")
+        
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS "GpodderSessions" (
+                    SessionID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    SessionToken TEXT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ExpiresAt TIMESTAMP NOT NULL,
+                    LastActive TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UserAgent TEXT,
+                    ClientIP TEXT,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    UNIQUE(SessionToken)
+                )
+            ''', conn=conn)
+            
+            # Create indexes
+            indexes_sql = [
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sessions_token ON "GpodderSessions"(SessionToken)',
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sessions_userid ON "GpodderSessions"(UserID)',
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sessions_expires ON "GpodderSessions"(ExpiresAt)'
+            ]
+        else:  # mysql
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS GpodderSessions (
+                    SessionID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    SessionToken TEXT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ExpiresAt TIMESTAMP NOT NULL,
+                    LastActive TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UserAgent TEXT,
+                    ClientIP TEXT,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            ''', conn=conn)
+            
+            # Create indexes
+            indexes_sql = [
+                'CREATE INDEX idx_gpodder_sessions_userid ON GpodderSessions(UserID)',
+                'CREATE INDEX idx_gpodder_sessions_expires ON GpodderSessions(ExpiresAt)'
+            ]
+        
+        # Execute index creation
+        for sql in indexes_sql:
+            safe_execute_sql(cursor, sql, conn=conn)
+        
+        logger.info("Created GpodderSessions table successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 102: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("103", "gpodder_sync_state_table", "Add sync state table for tracking device sync status")
+def migration_103_gpodder_sync_state_table(conn, db_type: str):
+    """Create GpodderSyncState table - matches Go migration version 4"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting gpodder migration 103: Add sync state table")
+        
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncState" (
+                    SyncStateID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    LastTimestamp BIGINT DEFAULT 0,
+                    LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID)
+                )
+            ''', conn=conn)
+            
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_syncstate_userid_deviceid ON "GpodderSyncState"(UserID, DeviceID)
+            ''', conn=conn)
+        else:  # mysql
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncState (
+                    SyncStateID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    LastTimestamp BIGINT DEFAULT 0,
+                    LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID)
+                )
+            ''', conn=conn)
+            
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_syncstate_userid_deviceid ON GpodderSyncState(UserID, DeviceID)
+            ''', conn=conn)
+        
+        logger.info("Created GpodderSyncState table successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 103: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("104", "create_people_episodes_backup", "Skip PeopleEpisodes_backup - varies by installation")
+def migration_104_create_people_episodes_backup(conn, db_type: str):
+    """Skip PeopleEpisodes_backup table - this varies by installation and shouldn't be validated"""
+    logger.info("Skipping migration 104: PeopleEpisodes_backup table varies by installation")
+    # This migration is a no-op since backup tables vary by installation
+    # and shouldn't be part of the expected schema
+
+
 if __name__ == "__main__":
     # Register all migrations and run them
     register_all_migrations()

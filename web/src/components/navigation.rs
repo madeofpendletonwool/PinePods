@@ -4,7 +4,7 @@ use crate::components::gen_funcs::generate_gravatar_url;
 use crate::requests::login_requests::{
     call_get_time_info, call_verify_key, use_check_authentication,
 };
-use crate::requests::setting_reqs::call_get_theme;
+use crate::requests::setting_reqs::{call_get_theme, call_get_unmatched_podcasts};
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
@@ -146,8 +146,8 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
 
                                                                 if let Ok(tz_response) =
                                                                     call_get_time_info(
-                                                                        server_name,
-                                                                        api_key,
+                                                                        server_name.clone(),
+                                                                        api_key.clone(),
                                                                         &user_id,
                                                                     )
                                                                     .await
@@ -157,6 +157,22 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
                                                                         state.hour_preference = Some(tz_response.hour_pref);
                                                                         state.date_format = Some(tz_response.date_format);
                                                                     });
+                                                                }
+
+                                                                // Check for unmatched podcasts and show notification
+                                                                let dispatch_unmatched = dispatch_clone.clone();
+                                                                if let Ok(unmatched_response) = call_get_unmatched_podcasts(
+                                                                    server_name,
+                                                                    api_key,
+                                                                    user_id,
+                                                                ).await {
+                                                                    if !unmatched_response.podcasts.is_empty() {
+                                                                        dispatch_unmatched.reduce_mut(|state| {
+                                                                            state.info_message = Some(
+                                                                                format!("📻 You have {} podcast(s) that aren't matched to Podcast Index. Visit the Match Podcast Index settings to enable host and guest information.", unmatched_response.podcasts.len())
+                                                                            );
+                                                                        });
+                                                                    }
                                                                 }
                                                             }
                                                             Err(_) => {

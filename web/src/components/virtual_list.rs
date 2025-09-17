@@ -10,6 +10,7 @@ use crate::components::gen_funcs::{
 use crate::components::gen_funcs::{format_time, strip_images_from_html};
 use crate::components::safehtml::SafeHtml;
 use crate::requests::search_pods::Episode;
+use crate::requests::people_req::PersonEpisode;
 use gloo::events::EventListener;
 use std::rc::Rc;
 use wasm_bindgen::JsCast;
@@ -176,8 +177,8 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 server_name_play.unwrap(),
                 dispatch.clone(),
                 search_ui_state_clone.clone(),
-                None,
                 episode_is_youtube,
+                None,
             );
 
             let boxed_episode = Box::new(episode.clone()) as Box<dyn EpisodeTrait>;
@@ -516,4 +517,173 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
         }
         </>
     }
+}
+
+#[derive(Properties, PartialEq)]
+pub struct PersonEpisodeVirtualListProps {
+    pub episodes: Vec<PersonEpisode>,
+    pub item_height: f64,
+    pub search_state: Rc<AppState>,
+    pub search_ui_state: Rc<UIState>,
+    pub dispatch: Dispatch<UIState>,
+    pub search_dispatch: Dispatch<AppState>,
+    pub history: BrowserHistory,
+    pub server_name: Option<String>,
+    pub user_id: Option<i32>,
+    pub api_key: Option<Option<String>>,
+}
+
+#[function_component(PersonEpisodeVirtualList)]
+pub fn person_episode_virtual_list(props: &PersonEpisodeVirtualListProps) -> Html {
+    let scroll_pos = use_state(|| 0.0);
+    let container_ref = use_node_ref();
+    let container_height = use_state(|| 600.0); // Fixed height for person episodes  
+    let item_height = use_state(|| 234.0); // Match existing episode item height
+
+    // Effect for scroll handling
+    {
+        let scroll_pos = scroll_pos.clone();
+        let container_ref = container_ref.clone();
+        use_effect_with(container_ref.clone(), move |container_ref| {
+            if let Some(container_element) = container_ref.cast::<HtmlElement>() {
+                let container_element_clone = container_element.clone();
+                let listener = EventListener::new(&container_element, "scroll", {
+                    let scroll_pos = scroll_pos.clone();
+                    move |_| {
+                        scroll_pos.set(container_element_clone.scroll_top() as f64);
+                    }
+                });
+
+                Box::new(move || drop(listener)) as Box<dyn FnOnce()>
+            } else {
+                Box::new(|| ()) as Box<dyn FnOnce()>
+            }
+        });
+    }
+
+    // Calculate visible range
+    let visible_start = ((*scroll_pos as f64) / (*item_height as f64)).floor() as usize;
+    let visible_count = ((*container_height as f64) / (*item_height as f64)).ceil() as usize + 1;
+    let visible_end = (visible_start + visible_count).min(props.episodes.len());
+    
+    let total_height = props.episodes.len() as f64 * *item_height;
+    let offset_y = visible_start as f64 * *item_height;
+
+    html! {
+        <div 
+            ref={container_ref}
+            class="virtual-list-container"
+            style={format!("height: {}px; overflow-y: auto;", *container_height)}
+        >
+            <div style={format!("height: {}px; position: relative;", total_height)}>
+                <div style={format!("transform: translateY({}px);", offset_y)}>
+                    { (visible_start..visible_end).map(|index| {
+                        let episode = &props.episodes[index];
+                        html! {
+                            <PersonEpisodeComponent
+                                key={format!("{}", episode.episodeid)}
+                                episode={episode.clone()}
+                                search_state={props.search_state.clone()}
+                                search_ui_state={props.search_ui_state.clone()}
+                                dispatch={props.dispatch.clone()}
+                                search_dispatch={props.search_dispatch.clone()}
+                                history={props.history.clone()}
+                                server_name={props.server_name.clone()}
+                                user_id={props.user_id}
+                                api_key={props.api_key.clone()}
+                            />
+                        }
+                    }).collect::<Html>() }
+                </div>
+            </div>
+        </div>
+    }
+}
+
+#[derive(Properties, PartialEq, Clone)]
+pub struct PersonEpisodeComponentProps {
+    pub episode: PersonEpisode,
+    pub search_state: Rc<AppState>,
+    pub search_ui_state: Rc<UIState>,
+    pub dispatch: Dispatch<UIState>,
+    pub search_dispatch: Dispatch<AppState>,
+    pub history: BrowserHistory,
+    pub server_name: Option<String>,
+    pub user_id: Option<i32>,
+    pub api_key: Option<Option<String>>,
+}
+
+#[function_component(PersonEpisodeComponent)]
+pub fn person_episode_component(props: &PersonEpisodeComponentProps) -> Html {
+    use crate::components::gen_components::{person_episode_item, on_shownotes_click};
+    use crate::components::gen_funcs::sanitize_html_with_blank_target;
+    
+    let state = props.search_state.clone();
+    let audio_state = props.search_ui_state.clone();
+    let audio_dispatch = props.dispatch.clone();
+
+    // Format date
+    let date_format = match_date_format(state.date_format.as_deref());
+    let episode = &props.episode;
+    let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
+    let format_release = format_datetime(&datetime, &state.hour_preference, date_format);
+
+    let is_current_episode = audio_state
+        .currently_playing
+        .as_ref()
+        .map_or(false, |current| current.episode_id == episode.episodeid);
+    let is_playing = audio_state.audio_playing.unwrap_or(false);
+
+    let on_play_pause = on_play_pause(
+        episode.episodeurl.clone(),
+        episode.episodetitle.clone(),
+        episode.episodedescription.clone(),
+        format_release.clone(),
+        episode.episodeartwork.clone().unwrap_or_default(),
+        episode.episodeduration,
+        episode.episodeid,
+        Some(episode.listenduration),
+        props.api_key.clone().unwrap().unwrap(),
+        props.user_id.unwrap(),
+        props.server_name.clone().unwrap(),
+        audio_dispatch.clone(),
+        audio_state.clone(),
+        None,
+        Some(false), // person episodes are always non-YouTube
+    );
+
+    let on_shownotes_click = on_shownotes_click(
+        props.history.clone(),
+        props.search_dispatch.clone(),
+        Some(episode.episodeid),
+        Some(episode.episodeurl.clone()),
+        Some(episode.episodeurl.clone()),
+        None,
+        false,
+        Some(true), // person_episode
+        Some(episode.is_youtube),
+    );
+
+    // Use the proper episode item component
+    person_episode_item(
+        Box::new(episode.clone()),
+        sanitize_html_with_blank_target(&episode.episodedescription),
+        false, // desc_expanded
+        &format_release,
+        on_play_pause,
+        on_shownotes_click,
+        Callback::noop(), // toggle_expanded
+        episode.episodeduration,
+        Some(episode.listenduration),
+        "people",
+        Callback::noop(),
+        false,
+        episode.episodeurl.clone(),
+        false,
+        false, // show_modal
+        Callback::noop(), // on_modal_open
+        Callback::noop(), // on_modal_close
+        is_current_episode,
+        is_playing,
+    )
 }

@@ -2251,7 +2251,19 @@ pub fn episode_layout() -> Html {
                                                 <p class="header-info">{ format!("Explicit: {}", if podcast_info.explicit { "Yes" } else { "No" }) }</p>
                                                 {
                                                     if !podcast_info.is_youtube.unwrap_or(false) {  // Only show if not a YouTube channel
-                                                        if let Some(people) = &state.podcast_people {
+                                                        if podcast_info.podcastindexid == 0 {
+                                                            html! {
+                                                                <div class="import-box mt-2">
+                                                                    <p class="item_container-text text-sm">
+                                                                        {"⚠️ This podcast isn't matched to Podcast Index. "}
+                                                                        <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
+                                                                            {"Match it here"}
+                                                                        </a>
+                                                                        {" to enable host and guest information."}
+                                                                    </p>
+                                                                </div>
+                                                            }
+                                                        } else if let Some(people) = &state.podcast_people {
                                                             if !people.is_empty() {
                                                                 html! {
                                                                     <div class="header-info relative">
@@ -2400,7 +2412,19 @@ pub fn episode_layout() -> Html {
                                                         <p class="header-text">{ format!("Authors: {}", &podcast_info.author) }</p>
                                                         <p class="header-text">{ format!("Explicit: {}", if podcast_info.explicit { "Yes" } else { "No" }) }</p>
                                                     {
-                                                        if let Some(people) = &state.podcast_people {
+                                                        if podcast_info.podcastindexid == 0 {
+                                                            html! {
+                                                                <div class="import-box mt-2">
+                                                                    <p class="item_container-text text-sm">
+                                                                        {"⚠️ This podcast isn't matched to Podcast Index. "}
+                                                                        <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
+                                                                            {"Match it here"}
+                                                                        </a>
+                                                                        {" to enable host and guest information."}
+                                                                    </p>
+                                                                </div>
+                                                            }
+                                                        } else if let Some(people) = &state.podcast_people {
                                                             if !people.is_empty() {
                                                                 html! {
                                                                     <div class="header-info relative" style="max-width: 100%; min-width: 0;">  // Added min-width: 0 to allow shrinking

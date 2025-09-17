@@ -217,6 +217,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/download_status/{user_id}", get(handlers::podcasts::download_status))
         .route("/podcast_episodes", get(handlers::podcasts::podcast_episodes))
         .route("/get_podcast_id_from_ep_name", get(handlers::podcasts::get_podcast_id_from_ep_name))
+        .route("/get_episode_id_ep_name", get(handlers::podcasts::get_episode_id_ep_name))
         .route("/get_episode_metadata", post(handlers::podcasts::get_episode_metadata))
         .route("/fetch_podcasting_2_data", get(handlers::podcasts::fetch_podcasting_2_data))
         .route("/get_auto_download_status", post(handlers::podcasts::get_auto_download_status))
@@ -230,6 +231,8 @@ fn create_data_routes() -> Router<AppState> {
         .route("/bulk_queue_episodes", post(handlers::episodes::bulk_queue_episodes))
         .route("/bulk_download_episodes", post(handlers::episodes::bulk_download_episodes))
         .route("/bulk_delete_downloaded_episodes", post(handlers::episodes::bulk_delete_downloaded_episodes))
+        .route("/share_episode/{episode_id}", post(handlers::episodes::share_episode))
+        .route("/episode_by_url/{url_key}", get(handlers::episodes::get_episode_by_url_key))
         .route("/increment_played/{user_id}", put(handlers::podcasts::increment_played))
         .route("/record_listen_duration", post(handlers::podcasts::record_listen_duration))
         .route("/get_podcast_id_from_ep_id", get(handlers::podcasts::get_podcast_id_from_ep_id))
@@ -329,6 +332,15 @@ fn create_data_routes() -> Router<AppState> {
         .route("/podcast/notification_status", post(handlers::podcasts::get_notification_status))
         .route("/rss_key", get(handlers::settings::get_user_rss_key))
         .route("/verify_mfa", post(handlers::settings::verify_mfa))
+        .route("/schedule_backup", post(handlers::settings::schedule_backup))
+        .route("/get_scheduled_backup", post(handlers::settings::get_scheduled_backup))
+        .route("/list_backup_files", post(handlers::settings::list_backup_files))
+        .route("/restore_backup_file", post(handlers::settings::restore_from_backup_file))
+        .route("/manual_backup_to_directory", post(handlers::settings::manual_backup_to_directory))
+        .route("/get_unmatched_podcasts", post(handlers::settings::get_unmatched_podcasts))
+        .route("/update_podcast_index_id", post(handlers::settings::update_podcast_index_id))
+        .route("/ignore_podcast_index_id", post(handlers::settings::ignore_podcast_index_id))
+        .route("/get_ignored_podcasts", post(handlers::settings::get_ignored_podcasts))
         // Add more data routes as needed
 }
 

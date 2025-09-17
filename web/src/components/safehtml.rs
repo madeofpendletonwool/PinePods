@@ -768,7 +768,7 @@ pub fn safe_html(props: &Props) -> Html {
     let (_, audio_dispatch) = use_store::<UIState>();
 
     // Only get the audio_dispatch when timecode processing is enabled
-    let processed_html = if props.process_timecodes {
+    let processed_html = if props.process_timecodes && server_name.is_some() && api_key.is_some() && user_id.is_some() {
         process_timecodes(
             &props.html,
             audio_dispatch,

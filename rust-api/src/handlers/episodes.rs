@@ -186,3 +186,51 @@ pub async fn bulk_delete_downloaded_episodes(
         failed_count: if failed_count > 0 { Some(failed_count) } else { None },
     }))
 }
+
+// Share episode - creates a shareable URL that expires in 60 days
+pub async fn share_episode(
+    State(state): State<AppState>,
+    axum::extract::Path(episode_id): axum::extract::Path<i32>,
+    headers: HeaderMap,
+) -> AppResult<Json<serde_json::Value>> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+    
+    // Get the user ID from the API key
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    // Generate unique share code and expiration date
+    let share_code = uuid::Uuid::new_v4().to_string();
+    let expiration_date = chrono::Utc::now() + chrono::Duration::days(60);
+    
+    // Insert the shared episode entry
+    let result = state.db_pool
+        .add_shared_episode(episode_id, user_id, &share_code, expiration_date)
+        .await?;
+    
+    if result {
+        Ok(Json(serde_json::json!({ "url_key": share_code })))
+    } else {
+        Err(AppError::internal("Failed to share episode"))
+    }
+}
+
+// Get episode by URL key - for accessing shared episodes
+pub async fn get_episode_by_url_key(
+    State(state): State<AppState>,
+    axum::extract::Path(url_key): axum::extract::Path<String>,
+) -> AppResult<Json<serde_json::Value>> {
+    // Find the episode ID associated with the URL key
+    let episode_id = match state.db_pool.get_episode_id_by_share_code(&url_key).await? {
+        Some(id) => id,
+        None => return Err(AppError::not_found("Invalid or expired URL key")),
+    };
+    
+    // Now retrieve the episode metadata using the special shared episode method
+    // This bypasses user restrictions for public shared access
+    let episode_data = state.db_pool
+        .get_shared_episode_metadata(episode_id)
+        .await?;
+    
+    Ok(Json(serde_json::json!({ "episode": episode_data })))
+}

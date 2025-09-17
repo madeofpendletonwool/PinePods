@@ -2584,3 +2584,349 @@ pub async fn call_get_gpodder_statistics(
         )))
     }
 }
+
+// Scheduled backup functions
+#[derive(Serialize, Deserialize)]
+pub struct ScheduleBackupRequest {
+    pub user_id: i32,
+    pub cron_schedule: String,
+    pub enabled: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GetScheduledBackupRequest {
+    pub user_id: i32,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ListBackupFilesRequest {
+    pub user_id: i32,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct RestoreBackupFileRequest {
+    pub user_id: i32,
+    pub backup_filename: String,
+}
+
+// Schedule backup
+pub async fn call_schedule_backup(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    cron_schedule: &str,
+    enabled: bool,
+) -> Result<serde_json::Value, Error> {
+    let url = format!("{}/api/data/schedule_backup", server_name);
+    let request_data = ScheduleBackupRequest {
+        user_id,
+        cron_schedule: cron_schedule.to_string(),
+        enabled,
+    };
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_data)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| Error::msg(e.to_string()))
+    } else {
+        Err(Error::msg(format!(
+            "Error scheduling backup: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// Get scheduled backup
+pub async fn call_get_scheduled_backup(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<serde_json::Value, Error> {
+    let url = format!("{}/api/data/get_scheduled_backup", server_name);
+    let request_data = GetScheduledBackupRequest { user_id };
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_data)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| Error::msg(e.to_string()))
+    } else {
+        Err(Error::msg(format!(
+            "Error getting scheduled backup: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// List backup files
+pub async fn call_list_backup_files(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<serde_json::Value, Error> {
+    let url = format!("{}/api/data/list_backup_files", server_name);
+    let request_data = ListBackupFilesRequest { user_id };
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_data)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| Error::msg(e.to_string()))
+    } else {
+        Err(Error::msg(format!(
+            "Error listing backup files: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// Restore from backup file
+pub async fn call_restore_backup_file(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    backup_filename: &str,
+) -> Result<serde_json::Value, Error> {
+    let url = format!("{}/api/data/restore_backup_file", server_name);
+    let request_data = RestoreBackupFileRequest {
+        user_id,
+        backup_filename: backup_filename.to_string(),
+    };
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_data)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| Error::msg(e.to_string()))
+    } else {
+        Err(Error::msg(format!(
+            "Error restoring from backup file: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// Request struct for manual backup to directory
+#[derive(Serialize)]
+pub struct ManualBackupRequest {
+    pub user_id: i32,
+}
+
+// Manual backup to directory
+pub async fn call_manual_backup_to_directory(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+) -> Result<serde_json::Value, Error> {
+    let url = format!("{}/api/data/manual_backup_to_directory", server_name);
+    let request_data = ManualBackupRequest { user_id };
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_data)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        response.json().await.map_err(|e| Error::msg(e.to_string()))
+    } else {
+        Err(Error::msg(format!(
+            "Error creating manual backup: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Serialize)]
+struct GetUnmatchedPodcastsRequest {
+    user_id: i32,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct UnmatchedPodcast {
+    pub podcast_id: i32,
+    pub podcast_name: String,
+    pub artwork_url: Option<String>,
+    pub author: Option<String>,
+    pub description: Option<String>,
+    pub feed_url: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct GetUnmatchedPodcastsResponse {
+    pub podcasts: Vec<UnmatchedPodcast>,
+}
+
+pub async fn call_get_unmatched_podcasts(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<GetUnmatchedPodcastsResponse, Error> {
+    let url = format!("{}/api/data/get_unmatched_podcasts", server_name);
+    let request_body = GetUnmatchedPodcastsRequest { user_id };
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<GetUnmatchedPodcastsResponse>().await?;
+        Ok(response_body)
+    } else {
+        Err(Error::msg(format!(
+            "Error fetching unmatched podcasts: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Serialize)]
+struct UpdatePodcastIndexIdRequest {
+    user_id: i32,
+    podcast_id: i32,
+    podcast_index_id: i32,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct UpdatePodcastIndexIdResponse {
+    pub detail: String,
+}
+
+pub async fn call_update_podcast_index_id(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    podcast_id: i32,
+    podcast_index_id: i32,
+) -> Result<UpdatePodcastIndexIdResponse, Error> {
+    let url = format!("{}/api/data/update_podcast_index_id", server_name);
+    let request_body = UpdatePodcastIndexIdRequest {
+        user_id,
+        podcast_id,
+        podcast_index_id,
+    };
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<UpdatePodcastIndexIdResponse>().await?;
+        Ok(response_body)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating podcast index ID: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// Request struct for ignoring podcast index ID
+#[derive(Serialize)]
+pub struct IgnorePodcastIndexIdRequest {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub ignore: bool,
+}
+
+// Response struct for ignoring podcast index ID
+#[derive(Deserialize)]
+pub struct IgnorePodcastIndexIdResponse {
+    pub detail: String,
+}
+
+// Function to ignore/unignore a podcast index ID
+pub async fn call_ignore_podcast_index_id(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    podcast_id: i32,
+    ignore: bool,
+) -> Result<IgnorePodcastIndexIdResponse, Error> {
+    let url = format!("{}/api/data/ignore_podcast_index_id", server_name);
+    let request_body = IgnorePodcastIndexIdRequest {
+        user_id,
+        podcast_id,
+        ignore,
+    };
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let result = response.json::<IgnorePodcastIndexIdResponse>().await?;
+        Ok(result)
+    } else {
+        Err(Error::msg(format!(
+            "Error ignoring podcast index ID: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// Request struct for getting ignored podcasts
+#[derive(Serialize)]
+pub struct GetIgnoredPodcastsRequest {
+    pub user_id: i32,
+}
+
+// Response struct for getting ignored podcasts
+#[derive(Deserialize)]
+pub struct GetIgnoredPodcastsResponse {
+    pub podcasts: Vec<UnmatchedPodcast>,
+}
+
+// Function to get ignored podcasts
+pub async fn call_get_ignored_podcasts(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<GetIgnoredPodcastsResponse, Error> {
+    let url = format!("{}/api/data/get_ignored_podcasts", server_name);
+    let request_body = GetIgnoredPodcastsRequest { user_id };
+
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let result = response.json::<GetIgnoredPodcastsResponse>().await?;
+        Ok(result)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting ignored podcasts: {}",
+            response.status_text()
+        )))
+    }
+}

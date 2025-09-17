@@ -500,19 +500,19 @@ pub fn user_self_settings() -> Html {
                     <h2 class="text-xl font-semibold">{"Account Settings"}</h2>
                 </div>
                 if let Some(info) = &*user_info {
-                    <div class="user-info-container mt-4 p-4 border border-solid border-opacity-10 rounded-lg">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <div>
+                    <div class="user-info-container mt-4 p-4 border border-solid border-opacity-10 rounded-lg overflow-hidden">
+                        <div class="flex flex-col gap-4 lg:grid lg:grid-cols-1 xl:grid-cols-3 xl:gap-6">
+                            <div class="min-w-0">
                                 <span class="text-sm opacity-80">{"Current Username:"}</span>
-                                <p class="font-medium mt-1">{&info.username}</p>
+                                <p class="font-medium mt-1 break-words truncate" title={info.username.clone()}>{&info.username}</p>
                             </div>
-                            <div>
+                            <div class="min-w-0">
                                 <span class="text-sm opacity-80">{"Current Full Name:"}</span>
-                                <p class="font-medium mt-1">{&info.fullname}</p>
+                                <p class="font-medium mt-1 break-words truncate" title={info.fullname.clone()}>{&info.fullname}</p>
                             </div>
-                            <div>
+                            <div class="min-w-0">
                                 <span class="text-sm opacity-80">{"Current Email:"}</span>
-                                <p class="font-medium mt-1">{&info.email}</p>
+                                <p class="font-medium mt-1 break-words truncate" title={info.email.clone()}>{&info.email}</p>
                             </div>
                         </div>
                     </div>

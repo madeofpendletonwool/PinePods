@@ -2,6 +2,7 @@ use super::app_drawer::App_drawer;
 use super::gen_components::{
     empty_message, on_shownotes_click, person_episode_item, Search_nav, UseScrollToTop,
 };
+use super::virtual_list::PersonEpisodeVirtualList;
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
@@ -347,10 +348,8 @@ fn render_host_with_episodes(
                         { &person.name }
                     </p>
                     <hr class="my-2 border-t hidden md:block"/>
-                    <p class="item_container-text">{ format!("Episode Count: {}", episode_count) }</p>
-                    if let Some(podcasts) = &person.associatedpodcasts {
-                        <p class="item_container-text text-sm">{ format!("Shows: {}", podcasts) }</p>
-                    }
+                    <p class="item_container-text">{ format!("Episode Count: {}", person.episode_count) }</p>
+                    <p class="item_container-text text-sm">{ format!("Shows: {}", person.associatedpodcasts) }</p>
                 </div>
             </div>
             { if is_expanded {
@@ -358,7 +357,21 @@ fn render_host_with_episodes(
                 web_sys::console::log_1(&format!("Attempting to render {} episodes", episode_count).into());
                 html! {
                     <div class="episodes-dropdown pl-4">
-                        { for episodes.iter().map(|episode| {
+                        <PersonEpisodeVirtualList
+                            episodes={episodes.clone()}
+                            item_height={234.0}
+                            search_state={state.clone()}
+                            search_ui_state={audio_state.clone()}
+                            dispatch={audio_dispatch.clone()}
+                            search_dispatch={dispatch.clone()}
+                            history={history_clone.clone()}
+                            server_name={server_name.clone()}
+                            user_id={user_id.clone()}
+                            api_key={api_key.clone()}
+                        />
+                        // Old episode rendering code (disabled for virtual scrolling)
+                        { if false { 
+                            let _ = episodes.iter().map(|episode| {
                             let id_string = episode.episodeid.to_string();
                             let desc_expanded = desc_rc.expanded_descriptions.contains(&id_string);
                             let episode_url_for_closure = episode.episodeurl.clone();
@@ -463,7 +476,11 @@ fn render_host_with_episodes(
                                 is_current_episode,
                                 is_playing,
                             )
-                        })}
+                            }).collect::<Vec<_>>();
+                            html! {}
+                        } else {
+                            html! {}
+                        } }
                     </div>
                 }
             } else {

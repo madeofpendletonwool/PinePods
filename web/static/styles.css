@@ -4362,10 +4362,18 @@ button.item-container-action-button.item-container-action-button {
 
 .settings-header {
     display: flex;
-    align-items: center;
-    gap: 0.75rem;
+    flex-direction: column;
+    gap: 1rem;
     margin-bottom: 2rem;
     color: var(--text-color);
+}
+
+@media (min-width: 640px) {
+    .settings-header {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+    }
 }
 
 .settings-header i {
@@ -5790,3 +5798,4 @@ button.item-container-action-button.item-container-action-button {
 .episode-select-button:hover {
     opacity: 0.8;
 }
+

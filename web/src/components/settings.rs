@@ -171,28 +171,30 @@ pub fn settings() -> Html {
             <Search_nav />
             <UseScrollToTop />
             <div class="my-4">
-                <h1 class="item_container-text text-2xl font-bold mb-3">{ "Settings" }</h1>
-                <div class="inline-flex tab-background p-1 rounded-lg bg-opacity-10 mb-6">
-                    <Tab
-                        is_active={*active_tab == "user"}
-                        class="text-base"
-                        label={"User Settings".to_string()}
-                        onclick={on_user_tab_click.clone()}
-                    />
-                    {
-                        if *is_admin {
-                            html! {
-                                <Tab
-                                    is_active={*active_tab == "admin"}
-                                    class="text-base"
-                                    label={"Admin Settings".to_string()}
-                                    onclick={on_admin_tab_click.clone()}
-                                />
+                <div class="settings-header">
+                    <h1 class="item_container-text text-2xl font-bold">{ "Settings" }</h1>
+                    <div class="inline-flex tab-background p-1 rounded-lg bg-opacity-10">
+                        <Tab
+                            is_active={*active_tab == "user"}
+                            class="text-base"
+                            label={"User Settings".to_string()}
+                            onclick={on_user_tab_click.clone()}
+                        />
+                        {
+                            if *is_admin {
+                                html! {
+                                    <Tab
+                                        is_active={*active_tab == "admin"}
+                                        class="text-base"
+                                        label={"Admin Settings".to_string()}
+                                        onclick={on_admin_tab_click.clone()}
+                                    />
+                                }
+                            } else {
+                                html! {}
                             }
-                        } else {
-                            html! {}
                         }
-                    }
+                    </div>
                 </div>
                 <div class="rounded-xl theme-dropdown-arrow overflow-hidden">
                 {
@@ -210,6 +212,7 @@ pub fn settings() -> Html {
                             <AccordionItem title="Add Custom Feed" content={html!{ <setting_components::custom_feed::CustomFeed /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Podcast Sync" content={html!{ <setting_components::nextcloud_options::SyncOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Enable/Disable RSS Feeds" content={html!{ <setting_components::rss_feeds::RSSFeedSettings /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title="Match Podcasts to Podcast Index" content={html!{ <setting_components::podcast_index_matching::PodcastIndexMatching /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title="Api Keys" content={html!{ <setting_components::api_keys::APIKeys /> }} position={AccordionItemPosition::Middle}/>
                         </div>
                         }
