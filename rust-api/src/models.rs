@@ -1,5 +1,5 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
 
 // Response models to match Python API
 #[derive(Debug, Serialize, Deserialize)]
@@ -12,7 +12,6 @@ pub struct ApiResponse<T> {
 }
 
 impl<T> ApiResponse<T> {
-    #[allow(dead_code)]
     pub fn success(data: T) -> Self {
         Self {
             status_code: 200,
@@ -21,7 +20,6 @@ impl<T> ApiResponse<T> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn success_with_message(data: T, message: String) -> Self {
         Self {
             status_code: 200,
@@ -30,7 +28,6 @@ impl<T> ApiResponse<T> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn error(status_code: u16, message: String) -> ApiResponse<()> {
         ApiResponse {
             status_code,
@@ -144,14 +141,12 @@ pub struct Playlist {
 
 // Request models
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct CreatePodcastRequest {
     pub feed_url: String,
     pub auto_download: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct UpdateEpisodeRequest {
     pub listen_duration: Option<i32>,
     pub completed: Option<bool>,
@@ -272,7 +267,7 @@ pub struct TimeInfoResponse {
     pub date_format: Option<String>,
 }
 
-// Check podcast response model
+// Check podcast response model  
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CheckPodcastResponse {
     pub exists: bool,
@@ -447,7 +442,6 @@ pub struct ImportProgress {
 
 // Pagination models
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub struct PaginationParams {
     pub page: Option<i32>,
     pub per_page: Option<i32>,
@@ -472,7 +466,6 @@ pub struct PaginatedResponse<T> {
 }
 
 impl<T> PaginatedResponse<T> {
-    #[allow(dead_code)]
     pub fn new(data: Vec<T>, total_count: i32, page: i32, per_page: i32) -> Self {
         let total_pages = (total_count + per_page - 1) / per_page; // Ceiling division
         Self {

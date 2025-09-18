@@ -1,71 +1,52 @@
+use crate::{error::AppResult, AppState, database::DatabasePool};
 use crate::handlers::refresh::PodcastForRefresh;
-use crate::{database::DatabasePool, error::AppResult, AppState};
+use tracing::{info, warn, error};
 use serde_json::Value;
 use sqlx::Row;
-use tracing::{error, info, warn};
 
 /// Podcast refresh service - matches Python's refresh_pods_for_user function exactly
-#[allow(dead_code)]
 pub async fn refresh_podcast(state: &AppState, podcast_id: i32) -> AppResult<Vec<Value>> {
     // Check if already refreshing
     if state.redis_client.is_podcast_refreshing(podcast_id).await? {
         return Ok(vec![]);
     }
-
+    
     // Mark as refreshing
-    state
-        .redis_client
-        .set_podcast_refreshing(podcast_id)
-        .await?;
-
+    state.redis_client.set_podcast_refreshing(podcast_id).await?;
+    
     let result = refresh_podcast_internal(&state.db_pool, podcast_id).await;
-
+    
     // Clear refreshing flag
-    state
-        .redis_client
-        .clear_podcast_refreshing(podcast_id)
-        .await?;
-
+    state.redis_client.clear_podcast_refreshing(podcast_id).await?;
+    
     result
 }
 
 /// Internal refresh logic - matches Python refresh_pods_for_user function
-#[allow(dead_code)]
-async fn refresh_podcast_internal(
-    db_pool: &DatabasePool,
-    podcast_id: i32,
-) -> AppResult<Vec<Value>> {
+async fn refresh_podcast_internal(db_pool: &DatabasePool, podcast_id: i32) -> AppResult<Vec<Value>> {
     info!("Refresh begin for podcast {}", podcast_id);
-
+    
     // Get podcast details from database
     let podcast_info = get_podcast_for_refresh(db_pool, podcast_id).await?;
-
+    
     if let Some(podcast) = podcast_info {
         info!("Processing podcast: {}", podcast_id);
-
+        
         if podcast.is_youtube {
             // Handle YouTube channel refresh
-            refresh_youtube_channel(
-                db_pool,
-                podcast_id,
-                &podcast.feed_url,
-                podcast.feed_cutoff_days.unwrap_or(0),
-            )
-            .await?;
+            refresh_youtube_channel(db_pool, podcast_id, &podcast.feed_url, podcast.feed_cutoff_days.unwrap_or(0)).await?;
             Ok(vec![])
         } else {
             // Handle regular RSS podcast refresh
-            let episodes = db_pool
-                .add_episodes(
-                    podcast_id,
-                    &podcast.feed_url,
-                    podcast.artwork_url.as_deref().unwrap_or(""),
-                    podcast.auto_download,
-                    podcast.username.as_deref(),
-                    podcast.password.as_deref(),
-                )
-                .await?;
-
+            let episodes = db_pool.add_episodes(
+                podcast_id,
+                &podcast.feed_url,
+                podcast.artwork_url.as_deref().unwrap_or(""),
+                podcast.auto_download,
+                podcast.username.as_deref(),
+                podcast.password.as_deref(),
+            ).await?;
+            
             // Convert episodes to JSON format for WebSocket response
             let episode_json = episodes.map(|_| vec![]).unwrap_or_default();
             Ok(episode_json)
@@ -77,17 +58,16 @@ async fn refresh_podcast_internal(
 }
 
 /// Refresh all podcasts - matches Python refresh_pods function exactly
-#[allow(dead_code)]
 pub async fn refresh_all_podcasts(state: &AppState) -> AppResult<()> {
     println!("🚀 Starting refresh process for all podcasts");
-
+    
     // Get all podcasts from database
     let podcasts = get_all_podcasts_for_refresh(&state.db_pool).await?;
     println!("📊 Found {} podcasts to refresh", podcasts.len());
-
+    
     let mut successful_refreshes = 0;
     let mut failed_refreshes = 0;
-
+    
     for podcast in podcasts {
         match refresh_single_podcast(&state.db_pool, &podcast).await {
             Ok(_) => {
@@ -95,169 +75,120 @@ pub async fn refresh_all_podcasts(state: &AppState) -> AppResult<()> {
             }
             Err(e) => {
                 failed_refreshes += 1;
-                println!(
-                    "❌ Error refreshing podcast '{}' (ID: {}): {}",
-                    podcast.name, podcast.id, e
-                );
+                println!("❌ Error refreshing podcast '{}' (ID: {}): {}", podcast.name, podcast.id, e);
             }
         }
     }
-
-    println!(
-        "🎯 Refresh process completed: {} successful, {} failed",
-        successful_refreshes, failed_refreshes
-    );
+    
+    println!("🎯 Refresh process completed: {} successful, {} failed", successful_refreshes, failed_refreshes);
     Ok(())
 }
 
 /// Refresh a single podcast - matches Python refresh logic
-#[allow(dead_code)]
-async fn refresh_single_podcast(
-    db_pool: &DatabasePool,
-    podcast: &PodcastForRefresh,
-) -> AppResult<()> {
-    println!(
-        "🔄 Starting refresh for podcast '{}' (ID: {})",
-        podcast.name, podcast.id
-    );
-
+async fn refresh_single_podcast(db_pool: &DatabasePool, podcast: &PodcastForRefresh) -> AppResult<()> {
+    println!("🔄 Starting refresh for podcast '{}' (ID: {})", podcast.name, podcast.id);
+    
     // Count episodes before refresh
     let episodes_before = match db_pool {
         crate::database::DatabasePool::Postgres(pool) => {
             sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE podcastid = $1"#)
                 .bind(podcast.id)
                 .fetch_one(pool)
-                .await
-                .unwrap_or(0)
+                .await.unwrap_or(0)
         }
         crate::database::DatabasePool::MySQL(pool) => {
             sqlx::query_scalar("SELECT COUNT(*) FROM Episodes WHERE PodcastID = ?")
                 .bind(podcast.id)
                 .fetch_one(pool)
-                .await
-                .unwrap_or(0)
+                .await.unwrap_or(0)
         }
     };
-
+    
     if podcast.is_youtube {
         // Handle YouTube channel
-        refresh_youtube_channel(
-            db_pool,
-            podcast.id,
-            &podcast.feed_url,
-            podcast.feed_cutoff_days.unwrap_or(0),
-        )
-        .await?;
+        refresh_youtube_channel(db_pool, podcast.id, &podcast.feed_url, podcast.feed_cutoff_days.unwrap_or(0)).await?;
     } else {
         // Handle regular RSS podcast
-        db_pool
-            .add_episodes(
-                podcast.id,
-                &podcast.feed_url,
-                podcast.artwork_url.as_deref().unwrap_or(""),
-                podcast.auto_download,
-                podcast.username.as_deref(),
-                podcast.password.as_deref(),
-            )
-            .await?;
+        db_pool.add_episodes(
+            podcast.id,
+            &podcast.feed_url,
+            podcast.artwork_url.as_deref().unwrap_or(""),
+            podcast.auto_download,
+            podcast.username.as_deref(),
+            podcast.password.as_deref(),
+        ).await?;
     }
-
+    
     // Count episodes after refresh
     let episodes_after: i64 = match db_pool {
         crate::database::DatabasePool::Postgres(pool) => {
             sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE podcastid = $1"#)
                 .bind(podcast.id)
                 .fetch_one(pool)
-                .await
-                .unwrap_or(0)
+                .await.unwrap_or(0)
         }
         crate::database::DatabasePool::MySQL(pool) => {
             sqlx::query_scalar("SELECT COUNT(*) FROM Episodes WHERE PodcastID = ?")
                 .bind(podcast.id)
                 .fetch_one(pool)
-                .await
-                .unwrap_or(0)
+                .await.unwrap_or(0)
         }
     };
-
+    
     let new_episodes = episodes_after - episodes_before;
     if new_episodes > 0 {
-        println!(
-            "✅ Completed refresh for podcast '{}' - added {} new episodes",
-            podcast.name, new_episodes
-        );
+        println!("✅ Completed refresh for podcast '{}' - added {} new episodes", podcast.name, new_episodes);
     } else {
-        println!(
-            "✅ Completed refresh for podcast '{}' - no new episodes found",
-            podcast.name
-        );
+        println!("✅ Completed refresh for podcast '{}' - no new episodes found", podcast.name);
     }
-
+    
     Ok(())
 }
 
 /// Handle YouTube channel refresh - matches Python YouTube processing
-#[allow(dead_code)]
-async fn refresh_youtube_channel(
-    db_pool: &DatabasePool,
-    podcast_id: i32,
-    feed_url: &str,
-    feed_cutoff_days: i32,
-) -> AppResult<()> {
+async fn refresh_youtube_channel(db_pool: &DatabasePool, podcast_id: i32, feed_url: &str, feed_cutoff_days: i32) -> AppResult<()> {
     // Extract channel ID from feed URL
     let channel_id = if feed_url.contains("channel/") {
         feed_url.split("channel/").nth(1).unwrap_or(feed_url)
     } else {
         feed_url
     };
-
+    
     // Clean up any trailing slashes or query parameters
     let channel_id = channel_id.split('/').next().unwrap_or(channel_id);
     let channel_id = channel_id.split('?').next().unwrap_or(channel_id);
-
-    info!(
-        "Processing YouTube channel: {} for podcast {}",
-        channel_id, podcast_id
-    );
-
+    
+    info!("Processing YouTube channel: {} for podcast {}", channel_id, podcast_id);
+    
     // TODO: Implement YouTube video processing
     // This would match the Python youtube.process_youtube_videos function
     // For now, we'll just log that it's not implemented
-    warn!(
-        "YouTube channel refresh not yet implemented for channel: {}",
-        channel_id
-    );
-
+    warn!("YouTube channel refresh not yet implemented for channel: {}", channel_id);
+    
     Ok(())
 }
 
 /// Get podcast details for refresh - matches Python select_podcast query
-#[allow(dead_code)]
-async fn get_podcast_for_refresh(
-    db_pool: &DatabasePool,
-    podcast_id: i32,
-) -> AppResult<Option<PodcastForRefresh>> {
+async fn get_podcast_for_refresh(db_pool: &DatabasePool, podcast_id: i32) -> AppResult<Option<PodcastForRefresh>> {
     match db_pool {
         DatabasePool::Postgres(pool) => {
             let row = sqlx::query(
-                r#"SELECT
+                r#"SELECT 
                     PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
                     IsYouTubeChannel, UserID, COALESCE(FeedURL, '') as channel_id, FeedCutoffDays
                 FROM "Podcasts"
-                WHERE PodcastID = $1"#,
+                WHERE PodcastID = $1"#
             )
             .bind(podcast_id)
             .fetch_optional(pool)
             .await?;
-
+            
             if let Some(row) = row {
                 Ok(Some(PodcastForRefresh {
                     id: row.try_get("PodcastID")?,
                     name: "".to_string(), // Not needed for refresh
                     feed_url: row.try_get("FeedURL")?,
-                    artwork_url: row
-                        .try_get::<Option<String>, _>("ArtworkURL")
-                        .unwrap_or_default(),
+                    artwork_url: row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default(),
                     auto_download: row.try_get("AutoDownload")?,
                     username: row.try_get("Username").ok(),
                     password: row.try_get("Password").ok(),
@@ -271,24 +202,22 @@ async fn get_podcast_for_refresh(
         }
         DatabasePool::MySQL(pool) => {
             let row = sqlx::query(
-                "SELECT
+                "SELECT 
                     PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
                     IsYouTubeChannel, UserID, COALESCE(FeedURL, '') as channel_id, FeedCutoffDays
                 FROM Podcasts
-                WHERE PodcastID = ?",
+                WHERE PodcastID = ?"
             )
             .bind(podcast_id)
             .fetch_optional(pool)
             .await?;
-
+            
             if let Some(row) = row {
                 Ok(Some(PodcastForRefresh {
                     id: row.try_get("PodcastID")?,
                     name: "".to_string(), // Not needed for refresh
                     feed_url: row.try_get("FeedURL")?,
-                    artwork_url: row
-                        .try_get::<Option<String>, _>("ArtworkURL")
-                        .unwrap_or_default(),
+                    artwork_url: row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default(),
                     auto_download: row.try_get("AutoDownload")?,
                     username: row.try_get("Username").ok(),
                     password: row.try_get("Password").ok(),
@@ -304,28 +233,25 @@ async fn get_podcast_for_refresh(
 }
 
 /// Get all podcasts for refresh - matches Python select_podcasts query
-#[allow(dead_code)]
 async fn get_all_podcasts_for_refresh(db_pool: &DatabasePool) -> AppResult<Vec<PodcastForRefresh>> {
     match db_pool {
         DatabasePool::Postgres(pool) => {
             let rows = sqlx::query(
-                r#"SELECT
+                r#"SELECT 
                     PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
                     IsYouTubeChannel, UserID, COALESCE(FeedURL, '') as channel_id, FeedCutoffDays
-                FROM "Podcasts""#,
+                FROM "Podcasts""#
             )
             .fetch_all(pool)
             .await?;
-
+            
             let mut podcasts = Vec::new();
             for row in rows {
                 podcasts.push(PodcastForRefresh {
                     id: row.try_get("PodcastID")?,
                     name: "".to_string(), // Not needed for refresh
                     feed_url: row.try_get("FeedURL")?,
-                    artwork_url: row
-                        .try_get::<Option<String>, _>("ArtworkURL")
-                        .unwrap_or_default(),
+                    artwork_url: row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default(),
                     auto_download: row.try_get("AutoDownload")?,
                     username: row.try_get("Username").ok(),
                     password: row.try_get("Password").ok(),
@@ -338,23 +264,21 @@ async fn get_all_podcasts_for_refresh(db_pool: &DatabasePool) -> AppResult<Vec<P
         }
         DatabasePool::MySQL(pool) => {
             let rows = sqlx::query(
-                "SELECT
+                "SELECT 
                     PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
                     IsYouTubeChannel, UserID, COALESCE(FeedURL, '') as channel_id, FeedCutoffDays
-                FROM Podcasts",
+                FROM Podcasts"
             )
             .fetch_all(pool)
             .await?;
-
+            
             let mut podcasts = Vec::new();
             for row in rows {
                 podcasts.push(PodcastForRefresh {
                     id: row.try_get("PodcastID")?,
                     name: "".to_string(), // Not needed for refresh
                     feed_url: row.try_get("FeedURL")?,
-                    artwork_url: row
-                        .try_get::<Option<String>, _>("ArtworkURL")
-                        .unwrap_or_default(),
+                    artwork_url: row.try_get::<Option<String>, _>("ArtworkURL").unwrap_or_default(),
                     auto_download: row.try_get("AutoDownload")?,
                     username: row.try_get("Username").ok(),
                     password: row.try_get("Password").ok(),
@@ -368,16 +292,16 @@ async fn get_all_podcasts_for_refresh(db_pool: &DatabasePool) -> AppResult<Vec<P
     }
 }
 
+
 /// Remove unavailable episodes - matches Python remove_unavailable_episodes function
-#[allow(dead_code)]
 pub async fn remove_unavailable_episodes(db_pool: &DatabasePool) -> AppResult<()> {
     info!("Starting removal of unavailable episodes");
-
+    
     // Get all episodes from database
     let episodes = get_all_episodes_for_check(db_pool).await?;
-
+    
     let client = reqwest::Client::new();
-
+    
     for episode in episodes {
         // Check if episode URL is still valid
         match client.head(&episode.url).send().await {
@@ -393,12 +317,11 @@ pub async fn remove_unavailable_episodes(db_pool: &DatabasePool) -> AppResult<()
             }
         }
     }
-
+    
     Ok(())
 }
 
 /// Get all episodes for availability check
-#[allow(dead_code)]
 async fn get_all_episodes_for_check(db_pool: &DatabasePool) -> AppResult<Vec<EpisodeForCheck>> {
     match db_pool {
         DatabasePool::Postgres(pool) => {
@@ -407,7 +330,7 @@ async fn get_all_episodes_for_check(db_pool: &DatabasePool) -> AppResult<Vec<Epi
             )
             .fetch_all(pool)
             .await?;
-
+            
             let mut episodes = Vec::new();
             for row in rows {
                 episodes.push(EpisodeForCheck {
@@ -426,7 +349,7 @@ async fn get_all_episodes_for_check(db_pool: &DatabasePool) -> AppResult<Vec<Epi
             )
             .fetch_all(pool)
             .await?;
-
+            
             let mut episodes = Vec::new();
             for row in rows {
                 episodes.push(EpisodeForCheck {
@@ -443,7 +366,6 @@ async fn get_all_episodes_for_check(db_pool: &DatabasePool) -> AppResult<Vec<Epi
 }
 
 /// Remove episode from database
-#[allow(dead_code)]
 async fn remove_episode_from_database(db_pool: &DatabasePool, episode_id: i32) -> AppResult<()> {
     match db_pool {
         DatabasePool::Postgres(pool) => {
@@ -464,7 +386,6 @@ async fn remove_episode_from_database(db_pool: &DatabasePool, episode_id: i32) -
 
 /// Episode data structure for availability check
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct EpisodeForCheck {
     pub id: i32,
     pub podcast_id: i32,
