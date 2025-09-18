@@ -1196,6 +1196,13 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
         .unwrap_or(&vec![])
         .contains(&check_episode_id.clone());
 
+    #[cfg(not(feature = "server_build"))]
+    let is_locally_downloaded = post_state
+        .locally_downloaded_episodes
+        .as_ref()
+        .unwrap_or(&vec![])
+        .contains(&check_episode_id.clone());
+
     let on_toggle_download = {
         let on_download = on_download_episode.clone();
         let on_remove_download = on_remove_downloaded_episode.clone();
@@ -1243,7 +1250,16 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                         let filename = format!("episode_{}.mp3", episode_id);
                         let artwork_filename = format!("artwork_{}.jpg", episode_id);
                         post_state.reduce_mut(|state| {
-                            state.info_message = Some(format!("Episode download queued!"))
+                            state.info_message = Some(format!("Episode download queued!"));
+
+                            // Add to locally downloaded episodes list
+                            if let Some(ref mut local_episodes) = state.locally_downloaded_episodes {
+                                if !local_episodes.contains(&episode_id) {
+                                    local_episodes.push(episode_id);
+                                }
+                            } else {
+                                state.locally_downloaded_episodes = Some(vec![episode_id]);
+                            }
                         });
                         // Download audio
                         match download_file(audio_url, filename.clone()).await {
@@ -1351,10 +1367,15 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 // Download audio
                 match remove_episode_from_local_db(episode_id).await {
                     Ok(_) => {
-                        // Update info_message in post_state
+                        // Update info_message and remove from locally_downloaded_episodes
                         post_state.reduce_mut(|state| {
                             state.info_message =
-                                Some(format!("Episode {} downloaded locally!", filename));
+                                Some(format!("Local episode {} deleted!", filename));
+
+                            // Remove from locally downloaded episodes list
+                            if let Some(ref mut local_episodes) = state.locally_downloaded_episodes {
+                                local_episodes.retain(|&id| id != episode_id);
+                            }
                         });
 
                         // Update local_download_increment in ui_state
@@ -1555,7 +1576,21 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
                 { if is_downloaded { "Remove Downloaded Episode" } else { "Download Episode" } }
             </li>
-            <li class="dropdown-option" onclick={wrap_action(on_local_episode_download.clone())}>{ "Local Download" }</li>
+            {
+                if is_locally_downloaded {
+                    html! {
+                        <li class="dropdown-option" onclick={wrap_action(on_remove_locally_downloaded_episode.clone())}>
+                            { "Delete Local Download" }
+                        </li>
+                    }
+                } else {
+                    html! {
+                        <li class="dropdown-option" onclick={wrap_action(on_local_episode_download.clone())}>
+                            { "Local Download" }
+                        </li>
+                    }
+                }
+            }
         </>
     };
 
@@ -1571,6 +1606,21 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
                 { if is_downloaded { "Remove Downloaded Episode" } else { "Download Episode" } }
             </li>
+            {
+                if is_locally_downloaded {
+                    html! {
+                        <li class="dropdown-option" onclick={wrap_action(on_remove_locally_downloaded_episode.clone())}>
+                            { "Delete Local Download" }
+                        </li>
+                    }
+                } else {
+                    html! {
+                        <li class="dropdown-option" onclick={wrap_action(on_local_episode_download.clone())}>
+                            { "Local Download" }
+                        </li>
+                    }
+                }
+            }
             <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
         </>
     };
@@ -1618,9 +1668,9 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_save.clone())}>
                     { if is_saved { "Remove from Saved Episodes" } else { "Save Episode" } }
                 </li>
-                <li class="dropdown-option" onclick={wrap_action(on_toggle_download.clone())}>
-                    { if is_downloaded { "Remove Downloaded Episode" } else { "Download Episode" } }
-                </li>
+                {
+                    download_button.clone()
+                }
                 <li class="dropdown-option" onclick={wrap_action(on_toggle_complete.clone())}>{ if is_completed { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }</li>
             </>
         },

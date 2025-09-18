@@ -11,8 +11,7 @@ use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
 use crate::requests::pod_req::{
-    call_remove_downloaded_episode, DownloadEpisodeRequest, EpisodeDownload,
-    EpisodeDownloadResponse, EpisodeInfo, Podcast, PodcastDetails, PodcastResponse,
+    EpisodeDownload, EpisodeDownloadResponse, EpisodeInfo, Podcast, PodcastDetails, PodcastResponse,
 };
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
@@ -172,6 +171,42 @@ pub async fn remove_episode_from_local_db(episode_id: i32) -> Result<(), JsValue
 
     // Make the call
     let command = JsValue::from_str("remove_from_local_db");
+    let promise = invoke_fn.call2(&core, &command, &args)?;
+    wasm_bindgen_futures::JsFuture::from(promise.dyn_into::<js_sys::Promise>()?).await?;
+
+    Ok(())
+}
+
+pub async fn remove_multiple_episodes_from_local_db(episode_ids: Vec<i32>) -> Result<(), JsValue> {
+    // Get window object
+    let window = web_sys::window().ok_or_else(|| JsValue::from_str("No window object found"))?;
+
+    // Check if __TAURI__ exists
+    let tauri = match js_sys::Reflect::has(&window, &JsValue::from_str("__TAURI__"))? {
+        true => js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"))?,
+        false => return Ok(()), // Return early if Tauri isn't available
+    };
+
+    let core = js_sys::Reflect::get(&tauri, &JsValue::from_str("core"))?;
+    let invoke = js_sys::Reflect::get(&core, &JsValue::from_str("invoke"))?;
+    let invoke_fn = invoke
+        .dyn_ref::<js_sys::Function>()
+        .ok_or_else(|| JsValue::from_str("invoke is not a function"))?;
+
+    // Create arguments object with episode_ids field
+    let args = js_sys::Object::new();
+    let episode_ids_array = js_sys::Array::new();
+    for id in episode_ids {
+        episode_ids_array.push(&JsValue::from_f64(id as f64));
+    }
+    js_sys::Reflect::set(
+        &args,
+        &JsValue::from_str("episodeIds"),
+        &episode_ids_array,
+    )?;
+
+    // Make the call
+    let command = JsValue::from_str("remove_multiple_from_local_db");
     let promise = invoke_fn.call2(&core, &command, &args)?;
     wasm_bindgen_futures::JsFuture::from(promise.dyn_into::<js_sys::Promise>()?).await?;
 
@@ -421,68 +456,40 @@ pub fn downloads() -> Html {
     let delete_selected_episodes = {
         let dispatch = dispatch.clone();
         let page_state = page_state.clone();
-        let server_name = server_name.clone();
-        let api_key = api_key.clone();
-        let user_id = user_id.clone();
 
         Callback::from(move |_: MouseEvent| {
             let dispatch_cloned = dispatch.clone();
             let page_state_cloned = page_state.clone();
-            let server_name_cloned = server_name.clone().unwrap();
-            let api_key_cloned = api_key.clone().unwrap();
-            let user_id_cloned = user_id.unwrap();
 
             dispatch.reduce_mut(move |state| {
                 let selected_episodes = state.selected_episodes_for_deletion.clone();
                 state.selected_episodes_for_deletion.clear();
 
-                if let Some(downloaded_eps) = &state.downloaded_episodes {
-                    for &episode_id in &selected_episodes {
-                        // Find the episode to get its is_youtube value
-                        if let Some(episode) = downloaded_eps
-                            .episodes
-                            .iter()
-                            .find(|ep| ep.episodeid == episode_id)
-                        {
-                            let request = DownloadEpisodeRequest {
-                                episode_id,
-                                user_id: user_id_cloned,
-                                is_youtube: episode.is_youtube, // Use the actual is_youtube value from the episode
-                            };
-
-                            let server_name_cloned = server_name_cloned.clone();
-                            let api_key_cloned = api_key_cloned.clone();
-                            let future = async move {
-                                match call_remove_downloaded_episode(
-                                    &server_name_cloned,
-                                    &api_key_cloned,
-                                    &request,
-                                )
-                                .await
-                                {
-                                    Ok(success_message) => Some((success_message, episode_id)),
-                                    Err(_) => None,
-                                }
-                            };
-
-                            let dispatch_for_future = dispatch_cloned.clone();
-                            wasm_bindgen_futures::spawn_local(async move {
-                                if let Some((success_message, episode_id)) = future.await {
-                                    dispatch_for_future.reduce_mut(|state| {
-                                        if let Some(downloaded_episodes) =
-                                            &mut state.downloaded_episodes
-                                        {
-                                            downloaded_episodes
-                                                .episodes
-                                                .retain(|ep| ep.episodeid != episode_id);
-                                        }
-                                        state.info_message = Some(success_message);
+                // Use local Tauri delete function for bulk deletion
+                let dispatch_for_future = dispatch_cloned.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    match remove_multiple_episodes_from_local_db(selected_episodes.iter().cloned().collect()).await {
+                        Ok(_) => {
+                            dispatch_for_future.reduce_mut(|state| {
+                                if let Some(downloaded_episodes) = &mut state.downloaded_episodes {
+                                    downloaded_episodes.episodes.retain(|ep| {
+                                        !selected_episodes.contains(&ep.episodeid)
                                     });
                                 }
+                                state.info_message = Some(format!(
+                                    "Successfully deleted {} episode(s)",
+                                    selected_episodes.len()
+                                ));
+                            });
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(&format!("Error deleting episodes: {:?}", e).into());
+                            dispatch_for_future.reduce_mut(|state| {
+                                state.error_message = Some("Failed to delete episodes".to_string());
                             });
                         }
                     }
-                }
+                });
                 page_state_cloned.set(PageState::Normal);
             });
         })
