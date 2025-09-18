@@ -222,7 +222,6 @@ pub fn search_bar() -> Html {
             }
             is_submitting.set(true);
 
-            let submit_state = state.clone();
             let api_url = state.server_details.as_ref().map(|ud| ud.api_url.clone());
             let history = history.clone();
             let search_value = podcast_value.clone();
@@ -236,29 +235,7 @@ pub fn search_bar() -> Html {
                 match test_connection(&api_url.clone().unwrap()).await {
                     Ok(_) => {
                         if *search_index == "youtube" {
-                            let server_name = submit_state
-                                .auth_details
-                                .as_ref()
-                                .map(|ud| ud.server_name.clone())
-                                .unwrap();
-                            let api_key = submit_state
-                                .auth_details
-                                .as_ref()
-                                .map(|ud| ud.api_key.clone())
-                                .unwrap()
-                                .unwrap();
-                            let user_id = submit_state
-                                .user_details
-                                .as_ref()
-                                .map(|ud| ud.UserID.clone())
-                                .unwrap();
-
-                            match call_youtube_search(
-                                &search_value,
-                                &api_url.unwrap(),
-                            )
-                            .await
-                            {
+                            match call_youtube_search(&search_value, &api_url.unwrap()).await {
                                 Ok(yt_results) => {
                                     let search_results = YouTubeSearchResults {
                                         channels: yt_results.results,
@@ -788,22 +765,24 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
                 let dropdown_ref = dropdown_ref.clone();
                 let button_ref = button_ref.clone();
                 let on_close = on_close.clone();
-                
+
                 move |event: &web_sys::Event| {
                     if *dropdown_open {
                         if let Ok(target) = event.target().unwrap().dyn_into::<HtmlElement>() {
                             if let Some(dropdown_element) = dropdown_ref.cast::<HtmlElement>() {
                                 // Check if click is outside dropdown
                                 let outside_dropdown = !dropdown_element.contains(Some(&target));
-                                
+
                                 // Check if click is outside button (only if button exists)
-                                let outside_button = if let Some(button_element) = button_ref.cast::<HtmlElement>() {
+                                let outside_button = if let Some(button_element) =
+                                    button_ref.cast::<HtmlElement>()
+                                {
                                     !button_element.contains(Some(&target))
                                 } else {
                                     // If no button exists (show_menu_only case), consider it as outside
                                     true
                                 };
-                                
+
                                 if outside_dropdown && outside_button {
                                     dropdown_open.set(false);
                                     // If this is a long press menu (show_menu_only is true),
@@ -838,7 +817,6 @@ pub fn context_button(props: &ContextButtonProps) -> Html {
             }
         });
     }
-
 
     let check_episode_id = props.episode.get_episode_id(Some(0));
 
@@ -2158,13 +2136,15 @@ pub fn use_long_press(
 
         Callback::from(move |event: TouchEvent| {
             // Don't prevent default on touch start - let iOS handle it naturally
-            
+
             // Disable text selection for iOS
             if let Some(target) = event.target() {
                 if let Ok(element) = target.dyn_into::<web_sys::HtmlElement>() {
                     let _ = element.style().set_property("user-select", "none");
                     let _ = element.style().set_property("-webkit-user-select", "none");
-                    let _ = element.style().set_property("-webkit-touch-callout", "none");
+                    let _ = element
+                        .style()
+                        .set_property("-webkit-touch-callout", "none");
                 }
             }
 
@@ -2175,7 +2155,7 @@ pub fn use_long_press(
 
             // Set pressing state for visual feedback
             is_pressing.set(true);
-            
+
             // Reset long press state
             is_long_press.set(false);
 
@@ -2200,10 +2180,10 @@ pub fn use_long_press(
         Callback::from(move |event: TouchEvent| {
             // Clear the timeout if the touch ends before the long press is triggered
             timeout_handle.set(None);
-            
+
             // Clear pressing state
             is_pressing.set(false);
-            
+
             // Re-enable text selection
             if let Some(target) = event.target() {
                 if let Ok(element) = target.dyn_into::<web_sys::HtmlElement>() {
@@ -2234,7 +2214,7 @@ pub fn use_long_press(
                         // Movement exceeded threshold, cancel the long press
                         timeout_handle.set(None);
                         is_pressing.set(false);
-                        
+
                         // Re-enable text selection
                         if let Some(target) = event.target() {
                             if let Ok(element) = target.dyn_into::<web_sys::HtmlElement>() {
@@ -2249,7 +2229,13 @@ pub fn use_long_press(
         })
     };
 
-    (on_touch_start, on_touch_end, on_touch_move, *is_long_press, *is_pressing)
+    (
+        on_touch_start,
+        on_touch_end,
+        on_touch_move,
+        *is_long_press,
+        *is_pressing,
+    )
 }
 
 pub fn episode_item(
@@ -2513,16 +2499,6 @@ pub fn virtual_episode_item(
     let should_show_buttons = !ep_url.is_empty();
     let preview_description = strip_images_from_html(&description);
 
-    // Handle context menu position
-    let context_menu_style = if show_context_menu {
-        format!(
-            "position: fixed; top: {}px; left: {}px; z-index: 1000;",
-            context_menu_position.1, context_menu_position.0
-        )
-    } else {
-        String::new()
-    };
-
     #[wasm_bindgen]
     extern "C" {
         #[wasm_bindgen(js_namespace = window)]
@@ -2533,7 +2509,7 @@ pub fn virtual_episode_item(
         <div>
             <div
                 class={classes!(
-                    "item-container", "border-solid", "border", "flex", "items-start", "mb-4", 
+                    "item-container", "border-solid", "border", "flex", "items-start", "mb-4",
                     "shadow-md", "rounded-lg", "touch-manipulation", "transition-all", "duration-150",
                     if is_pressing {
                         "bg-accent-color bg-opacity-20 transform scale-[0.98]"
@@ -2541,7 +2517,7 @@ pub fn virtual_episode_item(
                         ""
                     }
                 )}
-                style={format!("height: {}; overflow: hidden; user-select: {};", 
+                style={format!("height: {}; overflow: hidden; user-select: {};",
                     container_height,
                     if is_pressing { "none" } else { "auto" }
                 )}

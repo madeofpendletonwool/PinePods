@@ -1,14 +1,15 @@
 use axum::{
-    extract::{Path, Query, State, Multipart, Json},
+    extract::{Json, Multipart, Path, Query, State},
     http::HeaderMap,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
     error::AppError,
-    handlers::{extract_api_key, validate_api_key, check_user_access},
+    handlers::{check_user_access, extract_api_key, validate_api_key},
     AppState,
 };
+use base64::{engine::general_purpose, Engine as _};
 use sqlx::{Row, ValueRef};
 
 // Request struct for set_theme
@@ -42,9 +43,14 @@ pub async fn set_theme(
         return Err(AppError::forbidden("You can only set your own theme!"));
     }
 
-    state.db_pool.set_theme(request.user_id, &request.new_theme).await?;
+    state
+        .db_pool
+        .set_theme(request.user_id, &request.new_theme)
+        .await?;
 
-    Ok(Json(serde_json::json!({ "message": "Theme updated successfully" })))
+    Ok(Json(
+        serde_json::json!({ "message": "Theme updated successfully" }),
+    ))
 }
 
 // Set user playback speed - matches Python api_set_playback_speed_user function exactly
@@ -61,12 +67,19 @@ pub async fn set_playback_speed_user(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != request.user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only modify your own settings."));
+        return Err(AppError::forbidden(
+            "You can only modify your own settings.",
+        ));
     }
 
-    state.db_pool.set_playback_speed_user(request.user_id, request.playback_speed).await?;
+    state
+        .db_pool
+        .set_playback_speed_user(request.user_id, request.playback_speed)
+        .await?;
 
-    Ok(Json(serde_json::json!({ "detail": "Default playback speed updated." })))
+    Ok(Json(
+        serde_json::json!({ "detail": "Default playback speed updated." }),
+    ))
 }
 
 // User info response struct
@@ -99,7 +112,7 @@ pub async fn get_user_info(
     // Check if user is admin (matches Python check_if_admin dependency)
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
@@ -122,7 +135,9 @@ pub async fn get_my_user_info(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only retrieve your own user information!"));
+        return Err(AppError::forbidden(
+            "You can only retrieve your own user information!",
+        ));
     }
 
     let user_info = state.db_pool.get_my_user_info(user_id).await?;
@@ -153,19 +168,36 @@ pub async fn add_user(
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
 
-    match state.db_pool.add_user(&user_values.fullname, &user_values.username.to_lowercase(), &user_values.email, &user_values.hash_pw).await {
-        Ok(user_id) => Ok(Json(serde_json::json!({ "detail": "Success", "user_id": user_id }))),
+    match state
+        .db_pool
+        .add_user(
+            &user_values.fullname,
+            &user_values.username.to_lowercase(),
+            &user_values.email,
+            &user_values.hash_pw,
+        )
+        .await
+    {
+        Ok(user_id) => Ok(Json(
+            serde_json::json!({ "detail": "Success", "user_id": user_id }),
+        )),
         Err(e) => {
             let error_msg = format!("{}", e);
             if error_msg.contains("username") && error_msg.contains("duplicate") {
-                Err(AppError::Conflict("This username is already taken. Please choose a different username.".to_string()))
+                Err(AppError::Conflict(
+                    "This username is already taken. Please choose a different username."
+                        .to_string(),
+                ))
             } else if error_msg.contains("email") && error_msg.contains("duplicate") {
-                Err(AppError::Conflict("This email is already in use. Please use a different email address.".to_string()))
+                Err(AppError::Conflict(
+                    "This email is already in use. Please use a different email address."
+                        .to_string(),
+                ))
             } else {
                 Err(AppError::internal("Failed to create user"))
             }
@@ -180,21 +212,42 @@ pub async fn add_login_user(
 ) -> Result<Json<serde_json::Value>, AppError> {
     // Check if self-service user registration is enabled (matches Python check_self_service)
     let self_service_status = state.db_pool.self_service_status().await?;
-    
+
     if !self_service_status.status {
-        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::forbidden(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
-    match state.db_pool.add_user(&user_values.fullname, &user_values.username.to_lowercase(), &user_values.email, &user_values.hash_pw).await {
-        Ok(user_id) => Ok(Json(serde_json::json!({ "detail": "User added successfully", "user_id": user_id }))),
+    match state
+        .db_pool
+        .add_user(
+            &user_values.fullname,
+            &user_values.username.to_lowercase(),
+            &user_values.email,
+            &user_values.hash_pw,
+        )
+        .await
+    {
+        Ok(user_id) => Ok(Json(
+            serde_json::json!({ "detail": "User added successfully", "user_id": user_id }),
+        )),
         Err(e) => {
             let error_msg = format!("{}", e);
             if error_msg.contains("username") && error_msg.contains("duplicate") {
-                Err(AppError::Conflict("This username is already taken. Please choose a different username.".to_string()))
+                Err(AppError::Conflict(
+                    "This username is already taken. Please choose a different username."
+                        .to_string(),
+                ))
             } else if error_msg.contains("email") && error_msg.contains("duplicate") {
-                Err(AppError::Conflict("This email address is already registered. Please use a different email.".to_string()))
+                Err(AppError::Conflict(
+                    "This email address is already registered. Please use a different email."
+                        .to_string(),
+                ))
             } else {
-                Err(AppError::internal("An unexpected error occurred while creating the user"))
+                Err(AppError::internal(
+                    "An unexpected error occurred while creating the user",
+                ))
             }
         }
     }
@@ -210,7 +263,8 @@ pub async fn set_fullname(
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
-    let new_name = params.get("new_name")
+    let new_name = params
+        .get("new_name")
         .ok_or_else(|| AppError::bad_request("Missing new_name parameter"))?;
 
     // Check authorization - admins can edit other users, users can edit themselves
@@ -218,7 +272,9 @@ pub async fn set_fullname(
     let is_admin = state.db_pool.user_admin_check(user_id_from_api_key).await?;
 
     if user_id != user_id_from_api_key && !is_admin {
-        return Err(AppError::forbidden("You can only update your own full name"));
+        return Err(AppError::forbidden(
+            "You can only update your own full name",
+        ));
     }
 
     state.db_pool.set_fullname(user_id, new_name).await?;
@@ -249,7 +305,10 @@ pub async fn set_password(
         return Err(AppError::forbidden("You can only update your own password"));
     }
 
-    state.db_pool.set_password(user_id, &request.hash_pw).await?;
+    state
+        .db_pool
+        .set_password(user_id, &request.hash_pw)
+        .await?;
     Ok(Json(serde_json::json!({ "detail": "Password updated." })))
 }
 
@@ -265,7 +324,7 @@ pub async fn delete_user(
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
@@ -298,11 +357,14 @@ pub async fn set_email(
         return Err(AppError::forbidden("You can only update your own email"));
     }
 
-    state.db_pool.set_email(request.user_id, &request.new_email).await?;
+    state
+        .db_pool
+        .set_email(request.user_id, &request.new_email)
+        .await?;
     Ok(Json(serde_json::json!({ "detail": "Email updated." })))
 }
 
-// Request struct for set_username  
+// Request struct for set_username
 #[derive(Deserialize)]
 pub struct SetUsernameRequest {
     pub user_id: i32,
@@ -326,7 +388,10 @@ pub async fn set_username(
         return Err(AppError::forbidden("You can only update your own username"));
     }
 
-    state.db_pool.set_username(request.user_id, &request.new_username.to_lowercase()).await?;
+    state
+        .db_pool
+        .set_username(request.user_id, &request.new_username.to_lowercase())
+        .await?;
     Ok(Json(serde_json::json!({ "detail": "Username updated." })))
 }
 
@@ -349,13 +414,18 @@ pub async fn set_isadmin(
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
 
-    state.db_pool.set_isadmin(request.user_id, request.isadmin).await?;
-    Ok(Json(serde_json::json!({ "detail": "IsAdmin status updated." })))
+    state
+        .db_pool
+        .set_isadmin(request.user_id, request.isadmin)
+        .await?;
+    Ok(Json(
+        serde_json::json!({ "detail": "IsAdmin status updated." }),
+    ))
 }
 
 // Final admin check - matches Python api_final_admin function exactly (admin only)
@@ -370,7 +440,7 @@ pub async fn final_admin(
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
@@ -390,7 +460,7 @@ pub async fn enable_disable_guest(
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
@@ -410,7 +480,7 @@ pub async fn enable_disable_downloads(
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
@@ -430,7 +500,7 @@ pub async fn enable_disable_self_service(
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
@@ -474,7 +544,9 @@ pub async fn toggle_rss_feeds(
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let new_status = state.db_pool.toggle_rss_feeds(user_id).await?;
-    Ok(Json(serde_json::json!({ "success": true, "enabled": new_status })))
+    Ok(Json(
+        serde_json::json!({ "success": true, "enabled": new_status }),
+    ))
 }
 
 // Get download status - matches Python api_download_status function exactly
@@ -489,7 +561,7 @@ pub async fn download_status(
     Ok(Json(result))
 }
 
-// Get self service status - matches Python api_self_service_status function exactly  
+// Get self service status - matches Python api_self_service_status function exactly
 pub async fn self_service_status(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -526,19 +598,19 @@ pub struct EmailSettings {
 
 // Helper function to deserialize string to i32
 fn deserialize_string_to_i32<'de, D>(deserializer: D) -> Result<i32, D::Error>
-where 
-    D: serde::Deserializer<'de>
+where
+    D: serde::Deserializer<'de>,
 {
     use serde::de::Error;
-    
+
     let s = String::deserialize(deserializer)?;
     s.parse::<i32>().map_err(D::Error::custom)
 }
 
 // Helper function to deserialize bool to i32
 fn deserialize_bool_to_i32<'de, D>(deserializer: D) -> Result<i32, D::Error>
-where 
-    D: serde::Deserializer<'de>
+where
+    D: serde::Deserializer<'de>,
 {
     let b = bool::deserialize(deserializer)?;
     Ok(if b { 1 } else { 0 })
@@ -556,13 +628,18 @@ pub async fn save_email_settings(
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
 
-    state.db_pool.save_email_settings(&request.email_settings).await?;
-    Ok(Json(serde_json::json!({ "detail": "Email settings saved." })))
+    state
+        .db_pool
+        .save_email_settings(&request.email_settings)
+        .await?;
+    Ok(Json(
+        serde_json::json!({ "detail": "Email settings saved." }),
+    ))
 }
 
 // Email settings response struct
@@ -599,7 +676,7 @@ pub async fn get_email_settings(
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
@@ -613,6 +690,7 @@ pub async fn get_email_settings(
 
 // Request struct for send_test_email
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct SendTestEmailRequest {
     pub server_name: String,
     pub server_port: String,
@@ -638,7 +716,7 @@ pub async fn send_test_email(
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
@@ -651,22 +729,24 @@ pub async fn send_test_email(
 async fn read_logo_as_base64() -> Result<String, AppError> {
     use std::path::Path;
     use tokio::fs;
-    
+
     let logo_path = Path::new("/var/www/html/static/assets/favicon.png");
-    
+
     if !logo_path.exists() {
         return Err(AppError::internal("Logo file not found"));
     }
-    
-    let logo_bytes = fs::read(logo_path).await
+
+    let logo_bytes = fs::read(logo_path)
+        .await
         .map_err(|e| AppError::internal(&format!("Failed to read logo file: {}", e)))?;
-    
-    let base64_logo = base64::encode(&logo_bytes);
+
+    let base64_logo = general_purpose::STANDARD.encode(&logo_bytes);
     Ok(base64_logo)
 }
 
 fn create_html_email_template(subject: &str, content: &str, logo_base64: &str) -> String {
-    format!(r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -771,7 +851,9 @@ fn create_html_email_template(subject: &str, content: &str, logo_base64: &str) -
         </div>
     </div>
 </body>
-</html>"#, subject, logo_base64, content)
+</html>"#,
+        subject, logo_base64, content
+    )
 }
 
 // Internal email sending function using lettre
@@ -784,26 +866,37 @@ async fn send_email_internal(request: &SendTestEmailRequest) -> Result<String, A
     use tokio::time::{timeout, Duration};
 
     // Parse server port
-    let port: u16 = request.server_port.parse()
+    let port: u16 = request
+        .server_port
+        .parse()
         .map_err(|_| AppError::bad_request("Invalid server port"))?;
 
     // Read logo and create HTML content
     let logo_base64 = read_logo_as_base64().await.unwrap_or_default();
-    let html_content = format!(r#"
+    let html_content = format!(
+        r#"
         <h2>📧 Test Email</h2>
         <p>This is a test email from your PinePods server to verify your email configuration is working correctly.</p>
         <p><strong>Your message:</strong></p>
         <p style="background-color: #f8f9fa; padding: 16px; border-radius: 6px; border-left: 4px solid #539e8a;">{}</p>
         <p>If you received this email, your email settings are configured properly! 🎉</p>
-    "#, request.message);
-    
+    "#,
+        request.message
+    );
+
     let html_body = create_html_email_template("Test Email", &html_content, &logo_base64);
 
     // Create email message with HTML
     let email = Message::builder()
-        .from(request.from_email.parse()
-            .map_err(|_| AppError::bad_request("Invalid from email"))?)
-        .to(request.to_email.parse()
+        .from(
+            request
+                .from_email
+                .parse()
+                .map_err(|_| AppError::bad_request("Invalid from email"))?,
+        )
+        .to(request
+            .to_email
+            .parse()
             .map_err(|_| AppError::bad_request("Invalid to email"))?)
         .subject("PinePods - Test Email")
         .header(ContentType::TEXT_HTML)
@@ -815,18 +908,25 @@ async fn send_email_internal(request: &SendTestEmailRequest) -> Result<String, A
         "SSL/TLS" => {
             let tls = TlsParameters::new(request.server_name.clone())
                 .map_err(|e| AppError::internal(&format!("TLS configuration failed: {}", e)))?;
-            
+
             if request.auth_required {
-                let creds = Credentials::new(request.email_username.clone(), request.email_password.clone());
+                let creds = Credentials::new(
+                    request.email_username.clone(),
+                    request.email_password.clone(),
+                );
                 AsyncSmtpTransport::<Tokio1Executor>::relay(&request.server_name)
-                    .map_err(|e| AppError::internal(&format!("SMTP relay configuration failed: {}", e)))?
+                    .map_err(|e| {
+                        AppError::internal(&format!("SMTP relay configuration failed: {}", e))
+                    })?
                     .port(port)
                     .tls(Tls::Wrapper(tls))
                     .credentials(creds)
                     .build()
             } else {
                 AsyncSmtpTransport::<Tokio1Executor>::relay(&request.server_name)
-                    .map_err(|e| AppError::internal(&format!("SMTP relay configuration failed: {}", e)))?
+                    .map_err(|e| {
+                        AppError::internal(&format!("SMTP relay configuration failed: {}", e))
+                    })?
                     .port(port)
                     .tls(Tls::Wrapper(tls))
                     .build()
@@ -835,18 +935,25 @@ async fn send_email_internal(request: &SendTestEmailRequest) -> Result<String, A
         "StartTLS" => {
             let tls = TlsParameters::new(request.server_name.clone())
                 .map_err(|e| AppError::internal(&format!("TLS configuration failed: {}", e)))?;
-            
+
             if request.auth_required {
-                let creds = Credentials::new(request.email_username.clone(), request.email_password.clone());
+                let creds = Credentials::new(
+                    request.email_username.clone(),
+                    request.email_password.clone(),
+                );
                 AsyncSmtpTransport::<Tokio1Executor>::relay(&request.server_name)
-                    .map_err(|e| AppError::internal(&format!("SMTP relay configuration failed: {}", e)))?
+                    .map_err(|e| {
+                        AppError::internal(&format!("SMTP relay configuration failed: {}", e))
+                    })?
                     .port(port)
                     .tls(Tls::Required(tls))
                     .credentials(creds)
                     .build()
             } else {
                 AsyncSmtpTransport::<Tokio1Executor>::relay(&request.server_name)
-                    .map_err(|e| AppError::internal(&format!("SMTP relay configuration failed: {}", e)))?
+                    .map_err(|e| {
+                        AppError::internal(&format!("SMTP relay configuration failed: {}", e))
+                    })?
                     .port(port)
                     .tls(Tls::Required(tls))
                     .build()
@@ -855,7 +962,10 @@ async fn send_email_internal(request: &SendTestEmailRequest) -> Result<String, A
         _ => {
             // No encryption - use builder_dangerous for unencrypted connections
             if request.auth_required {
-                let creds = Credentials::new(request.email_username.clone(), request.email_password.clone());
+                let creds = Credentials::new(
+                    request.email_username.clone(),
+                    request.email_password.clone(),
+                );
                 AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&request.server_name)
                     .port(port)
                     .credentials(creds)
@@ -874,7 +984,7 @@ async fn send_email_internal(request: &SendTestEmailRequest) -> Result<String, A
         Ok(Ok(_)) => Ok("Email sent successfully".to_string()),
         Ok(Err(e)) => {
             let error_msg = format!("{}", e);
-            
+
             // Provide more helpful error messages for common issues
             if error_msg.contains("InvalidContentType") || error_msg.contains("corrupt message") {
                 let suggestion = if port == 587 {
@@ -884,7 +994,7 @@ async fn send_email_internal(request: &SendTestEmailRequest) -> Result<String, A
                 } else {
                     "This may be a TLS/SSL configuration issue. Verify your encryption settings match your SMTP server requirements."
                 };
-                Err(AppError::internal(&format!("SMTP connection failed: {}. {}. Original error: {}", 
+                Err(AppError::internal(&format!("SMTP connection failed: {}. {}. Original error: {}",
                     "TLS/SSL handshake error", suggestion, error_msg)))
             } else if error_msg.contains("authentication") || error_msg.contains("auth") {
                 Err(AppError::internal(&format!("SMTP authentication failed: {}. Please verify your username and password.", error_msg)))
@@ -940,12 +1050,15 @@ pub async fn send_email_with_settings(
 
     // Read logo and create HTML content
     let logo_base64 = read_logo_as_base64().await.unwrap_or_default();
-    
+
     // Check if this is a password reset email and format accordingly
     let (html_content, final_subject) = if request.subject.contains("Password Reset") {
         // Extract the reset code from the message
-        let reset_code = request.message.trim_start_matches("Your password reset code is ");
-        let content = format!(r#"
+        let reset_code = request
+            .message
+            .trim_start_matches("Your password reset code is ");
+        let content = format!(
+            r#"
             <h2>🔐 Password Reset Request</h2>
             <p>You have requested a password reset for your PinePods account.</p>
             <p>Please use the following code to reset your password:</p>
@@ -957,26 +1070,38 @@ pub async fn send_email_with_settings(
                 <li>If you didn't request this, you can safely ignore this email</li>
             </ul>
             <p>For security reasons, never share this code with anyone.</p>
-        "#, reset_code);
+        "#,
+            reset_code
+        );
         (content, "PinePods - Password Reset Code".to_string())
     } else {
         // For other emails, wrap the message content
-        let content = format!(r#"
+        let content = format!(
+            r#"
             <h2>📧 {}</h2>
             <div style="background-color: #f8f9fa; padding: 16px; border-radius: 6px; border-left: 4px solid #539e8a;">
                 {}
             </div>
-        "#, request.subject, request.message.replace("\n", "<br>"));
+        "#,
+            request.subject,
+            request.message.replace("\n", "<br>")
+        );
         (content, request.subject.clone())
     };
-    
+
     let html_body = create_html_email_template(&final_subject, &html_content, &logo_base64);
 
     // Create email message with HTML
     let email = Message::builder()
-        .from(settings.from_email.parse()
-            .map_err(|_| AppError::bad_request("Invalid from email in settings"))?)
-        .to(request.to_email.parse()
+        .from(
+            settings
+                .from_email
+                .parse()
+                .map_err(|_| AppError::bad_request("Invalid from email in settings"))?,
+        )
+        .to(request
+            .to_email
+            .parse()
             .map_err(|_| AppError::bad_request("Invalid to email"))?)
         .subject(&final_subject)
         .header(ContentType::TEXT_HTML)
@@ -988,18 +1113,22 @@ pub async fn send_email_with_settings(
         "SSL/TLS" => {
             let tls = TlsParameters::new(settings.server_name.clone())
                 .map_err(|e| AppError::internal(&format!("TLS configuration failed: {}", e)))?;
-            
+
             if settings.auth_required == 1 {
                 let creds = Credentials::new(settings.username.clone(), settings.password.clone());
                 AsyncSmtpTransport::<Tokio1Executor>::relay(&settings.server_name)
-                    .map_err(|e| AppError::internal(&format!("SMTP relay configuration failed: {}", e)))?
+                    .map_err(|e| {
+                        AppError::internal(&format!("SMTP relay configuration failed: {}", e))
+                    })?
                     .port(settings.server_port as u16)
                     .tls(Tls::Wrapper(tls))
                     .credentials(creds)
                     .build()
             } else {
                 AsyncSmtpTransport::<Tokio1Executor>::relay(&settings.server_name)
-                    .map_err(|e| AppError::internal(&format!("SMTP relay configuration failed: {}", e)))?
+                    .map_err(|e| {
+                        AppError::internal(&format!("SMTP relay configuration failed: {}", e))
+                    })?
                     .port(settings.server_port as u16)
                     .tls(Tls::Wrapper(tls))
                     .build()
@@ -1008,18 +1137,22 @@ pub async fn send_email_with_settings(
         "StartTLS" => {
             let tls = TlsParameters::new(settings.server_name.clone())
                 .map_err(|e| AppError::internal(&format!("TLS configuration failed: {}", e)))?;
-            
+
             if settings.auth_required == 1 {
                 let creds = Credentials::new(settings.username.clone(), settings.password.clone());
                 AsyncSmtpTransport::<Tokio1Executor>::relay(&settings.server_name)
-                    .map_err(|e| AppError::internal(&format!("SMTP relay configuration failed: {}", e)))?
+                    .map_err(|e| {
+                        AppError::internal(&format!("SMTP relay configuration failed: {}", e))
+                    })?
                     .port(settings.server_port as u16)
                     .tls(Tls::Required(tls))
                     .credentials(creds)
                     .build()
             } else {
                 AsyncSmtpTransport::<Tokio1Executor>::relay(&settings.server_name)
-                    .map_err(|e| AppError::internal(&format!("SMTP relay configuration failed: {}", e)))?
+                    .map_err(|e| {
+                        AppError::internal(&format!("SMTP relay configuration failed: {}", e))
+                    })?
                     .port(settings.server_port as u16)
                     .tls(Tls::Required(tls))
                     .build()
@@ -1048,7 +1181,7 @@ pub async fn send_email_with_settings(
         Ok(Err(e)) => {
             let error_msg = format!("{}", e);
             let port = settings.server_port as u16;
-            
+
             // Provide more helpful error messages for common issues
             if error_msg.contains("InvalidContentType") || error_msg.contains("corrupt message") {
                 let suggestion = if port == 587 {
@@ -1058,7 +1191,7 @@ pub async fn send_email_with_settings(
                 } else {
                     "This may be a TLS/SSL configuration issue. Verify your encryption settings match your SMTP server requirements."
                 };
-                Err(AppError::internal(&format!("SMTP connection failed: {}. {}. Original error: {}", 
+                Err(AppError::internal(&format!("SMTP connection failed: {}. {}. Original error: {}",
                     "TLS/SSL handshake error", suggestion, error_msg)))
             } else if error_msg.contains("authentication") || error_msg.contains("auth") {
                 Err(AppError::internal(&format!("SMTP authentication failed: {}. Please verify your username and password.", error_msg)))
@@ -1072,8 +1205,7 @@ pub async fn send_email_with_settings(
     }
 }
 
-
-// API info response struct - matches Python get_api_info response exactly  
+// API info response struct - matches Python get_api_info response exactly
 #[derive(Serialize)]
 pub struct ApiInfo {
     pub apikeyid: i32,
@@ -1098,7 +1230,9 @@ pub async fn get_api_info(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if !is_web_key && user_id != user_id_from_api_key {
-        return Err(AppError::forbidden("You are not authorized to access these user details"));
+        return Err(AppError::forbidden(
+            "You are not authorized to access these user details",
+        ));
     }
 
     let api_information = state.db_pool.get_api_info(user_id).await?;
@@ -1130,11 +1264,16 @@ pub async fn create_api_key(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if request.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::forbidden(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
     if request.rssonly {
-        let new_key = state.db_pool.create_rss_key(request.user_id, request.podcast_ids).await?;
+        let new_key = state
+            .db_pool
+            .create_rss_key(request.user_id, request.podcast_ids)
+            .await?;
         Ok(Json(serde_json::json!({ "rss_key": new_key })))
     } else {
         let new_key = state.db_pool.create_api_key(request.user_id).await?;
@@ -1144,6 +1283,7 @@ pub async fn create_api_key(
 
 // Request struct for delete_api_key
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct DeleteApiKeyRequest {
     pub api_id: String,
     pub user_id: String,
@@ -1159,45 +1299,58 @@ pub async fn delete_api_key(
     validate_api_key(&state, &api_key).await?;
 
     // Parse api_id from string (user_id not used for authorization)
-    let api_id: i32 = request.api_id.parse()
+    let api_id: i32 = request
+        .api_id
+        .parse()
         .map_err(|_| AppError::bad_request("Invalid api_id format"))?;
 
     // Check authorization - admins can delete any key (except user ID 1), users can only delete their own keys
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_requesting_user_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     // Get the owner of the API key being deleted
     let api_key_owner = state.db_pool.get_api_key_owner(api_id).await?;
-    
+
     if api_key_owner.is_none() {
         return Err(AppError::not_found("API key not found"));
     }
-    
+
     let api_key_owner = api_key_owner.unwrap();
 
     // For debugging - log the values
-    println!("🔐 delete_api_key: requesting_user={}, api_key_owner={}, is_admin={}, api_id={}", 
-        requesting_user_id, api_key_owner, is_requesting_user_admin, api_id);
+    println!(
+        "🔐 delete_api_key: requesting_user={}, api_key_owner={}, is_admin={}, api_id={}",
+        requesting_user_id, api_key_owner, is_requesting_user_admin, api_id
+    );
 
     // Authorization logic:
     // - Admin users can delete any key EXCEPT keys belonging to user ID 1 (background tasks)
     // - Regular users can only delete their own keys
     if !is_requesting_user_admin && requesting_user_id != api_key_owner {
-        return Err(AppError::forbidden("You are not authorized to access or remove other users api-keys."));
+        return Err(AppError::forbidden(
+            "You are not authorized to access or remove other users api-keys.",
+        ));
     }
 
     // Check if the API key to be deleted is the same as the one used in the current request
     if state.db_pool.is_same_api_key(api_id, &api_key).await? {
-        return Err(AppError::forbidden("You cannot delete the API key that is currently in use."));
+        return Err(AppError::forbidden(
+            "You cannot delete the API key that is currently in use.",
+        ));
     }
 
     // Check if the API key belongs to the background task user (user_id 1) - no one can delete these
     if api_key_owner == 1 {
-        return Err(AppError::forbidden("Cannot delete background task API key - would break refreshing."));
+        return Err(AppError::forbidden(
+            "Cannot delete background task API key - would break refreshing.",
+        ));
     }
 
     // CRITICAL SAFETY CHECK: Ensure the API key owner has at least one other API key (would prevent logins)
-    let remaining_keys_count = state.db_pool.count_user_api_keys_excluding(api_key_owner, api_id).await?;
+    let remaining_keys_count = state
+        .db_pool
+        .count_user_api_keys_excluding(api_key_owner, api_id)
+        .await?;
     if remaining_keys_count == 0 {
         if requesting_user_id == api_key_owner {
             return Err(AppError::forbidden("Cannot delete your final API key - you must have at least one key to maintain access."));
@@ -1231,7 +1384,9 @@ pub async fn backup_user(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if request.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only make backups for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only make backups for yourself!",
+        ));
     }
 
     let opml_data = state.db_pool.backup_user(request.user_id).await?;
@@ -1256,7 +1411,7 @@ pub async fn backup_server(
     // Check if user is admin (matches Python check_if_admin dependency)
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
@@ -1274,8 +1429,8 @@ async fn backup_server_streaming(
     state: &AppState,
     database_pass: &str,
 ) -> Result<axum::response::Response, String> {
-    use axum::response::Response;
     use axum::body::Body;
+    use axum::response::Response;
     use tokio::process::Command;
     use tokio_util::io::ReaderStream;
 
@@ -1287,22 +1442,25 @@ async fn backup_server_streaming(
             let port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
             let database = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods".to_string());
             let username = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
-            
+
             // Use pg_dump with data-only options (no schema)
             let mut cmd = Command::new("pg_dump");
-            cmd.arg("--host").arg(&host)
-               .arg("--port").arg(&port)
-               .arg("--username").arg(&username)
-               .arg("--no-password")
-               .arg("--verbose")
-               .arg("--data-only")
-               .arg("--disable-triggers")
-               .arg("--format=plain")
-               .arg(&database);
-            
+            cmd.arg("--host")
+                .arg(&host)
+                .arg("--port")
+                .arg(&port)
+                .arg("--username")
+                .arg(&username)
+                .arg("--no-password")
+                .arg("--verbose")
+                .arg("--data-only")
+                .arg("--disable-triggers")
+                .arg("--format=plain")
+                .arg(&database);
+
             // Set password via environment variable
             cmd.env("PGPASSWORD", database_pass);
-            
+
             cmd
         }
         crate::database::DatabasePool::MySQL(_) => {
@@ -1310,33 +1468,41 @@ async fn backup_server_streaming(
             let port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
             let database = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods".to_string());
             let username = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
-            
+
             let mut cmd = Command::new("mysqldump");
-            cmd.arg("--host").arg(&host)
-               .arg("--port").arg(&port)
-               .arg("--user").arg(&username)
-               .arg(format!("--password={}", database_pass))
-               .arg("--skip-ssl")
-               .arg("--default-auth=mysql_native_password")
-               .arg("--single-transaction")
-               .arg("--routines")
-               .arg("--triggers")
-               .arg("--complete-insert")
-               .arg(&database);
-            
+            cmd.arg("--host")
+                .arg(&host)
+                .arg("--port")
+                .arg(&port)
+                .arg("--user")
+                .arg(&username)
+                .arg(format!("--password={}", database_pass))
+                .arg("--skip-ssl")
+                .arg("--default-auth=mysql_native_password")
+                .arg("--single-transaction")
+                .arg("--routines")
+                .arg("--triggers")
+                .arg("--complete-insert")
+                .arg(&database);
+
             cmd
         }
     };
 
-    let mut child = cmd.stdout(std::process::Stdio::piped())
+    let mut child = cmd
+        .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("Failed to start backup process: {}", e))?;
 
-    let stdout = child.stdout.take()
+    let stdout = child
+        .stdout
+        .take()
         .ok_or("Failed to get stdout from backup process")?;
-    
-    let stderr = child.stderr.take()
+
+    let stderr = child
+        .stderr
+        .take()
         .ok_or("Failed to get stderr from backup process")?;
 
     let stream = ReaderStream::new(stdout);
@@ -1348,14 +1514,14 @@ async fn backup_server_streaming(
         let mut stderr_reader = tokio::io::BufReader::new(stderr);
         let mut stderr_output = String::new();
         use tokio::io::AsyncBufReadExt;
-        
+
         // Read stderr line by line
         let mut lines = stderr_reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
             stderr_output.push_str(&line);
             stderr_output.push('\n');
         }
-        
+
         match child.wait().await {
             Ok(status) if status.success() => {
                 println!("Backup process completed successfully");
@@ -1375,30 +1541,81 @@ async fn backup_server_streaming(
     Ok(Response::builder()
         .status(200)
         .header("content-type", "text/plain; charset=utf-8")
-        .header("content-disposition", "attachment; filename=\"pinepods_backup.sql\"")
+        .header(
+            "content-disposition",
+            "attachment; filename=\"pinepods_backup.sql\"",
+        )
         .body(body)
         .map_err(|e| format!("Failed to build response: {}", e))?)
 }
 
 // Generate backup chunks to handle large databases efficiently
-async fn generate_backup_chunk(state: &AppState, chunk_id: usize) -> Result<Option<String>, String> {
+#[allow(dead_code)]
+async fn generate_backup_chunk(
+    state: &AppState,
+    chunk_id: usize,
+) -> Result<Option<String>, String> {
     // Define tables in order of dependencies (foreign keys) - complete list from migrations
     let tables = match &state.db_pool {
         crate::database::DatabasePool::Postgres(_) => vec![
-            "Users", "OIDCProviders", "APIKeys", "RssKeys", "RssKeyMap", 
-            "AppSettings", "EmailSettings", "UserStats", "UserSettings",
-            "Podcasts", "Episodes", "YouTubeVideos", "UserEpisodeHistory", "UserVideoHistory",
-            "EpisodeQueue", "SavedEpisodes", "SavedVideos", "DownloadedEpisodes", "DownloadedVideos",
-            "GpodderDevices", "GpodderSyncState", "People", "PeopleEpisodes", "SharedEpisodes",
-            "Playlists", "PlaylistContents", "Sessions", "UserNotificationSettings"
+            "Users",
+            "OIDCProviders",
+            "APIKeys",
+            "RssKeys",
+            "RssKeyMap",
+            "AppSettings",
+            "EmailSettings",
+            "UserStats",
+            "UserSettings",
+            "Podcasts",
+            "Episodes",
+            "YouTubeVideos",
+            "UserEpisodeHistory",
+            "UserVideoHistory",
+            "EpisodeQueue",
+            "SavedEpisodes",
+            "SavedVideos",
+            "DownloadedEpisodes",
+            "DownloadedVideos",
+            "GpodderDevices",
+            "GpodderSyncState",
+            "People",
+            "PeopleEpisodes",
+            "SharedEpisodes",
+            "Playlists",
+            "PlaylistContents",
+            "Sessions",
+            "UserNotificationSettings",
         ],
         crate::database::DatabasePool::MySQL(_) => vec![
-            "Users", "OIDCProviders", "APIKeys", "RssKeys", "RssKeyMap",
-            "AppSettings", "EmailSettings", "UserStats", "UserSettings", 
-            "Podcasts", "Episodes", "YouTubeVideos", "UserEpisodeHistory", "UserVideoHistory",
-            "EpisodeQueue", "SavedEpisodes", "SavedVideos", "DownloadedEpisodes", "DownloadedVideos",
-            "GpodderDevices", "GpodderSyncState", "People", "PeopleEpisodes", "SharedEpisodes",
-            "Playlists", "PlaylistContents", "Sessions", "UserNotificationSettings"
+            "Users",
+            "OIDCProviders",
+            "APIKeys",
+            "RssKeys",
+            "RssKeyMap",
+            "AppSettings",
+            "EmailSettings",
+            "UserStats",
+            "UserSettings",
+            "Podcasts",
+            "Episodes",
+            "YouTubeVideos",
+            "UserEpisodeHistory",
+            "UserVideoHistory",
+            "EpisodeQueue",
+            "SavedEpisodes",
+            "SavedVideos",
+            "DownloadedEpisodes",
+            "DownloadedVideos",
+            "GpodderDevices",
+            "GpodderSyncState",
+            "People",
+            "PeopleEpisodes",
+            "SharedEpisodes",
+            "Playlists",
+            "PlaylistContents",
+            "Sessions",
+            "UserNotificationSettings",
         ],
     };
 
@@ -1422,6 +1639,7 @@ async fn generate_backup_chunk(state: &AppState, chunk_id: usize) -> Result<Opti
 }
 
 // Generate SQL backup header
+#[allow(dead_code)]
 fn generate_backup_header() -> String {
     format!(
         "-- PinePods Database Backup\n-- Generated: {}\n-- Rust API Backup System\n\n",
@@ -1430,10 +1648,11 @@ fn generate_backup_header() -> String {
 }
 
 // Export individual table data efficiently
+#[allow(dead_code)]
 async fn export_table_data(state: &AppState, table_name: &str) -> Result<String, String> {
     const BATCH_SIZE: i64 = 1000; // Process 1000 rows at a time
     let mut sql_output = format!("\n-- Exporting table: {}\n", table_name);
-    
+
     // First, export the CREATE TABLE statement
     let create_statement = match &state.db_pool {
         crate::database::DatabasePool::Postgres(pool) => {
@@ -1443,10 +1662,10 @@ async fn export_table_data(state: &AppState, table_name: &str) -> Result<String,
             export_mysql_table_schema(pool, table_name).await?
         }
     };
-    
+
     sql_output.push_str(&create_statement);
     sql_output.push('\n');
-    
+
     // Then export the data
     let mut offset = 0;
     loop {
@@ -1474,19 +1693,20 @@ async fn export_table_data(state: &AppState, table_name: &str) -> Result<String,
 }
 
 // Export PostgreSQL table schema using pg_dump-like approach
+#[allow(dead_code)]
 async fn export_postgres_table_schema(
     pool: &sqlx::PgPool,
     table_name: &str,
 ) -> Result<String, String> {
     // Get table definition from PostgreSQL system catalogs with proper ARRAY handling
     let query = r#"
-        SELECT 
+        SELECT
             'CREATE TABLE "' || schemaname || '"."' || tablename || '" (' AS create_start,
             string_agg(
-                '"' || column_name || '" ' || 
-                CASE 
-                    WHEN data_type = 'ARRAY' THEN 
-                        CASE 
+                '"' || column_name || '" ' ||
+                CASE
+                    WHEN data_type = 'ARRAY' THEN
+                        CASE
                             WHEN udt_name = '_int4' THEN 'INTEGER[]'
                             WHEN udt_name = '_text' THEN 'TEXT[]'
                             WHEN udt_name = '_varchar' THEN 'VARCHAR[]'
@@ -1530,24 +1750,34 @@ async fn export_postgres_table_schema(
         .map_err(|e| format!("Schema query failed: {}", e))?;
 
     if let Some(row) = row {
-        let create_start: String = row.try_get("create_start").map_err(|e| format!("Column error: {}", e))?;
-        let columns: String = row.try_get("columns").map_err(|e| format!("Column error: {}", e))?;
-        let create_end: String = row.try_get("create_end").map_err(|e| format!("Column error: {}", e))?;
-        
-        Ok(format!("{}\n    {}\n{}\n", create_start, columns, create_end))
+        let create_start: String = row
+            .try_get("create_start")
+            .map_err(|e| format!("Column error: {}", e))?;
+        let columns: String = row
+            .try_get("columns")
+            .map_err(|e| format!("Column error: {}", e))?;
+        let create_end: String = row
+            .try_get("create_end")
+            .map_err(|e| format!("Column error: {}", e))?;
+
+        Ok(format!(
+            "{}\n    {}\n{}\n",
+            create_start, columns, create_end
+        ))
     } else {
         Err(format!("Table {} not found", table_name))
     }
 }
 
 // Export MySQL table schema
+#[allow(dead_code)]
 async fn export_mysql_table_schema(
     pool: &sqlx::MySqlPool,
     table_name: &str,
 ) -> Result<String, String> {
     // Use SHOW CREATE TABLE for MySQL
     let query = format!("SHOW CREATE TABLE {}", table_name);
-    
+
     let row = sqlx::query(&query)
         .fetch_optional(pool)
         .await
@@ -1562,6 +1792,7 @@ async fn export_mysql_table_schema(
 }
 
 // Export PostgreSQL table batch
+#[allow(dead_code)]
 async fn export_postgres_table_batch(
     pool: &sqlx::PgPool,
     table_name: &str,
@@ -1573,7 +1804,7 @@ async fn export_postgres_table_batch(
         r#"SELECT * FROM "{}" ORDER BY 1 LIMIT {} OFFSET {}"#,
         table_name, limit, offset
     );
-    
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
@@ -1598,7 +1829,7 @@ async fn export_postgres_table_batch(
             if i > 0 {
                 output.push_str(", ");
             }
-            
+
             // Handle different PostgreSQL data types safely
             match row.try_get_raw(i) {
                 Ok(value) if value.is_null() => output.push_str("NULL"),
@@ -1624,7 +1855,7 @@ async fn export_postgres_table_batch(
                             Ok(val) => {
                                 let escaped = val.replace('\'', "''").replace('\\', "\\\\");
                                 output.push_str(&format!("'{}'", escaped));
-                            },
+                            }
                             Err(_) => output.push_str("NULL"),
                         }
                     }
@@ -1639,7 +1870,8 @@ async fn export_postgres_table_batch(
     Ok(output)
 }
 
-// Export MySQL table batch  
+// Export MySQL table batch
+#[allow(dead_code)]
 async fn export_mysql_table_batch(
     pool: &sqlx::MySqlPool,
     table_name: &str,
@@ -1650,7 +1882,7 @@ async fn export_mysql_table_batch(
         "SELECT * FROM {} ORDER BY 1 LIMIT {} OFFSET {}",
         table_name, limit, offset
     );
-    
+
     let rows = sqlx::query(&query)
         .fetch_all(pool)
         .await
@@ -1675,7 +1907,7 @@ async fn export_mysql_table_batch(
             if i > 0 {
                 output.push_str(", ");
             }
-            
+
             // Handle different MySQL data types safely
             match row.try_get_raw(i) {
                 Ok(value) if value.is_null() => output.push_str("NULL"),
@@ -1701,7 +1933,7 @@ async fn export_mysql_table_batch(
                             Ok(val) => {
                                 let escaped = val.replace('\'', "''").replace('\\', "\\\\");
                                 output.push_str(&format!("'{}'", escaped));
-                            },
+                            }
                             Err(_) => output.push_str("NULL"),
                         }
                     }
@@ -1736,7 +1968,11 @@ pub async fn restore_server(
     let mut sql_content = None;
     let mut _database_password = None;
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| AppError::bad_request(&format!("Multipart error: {}", e)))? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| AppError::bad_request(&format!("Multipart error: {}", e)))?
+    {
         let name = field.name().unwrap_or("").to_string();
 
         if name == "backup_file" {
@@ -1747,22 +1983,35 @@ pub async fn restore_server(
                 return Err(AppError::bad_request("Only SQL files are allowed"));
             }
 
-            let data = field.bytes().await.map_err(|e| AppError::bad_request(&format!("Failed to read file: {}", e)))?;
+            let data = field
+                .bytes()
+                .await
+                .map_err(|e| AppError::bad_request(&format!("Failed to read file: {}", e)))?;
 
             // Check file size (limit to 100MB)
             if data.len() > 100 * 1024 * 1024 {
                 return Err(AppError::bad_request("File too large (max 100MB)"));
             }
 
-            sql_content = Some(String::from_utf8(data.to_vec()).map_err(|_| AppError::bad_request("Invalid UTF-8 content"))?);
+            sql_content = Some(
+                String::from_utf8(data.to_vec())
+                    .map_err(|_| AppError::bad_request("Invalid UTF-8 content"))?,
+            );
         } else if name == "database_pass" {
-            let password_data = field.bytes().await.map_err(|e| AppError::bad_request(&format!("Failed to read password: {}", e)))?;
-            _database_password = Some(String::from_utf8(password_data.to_vec()).map_err(|_| AppError::bad_request("Invalid UTF-8 password"))?);
+            let password_data = field
+                .bytes()
+                .await
+                .map_err(|e| AppError::bad_request(&format!("Failed to read password: {}", e)))?;
+            _database_password = Some(
+                String::from_utf8(password_data.to_vec())
+                    .map_err(|_| AppError::bad_request("Invalid UTF-8 password"))?,
+            );
         }
     }
 
     let sql_content = sql_content.ok_or_else(|| AppError::bad_request("No SQL file uploaded"))?;
-    let _database_password = _database_password.ok_or_else(|| AppError::bad_request("Database password is required"))?;
+    let _database_password =
+        _database_password.ok_or_else(|| AppError::bad_request("Database password is required"))?;
 
     // Process the restore in the background to prevent timeouts
     let db_pool = state.db_pool.clone();
@@ -1791,7 +2040,9 @@ pub async fn generate_mfa_secret(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only generate MFA secrets for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only generate MFA secrets for yourself!",
+        ));
     }
 
     let (secret, qr_code_svg) = state.db_pool.generate_mfa_secret(user_id).await?;
@@ -1822,14 +2073,19 @@ pub async fn verify_temp_mfa(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if request.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only verify MFA codes for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only verify MFA codes for yourself!",
+        ));
     }
 
-    let verified = state.db_pool.verify_temp_mfa(request.user_id, &request.mfa_code).await?;
+    let verified = state
+        .db_pool
+        .verify_temp_mfa(request.user_id, &request.mfa_code)
+        .await?;
     Ok(Json(serde_json::json!({ "verified": verified })))
 }
 
-// Check MFA enabled - matches Python check_mfa_enabled function exactly  
+// Check MFA enabled - matches Python check_mfa_enabled function exactly
 pub async fn check_mfa_enabled(
     State(state): State<AppState>,
     Path(user_id): Path<i32>,
@@ -1841,10 +2097,12 @@ pub async fn check_mfa_enabled(
     // Check for elevated access (admin/web key)
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
     let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
+
     // If not elevated access, user can only check their own MFA status
     if !is_web_key && user_id != user_id_from_api_key {
-        return Err(AppError::forbidden("You are not authorized to check mfa status for other users."));
+        return Err(AppError::forbidden(
+            "You are not authorized to check mfa status for other users.",
+        ));
     }
 
     let is_enabled = state.db_pool.check_mfa_enabled(user_id).await?;
@@ -1872,10 +2130,15 @@ pub async fn save_mfa_secret(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if request.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only save MFA secrets for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only save MFA secrets for yourself!",
+        ));
     }
 
-    let success = state.db_pool.save_mfa_secret(request.user_id, &request.mfa_secret).await?;
+    let success = state
+        .db_pool
+        .save_mfa_secret(request.user_id, &request.mfa_secret)
+        .await?;
     Ok(Json(serde_json::json!({ "success": success })))
 }
 
@@ -1912,11 +2175,16 @@ pub async fn initiate_nextcloud_login(
 
     // Allow the action only if the API key belongs to the user
     if key_id != request.user_id {
-        return Err(AppError::forbidden("You are not authorized to initiate this action."));
+        return Err(AppError::forbidden(
+            "You are not authorized to initiate this action.",
+        ));
     }
 
-    let login_data = state.db_pool.initiate_nextcloud_login(request.user_id, &request.nextcloud_url).await?;
-    
+    let login_data = state
+        .db_pool
+        .initiate_nextcloud_login(request.user_id, &request.nextcloud_url)
+        .await?;
+
     Ok(Json(login_data.raw_response))
 }
 
@@ -1942,15 +2210,20 @@ pub async fn add_nextcloud_server(
 
     // Allow the action only if the API key belongs to the user
     if key_id != request.user_id {
-        return Err(AppError::forbidden("You are not authorized to access these user details"));
+        return Err(AppError::forbidden(
+            "You are not authorized to access these user details",
+        ));
     }
 
     // Reset gPodder settings to default like Python version
     state.db_pool.remove_podcast_sync(request.user_id).await?;
 
-    // Create a task for the Nextcloud authentication polling  
-    let task_id = state.task_manager.create_task("nextcloud_auth".to_string(), request.user_id).await?;
-    
+    // Create a task for the Nextcloud authentication polling
+    let task_id = state
+        .task_manager
+        .create_task("nextcloud_auth".to_string(), request.user_id)
+        .await?;
+
     // Start background polling task using TaskManager
     let state_clone = state.clone();
     let request_clone = request.clone();
@@ -1960,57 +2233,116 @@ pub async fn add_nextcloud_server(
     });
 
     // Return 200 status code before starting to poll (like Python version)
-    Ok(Json(serde_json::json!({ "status": "polling", "task_id": task_id })))
+    Ok(Json(
+        serde_json::json!({ "status": "polling", "task_id": task_id }),
+    ))
 }
 
 // Background task for polling Nextcloud auth completion
-async fn poll_for_auth_completion_background(state: AppState, request: AddNextcloudServerRequest, task_id: String) {
+async fn poll_for_auth_completion_background(
+    state: AppState,
+    request: AddNextcloudServerRequest,
+    task_id: String,
+) {
     // Update task to indicate polling has started
-    if let Err(e) = state.task_manager.update_task_progress(&task_id, 10.0, Some("Starting Nextcloud authentication polling...".to_string())).await {
+    if let Err(e) = state
+        .task_manager
+        .update_task_progress(
+            &task_id,
+            10.0,
+            Some("Starting Nextcloud authentication polling...".to_string()),
+        )
+        .await
+    {
         eprintln!("Failed to update task progress: {}", e);
     }
 
-    match poll_for_auth_completion(&request.poll_endpoint, &request.token, &state.task_manager, &task_id).await {
+    match poll_for_auth_completion(
+        &request.poll_endpoint,
+        &request.token,
+        &state.task_manager,
+        &task_id,
+    )
+    .await
+    {
         Ok(credentials) => {
             println!("Nextcloud authentication successful: {:?}", credentials);
-            
+
             // Update task progress
-            if let Err(e) = state.task_manager.update_task_progress(&task_id, 90.0, Some("Authentication successful, saving credentials...".to_string())).await {
+            if let Err(e) = state
+                .task_manager
+                .update_task_progress(
+                    &task_id,
+                    90.0,
+                    Some("Authentication successful, saving credentials...".to_string()),
+                )
+                .await
+            {
                 eprintln!("Failed to update task progress: {}", e);
             }
-            
+
             // Extract credentials from the response
             if let (Some(app_password), Some(login_name)) = (
                 credentials.get("appPassword").and_then(|v| v.as_str()),
-                credentials.get("loginName").and_then(|v| v.as_str())
+                credentials.get("loginName").and_then(|v| v.as_str()),
             ) {
                 // Save the real credentials using the database method
-                match state.db_pool.save_nextcloud_credentials(request.user_id, &request.nextcloud_url, app_password, login_name).await {
+                match state
+                    .db_pool
+                    .save_nextcloud_credentials(
+                        request.user_id,
+                        &request.nextcloud_url,
+                        app_password,
+                        login_name,
+                    )
+                    .await
+                {
                     Ok(_) => {
-                        println!("Successfully added Nextcloud settings for user {}", request.user_id);
-                        if let Err(e) = state.task_manager.complete_task(&task_id, 
-                            Some(serde_json::json!({"status": "success", "message": "Nextcloud authentication completed"})), 
+                        println!(
+                            "Successfully added Nextcloud settings for user {}",
+                            request.user_id
+                        );
+                        if let Err(e) = state.task_manager.complete_task(&task_id,
+                            Some(serde_json::json!({"status": "success", "message": "Nextcloud authentication completed"})),
                             Some("Nextcloud authentication completed successfully".to_string())).await {
                             eprintln!("Failed to complete task: {}", e);
                         }
                     }
                     Err(e) => {
                         eprintln!("Failed to add Nextcloud settings: {}", e);
-                        if let Err(e) = state.task_manager.fail_task(&task_id, format!("Failed to save Nextcloud settings: {}", e)).await {
+                        if let Err(e) = state
+                            .task_manager
+                            .fail_task(
+                                &task_id,
+                                format!("Failed to save Nextcloud settings: {}", e),
+                            )
+                            .await
+                        {
                             eprintln!("Failed to fail task: {}", e);
                         }
                     }
                 }
             } else {
                 eprintln!("Missing appPassword or loginName in credentials");
-                if let Err(e) = state.task_manager.fail_task(&task_id, "Missing credentials in Nextcloud response".to_string()).await {
+                if let Err(e) = state
+                    .task_manager
+                    .fail_task(
+                        &task_id,
+                        "Missing credentials in Nextcloud response".to_string(),
+                    )
+                    .await
+                {
                     eprintln!("Failed to fail task: {}", e);
                 }
             }
         }
         Err(e) => {
             eprintln!("Nextcloud authentication failed: {}", e);
-            if let Err(e) = state.task_manager.fail_task(&task_id, format!("Authentication failed: {}", e)).await {
+            if let Err(e) = state
+                .task_manager
+                .fail_task(&task_id, format!("Authentication failed: {}", e))
+                .await
+            {
                 eprintln!("Failed to fail task: {}", e);
             }
         }
@@ -2019,10 +2351,10 @@ async fn poll_for_auth_completion_background(state: AppState, request: AddNextcl
 
 // Poll for auth completion - matches Python poll_for_auth_completion function
 async fn poll_for_auth_completion(
-    endpoint: &str, 
-    token: &str, 
+    endpoint: &str,
+    token: &str,
     task_manager: &crate::services::task_manager::TaskManager,
-    task_id: &str
+    task_id: &str,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>> {
     let client = reqwest::Client::new();
     let payload = serde_json::json!({ "token": token });
@@ -2032,16 +2364,22 @@ async fn poll_for_auth_completion(
     let mut poll_count = 0;
     while start_time.elapsed() < timeout {
         poll_count += 1;
-        
+
         // Update progress based on time elapsed (up to 80% during polling)
         let elapsed_secs = start_time.elapsed().as_secs();
         let progress = 10.0 + ((elapsed_secs as f64 / (20.0 * 60.0)) * 70.0).min(70.0);
-        let message = format!("Waiting for user to complete authentication... (attempt {})", poll_count);
-        
-        if let Err(e) = task_manager.update_task_progress(task_id, progress, Some(message)).await {
+        let message = format!(
+            "Waiting for user to complete authentication... (attempt {})",
+            poll_count
+        );
+
+        if let Err(e) = task_manager
+            .update_task_progress(task_id, progress, Some(message))
+            .await
+        {
             eprintln!("Failed to update task progress during polling: {}", e);
         }
-        
+
         match client
             .post(endpoint)
             .json(&payload)
@@ -2062,7 +2400,11 @@ async fn poll_for_auth_completion(
                     }
                     status => {
                         println!("Polling failed with status code {}", status);
-                        return Err(format!("Polling for Nextcloud authentication failed with status {}", status).into());
+                        return Err(format!(
+                            "Polling for Nextcloud authentication failed with status {}",
+                            status
+                        )
+                        .into());
                     }
                 }
             }
@@ -2074,42 +2416,6 @@ async fn poll_for_auth_completion(
     }
 
     Err("Polling timeout reached".into())
-}
-
-// Helper function to save Nextcloud credentials directly to database
-async fn save_nextcloud_credentials(
-    db_pool: &crate::database::DatabasePool,
-    user_id: i32,
-    nextcloud_url: &str,
-    app_password: &str,
-    login_name: &str
-) -> crate::error::AppResult<()> {
-    // Encrypt the app password
-    let encrypted_password = db_pool.encrypt_password(app_password).await?;
-    
-    // Store Nextcloud credentials
-    match db_pool {
-        crate::database::DatabasePool::Postgres(pool) => {
-            sqlx::query(r#"UPDATE "Users" SET gpodderurl = $1, gpodderloginname = $2, gpoddertoken = $3, pod_sync_type = 'nextcloud' WHERE userid = $4"#)
-                .bind(nextcloud_url)
-                .bind(login_name)
-                .bind(&encrypted_password)
-                .bind(user_id)
-                .execute(pool)
-                .await?;
-        }
-        crate::database::DatabasePool::MySQL(pool) => {
-            sqlx::query("UPDATE Users SET GpodderUrl = ?, GpodderLoginName = ?, GpodderToken = ?, Pod_Sync_Type = 'nextcloud' WHERE UserID = ?")
-                .bind(nextcloud_url)
-                .bind(login_name)
-                .bind(&encrypted_password)
-                .bind(user_id)
-                .execute(pool)
-                .await?;
-        }
-    }
-    
-    Ok(())
 }
 
 // Request struct for verify_gpodder_auth
@@ -2131,10 +2437,12 @@ pub async fn verify_gpodder_auth(
 
     // Direct HTTP call to match Python implementation exactly
     let client = reqwest::Client::new();
-    let auth_url = format!("{}/api/2/auth/{}/login.json", 
-                          request.gpodder_url.trim_end_matches('/'), 
-                          request.gpodder_username);
-    
+    let auth_url = format!(
+        "{}/api/2/auth/{}/login.json",
+        request.gpodder_url.trim_end_matches('/'),
+        request.gpodder_username
+    );
+
     match client
         .post(&auth_url)
         .basic_auth(&request.gpodder_username, Some(&request.gpodder_password))
@@ -2143,14 +2451,14 @@ pub async fn verify_gpodder_auth(
     {
         Ok(response) => {
             if response.status().is_success() {
-                Ok(Json(serde_json::json!({"status": "success", "message": "Logged in!"})))
+                Ok(Json(
+                    serde_json::json!({"status": "success", "message": "Logged in!"}),
+                ))
             } else {
                 Err(AppError::unauthorized("Authentication failed"))
             }
         }
-        Err(_) => {
-            Err(AppError::internal("Internal Server Error"))
-        }
+        Err(_) => Err(AppError::internal("Internal Server Error")),
     }
 }
 
@@ -2172,8 +2480,16 @@ pub async fn add_gpodder_server(
     validate_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let success = state.db_pool.add_gpodder_server(user_id, &request.gpodder_url, &request.gpodder_username, &request.gpodder_password).await?;
-    
+    let success = state
+        .db_pool
+        .add_gpodder_server(
+            user_id,
+            &request.gpodder_url,
+            &request.gpodder_username,
+            &request.gpodder_password,
+        )
+        .await?;
+
     if success {
         Ok(Json(serde_json::json!({ "status": "success" })))
     } else {
@@ -2195,7 +2511,9 @@ pub async fn get_gpodder_settings(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only view your own gPodder settings!"));
+        return Err(AppError::forbidden(
+            "You can only view your own gPodder settings!",
+        ));
     }
 
     let settings = state.db_pool.get_gpodder_settings(user_id).await?;
@@ -2219,13 +2537,14 @@ pub async fn check_gpodder_settings(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only check your own gPodder settings!"));
+        return Err(AppError::forbidden(
+            "You can only check your own gPodder settings!",
+        ));
     }
 
     let has_settings = state.db_pool.check_gpodder_settings(user_id).await?;
     Ok(Json(serde_json::json!({ "data": has_settings })))
 }
-
 
 // Remove podcast sync - matches Python remove_podcast_sync function exactly
 #[derive(Debug, serde::Deserialize)]
@@ -2246,12 +2565,17 @@ pub async fn remove_podcast_sync(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if request.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You are not authorized to modify these user settings"));
+        return Err(AppError::forbidden(
+            "You are not authorized to modify these user settings",
+        ));
     }
 
     // Remove the sync settings
-    let success = state.db_pool.remove_gpodder_settings(request.user_id).await?;
-    
+    let success = state
+        .db_pool
+        .remove_gpodder_settings(request.user_id)
+        .await?;
+
     if success {
         Ok(Json(serde_json::json!({
             "success": true,
@@ -2275,6 +2599,7 @@ pub struct CustomPodcastRequest {
 
 // Request struct for import_opml
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct OpmlImportRequest {
     pub podcasts: Vec<String>,
     pub user_id: i32,
@@ -2282,6 +2607,7 @@ pub struct OpmlImportRequest {
 
 // Response struct for import_progress
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct ImportProgressResponse {
     pub current: i32,
     pub total: i32,
@@ -2358,123 +2684,41 @@ pub async fn add_custom_podcast(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if request.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only add podcasts for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only add podcasts for yourself!",
+        ));
     }
 
     // Get podcast values from feed URL
-    let podcast_values = state.db_pool.get_podcast_values(
-        &request.feed_url,
-        request.user_id,
-        request.username.as_deref(),
-        request.password.as_deref()
-    ).await?;
+    let podcast_values = state
+        .db_pool
+        .get_podcast_values(
+            &request.feed_url,
+            request.user_id,
+            request.username.as_deref(),
+            request.password.as_deref(),
+        )
+        .await?;
 
     // Add podcast with 30 episode cutoff (matches Python default)
-    let (podcast_id, _) = state.db_pool.add_podcast_from_values(
-        &podcast_values,
-        request.user_id,
-        30,
-        request.username.as_deref(),
-        request.password.as_deref()
-    ).await?;
+    let (podcast_id, _) = state
+        .db_pool
+        .add_podcast_from_values(
+            &podcast_values,
+            request.user_id,
+            30,
+            request.username.as_deref(),
+            request.password.as_deref(),
+        )
+        .await?;
 
     // Get complete podcast details for response
-    let podcast_details = state.db_pool.get_podcast_details(request.user_id, podcast_id).await?;
+    let podcast_details = state
+        .db_pool
+        .get_podcast_details(request.user_id, podcast_id)
+        .await?;
 
     Ok(Json(serde_json::json!({ "data": podcast_details })))
-}
-
-// Import OPML - matches Python import_opml function exactly with background processing
-pub async fn import_opml(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(request): Json<OpmlImportRequest>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    // Check authorization
-    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-
-    if request.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only import OPML for yourself!"));
-    }
-
-    let total_podcasts = request.podcasts.len();
-
-    // Initialize progress tracking in Redis/Valkey
-    state.import_progress_manager.start_import(request.user_id, total_podcasts as i32).await?;
-
-    // Spawn background task for OPML processing
-    let state_clone = state.clone();
-    let podcasts = request.podcasts.clone();
-    let user_id = request.user_id;
-
-    tokio::spawn(async move {
-        for (index, feed_url) in podcasts.iter().enumerate() {
-            // Update progress
-            let _ = state_clone.import_progress_manager.update_progress(
-                user_id,
-                index as i32,
-                feed_url
-            ).await;
-
-            // Process podcast (with error handling to continue on failures)
-            match state_clone.db_pool.get_podcast_values(feed_url, user_id, None, None).await {
-                Ok(podcast_values) => {
-                    let _ = state_clone.db_pool.add_podcast_from_values(
-                        &podcast_values,
-                        user_id,
-                        30,  // feed_cutoff
-                        None, // username
-                        None  // password
-                    ).await;
-                }
-                Err(e) => {
-                    tracing::error!("Failed to import podcast {}: {}", feed_url, e);
-                    // Continue with next podcast
-                }
-            }
-
-            // Small delay between imports (matches Python 0.1s delay)
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        }
-
-        // Clear progress when complete
-        let _ = state_clone.import_progress_manager.clear_progress(user_id).await;
-    });
-
-    Ok(Json(serde_json::json!({
-        "message": "OPML import started",
-        "total": total_podcasts
-    })))
-}
-
-// Import progress webhook - matches Python import_progress function exactly
-pub async fn import_progress(
-    State(state): State<AppState>,
-    Path(user_id): Path<i32>,
-    headers: HeaderMap,
-) -> Result<Json<ImportProgressResponse>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    validate_api_key(&state, &api_key).await?;
-
-    // Check authorization - user can only check their own progress
-    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-
-    if user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only check your own import progress!"));
-    }
-
-    let (current, total, current_podcast) = state.import_progress_manager.get_progress(user_id).await?;
-    let progress = ImportProgressResponse {
-        current,
-        total,
-        current_podcast,
-    };
-    Ok(Json(progress))
 }
 
 // Get notification settings - matches Python notification_settings GET function exactly
@@ -2491,10 +2735,15 @@ pub async fn get_notification_settings(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if query.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only view your own notification settings!"));
+        return Err(AppError::forbidden(
+            "You can only view your own notification settings!",
+        ));
     }
 
-    let settings = state.db_pool.get_notification_settings(query.user_id).await?;
+    let settings = state
+        .db_pool
+        .get_notification_settings(query.user_id)
+        .await?;
     Ok(Json(serde_json::json!({ "settings": settings })))
 }
 
@@ -2512,22 +2761,29 @@ pub async fn update_notification_settings(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if request.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only update your own notification settings!"));
+        return Err(AppError::forbidden(
+            "You can only update your own notification settings!",
+        ));
     }
 
-    state.db_pool.update_notification_settings(
-        request.user_id,
-        &request.platform,
-        request.enabled,
-        request.ntfy_topic.as_deref(),
-        request.ntfy_server_url.as_deref(),
-        request.ntfy_username.as_deref(),
-        request.ntfy_password.as_deref(),
-        request.ntfy_access_token.as_deref(),
-        request.gotify_url.as_deref(),
-        request.gotify_token.as_deref()
-    ).await?;
-    Ok(Json(serde_json::json!({ "detail": "Notification settings updated successfully" })))
+    state
+        .db_pool
+        .update_notification_settings(
+            request.user_id,
+            &request.platform,
+            request.enabled,
+            request.ntfy_topic.as_deref(),
+            request.ntfy_server_url.as_deref(),
+            request.ntfy_username.as_deref(),
+            request.ntfy_password.as_deref(),
+            request.ntfy_access_token.as_deref(),
+            request.gotify_url.as_deref(),
+            request.gotify_token.as_deref(),
+        )
+        .await?;
+    Ok(Json(
+        serde_json::json!({ "detail": "Notification settings updated successfully" }),
+    ))
 }
 
 // Test notification - matches Python test_notification function exactly
@@ -2544,27 +2800,45 @@ pub async fn test_notification(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if request.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only test your own notifications!"));
+        return Err(AppError::forbidden(
+            "You can only test your own notifications!",
+        ));
     }
 
     // Get notification settings and send test notification
-    let settings = state.db_pool.get_notification_settings(request.user_id).await?;
-    
+    let settings = state
+        .db_pool
+        .get_notification_settings(request.user_id)
+        .await?;
+
     // Find settings for the specific platform
-    let platform_settings = settings.iter()
+    let platform_settings = settings
+        .iter()
         .find(|s| s.get("platform").and_then(|p| p.as_str()) == Some(&request.platform))
-        .ok_or_else(|| AppError::bad_request(&format!("No settings found for platform: {}", request.platform)))?;
-    
-    let success = state.notification_manager.send_test_notification(request.user_id, &request.platform, platform_settings).await?;
-    
+        .ok_or_else(|| {
+            AppError::bad_request(&format!(
+                "No settings found for platform: {}",
+                request.platform
+            ))
+        })?;
+
+    let success = state
+        .notification_manager
+        .send_test_notification(request.user_id, &request.platform, platform_settings)
+        .await?;
+
     if success {
-        Ok(Json(serde_json::json!({ "detail": "Test notification sent successfully" })))
+        Ok(Json(
+            serde_json::json!({ "detail": "Test notification sent successfully" }),
+        ))
     } else {
-        Err(AppError::bad_request("Failed to send test notification - check your settings"))
+        Err(AppError::bad_request(
+            "Failed to send test notification - check your settings",
+        ))
     }
 }
 
-// Add OIDC provider - matches Python add_oidc_provider function exactly  
+// Add OIDC provider - matches Python add_oidc_provider function exactly
 pub async fn add_oidc_provider(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2578,28 +2852,33 @@ pub async fn add_oidc_provider(
     let is_admin = state.db_pool.user_admin_check(user_id).await?;
 
     if !is_admin {
-        return Err(AppError::forbidden("Admin access required to add OIDC providers"));
+        return Err(AppError::forbidden(
+            "Admin access required to add OIDC providers",
+        ));
     }
 
-    let provider_id = state.db_pool.add_oidc_provider(
-        &request.provider_name,
-        &request.client_id,
-        &request.client_secret,
-        &request.authorization_url,
-        &request.token_url,
-        &request.user_info_url,
-        &request.button_text,
-        &request.scope,
-        &request.button_color,
-        &request.button_text_color,
-        request.icon_svg.as_deref().unwrap_or(""),
-        request.name_claim.as_deref().unwrap_or("name"),
-        request.email_claim.as_deref().unwrap_or("email"),
-        request.username_claim.as_deref().unwrap_or("username"),
-        request.roles_claim.as_deref().unwrap_or(""),
-        request.user_role.as_deref().unwrap_or(""),
-        request.admin_role.as_deref().unwrap_or("")
-    ).await?;
+    let provider_id = state
+        .db_pool
+        .add_oidc_provider(
+            &request.provider_name,
+            &request.client_id,
+            &request.client_secret,
+            &request.authorization_url,
+            &request.token_url,
+            &request.user_info_url,
+            &request.button_text,
+            &request.scope,
+            &request.button_color,
+            &request.button_text_color,
+            request.icon_svg.as_deref().unwrap_or(""),
+            request.name_claim.as_deref().unwrap_or("name"),
+            request.email_claim.as_deref().unwrap_or("email"),
+            request.username_claim.as_deref().unwrap_or("username"),
+            request.roles_claim.as_deref().unwrap_or(""),
+            request.user_role.as_deref().unwrap_or(""),
+            request.admin_role.as_deref().unwrap_or(""),
+        )
+        .await?;
     Ok(Json(serde_json::json!({ "provider_id": provider_id })))
 }
 
@@ -2629,7 +2908,9 @@ pub async fn get_startpage(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if query.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only view your own startpage setting!"));
+        return Err(AppError::forbidden(
+            "You can only view your own startpage setting!",
+        ));
     }
 
     let startpage = state.db_pool.get_startpage(query.user_id).await?;
@@ -2650,12 +2931,17 @@ pub async fn update_startpage(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if query.user_id != user_id_from_api_key && !is_web_key {
-        return Err(AppError::forbidden("You can only update your own startpage setting!"));
+        return Err(AppError::forbidden(
+            "You can only update your own startpage setting!",
+        ));
     }
 
     let startpage = query.startpage.unwrap_or_else(|| "home".to_string());
-    state.db_pool.update_startpage(query.user_id, &startpage).await?;
-    
+    state
+        .db_pool
+        .update_startpage(query.user_id, &startpage)
+        .await?;
+
     Ok(Json(serde_json::json!({
         "success": true,
         "message": "StartPage updated successfully"
@@ -2694,24 +2980,37 @@ pub async fn subscribe_to_person(
         return Err(AppError::forbidden("You can only subscribe for yourself!"));
     }
 
-    let person_db_id = state.db_pool.subscribe_to_person(
-        user_id,
-        person_id,
-        &request.person_name,
-        &request.person_img,
-        request.podcast_id,
-    ).await?;
+    let person_db_id = state
+        .db_pool
+        .subscribe_to_person(
+            user_id,
+            person_id,
+            &request.person_name,
+            &request.person_img,
+            request.podcast_id,
+        )
+        .await?;
 
     // Trigger immediate background task to process person subscription and gather episodes
     let db_pool = state.db_pool.clone();
     let person_name = request.person_name.clone();
     tokio::spawn(async move {
-        match db_pool.process_person_subscription(user_id, person_db_id, person_name.clone()).await {
+        match db_pool
+            .process_person_subscription(user_id, person_db_id, person_name.clone())
+            .await
+        {
             Ok(_) => {
-                tracing::info!("Successfully processed immediate person subscription for {}", person_name);
+                tracing::info!(
+                    "Successfully processed immediate person subscription for {}",
+                    person_name
+                );
             }
             Err(e) => {
-                tracing::error!("Failed to process immediate person subscription for {}: {}", person_name, e);
+                tracing::error!(
+                    "Failed to process immediate person subscription for {}: {}",
+                    person_name,
+                    e
+                );
             }
         }
     });
@@ -2738,14 +3037,15 @@ pub async fn unsubscribe_from_person(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only unsubscribe for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only unsubscribe for yourself!",
+        ));
     }
 
-    let success = state.db_pool.unsubscribe_from_person(
-        user_id,
-        person_id,
-        &request.person_name,
-    ).await?;
+    let success = state
+        .db_pool
+        .unsubscribe_from_person(user_id, person_id, &request.person_name)
+        .await?;
 
     if success {
         Ok(Json(serde_json::json!({
@@ -2774,7 +3074,9 @@ pub async fn get_person_subscriptions(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only retrieve your own subscriptions!"));
+        return Err(AppError::forbidden(
+            "You can only retrieve your own subscriptions!",
+        ));
     }
 
     let subscriptions = state.db_pool.get_person_subscriptions(user_id).await?;
@@ -2797,10 +3099,15 @@ pub async fn get_person_episodes(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only retrieve your own person episodes!"));
+        return Err(AppError::forbidden(
+            "You can only retrieve your own person episodes!",
+        ));
     }
 
-    let episodes = state.db_pool.get_person_episodes(user_id, person_id).await?;
+    let episodes = state
+        .db_pool
+        .get_person_episodes(user_id, person_id)
+        .await?;
     Ok(Json(serde_json::json!({
         "episodes": episodes
     })))
@@ -2828,12 +3135,19 @@ pub async fn set_podcast_playback_speed(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != request.user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only modify your own podcasts."));
+        return Err(AppError::forbidden(
+            "You can only modify your own podcasts.",
+        ));
     }
 
-    state.db_pool.set_podcast_playback_speed(request.user_id, request.podcast_id, request.playback_speed).await?;
+    state
+        .db_pool
+        .set_podcast_playback_speed(request.user_id, request.podcast_id, request.playback_speed)
+        .await?;
 
-    Ok(Json(serde_json::json!({ "detail": "Default podcast playback speed updated." })))
+    Ok(Json(
+        serde_json::json!({ "detail": "Default podcast playback speed updated." }),
+    ))
 }
 
 // Request struct for enable_auto_download - matches Python AutoDownloadRequest model
@@ -2857,12 +3171,19 @@ pub async fn enable_auto_download(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id != request.user_id {
-        return Err(AppError::forbidden("You can only modify your own podcasts."));
+        return Err(AppError::forbidden(
+            "You can only modify your own podcasts.",
+        ));
     }
 
-    state.db_pool.enable_auto_download(request.podcast_id, request.auto_download, request.user_id).await?;
+    state
+        .db_pool
+        .enable_auto_download(request.podcast_id, request.auto_download, request.user_id)
+        .await?;
 
-    Ok(Json(serde_json::json!({ "detail": "Auto-download status updated." })))
+    Ok(Json(
+        serde_json::json!({ "detail": "Auto-download status updated." }),
+    ))
 }
 
 // Request struct for toggle_podcast_notifications - matches Python TogglePodcastNotificationData model
@@ -2890,12 +3211,19 @@ pub async fn toggle_podcast_notifications(
         return Err(AppError::forbidden("Invalid API key"));
     }
 
-    let success = state.db_pool.toggle_podcast_notifications(request.user_id, request.podcast_id, request.enabled).await?;
+    let success = state
+        .db_pool
+        .toggle_podcast_notifications(request.user_id, request.podcast_id, request.enabled)
+        .await?;
 
     if success {
-        Ok(Json(serde_json::json!({ "detail": "Notification settings updated successfully" })))
+        Ok(Json(
+            serde_json::json!({ "detail": "Notification settings updated successfully" }),
+        ))
     } else {
-        Ok(Json(serde_json::json!({ "detail": "Failed to update notification settings" })))
+        Ok(Json(
+            serde_json::json!({ "detail": "Failed to update notification settings" }),
+        ))
     }
 }
 
@@ -2924,10 +3252,20 @@ pub async fn adjust_skip_times(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != request.user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only modify your own podcasts."));
+        return Err(AppError::forbidden(
+            "You can only modify your own podcasts.",
+        ));
     }
 
-    state.db_pool.adjust_skip_times(request.podcast_id, request.start_skip, request.end_skip, request.user_id).await?;
+    state
+        .db_pool
+        .adjust_skip_times(
+            request.podcast_id,
+            request.start_skip,
+            request.end_skip,
+            request.user_id,
+        )
+        .await?;
 
     Ok(Json(serde_json::json!({ "detail": "Skip times updated." })))
 }
@@ -2953,10 +3291,15 @@ pub async fn remove_category(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id != request.user_id {
-        return Err(AppError::forbidden("You can only modify categories of your own podcasts!"));
+        return Err(AppError::forbidden(
+            "You can only modify categories of your own podcasts!",
+        ));
     }
 
-    state.db_pool.remove_category(request.podcast_id, request.user_id, &request.category).await?;
+    state
+        .db_pool
+        .remove_category(request.podcast_id, request.user_id, &request.category)
+        .await?;
 
     Ok(Json(serde_json::json!({ "detail": "Category removed." })))
 }
@@ -2983,10 +3326,15 @@ pub async fn add_category(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != request.user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only modify categories of your own podcasts!"));
+        return Err(AppError::forbidden(
+            "You can only modify categories of your own podcasts!",
+        ));
     }
 
-    let result = state.db_pool.add_category(request.podcast_id, request.user_id, &request.category).await?;
+    let result = state
+        .db_pool
+        .add_category(request.podcast_id, request.user_id, &request.category)
+        .await?;
 
     Ok(Json(serde_json::json!({ "detail": result })))
 }
@@ -3008,7 +3356,9 @@ pub async fn get_user_rss_key(
     if let Some(key) = rss_key {
         Ok(Json(serde_json::json!({ "rss_key": key })))
     } else {
-        Err(AppError::not_found("No RSS key found. Please enable RSS feeds first."))
+        Err(AppError::not_found(
+            "No RSS key found. Please enable RSS feeds first.",
+        ))
     }
 }
 
@@ -3029,16 +3379,18 @@ pub async fn verify_mfa(
 
     // Check authorization
     if !check_user_access(&state, &api_key, request.user_id).await? {
-        return Err(AppError::forbidden("You can only verify your own login code!"));
+        return Err(AppError::forbidden(
+            "You can only verify your own login code!",
+        ));
     }
 
     // Get the stored MFA secret
     let secret = state.db_pool.get_mfa_secret(request.user_id).await?;
-    
+
     if let Some(secret_str) = secret {
         // Verify the TOTP code
-        use totp_rs::{Algorithm, TOTP, Secret};
-        
+        use totp_rs::{Algorithm, Secret, TOTP};
+
         let totp = TOTP::new(
             Algorithm::SHA1,
             6,
@@ -3047,11 +3399,13 @@ pub async fn verify_mfa(
             Secret::Encoded(secret_str.clone()).to_bytes().unwrap(),
             Some("Pinepods".to_string()),
             "login".to_string(),
-        ).map_err(|e| AppError::internal(&format!("Failed to create TOTP: {}", e)))?;
-        
-        let is_valid = totp.check_current(&request.mfa_code)
+        )
+        .map_err(|e| AppError::internal(&format!("Failed to create TOTP: {}", e)))?;
+
+        let is_valid = totp
+            .check_current(&request.mfa_code)
             .map_err(|e| AppError::internal(&format!("Failed to verify TOTP: {}", e)))?;
-        
+
         Ok(Json(serde_json::json!({ "verified": is_valid })))
     } else {
         Ok(Json(serde_json::json!({ "verified": false })))
@@ -3072,11 +3426,13 @@ pub struct GetScheduledBackupRequest {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct ListBackupFilesRequest {
     pub user_id: i32,
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct RestoreBackupFileRequest {
     pub user_id: i32,
     pub backup_filename: String,
@@ -3094,7 +3450,7 @@ pub async fn schedule_backup(
     // Check if user is admin
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
@@ -3106,9 +3462,12 @@ pub async fn schedule_backup(
     }
 
     // Store the schedule in database
-    state.db_pool.set_scheduled_backup(request.user_id, &request.cron_schedule, request.enabled).await?;
+    state
+        .db_pool
+        .set_scheduled_backup(request.user_id, &request.cron_schedule, request.enabled)
+        .await?;
 
-    Ok(Json(serde_json::json!({ 
+    Ok(Json(serde_json::json!({
         "detail": "Backup schedule updated successfully",
         "schedule": request.cron_schedule,
         "enabled": request.enabled
@@ -3127,13 +3486,13 @@ pub async fn get_scheduled_backup(
     // Check if user is admin
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
 
     let schedule_info = state.db_pool.get_scheduled_backup(request.user_id).await?;
-    
+
     Ok(Json(serde_json::json!(schedule_info)))
 }
 
@@ -3149,13 +3508,13 @@ pub async fn list_backup_files(
     // Check if user is admin
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
 
     use std::fs;
-    
+
     let backup_dir = "/opt/pinepods/backups";
     let backup_files = match fs::read_dir(backup_dir) {
         Ok(entries) => {
@@ -3167,12 +3526,13 @@ pub async fn list_backup_files(
                         if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
                             let metadata = entry.metadata().ok();
                             let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
-                            let modified = metadata.as_ref()
+                            let modified = metadata
+                                .as_ref()
                                 .and_then(|m| m.modified().ok())
                                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                                 .map(|d| d.as_secs())
                                 .unwrap_or(0);
-                            
+
                             files.push(serde_json::json!({
                                 "filename": filename,
                                 "size": size,
@@ -3211,19 +3571,22 @@ pub async fn restore_from_backup_file(
     // Check if user is admin
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
 
     // Validate filename to prevent path traversal
     let backup_filename = request.backup_filename.clone();
-    if backup_filename.contains("..") || backup_filename.contains("/") || !backup_filename.ends_with(".sql") {
+    if backup_filename.contains("..")
+        || backup_filename.contains("/")
+        || !backup_filename.ends_with(".sql")
+    {
         return Err(AppError::bad_request("Invalid backup filename"));
     }
 
     let backup_path = format!("/opt/pinepods/backups/{}", backup_filename);
-    
+
     // Check if file exists
     if !std::path::Path::new(&backup_path).exists() {
         return Err(AppError::not_found("Backup file not found"));
@@ -3233,87 +3596,135 @@ pub async fn restore_from_backup_file(
     let backup_filename_for_closure = backup_filename.clone();
 
     // Spawn restoration task
-    let task_id = state.task_spawner.spawn_progress_task(
-        "restore_from_backup_file".to_string(),
-        0, // System user
-        move |reporter| {
-            let backup_path = backup_path.clone();
-            let backup_filename = backup_filename_for_closure;
-            async move {
-                reporter.update_progress(10.0, Some("Starting restoration from backup file...".to_string())).await?;
-                
-                // Get database password from environment
-                let db_password = std::env::var("DB_PASSWORD")
-                    .map_err(|_| AppError::internal("Database password not found in environment"))?;
-                
-                reporter.update_progress(50.0, Some("Restoring database...".to_string())).await?;
+    let task_id = state
+        .task_spawner
+        .spawn_progress_task(
+            "restore_from_backup_file".to_string(),
+            0, // System user
+            move |reporter| {
+                let backup_path = backup_path.clone();
+                let backup_filename = backup_filename_for_closure;
+                async move {
+                    reporter
+                        .update_progress(
+                            10.0,
+                            Some("Starting restoration from backup file...".to_string()),
+                        )
+                        .await?;
 
-                // Execute restoration based on database type
-                use tokio::process::Command;
-                let db_type = std::env::var("DB_TYPE").unwrap_or_else(|_| "postgresql".to_string());
-                let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
-                let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_database".to_string());
-                
-                let output = if db_type.to_lowercase().contains("mysql") || db_type.to_lowercase().contains("mariadb") {
-                    let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
-                    let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
-                    
-                    let mut cmd = Command::new("mysql");
-                    cmd.arg("-h").arg(&db_host)
-                       .arg("-P").arg(&db_port)
-                       .arg("-u").arg(&db_user)
-                       .arg(&format!("-p{}", db_password))
-                       .arg("--ssl-verify-server-cert=0")
-                       .arg(&db_name);
-                    
-                    // For MySQL, we need to pipe the file content to stdin
-                    cmd.stdin(std::process::Stdio::piped());
-                    let mut child = cmd.spawn()
-                        .map_err(|e| AppError::internal(&format!("Failed to execute mysql: {}", e)))?;
-                    
-                    // Read the backup file and send to mysql stdin
-                    let backup_content = tokio::fs::read_to_string(&backup_path).await
-                        .map_err(|e| AppError::internal(&format!("Failed to read backup file: {}", e)))?;
-                    
-                    if let Some(stdin) = child.stdin.as_mut() {
-                        use tokio::io::AsyncWriteExt;
-                        stdin.write_all(backup_content.as_bytes()).await
-                            .map_err(|e| AppError::internal(&format!("Failed to write to mysql stdin: {}", e)))?;
+                    // Get database password from environment
+                    let db_password = std::env::var("DB_PASSWORD").map_err(|_| {
+                        AppError::internal("Database password not found in environment")
+                    })?;
+
+                    reporter
+                        .update_progress(50.0, Some("Restoring database...".to_string()))
+                        .await?;
+
+                    // Execute restoration based on database type
+                    use tokio::process::Command;
+                    let db_type =
+                        std::env::var("DB_TYPE").unwrap_or_else(|_| "postgresql".to_string());
+                    let db_host =
+                        std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
+                    let db_name = std::env::var("DB_NAME")
+                        .unwrap_or_else(|_| "pinepods_database".to_string());
+
+                    let output = if db_type.to_lowercase().contains("mysql")
+                        || db_type.to_lowercase().contains("mariadb")
+                    {
+                        let db_port =
+                            std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
+                        let db_user =
+                            std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
+
+                        let mut cmd = Command::new("mysql");
+                        cmd.arg("-h")
+                            .arg(&db_host)
+                            .arg("-P")
+                            .arg(&db_port)
+                            .arg("-u")
+                            .arg(&db_user)
+                            .arg(&format!("-p{}", db_password))
+                            .arg("--ssl-verify-server-cert=0")
+                            .arg(&db_name);
+
+                        // For MySQL, we need to pipe the file content to stdin
+                        cmd.stdin(std::process::Stdio::piped());
+                        let mut child = cmd.spawn().map_err(|e| {
+                            AppError::internal(&format!("Failed to execute mysql: {}", e))
+                        })?;
+
+                        // Read the backup file and send to mysql stdin
+                        let backup_content =
+                            tokio::fs::read_to_string(&backup_path).await.map_err(|e| {
+                                AppError::internal(&format!("Failed to read backup file: {}", e))
+                            })?;
+
+                        if let Some(stdin) = child.stdin.as_mut() {
+                            use tokio::io::AsyncWriteExt;
+                            stdin
+                                .write_all(backup_content.as_bytes())
+                                .await
+                                .map_err(|e| {
+                                    AppError::internal(&format!(
+                                        "Failed to write to mysql stdin: {}",
+                                        e
+                                    ))
+                                })?;
+                        }
+
+                        child.wait_with_output().await.map_err(|e| {
+                            AppError::internal(&format!("Failed to wait for mysql: {}", e))
+                        })?
+                    } else {
+                        // PostgreSQL
+                        let db_port =
+                            std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
+                        let db_user =
+                            std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
+
+                        let mut cmd = Command::new("psql");
+                        cmd.arg("-h")
+                            .arg(&db_host)
+                            .arg("-p")
+                            .arg(&db_port)
+                            .arg("-U")
+                            .arg(&db_user)
+                            .arg("-d")
+                            .arg(&db_name)
+                            .arg("-f")
+                            .arg(&backup_path)
+                            .env("PGPASSWORD", &db_password);
+
+                        cmd.output().await.map_err(|e| {
+                            AppError::internal(&format!("Failed to execute psql: {}", e))
+                        })?
+                    };
+
+                    if !output.status.success() {
+                        let error_msg = String::from_utf8_lossy(&output.stderr);
+                        return Err(AppError::internal(&format!(
+                            "Restore failed: {}",
+                            error_msg
+                        )));
                     }
-                    
-                    child.wait_with_output().await
-                        .map_err(|e| AppError::internal(&format!("Failed to wait for mysql: {}", e)))?
-                } else {
-                    // PostgreSQL
-                    let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
-                    let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
-                    
-                    let mut cmd = Command::new("psql");
-                    cmd.arg("-h").arg(&db_host)
-                       .arg("-p").arg(&db_port)
-                       .arg("-U").arg(&db_user)
-                       .arg("-d").arg(&db_name)
-                       .arg("-f").arg(&backup_path)
-                       .env("PGPASSWORD", &db_password);
-                    
-                    cmd.output().await
-                        .map_err(|e| AppError::internal(&format!("Failed to execute psql: {}", e)))?
-                };
 
-                if !output.status.success() {
-                    let error_msg = String::from_utf8_lossy(&output.stderr);
-                    return Err(AppError::internal(&format!("Restore failed: {}", error_msg)));
+                    reporter
+                        .update_progress(
+                            100.0,
+                            Some("Restoration completed successfully".to_string()),
+                        )
+                        .await?;
+
+                    Ok(serde_json::json!({
+                        "status": "Restoration completed successfully",
+                        "backup_file": backup_filename
+                    }))
                 }
-
-                reporter.update_progress(100.0, Some("Restoration completed successfully".to_string())).await?;
-                
-                Ok(serde_json::json!({
-                    "status": "Restoration completed successfully",
-                    "backup_file": backup_filename
-                }))
-            }
-        }
-    ).await?;
+            },
+        )
+        .await?;
 
     Ok(Json(serde_json::json!({
         "detail": "Restoration started",
@@ -3323,6 +3734,7 @@ pub async fn restore_from_backup_file(
 
 // Request struct for manual backup to directory
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct ManualBackupRequest {
     pub user_id: i32,
 }
@@ -3339,7 +3751,7 @@ pub async fn manual_backup_to_directory(
     // Check if user is admin
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_admin = state.db_pool.user_admin_check(requesting_user_id).await?;
-    
+
     if !is_admin {
         return Err(AppError::forbidden("Admin access required"));
     }
@@ -3351,121 +3763,176 @@ pub async fn manual_backup_to_directory(
 
     // Ensure backup directory exists
     if let Err(e) = std::fs::create_dir_all("/opt/pinepods/backups") {
-        return Err(AppError::internal(&format!("Failed to create backup directory: {}", e)));
+        return Err(AppError::internal(&format!(
+            "Failed to create backup directory: {}",
+            e
+        )));
     }
-    
+
     // Set ownership using PUID/PGID environment variables
-    let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-    let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-    
+    let puid: u32 = std::env::var("PUID")
+        .unwrap_or_else(|_| "1000".to_string())
+        .parse()
+        .unwrap_or(1000);
+    let pgid: u32 = std::env::var("PGID")
+        .unwrap_or_else(|_| "1000".to_string())
+        .parse()
+        .unwrap_or(1000);
+
     // Set directory ownership (ignore errors for NFS mounts)
     let _ = std::process::Command::new("chown")
-        .args(&[format!("{}:{}", puid, pgid), "/opt/pinepods/backups".to_string()])
+        .args(&[
+            format!("{}:{}", puid, pgid),
+            "/opt/pinepods/backups".to_string(),
+        ])
         .output();
 
     // Clone for the async closure
     let backup_filename_for_closure = backup_filename.clone();
 
     // Spawn backup task
-    let task_id = state.task_spawner.spawn_progress_task(
-        "manual_backup_to_directory".to_string(),
-        0, // System user
-        move |reporter| {
-            let backup_path = backup_path.clone();
-            let backup_filename = backup_filename_for_closure;
-            async move {
-                reporter.update_progress(10.0, Some("Starting manual backup...".to_string())).await?;
-                
-                // Get database credentials from environment
-                let db_type = std::env::var("DB_TYPE").unwrap_or_else(|_| "postgresql".to_string());
-                let db_host = std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
-                let db_name = std::env::var("DB_NAME").unwrap_or_else(|_| "pinepods_database".to_string());
-                let db_password = std::env::var("DB_PASSWORD")
-                    .map_err(|_| AppError::internal("Database password not found in environment"))?;
-                
-                reporter.update_progress(30.0, Some("Creating database backup...".to_string())).await?;
-                
-                // Use appropriate backup command based on database type
-                let output = if db_type.to_lowercase().contains("mysql") || db_type.to_lowercase().contains("mariadb") {
-                    let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
-                    let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
-                    
-                    tokio::process::Command::new("mysqldump")
-                        .args(&[
-                            "-h", &db_host,
-                            "-P", &db_port,
-                            "-u", &db_user,
-                            &format!("-p{}", db_password),
-                            "--single-transaction",
-                            "--routines",
-                            "--triggers",
-                            "--ssl-verify-server-cert=0",
-                            "--result-file", &backup_path,
-                            &db_name
-                        ])
-                        .output()
-                        .await
-                        .map_err(|e| AppError::internal(&format!("Failed to execute mysqldump: {}", e)))?
-                } else {
-                    // PostgreSQL
-                    let db_port = std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
-                    let db_user = std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
-                    
-                    tokio::process::Command::new("pg_dump")
-                        .env("PGPASSWORD", db_password)
-                        .args(&[
-                            "-h", &db_host,
-                            "-p", &db_port,
-                            "-U", &db_user,
-                            "-d", &db_name,
-                            "--clean",
-                            "--if-exists",
-                            "--no-owner",
-                            "--no-privileges",
-                            "-f", &backup_path
-                        ])
-                        .output()
-                        .await
-                        .map_err(|e| AppError::internal(&format!("Failed to execute pg_dump: {}", e)))?
-                };
+    let task_id = state
+        .task_spawner
+        .spawn_progress_task(
+            "manual_backup_to_directory".to_string(),
+            0, // System user
+            move |reporter| {
+                let backup_path = backup_path.clone();
+                let backup_filename = backup_filename_for_closure;
+                async move {
+                    reporter
+                        .update_progress(10.0, Some("Starting manual backup...".to_string()))
+                        .await?;
 
-                if !output.status.success() {
-                    let error_msg = String::from_utf8_lossy(&output.stderr);
-                    return Err(AppError::internal(&format!("Backup failed: {}", error_msg)));
-                }
+                    // Get database credentials from environment
+                    let db_type =
+                        std::env::var("DB_TYPE").unwrap_or_else(|_| "postgresql".to_string());
+                    let db_host =
+                        std::env::var("DB_HOST").unwrap_or_else(|_| "localhost".to_string());
+                    let db_name = std::env::var("DB_NAME")
+                        .unwrap_or_else(|_| "pinepods_database".to_string());
+                    let db_password = std::env::var("DB_PASSWORD").map_err(|_| {
+                        AppError::internal("Database password not found in environment")
+                    })?;
 
-                reporter.update_progress(90.0, Some("Finalizing backup...".to_string())).await?;
+                    reporter
+                        .update_progress(30.0, Some("Creating database backup...".to_string()))
+                        .await?;
 
-                // Set file ownership using PUID/PGID environment variables
-                let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-                let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
-                
-                // Set backup file ownership (ignore errors for NFS mounts)
-                let _ = std::process::Command::new("chown")
-                    .args(&[format!("{}:{}", puid, pgid), backup_path.clone()])
-                    .output();
+                    // Use appropriate backup command based on database type
+                    let output = if db_type.to_lowercase().contains("mysql")
+                        || db_type.to_lowercase().contains("mariadb")
+                    {
+                        let db_port =
+                            std::env::var("DB_PORT").unwrap_or_else(|_| "3306".to_string());
+                        let db_user =
+                            std::env::var("DB_USER").unwrap_or_else(|_| "root".to_string());
 
-                // Check if backup file was created and get its size
-                let backup_info = match std::fs::metadata(&backup_path) {
-                    Ok(metadata) => serde_json::json!({
-                        "filename": backup_filename,
-                        "size": metadata.len(),
-                        "path": backup_path
-                    }),
-                    Err(_) => {
-                        return Err(AppError::internal("Backup file was not created"));
+                        tokio::process::Command::new("mysqldump")
+                            .args(&[
+                                "-h",
+                                &db_host,
+                                "-P",
+                                &db_port,
+                                "-u",
+                                &db_user,
+                                &format!("-p{}", db_password),
+                                "--single-transaction",
+                                "--routines",
+                                "--triggers",
+                                "--ssl-verify-server-cert=0",
+                                "--result-file",
+                                &backup_path,
+                                &db_name,
+                            ])
+                            .output()
+                            .await
+                            .map_err(|e| {
+                                AppError::internal(&format!("Failed to execute mysqldump: {}", e))
+                            })?
+                    } else {
+                        // PostgreSQL
+                        let db_port =
+                            std::env::var("DB_PORT").unwrap_or_else(|_| "5432".to_string());
+                        let db_user =
+                            std::env::var("DB_USER").unwrap_or_else(|_| "postgres".to_string());
+
+                        tokio::process::Command::new("pg_dump")
+                            .env("PGPASSWORD", db_password)
+                            .args(&[
+                                "-h",
+                                &db_host,
+                                "-p",
+                                &db_port,
+                                "-U",
+                                &db_user,
+                                "-d",
+                                &db_name,
+                                "--clean",
+                                "--if-exists",
+                                "--no-owner",
+                                "--no-privileges",
+                                "-f",
+                                &backup_path,
+                            ])
+                            .output()
+                            .await
+                            .map_err(|e| {
+                                AppError::internal(&format!("Failed to execute pg_dump: {}", e))
+                            })?
+                    };
+
+                    if !output.status.success() {
+                        let error_msg = String::from_utf8_lossy(&output.stderr);
+                        return Err(AppError::internal(&format!("Backup failed: {}", error_msg)));
                     }
-                };
 
-                reporter.update_progress(100.0, Some("Manual backup completed successfully".to_string())).await?;
-                
-                Ok(serde_json::json!({
-                    "status": "Manual backup completed successfully",
-                    "backup_info": backup_info
-                }))
-            }
-        }
-    ).await?;
+                    reporter
+                        .update_progress(90.0, Some("Finalizing backup...".to_string()))
+                        .await?;
+
+                    // Set file ownership using PUID/PGID environment variables
+                    let puid: u32 = std::env::var("PUID")
+                        .unwrap_or_else(|_| "1000".to_string())
+                        .parse()
+                        .unwrap_or(1000);
+                    let pgid: u32 = std::env::var("PGID")
+                        .unwrap_or_else(|_| "1000".to_string())
+                        .parse()
+                        .unwrap_or(1000);
+
+                    // Set backup file ownership (ignore errors for NFS mounts)
+                    let _ = std::process::Command::new("chown")
+                        .args(&[format!("{}:{}", puid, pgid), backup_path.clone()])
+                        .output();
+
+                    // Check if backup file was created and get its size
+                    let backup_info = match std::fs::metadata(&backup_path) {
+                        Ok(metadata) => serde_json::json!({
+                            "filename": backup_filename,
+                            "size": metadata.len(),
+                            "path": backup_path
+                        }),
+                        Err(_) => {
+                            return Err(AppError::internal("Backup file was not created"));
+                        }
+                    };
+
+                    reporter
+                        .update_progress(
+                            100.0,
+                            Some("Manual backup completed successfully".to_string()),
+                        )
+                        .await?;
+
+                    Ok(serde_json::json!({
+                        "status": "Manual backup completed successfully",
+                        "backup_info": backup_info
+                    }))
+                }
+            },
+        )
+        .await?;
 
     Ok(Json(serde_json::json!({
         "detail": "Manual backup started",
@@ -3487,7 +3954,7 @@ pub async fn get_unmatched_podcasts(
     Json(request): Json<GetUnmatchedPodcastsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -3499,7 +3966,10 @@ pub async fn get_unmatched_podcasts(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id == request.user_id || is_web_key {
-        let podcasts = state.db_pool.get_unmatched_podcasts(request.user_id).await?;
+        let podcasts = state
+            .db_pool
+            .get_unmatched_podcasts(request.user_id)
+            .await?;
         Ok(Json(serde_json::json!({"podcasts": podcasts})))
     } else {
         Err(AppError::forbidden("You can only access your own podcasts"))
@@ -3521,7 +3991,7 @@ pub async fn update_podcast_index_id(
     Json(request): Json<UpdatePodcastIndexIdRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -3533,12 +4003,15 @@ pub async fn update_podcast_index_id(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id == request.user_id || is_web_key {
-        state.db_pool.update_podcast_index_id(
-            request.user_id,
-            request.podcast_id,
-            request.podcast_index_id
-        ).await?;
-        
+        state
+            .db_pool
+            .update_podcast_index_id(
+                request.user_id,
+                request.podcast_id,
+                request.podcast_index_id,
+            )
+            .await?;
+
         Ok(Json(serde_json::json!({
             "detail": "Podcast index ID updated successfully"
         })))
@@ -3567,7 +4040,7 @@ pub async fn ignore_podcast_index_id(
     Json(request): Json<IgnorePodcastIndexIdRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -3579,13 +4052,16 @@ pub async fn ignore_podcast_index_id(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id == request.user_id || is_web_key {
-        state.db_pool.ignore_podcast_index_id(
-            request.user_id,
-            request.podcast_id,
-            request.ignore
-        ).await?;
-        
-        let action = if request.ignore { "ignored" } else { "unignored" };
+        state
+            .db_pool
+            .ignore_podcast_index_id(request.user_id, request.podcast_id, request.ignore)
+            .await?;
+
+        let action = if request.ignore {
+            "ignored"
+        } else {
+            "unignored"
+        };
         Ok(Json(serde_json::json!({
             "detail": format!("Podcast index ID requirement {}", action)
         })))
@@ -3601,7 +4077,7 @@ pub async fn get_ignored_podcasts(
     Json(request): Json<GetIgnoredPodcastsRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -3614,7 +4090,7 @@ pub async fn get_ignored_podcasts(
 
     if key_id == request.user_id || is_web_key {
         let podcasts = state.db_pool.get_ignored_podcasts(request.user_id).await?;
-        
+
         Ok(Json(serde_json::json!({
             "podcasts": podcasts
         })))
@@ -3622,4 +4098,3 @@ pub async fn get_ignored_podcasts(
         Err(AppError::forbidden("You can only view your own podcasts"))
     }
 }
-

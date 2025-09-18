@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::{
     error::AppError,
-    handlers::{extract_api_key, validate_api_key, check_user_access},
+    handlers::{check_user_access, extract_api_key, validate_api_key},
     AppState,
 };
 
@@ -52,7 +52,7 @@ pub struct DownloadedEpisode {
     pub completed: bool,
     pub saved: bool,
     pub queued: bool,
-    pub downloaded: bool,  // Always true for downloaded episodes
+    pub downloaded: bool, // Always true for downloaded episodes
     pub is_youtube: bool,
 }
 
@@ -136,6 +136,7 @@ pub struct RemovePodcastRequest {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct RemovePodcastIdRequest {
     pub user_id: i32,
     pub podcast_id: i32,
@@ -179,7 +180,7 @@ pub async fn return_episodes(
     State(state): State<AppState>,
 ) -> Result<Json<EpisodesResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -188,12 +189,14 @@ pub async fn return_episodes(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, user_id).await? {
-        return Err(AppError::forbidden("You can only return episodes of your own!"));
+        return Err(AppError::forbidden(
+            "You can only return episodes of your own!",
+        ));
     }
 
     // Get episodes from database
     let episodes = state.db_pool.return_episodes(user_id).await?;
-    
+
     Ok(Json(EpisodesResponse { episodes }))
 }
 
@@ -204,7 +207,7 @@ pub async fn add_podcast(
     Json(request): Json<AddPodcastRequest>,
 ) -> Result<Json<PodcastStatusResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -213,41 +216,76 @@ pub async fn add_podcast(
 
     // Check authorization - users can only add podcasts for themselves
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
+
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, requesting_user_id).await? {
-        return Err(AppError::forbidden("You can only add podcasts for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only add podcasts for yourself!",
+        ));
     }
 
     // Re-parse feed URL using backend feed-rs parsing instead of trusting frontend data
     let feed_url = &request.podcast_values.pod_feed_url;
     let user_id = request.podcast_values.user_id;
-    
+
     // Get properly parsed podcast values from feed-rs
-    let parsed_podcast_values = state.db_pool.get_podcast_values(feed_url, user_id, None, None).await?;
-    
+    let parsed_podcast_values = state
+        .db_pool
+        .get_podcast_values(feed_url, user_id, None, None)
+        .await?;
+
     // Convert to PodcastValues struct using backend-parsed data
     let backend_podcast_values = PodcastValues {
         user_id,
-        pod_title: parsed_podcast_values.get("podcastname").unwrap_or(&request.podcast_values.pod_title).clone(),
-        pod_artwork: parsed_podcast_values.get("artworkurl").unwrap_or(&"".to_string()).clone(),
-        pod_author: parsed_podcast_values.get("author").unwrap_or(&"".to_string()).clone(),
-        categories: serde_json::from_str(parsed_podcast_values.get("categories").unwrap_or(&"{}".to_string())).unwrap_or_default(),
-        pod_description: parsed_podcast_values.get("description").unwrap_or(&request.podcast_values.pod_description).clone(),
-        pod_episode_count: parsed_podcast_values.get("episodecount").unwrap_or(&"0".to_string()).parse().unwrap_or(0),
+        pod_title: parsed_podcast_values
+            .get("podcastname")
+            .unwrap_or(&request.podcast_values.pod_title)
+            .clone(),
+        pod_artwork: parsed_podcast_values
+            .get("artworkurl")
+            .unwrap_or(&"".to_string())
+            .clone(),
+        pod_author: parsed_podcast_values
+            .get("author")
+            .unwrap_or(&"".to_string())
+            .clone(),
+        categories: serde_json::from_str(
+            parsed_podcast_values
+                .get("categories")
+                .unwrap_or(&"{}".to_string()),
+        )
+        .unwrap_or_default(),
+        pod_description: parsed_podcast_values
+            .get("description")
+            .unwrap_or(&request.podcast_values.pod_description)
+            .clone(),
+        pod_episode_count: parsed_podcast_values
+            .get("episodecount")
+            .unwrap_or(&"0".to_string())
+            .parse()
+            .unwrap_or(0),
         pod_feed_url: feed_url.clone(),
-        pod_website: parsed_podcast_values.get("websiteurl").unwrap_or(&request.podcast_values.pod_website).clone(),
-        pod_explicit: parsed_podcast_values.get("explicit").unwrap_or(&"False".to_string()) == "True",
+        pod_website: parsed_podcast_values
+            .get("websiteurl")
+            .unwrap_or(&request.podcast_values.pod_website)
+            .clone(),
+        pod_explicit: parsed_podcast_values
+            .get("explicit")
+            .unwrap_or(&"False".to_string())
+            == "True",
     };
-    
+
     // Add podcast to database using backend-parsed values
-    let (podcast_id, first_episode_id) = state.db_pool.add_podcast(
-        &backend_podcast_values,
-        request.podcast_index_id.unwrap_or(0),
-        None, // username
-        None, // password
-    ).await?;
-    
+    let (podcast_id, first_episode_id) = state
+        .db_pool
+        .add_podcast(
+            &backend_podcast_values,
+            request.podcast_index_id.unwrap_or(0),
+            None, // username
+            None, // password
+        )
+        .await?;
+
     Ok(Json(PodcastStatusResponse {
         success: true,
         podcast_id,
@@ -262,7 +300,7 @@ pub async fn remove_podcast(
     Json(request): Json<RemovePodcastRequest>,
 ) -> Result<Json<RemovePodcastResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -271,19 +309,20 @@ pub async fn remove_podcast(
 
     // Check authorization - users can only remove their own podcasts
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
+
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, requesting_user_id).await? {
-        return Err(AppError::forbidden("You can only remove your own podcasts!"));
+        return Err(AppError::forbidden(
+            "You can only remove your own podcasts!",
+        ));
     }
 
     // Remove podcast from database
-    state.db_pool.remove_podcast(
-        &request.podcast_name,
-        &request.podcast_url,
-        request.user_id,
-    ).await?;
-    
+    state
+        .db_pool
+        .remove_podcast(&request.podcast_name, &request.podcast_url, request.user_id)
+        .await?;
+
     Ok(Json(RemovePodcastResponse { success: true }))
 }
 
@@ -294,7 +333,7 @@ pub async fn remove_podcast_id(
     Json(request): Json<RemovePodcastIdRequest>,
 ) -> Result<Json<RemovePodcastResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -304,14 +343,19 @@ pub async fn remove_podcast_id(
     // Check authorization - users can only remove their own podcasts or have elevated access
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-    
+
     if requesting_user_id != request.user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only remove your own podcasts!"));
+        return Err(AppError::forbidden(
+            "You can only remove your own podcasts!",
+        ));
     }
 
     // Remove podcast from database
-    state.db_pool.remove_podcast_id(request.podcast_id, request.user_id).await?;
-    
+    state
+        .db_pool
+        .remove_podcast_id(request.podcast_id, request.user_id)
+        .await?;
+
     Ok(Json(RemovePodcastResponse { success: true }))
 }
 
@@ -322,7 +366,7 @@ pub async fn remove_podcast_by_name(
     Json(request): Json<crate::models::RemovePodcastByNameRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -331,19 +375,20 @@ pub async fn remove_podcast_by_name(
 
     // Check authorization - users can only remove their own podcasts
     let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
+
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, requesting_user_id).await? {
-        return Err(AppError::forbidden("You can only remove your own podcasts!"));
+        return Err(AppError::forbidden(
+            "You can only remove your own podcasts!",
+        ));
     }
 
     // Remove podcast from database using the comprehensive method
-    state.db_pool.remove_podcast_by_name_url(
-        &request.podcast_name,
-        &request.podcast_url,
-        request.user_id,
-    ).await?;
-    
+    state
+        .db_pool
+        .remove_podcast_by_name_url(&request.podcast_name, &request.podcast_url, request.user_id)
+        .await?;
+
     Ok(Json(serde_json::json!({ "success": true })))
 }
 
@@ -354,7 +399,7 @@ pub async fn return_pods(
     State(state): State<AppState>,
 ) -> Result<Json<crate::models::PodcastListResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -363,12 +408,14 @@ pub async fn return_pods(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, user_id).await? {
-        return Err(AppError::forbidden("You can only return podcasts of your own!"));
+        return Err(AppError::forbidden(
+            "You can only return podcasts of your own!",
+        ));
     }
 
     // Get podcasts from database
     let pods = state.db_pool.return_pods(user_id).await?;
-    
+
     Ok(Json(crate::models::PodcastListResponse { pods }))
 }
 
@@ -379,7 +426,7 @@ pub async fn return_pods_extra(
     State(state): State<AppState>,
 ) -> Result<Json<crate::models::PodcastExtraListResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -388,12 +435,14 @@ pub async fn return_pods_extra(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, user_id).await? {
-        return Err(AppError::forbidden("You can only return podcasts of your own!"));
+        return Err(AppError::forbidden(
+            "You can only return podcasts of your own!",
+        ));
     }
 
     // Get podcasts with extra stats from database
     let pods = state.db_pool.return_pods_extra(user_id).await?;
-    
+
     Ok(Json(crate::models::PodcastExtraListResponse { pods }))
 }
 
@@ -423,7 +472,7 @@ pub async fn get_time_info(
     State(state): State<AppState>,
 ) -> Result<Json<crate::models::TimeInfoResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -437,7 +486,7 @@ pub async fn get_time_info(
 
     // Get time info from database
     let time_info = state.db_pool.get_time_info(query.user_id).await?;
-    
+
     Ok(Json(time_info))
 }
 
@@ -448,7 +497,7 @@ pub async fn check_podcast(
     State(state): State<AppState>,
 ) -> Result<Json<crate::models::CheckPodcastResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -461,8 +510,11 @@ pub async fn check_podcast(
     }
 
     // Check if podcast exists in database
-    let exists = state.db_pool.check_podcast(query.user_id, &query.podcast_name, &query.podcast_url).await?;
-    
+    let exists = state
+        .db_pool
+        .check_podcast(query.user_id, &query.podcast_name, &query.podcast_url)
+        .await?;
+
     Ok(Json(crate::models::CheckPodcastResponse { exists }))
 }
 
@@ -474,7 +526,7 @@ pub async fn check_episode_in_db(
     State(state): State<AppState>,
 ) -> Result<Json<crate::models::EpisodeInDbResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -483,12 +535,17 @@ pub async fn check_episode_in_db(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, user_id).await? {
-        return Err(AppError::forbidden("You can only check episodes in your own podcasts!"));
+        return Err(AppError::forbidden(
+            "You can only check episodes in your own podcasts!",
+        ));
     }
 
     // Check if episode exists in database
-    let episode_in_db = state.db_pool.check_episode_exists(user_id, &query.episode_title, &query.episode_url).await?;
-    
+    let episode_in_db = state
+        .db_pool
+        .check_episode_exists(user_id, &query.episode_title, &query.episode_url)
+        .await?;
+
     Ok(Json(crate::models::EpisodeInDbResponse { episode_in_db }))
 }
 
@@ -499,7 +556,7 @@ pub async fn queue_episode(
     Json(request): Json<crate::models::QueuePodcastRequest>,
 ) -> Result<Json<crate::models::QueueResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -508,18 +565,23 @@ pub async fn queue_episode(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, request.user_id).await? {
-        return Err(AppError::forbidden("You can only queue episodes for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only queue episodes for yourself!",
+        ));
     }
 
     // Queue the episode
-    state.db_pool.queue_episode(request.episode_id, request.user_id, request.is_youtube).await?;
-    
+    state
+        .db_pool
+        .queue_episode(request.episode_id, request.user_id, request.is_youtube)
+        .await?;
+
     let message = if request.is_youtube {
         "Video queued successfully"
     } else {
         "Episode queued successfully"
     };
-    
+
     Ok(Json(crate::models::QueueResponse {
         data: message.to_string(),
     }))
@@ -532,7 +594,7 @@ pub async fn remove_queued_episode(
     Json(request): Json<crate::models::QueuePodcastRequest>,
 ) -> Result<Json<crate::models::QueueResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -541,12 +603,17 @@ pub async fn remove_queued_episode(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, request.user_id).await? {
-        return Err(AppError::forbidden("You can only remove your own queued episodes!"));
+        return Err(AppError::forbidden(
+            "You can only remove your own queued episodes!",
+        ));
     }
 
     // Remove the episode from queue
-    state.db_pool.remove_queued_episode(request.episode_id, request.user_id, request.is_youtube).await?;
-    
+    state
+        .db_pool
+        .remove_queued_episode(request.episode_id, request.user_id, request.is_youtube)
+        .await?;
+
     Ok(Json(crate::models::QueueResponse {
         data: "Successfully Removed Episode From Queue".to_string(),
     }))
@@ -559,24 +626,22 @@ pub async fn get_queued_episodes(
     State(state): State<AppState>,
 ) -> Result<Json<crate::models::QueuedEpisodesResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
         return Err(AppError::unauthorized("Invalid API key"));
     }
-
-    // Check authorization - users can only get their own queued episodes
-    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, query.user_id).await? {
-        return Err(AppError::forbidden("You can only get your own queued episodes!"));
+        return Err(AppError::forbidden(
+            "You can only get your own queued episodes!",
+        ));
     }
 
     // Get queued episodes from database
     let data = state.db_pool.get_queued_episodes(query.user_id).await?;
-    
+
     Ok(Json(crate::models::QueuedEpisodesResponse { data }))
 }
 
@@ -588,7 +653,7 @@ pub async fn reorder_queue(
     Json(request): Json<crate::models::ReorderQueueRequest>,
 ) -> Result<Json<crate::models::ReorderQueueResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -601,8 +666,11 @@ pub async fn reorder_queue(
     }
 
     // Reorder the queue
-    state.db_pool.reorder_queue(query.user_id, request.episode_ids).await?;
-    
+    state
+        .db_pool
+        .reorder_queue(query.user_id, request.episode_ids)
+        .await?;
+
     Ok(Json(crate::models::ReorderQueueResponse {
         message: "Queue reordered successfully".to_string(),
     }))
@@ -615,7 +683,7 @@ pub async fn save_episode(
     Json(request): Json<crate::models::SavePodcastRequest>,
 ) -> Result<Json<crate::models::SaveEpisodeResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -624,18 +692,23 @@ pub async fn save_episode(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, request.user_id).await? {
-        return Err(AppError::forbidden("You can only save episodes for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only save episodes for yourself!",
+        ));
     }
 
     // Save the episode
-    state.db_pool.save_episode(request.episode_id, request.user_id, request.is_youtube).await?;
-    
+    state
+        .db_pool
+        .save_episode(request.episode_id, request.user_id, request.is_youtube)
+        .await?;
+
     let message = if request.is_youtube {
         "Video saved!"
     } else {
         "Episode saved!"
     };
-    
+
     Ok(Json(crate::models::SaveEpisodeResponse {
         detail: message.to_string(),
     }))
@@ -648,7 +721,7 @@ pub async fn remove_saved_episode(
     Json(request): Json<crate::models::SavePodcastRequest>,
 ) -> Result<Json<crate::models::SaveEpisodeResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -657,18 +730,23 @@ pub async fn remove_saved_episode(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, request.user_id).await? {
-        return Err(AppError::forbidden("You can only remove your own saved episodes!"));
+        return Err(AppError::forbidden(
+            "You can only remove your own saved episodes!",
+        ));
     }
 
     // Remove the saved episode
-    state.db_pool.remove_saved_episode(request.episode_id, request.user_id, request.is_youtube).await?;
-    
+    state
+        .db_pool
+        .remove_saved_episode(request.episode_id, request.user_id, request.is_youtube)
+        .await?;
+
     let message = if request.is_youtube {
         "Saved video removed."
     } else {
         "Saved episode removed."
     };
-    
+
     Ok(Json(crate::models::SaveEpisodeResponse {
         detail: message.to_string(),
     }))
@@ -681,7 +759,7 @@ pub async fn get_saved_episodes(
     State(state): State<AppState>,
 ) -> Result<Json<crate::models::SavedEpisodesResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -690,13 +768,17 @@ pub async fn get_saved_episodes(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, user_id).await? {
-        return Err(AppError::forbidden("You can only get your own saved episodes!"));
+        return Err(AppError::forbidden(
+            "You can only get your own saved episodes!",
+        ));
     }
 
     // Get saved episodes from database
     let saved_episodes = state.db_pool.get_saved_episodes(user_id).await?;
-    
-    Ok(Json(crate::models::SavedEpisodesResponse { saved_episodes }))
+
+    Ok(Json(crate::models::SavedEpisodesResponse {
+        saved_episodes,
+    }))
 }
 
 // Add history - matches call_add_history from frontend
@@ -706,7 +788,7 @@ pub async fn add_history(
     Json(request): Json<crate::models::HistoryAddRequest>,
 ) -> Result<Json<crate::models::HistoryResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -715,45 +797,25 @@ pub async fn add_history(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, request.user_id).await? {
-        return Err(AppError::forbidden("You can only add history for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only add history for yourself!",
+        ));
     }
 
     // Record the history
-    state.db_pool.record_podcast_history(
-        request.episode_id, 
-        request.user_id, 
-        request.episode_pos, 
-        request.is_youtube
-    ).await?;
-    
+    state
+        .db_pool
+        .record_podcast_history(
+            request.episode_id,
+            request.user_id,
+            request.episode_pos,
+            request.is_youtube,
+        )
+        .await?;
+
     Ok(Json(crate::models::HistoryResponse {
         detail: "History recorded successfully.".to_string(),
     }))
-}
-
-// Get user history - matches call_get_user_history from frontend
-pub async fn get_user_history(
-    Path(user_id): Path<i32>,
-    headers: HeaderMap,
-    State(state): State<AppState>,
-) -> Result<Json<crate::models::UserHistoryResponse>, AppError> {
-    let api_key = extract_api_key(&headers)?;
-    
-    // Verify API key
-    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
-    if !is_valid {
-        return Err(AppError::unauthorized("Invalid API key"));
-    }
-
-    // Check authorization - users can only get their own episodes or have web key access (user ID 1)
-    if !check_user_access(&state, &api_key, user_id).await? {
-        return Err(AppError::forbidden("You can only get your own history!"));
-    }
-
-    // Get user history from database
-    let data = state.db_pool.get_user_history(user_id).await?;
-    
-    Ok(Json(crate::models::UserHistoryResponse { data }))
 }
 
 // Query parameters for get_podcast_id
@@ -771,7 +833,7 @@ pub async fn get_podcast_id(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -780,12 +842,17 @@ pub async fn get_podcast_id(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, query.user_id).await? {
-        return Err(AppError::forbidden("You can only return pocast ids of your own podcasts!"));
+        return Err(AppError::forbidden(
+            "You can only return pocast ids of your own podcasts!",
+        ));
     }
 
     // Get podcast ID from database
-    let podcast_id = state.db_pool.get_podcast_id(query.user_id, &query.podcast_feed, &query.podcast_title).await?;
-    
+    let podcast_id = state
+        .db_pool
+        .get_podcast_id(query.user_id, &query.podcast_feed, &query.podcast_title)
+        .await?;
+
     // Return podcast ID in properly named field
     Ok(Json(serde_json::json!({ "podcast_id": podcast_id })))
 }
@@ -803,7 +870,7 @@ pub async fn download_episode_list(
     State(state): State<AppState>,
 ) -> Result<Json<DownloadedEpisodesResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -812,13 +879,17 @@ pub async fn download_episode_list(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, query.user_id).await? {
-        return Err(AppError::forbidden("You can only return downloaded episodes for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only return downloaded episodes for yourself!",
+        ));
     }
 
     // Get downloaded episodes from database
     let downloaded_episodes = state.db_pool.download_episode_list(query.user_id).await?;
-    
-    Ok(Json(DownloadedEpisodesResponse { downloaded_episodes }))
+
+    Ok(Json(DownloadedEpisodesResponse {
+        downloaded_episodes,
+    }))
 }
 
 // Request models for download operations
@@ -850,7 +921,7 @@ pub async fn download_podcast(
     Json(request): Json<DownloadPodcastRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -859,40 +930,57 @@ pub async fn download_podcast(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, request.user_id).await? {
-        return Err(AppError::forbidden("You can only download content for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only download content for yourself!",
+        ));
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
-    
+
     // Check if already downloaded
-    let is_downloaded = state.db_pool.check_downloaded(request.user_id, request.episode_id, is_youtube).await?;
+    let is_downloaded = state
+        .db_pool
+        .check_downloaded(request.user_id, request.episode_id, is_youtube)
+        .await?;
     if is_downloaded {
-        return Ok(Json(serde_json::json!({ "detail": "Content already downloaded." })));
+        return Ok(Json(
+            serde_json::json!({ "detail": "Content already downloaded." }),
+        ));
     }
 
     // Queue the download task using the task system
     let task_id = if is_youtube {
-        state.task_spawner.spawn_download_youtube_video(request.episode_id, request.user_id).await?
+        state
+            .task_spawner
+            .spawn_download_youtube_video(request.episode_id, request.user_id)
+            .await?
     } else {
-        state.task_spawner.spawn_download_podcast_episode(request.episode_id, request.user_id).await?
+        state
+            .task_spawner
+            .spawn_download_podcast_episode(request.episode_id, request.user_id)
+            .await?
     };
 
-    let content_type = if is_youtube { "YouTube video" } else { "Podcast episode" };
-    
+    let content_type = if is_youtube {
+        "YouTube video"
+    } else {
+        "Podcast episode"
+    };
+
     Ok(Json(serde_json::json!({
         "detail": format!("{} download has been queued and will process in the background.", content_type),
         "task_id": task_id
     })))
 }
 
-// Delete a downloaded episode - matches Python delete_episode endpoint  
+// Delete a downloaded episode - matches Python delete_episode endpoint
 pub async fn delete_episode(
     headers: HeaderMap,
     State(state): State<AppState>,
     Json(request): Json<DeleteEpisodeRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -901,16 +989,21 @@ pub async fn delete_episode(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, request.user_id).await? {
-        return Err(AppError::forbidden("You can only delete your own downloads!"));
+        return Err(AppError::forbidden(
+            "You can only delete your own downloads!",
+        ));
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
-    
+
     // Delete the episode
-    state.db_pool.delete_episode(request.user_id, request.episode_id, is_youtube).await?;
-    
+    state
+        .db_pool
+        .delete_episode(request.user_id, request.episode_id, is_youtube)
+        .await?;
+
     let content_type = if is_youtube { "Video" } else { "Episode" };
-    
+
     Ok(Json(serde_json::json!({
         "detail": format!("{} deleted successfully.", content_type)
     })))
@@ -923,7 +1016,7 @@ pub async fn download_all_podcast(
     Json(request): Json<DownloadAllPodcastRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -932,20 +1025,32 @@ pub async fn download_all_podcast(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, request.user_id).await? {
-        return Err(AppError::forbidden("You can only download content for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only download content for yourself!",
+        ));
     }
 
     let is_youtube = request.is_youtube.unwrap_or(false);
-    
+
     // Queue the download all task using the task system
     let task_id = if is_youtube {
-        state.task_spawner.spawn_download_all_youtube_videos(request.podcast_id, request.user_id).await?
+        state
+            .task_spawner
+            .spawn_download_all_youtube_videos(request.podcast_id, request.user_id)
+            .await?
     } else {
-        state.task_spawner.spawn_download_all_podcast_episodes(request.podcast_id, request.user_id).await?
+        state
+            .task_spawner
+            .spawn_download_all_podcast_episodes(request.podcast_id, request.user_id)
+            .await?
     };
 
-    let content_type = if is_youtube { "YouTube channel" } else { "Podcast" };
-    
+    let content_type = if is_youtube {
+        "YouTube channel"
+    } else {
+        "Podcast"
+    };
+
     Ok(Json(serde_json::json!({
         "detail": format!("All {} downloads have been queued and will process in the background.", content_type),
         "task_id": task_id
@@ -959,7 +1064,7 @@ pub async fn download_status(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -968,12 +1073,14 @@ pub async fn download_status(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, user_id).await? {
-        return Err(AppError::forbidden("You can only get your own download status!"));
+        return Err(AppError::forbidden(
+            "You can only get your own download status!",
+        ));
     }
 
     // Get download status from database
     let status = state.db_pool.get_download_status(user_id).await?;
-    
+
     Ok(Json(serde_json::json!(status)))
 }
 
@@ -991,7 +1098,7 @@ pub async fn podcast_episodes(
     State(state): State<AppState>,
 ) -> Result<Json<PodcastEpisodesResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -1000,12 +1107,17 @@ pub async fn podcast_episodes(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, query.user_id).await? {
-        return Err(AppError::forbidden("You can only return episodes of your own!"));
+        return Err(AppError::forbidden(
+            "You can only return episodes of your own!",
+        ));
     }
 
-    // Get podcast episodes from database 
-    let episodes = state.db_pool.return_podcast_episodes_capitalized(query.user_id, query.podcast_id).await?;
-    
+    // Get podcast episodes from database
+    let episodes = state
+        .db_pool
+        .return_podcast_episodes_capitalized(query.user_id, query.podcast_id)
+        .await?;
+
     Ok(Json(PodcastEpisodesResponse { episodes }))
 }
 
@@ -1024,7 +1136,7 @@ pub async fn get_podcast_id_from_ep_name(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -1033,17 +1145,23 @@ pub async fn get_podcast_id_from_ep_name(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, query.user_id).await? {
-        return Err(AppError::forbidden("You can only return podcast ids of your own episodes!"));
+        return Err(AppError::forbidden(
+            "You can only return podcast ids of your own episodes!",
+        ));
     }
 
     // Get podcast ID from episode name and URL
-    let podcast_id = state.db_pool.get_podcast_id_from_episode_name(&query.episode_name, &query.episode_url, query.user_id).await?;
-    
+    let podcast_id = state
+        .db_pool
+        .get_podcast_id_from_episode_name(&query.episode_name, &query.episode_url, query.user_id)
+        .await?;
+
     Ok(Json(serde_json::json!({ "podcast_id": podcast_id })))
 }
 
 // Query parameters for get_episode_id_ep_name
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct GetEpisodeIdFromEpNameQuery {
     pub episode_title: String,
     pub episode_url: String,
@@ -1058,7 +1176,7 @@ pub async fn get_episode_id_ep_name(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -1067,15 +1185,20 @@ pub async fn get_episode_id_ep_name(
 
     // Check authorization - users can only get their own episodes or have web key access (user ID 1)
     if !check_user_access(&state, &api_key, query.user_id).await? {
-        return Err(AppError::forbidden("You can only return episode ids of your own episodes!"));
+        return Err(AppError::forbidden(
+            "You can only return episode ids of your own episodes!",
+        ));
     }
 
     // Get episode ID from URL
-    let episode_id = state.db_pool.get_episode_id_from_url(&query.episode_url, query.user_id).await?;
-    
+    let episode_id = state
+        .db_pool
+        .get_episode_id_from_url(&query.episode_url, query.user_id)
+        .await?;
+
     match episode_id {
         Some(id) => Ok(Json(serde_json::json!(id))),
-        None => Err(AppError::not_found("Episode not found"))
+        None => Err(AppError::not_found("Episode not found")),
     }
 }
 
@@ -1095,11 +1218,13 @@ pub async fn get_episode_metadata(
     Json(request): Json<EpisodeMetadataRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::unauthorized(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
     // Check if it's web key or user's own key
@@ -1107,16 +1232,21 @@ pub async fn get_episode_metadata(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id == request.user_id || is_web_key {
-        let episode = state.db_pool.get_episode_metadata(
-            request.episode_id,
-            request.user_id,
-            request.person_episode.unwrap_or(false),
-            request.is_youtube.unwrap_or(false)
-        ).await?;
-        
+        let episode = state
+            .db_pool
+            .get_episode_metadata(
+                request.episode_id,
+                request.user_id,
+                request.person_episode.unwrap_or(false),
+                request.is_youtube.unwrap_or(false),
+            )
+            .await?;
+
         Ok(Json(serde_json::json!({"episode": episode})))
     } else {
-        Err(AppError::forbidden("You can only get metadata for yourself!"))
+        Err(AppError::forbidden(
+            "You can only get metadata for yourself!",
+        ))
     }
 }
 
@@ -1134,20 +1264,25 @@ pub async fn fetch_podcasting_2_data(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Invalid API key or insufficient permissions"));
+        return Err(AppError::unauthorized(
+            "Invalid API key or insufficient permissions",
+        ));
     }
 
-    // Get the episode_id and user_id from query parameters  
+    // Get the episode_id and user_id from query parameters
     let episode_id = query.episode_id;
     let user_id = query.user_id;
-    
+
     // Call the database method to fetch podcasting 2.0 data
-    let data = state.db_pool.fetch_podcasting_2_data(episode_id, user_id).await?;
-    
+    let data = state
+        .db_pool
+        .fetch_podcasting_2_data(episode_id, user_id)
+        .await?;
+
     Ok(Json(data))
 }
 
@@ -1171,25 +1306,32 @@ pub async fn get_auto_download_status(
     Json(request): Json<AutoDownloadStatusRequest>,
 ) -> Result<Json<AutoDownloadStatusResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::unauthorized(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
     if key_id != request.user_id {
-        return Err(AppError::forbidden("You can only get the status for your own podcast."));
+        return Err(AppError::forbidden(
+            "You can only get the status for your own podcast.",
+        ));
     }
 
-    let status = state.db_pool.call_get_auto_download_status(request.podcast_id, request.user_id).await?;
+    let status = state
+        .db_pool
+        .call_get_auto_download_status(request.podcast_id, request.user_id)
+        .await?;
     if status.is_none() {
         return Err(AppError::not_found("Podcast not found"));
     }
 
     Ok(Json(AutoDownloadStatusResponse {
-        auto_download: status.unwrap()
+        auto_download: status.unwrap(),
     }))
 }
 
@@ -1215,11 +1357,13 @@ pub async fn get_feed_cutoff_days(
     State(state): State<AppState>,
 ) -> Result<Json<FeedCutoffDaysResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::unauthorized(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
     // Check if it's web key or user's own key
@@ -1227,18 +1371,25 @@ pub async fn get_feed_cutoff_days(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id == query.user_id || is_web_key {
-        let feed_cutoff_days = state.db_pool.get_feed_cutoff_days(query.podcast_id, query.user_id).await?;
+        let feed_cutoff_days = state
+            .db_pool
+            .get_feed_cutoff_days(query.podcast_id, query.user_id)
+            .await?;
         if let Some(cutoff_days) = feed_cutoff_days {
             Ok(Json(FeedCutoffDaysResponse {
                 podcast_id: query.podcast_id,
                 user_id: query.user_id,
-                feed_cutoff_days: cutoff_days
+                feed_cutoff_days: cutoff_days,
             }))
         } else {
-            Err(AppError::not_found("Podcast not found or does not belong to the user."))
+            Err(AppError::not_found(
+                "Podcast not found or does not belong to the user.",
+            ))
         }
     } else {
-        Err(AppError::forbidden("You can only access settings of your own podcasts!"))
+        Err(AppError::forbidden(
+            "You can only access settings of your own podcasts!",
+        ))
     }
 }
 
@@ -1262,7 +1413,7 @@ pub async fn get_notification_status(
     Json(request): Json<PodcastNotificationStatusRequest>,
 ) -> Result<Json<NotificationStatusResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
@@ -1273,13 +1424,15 @@ pub async fn get_notification_status(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id == request.user_id || is_web_key {
-        let enabled = state.db_pool.get_podcast_notification_status(
-            request.podcast_id,
-            request.user_id
-        ).await?;
+        let enabled = state
+            .db_pool
+            .get_podcast_notification_status(request.podcast_id, request.user_id)
+            .await?;
         Ok(Json(NotificationStatusResponse { enabled }))
     } else {
-        Err(AppError::forbidden("You can only check your own podcast settings"))
+        Err(AppError::forbidden(
+            "You can only check your own podcast settings",
+        ))
     }
 }
 
@@ -1306,11 +1459,13 @@ pub async fn get_play_episode_details(
     Json(request): Json<PlayEpisodeDetailsRequest>,
 ) -> Result<Json<PlayEpisodeDetailsResponse>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::unauthorized(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -1318,19 +1473,24 @@ pub async fn get_play_episode_details(
 
     if key_id == request.user_id || is_web_key {
         // Get all details in one function call
-        let (playback_speed, start_skip, end_skip) = state.db_pool.get_play_episode_details(
-            request.user_id,
-            request.podcast_id,
-            request.is_youtube.unwrap_or(false)
-        ).await?;
+        let (playback_speed, start_skip, end_skip) = state
+            .db_pool
+            .get_play_episode_details(
+                request.user_id,
+                request.podcast_id,
+                request.is_youtube.unwrap_or(false),
+            )
+            .await?;
 
         Ok(Json(PlayEpisodeDetailsResponse {
             playback_speed,
             start_skip,
-            end_skip
+            end_skip,
         }))
     } else {
-        Err(AppError::forbidden("You can only get metadata for yourself!"))
+        Err(AppError::forbidden(
+            "You can only get metadata for yourself!",
+        ))
     }
 }
 
@@ -1348,16 +1508,21 @@ pub async fn fetch_podcasting_2_pod_data(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Invalid API key or insufficient permissions"));
+        return Err(AppError::unauthorized(
+            "Invalid API key or insufficient permissions",
+        ));
     }
 
     // Fetch podcasting 2.0 podcast data
-    let data = state.db_pool.fetch_podcasting_2_pod_data(query.podcast_id, query.user_id).await?;
-    
+    let data = state
+        .db_pool
+        .fetch_podcasting_2_pod_data(query.podcast_id, query.user_id)
+        .await?;
+
     Ok(Json(data))
 }
 
@@ -1376,26 +1541,35 @@ pub async fn mark_episode_completed(
     Json(request): Json<MarkEpisodeCompletedRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::unauthorized(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id == request.user_id || is_web_key {
-        state.db_pool.mark_episode_completed(
-            request.episode_id,
-            request.user_id,
-            request.is_youtube.unwrap_or(false)
-        ).await?;
-        
-        Ok(Json(serde_json::json!({ "detail": "Episode marked as completed." })))
+        state
+            .db_pool
+            .mark_episode_completed(
+                request.episode_id,
+                request.user_id,
+                request.is_youtube.unwrap_or(false),
+            )
+            .await?;
+
+        Ok(Json(
+            serde_json::json!({ "detail": "Episode marked as completed." }),
+        ))
     } else {
-        Err(AppError::forbidden("You can only mark episodes as completed for yourself."))
+        Err(AppError::forbidden(
+            "You can only mark episodes as completed for yourself.",
+        ))
     }
 }
 
@@ -1406,11 +1580,13 @@ pub async fn increment_played(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::unauthorized(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -1418,10 +1594,14 @@ pub async fn increment_played(
 
     if key_id == user_id || is_web_key {
         state.db_pool.increment_played(user_id).await?;
-        
-        Ok(Json(serde_json::json!({ "detail": "Played count incremented." })))
+
+        Ok(Json(
+            serde_json::json!({ "detail": "Played count incremented." }),
+        ))
     } else {
-        Err(AppError::forbidden("You can only increment your own play count."))
+        Err(AppError::forbidden(
+            "You can only increment your own play count.",
+        ))
     }
 }
 
@@ -1440,30 +1620,39 @@ pub async fn get_podcast_id_from_ep_id(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::unauthorized(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id == query.user_id || is_web_key {
-        let podcast_id = state.db_pool.get_podcast_id_from_episode(
-            query.episode_id,
-            query.user_id,
-            query.is_youtube.unwrap_or(false)
-        ).await?;
-        
+        let podcast_id = state
+            .db_pool
+            .get_podcast_id_from_episode(
+                query.episode_id,
+                query.user_id,
+                query.is_youtube.unwrap_or(false),
+            )
+            .await?;
+
         if let Some(podcast_id) = podcast_id {
             Ok(Json(serde_json::json!({ "podcast_id": podcast_id })))
         } else {
-            Err(AppError::not_found("Episode not found or does not belong to user"))
+            Err(AppError::not_found(
+                "Episode not found or does not belong to user",
+            ))
         }
     } else {
-        Err(AppError::forbidden("You can only return podcast ids of your own podcasts!"))
+        Err(AppError::forbidden(
+            "You can only return podcast ids of your own podcasts!",
+        ))
     }
 }
 
@@ -1480,11 +1669,13 @@ pub async fn get_stats(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::unauthorized(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
@@ -1492,14 +1683,16 @@ pub async fn get_stats(
 
     if key_id == query.user_id || is_web_key {
         let stats = state.db_pool.get_stats(query.user_id).await?;
-        
+
         if let Some(stats) = stats {
             Ok(Json(stats))
         } else {
             Err(AppError::not_found("Stats not found for the given user ID"))
         }
     } else {
-        Err(AppError::forbidden("You can only get stats for your own account."))
+        Err(AppError::forbidden(
+            "You can only get stats for your own account.",
+        ))
     }
 }
 
@@ -1509,15 +1702,17 @@ pub async fn get_pinepods_version(
     State(state): State<AppState>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::unauthorized(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
     let version = state.db_pool.get_pinepods_version().await?;
-    
+
     Ok(Json(serde_json::json!({ "data": version })))
 }
 
@@ -1535,15 +1730,20 @@ pub async fn search_data(
     Json(request): Json<SearchDataRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::unauthorized(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
-    let result = state.db_pool.search_data(&request.search_term, request.user_id).await?;
-    
+    let result = state
+        .db_pool
+        .search_data(&request.search_term, request.user_id)
+        .await?;
+
     Ok(Json(serde_json::json!({ "data": result })))
 }
 
@@ -1560,38 +1760,32 @@ pub async fn fetch_transcript(
     Json(request): Json<FetchTranscriptRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
-    
+
     // Verify API key
     let is_valid = _state.db_pool.verify_api_key(&api_key).await?;
     if !is_valid {
-        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+        return Err(AppError::unauthorized(
+            "Your API key is either invalid or does not have correct permission",
+        ));
     }
 
     // Fetch the transcript content from the external URL
     let client = reqwest::Client::new();
     match client.get(&request.url).send().await {
-        Ok(response) => {
-            match response.text().await {
-                Ok(content) => {
-                    Ok(Json(serde_json::json!({
-                        "success": true,
-                        "content": content
-                    })))
-                }
-                Err(e) => {
-                    Ok(Json(serde_json::json!({
-                        "success": false,
-                        "error": format!("Failed to read response text: {}", e)
-                    })))
-                }
-            }
-        }
-        Err(e) => {
-            Ok(Json(serde_json::json!({
+        Ok(response) => match response.text().await {
+            Ok(content) => Ok(Json(serde_json::json!({
+                "success": true,
+                "content": content
+            }))),
+            Err(e) => Ok(Json(serde_json::json!({
                 "success": false,
-                "error": format!("Failed to fetch transcript: {}", e)
-            })))
-        }
+                "error": format!("Failed to read response text: {}", e)
+            }))),
+        },
+        Err(e) => Ok(Json(serde_json::json!({
+            "success": false,
+            "error": format!("Failed to fetch transcript: {}", e)
+        }))),
     }
 }
 
@@ -1614,11 +1808,13 @@ pub async fn home_overview(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id != query.user_id {
-        return Err(AppError::forbidden("You can only view your own home overview!"));
+        return Err(AppError::forbidden(
+            "You can only view your own home overview!",
+        ));
     }
 
     let home_data = state.db_pool.get_home_overview(query.user_id).await?;
-    
+
     Ok(Json(home_data))
 }
 
@@ -1645,7 +1841,7 @@ pub async fn get_playlists(
     }
 
     let playlists = state.db_pool.get_playlists(query.user_id).await?;
-    
+
     Ok(Json(serde_json::json!({ "playlists": playlists })))
 }
 
@@ -1671,12 +1867,19 @@ pub async fn mark_episode_uncompleted(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id != request.user_id {
-        return Err(AppError::forbidden("You can only mark episodes as uncompleted for yourself."));
+        return Err(AppError::forbidden(
+            "You can only mark episodes as uncompleted for yourself.",
+        ));
     }
 
-    state.db_pool.mark_episode_uncompleted(request.episode_id, request.user_id, request.is_youtube).await?;
-    
-    Ok(Json(serde_json::json!({ "detail": "Episode marked as uncompleted." })))
+    state
+        .db_pool
+        .mark_episode_uncompleted(request.episode_id, request.user_id, request.is_youtube)
+        .await?;
+
+    Ok(Json(
+        serde_json::json!({ "detail": "Episode marked as uncompleted." }),
+    ))
 }
 
 // Request struct for record_listen_duration
@@ -1700,7 +1903,9 @@ pub async fn record_listen_duration(
 
     // Ignore listen duration for episodes with ID 0
     if data.episode_id == 0 {
-        return Ok(Json(serde_json::json!({ "detail": "Listen duration for episode ID 0 is ignored." })));
+        return Ok(Json(
+            serde_json::json!({ "detail": "Listen duration for episode ID 0 is ignored." }),
+        ));
     }
 
     // Check authorization - web key or user can only record their own duration
@@ -1708,38 +1913,65 @@ pub async fn record_listen_duration(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != data.user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only record your own listen duration"));
+        return Err(AppError::forbidden(
+            "You can only record your own listen duration",
+        ));
     }
 
     if data.is_youtube {
-        state.db_pool.record_youtube_listen_duration(data.episode_id, data.user_id, data.listen_duration).await?;
+        state
+            .db_pool
+            .record_youtube_listen_duration(data.episode_id, data.user_id, data.listen_duration)
+            .await?;
     } else {
-        state.db_pool.record_listen_duration(data.episode_id, data.user_id, data.listen_duration).await?;
+        state
+            .db_pool
+            .record_listen_duration(data.episode_id, data.user_id, data.listen_duration)
+            .await?;
     }
 
     // Check if episode should be auto-completed based on user's setting
-    let auto_complete_seconds = state.db_pool.get_user_auto_complete_seconds(data.user_id).await.unwrap_or(0);
-    
+    let auto_complete_seconds = state
+        .db_pool
+        .get_user_auto_complete_seconds(data.user_id)
+        .await
+        .unwrap_or(0);
+
     if auto_complete_seconds > 0 {
         // Get episode duration
         let episode_duration = if data.is_youtube {
-            state.db_pool.get_youtube_episode_duration(data.episode_id).await.unwrap_or(0)
+            state
+                .db_pool
+                .get_youtube_episode_duration(data.episode_id)
+                .await
+                .unwrap_or(0)
         } else {
-            state.db_pool.get_episode_duration(data.episode_id).await.unwrap_or(0)
+            state
+                .db_pool
+                .get_episode_duration(data.episode_id)
+                .await
+                .unwrap_or(0)
         };
-        
+
         if episode_duration > 0 {
             let remaining_time = episode_duration as f64 - data.listen_duration;
-            
+
             // Auto-complete if remaining time <= auto_complete_seconds
             // Also handle cases where listen_duration exceeds episode_duration (dynamic ads, etc.)
-            if remaining_time <= auto_complete_seconds as f64 || data.listen_duration >= episode_duration as f64 {
-                let _ = state.db_pool.mark_episode_completed(data.episode_id, data.user_id, data.is_youtube).await;
+            if remaining_time <= auto_complete_seconds as f64
+                || data.listen_duration >= episode_duration as f64
+            {
+                let _ = state
+                    .db_pool
+                    .mark_episode_completed(data.episode_id, data.user_id, data.is_youtube)
+                    .await;
             }
         }
     }
 
-    Ok(Json(serde_json::json!({ "detail": "Listen duration recorded." })))
+    Ok(Json(
+        serde_json::json!({ "detail": "Listen duration recorded." }),
+    ))
 }
 
 // Get user history - matches Python user_history endpoint exactly
@@ -1756,7 +1988,9 @@ pub async fn user_history(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only return history for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only return history for yourself!",
+        ));
     }
 
     let history = state.db_pool.user_history(user_id).await?;
@@ -1777,11 +2011,15 @@ pub async fn increment_listen_time(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only increment your own listen time."));
+        return Err(AppError::forbidden(
+            "You can only increment your own listen time.",
+        ));
     }
 
     state.db_pool.increment_listen_time(user_id).await?;
-    Ok(Json(serde_json::json!({ "detail": "Listen time incremented." })))
+    Ok(Json(
+        serde_json::json!({ "detail": "Listen time incremented." }),
+    ))
 }
 
 // Request struct for get_playback_speed
@@ -1805,11 +2043,18 @@ pub async fn get_playback_speed(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != data.user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only get metadata for yourself!"));
+        return Err(AppError::forbidden(
+            "You can only get metadata for yourself!",
+        ));
     }
 
-    let playback_speed = state.db_pool.get_playback_speed(data.user_id, false, data.podcast_id).await?;
-    Ok(Json(serde_json::json!({ "playback_speed": playback_speed })))
+    let playback_speed = state
+        .db_pool
+        .get_playback_speed(data.user_id, false, data.podcast_id)
+        .await?;
+    Ok(Json(
+        serde_json::json!({ "playback_speed": playback_speed }),
+    ))
 }
 
 // Query struct for get_playlist_episodes
@@ -1832,11 +2077,16 @@ pub async fn get_playlist_episodes(
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     if key_id != query.user_id {
-        return Err(AppError::forbidden("You can only view your own playlist episodes!"));
+        return Err(AppError::forbidden(
+            "You can only view your own playlist episodes!",
+        ));
     }
 
-    let playlist_episodes = state.db_pool.get_playlist_episodes(query.user_id, query.playlist_id).await?;
-    
+    let playlist_episodes = state
+        .db_pool
+        .get_playlist_episodes(query.user_id, query.playlist_id)
+        .await?;
+
     Ok(Json(playlist_episodes))
 }
 
@@ -1848,16 +2098,21 @@ pub async fn get_podcast_details(
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
-    
+
     // Check authorization - user can only access their own podcasts
     let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    
+
     if key_id != query.user_id {
-        return Err(AppError::forbidden("You can only view your own podcast details!"));
+        return Err(AppError::forbidden(
+            "You can only view your own podcast details!",
+        ));
     }
-    
-    let podcast_details = state.db_pool.get_podcast_details(query.user_id, query.podcast_id).await?;
-    
+
+    let podcast_details = state
+        .db_pool
+        .get_podcast_details(query.user_id, query.podcast_id)
+        .await?;
+
     Ok(Json(serde_json::json!({ "details": podcast_details })))
 }
 
@@ -1882,13 +2137,18 @@ pub async fn youtube_episodes(
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
 
     if key_id != query.user_id && !is_web_key {
-        return Err(AppError::forbidden("You can only return episodes of your own!"));
+        return Err(AppError::forbidden(
+            "You can only return episodes of your own!",
+        ));
     }
 
-    let episodes = state.db_pool.return_youtube_episodes(query.user_id, query.podcast_id).await?;
-    
+    let episodes = state
+        .db_pool
+        .return_youtube_episodes(query.user_id, query.podcast_id)
+        .await?;
+
     let episodes_result = episodes.unwrap_or_else(|| vec![]);
-    
+
     Ok(Json(serde_json::json!({ "episodes": episodes_result })))
 }
 
@@ -1911,21 +2171,22 @@ pub async fn remove_youtube_channel(
 
     // Check if the provided API key is the web key (elevated access)
     let is_web_key = state.db_pool.is_web_key(&api_key).await?;
-    
+
     if !is_web_key {
         // Get user ID from API key and check authorization
         let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
         if data.user_id != user_id_from_api_key {
-            return Err(AppError::forbidden("You are not authorized to remove channels for other users"));
+            return Err(AppError::forbidden(
+                "You are not authorized to remove channels for other users",
+            ));
         }
     }
 
     // Remove the YouTube channel
-    state.db_pool.remove_youtube_channel_by_url(
-        &data.channel_name,
-        &data.channel_url,
-        data.user_id,
-    ).await?;
+    state
+        .db_pool
+        .remove_youtube_channel_by_url(&data.channel_name, &data.channel_url, data.user_id)
+        .await?;
 
     Ok(Json(serde_json::json!({ "success": true })))
 }
@@ -1946,18 +2207,18 @@ pub async fn stream_episode(
     Query(query): Query<StreamQuery>,
 ) -> Result<axum::response::Response, AppError> {
     let api_key = &query.api_key;
-    
+
     // Try API key validation first
     let mut is_valid = false;
     let mut is_web_key = false;
     let mut key_user_id = None;
-    
+
     if let Ok(_) = validate_api_key(&state, api_key).await {
         is_valid = true;
         is_web_key = state.db_pool.is_web_key(api_key).await?;
         key_user_id = Some(state.db_pool.get_user_id_from_api_key(api_key).await?);
     }
-    
+
     // If not a valid API key, try RSS key validation
     if !is_valid {
         if let Ok(Some(_rss_info)) = state.db_pool.get_rss_key_if_valid(api_key, None).await {
@@ -1965,15 +2226,17 @@ pub async fn stream_episode(
             is_valid = true;
         }
     }
-    
+
     if !is_valid {
         return Err(AppError::unauthorized("Invalid API key or RSS key"));
     }
-    
+
     // For regular API keys (not RSS keys), check user permissions
     if let Some(user_id) = key_user_id {
         if user_id != query.user_id && !is_web_key {
-            return Err(AppError::forbidden("You do not have permission to access this episode"));
+            return Err(AppError::forbidden(
+                "You do not have permission to access this episode",
+            ));
         }
     }
     // RSS keys don't need user permission checks - they can stream any episode
@@ -1981,34 +2244,42 @@ pub async fn stream_episode(
     // Choose which lookup to use based on source_type
     let file_path = if query.source_type.as_deref() == Some("youtube") {
         println!("Looking up YouTube video file path");
-        state.db_pool.get_youtube_video_location(episode_id, query.user_id).await?
+        state
+            .db_pool
+            .get_youtube_video_location(episode_id, query.user_id)
+            .await?
     } else {
         println!("Looking up regular episode file path");
-        state.db_pool.get_download_location(episode_id, query.user_id).await?
+        state
+            .db_pool
+            .get_download_location(episode_id, query.user_id)
+            .await?
     };
 
     if let Some(path) = file_path {
         println!("Found file at: {}", path);
-        
+
         // Use tower_http's ServeFile for proper file serving with range support
-        use tower_http::services::ServeFile;
         use tower::ServiceExt;
-        
+        use tower_http::services::ServeFile;
+
         let service = ServeFile::new(&path);
         let request = axum::http::Request::builder()
             .method("GET")
             .uri("/")
             .body(axum::body::Body::empty())
             .map_err(|e| AppError::external_error(&format!("Failed to build request: {}", e)))?;
-            
-        let response = service.oneshot(request).await
+
+        let response = service
+            .oneshot(request)
+            .await
             .map_err(|e| AppError::external_error(&format!("Failed to serve file: {}", e)))?;
-            
+
         // Convert the response body to the expected type
         let (parts, body) = response.into_parts();
         let body = axum::body::Body::new(body);
         let response = axum::response::Response::from_parts(parts, body);
-            
+
         Ok(response)
     } else {
         Err(AppError::not_found("Episode not found or not downloaded"))
@@ -2033,7 +2304,10 @@ pub async fn get_rss_key(
     }
 
     // Get or create RSS key for the user
-    let rss_key = state.db_pool.get_or_create_user_rss_key(query.user_id).await?;
+    let rss_key = state
+        .db_pool
+        .get_or_create_user_rss_key(query.user_id)
+        .await?;
 
     Ok(Json(serde_json::json!({
         "rss_key": rss_key
@@ -2084,38 +2358,83 @@ pub async fn get_podcast_details_dynamic(
 
     if query.added {
         // Get podcast from database if already added
-        let podcast_id = state.db_pool.get_podcast_id_by_feed(query.user_id, &query.podcast_url, &query.podcast_title).await?;
-        let details = state.db_pool.get_podcast_details_raw(query.user_id, podcast_id).await?;
-        
+        let podcast_id = state
+            .db_pool
+            .get_podcast_id_by_feed(query.user_id, &query.podcast_url, &query.podcast_title)
+            .await?;
+        let details = state
+            .db_pool
+            .get_podcast_details_raw(query.user_id, podcast_id)
+            .await?;
+
         if let Some(details) = details {
             // Parse categories
-            let categories = if let Some(cats_str) = details.get("categories").and_then(|v| v.as_str()) {
-                if cats_str.starts_with('{') {
-                    serde_json::from_str(cats_str).unwrap_or_else(|_| serde_json::json!({}))
+            let categories =
+                if let Some(cats_str) = details.get("categories").and_then(|v| v.as_str()) {
+                    if cats_str.starts_with('{') {
+                        serde_json::from_str(cats_str).unwrap_or_else(|_| serde_json::json!({}))
+                    } else {
+                        let categories_dict: serde_json::Map<String, serde_json::Value> = cats_str
+                            .split(',')
+                            .enumerate()
+                            .map(|(i, cat)| {
+                                (
+                                    i.to_string(),
+                                    serde_json::Value::String(cat.trim().to_string()),
+                                )
+                            })
+                            .collect();
+                        serde_json::Value::Object(categories_dict)
+                    }
                 } else {
-                    let categories_dict: serde_json::Map<String, serde_json::Value> = cats_str
-                        .split(',')
-                        .enumerate()
-                        .map(|(i, cat)| (i.to_string(), serde_json::Value::String(cat.trim().to_string())))
-                        .collect();
-                    serde_json::Value::Object(categories_dict)
-                }
-            } else {
-                serde_json::json!({})
-            };
+                    serde_json::json!({})
+                };
 
             Ok(Json(ClickedFeedURLResponse {
                 podcastid: 0,
-                podcastname: details.get("podcastname").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                feedurl: details.get("feedurl").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                description: details.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                author: details.get("author").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                artworkurl: details.get("artworkurl").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                explicit: details.get("explicit").and_then(|v| v.as_bool()).unwrap_or(false),
-                episodecount: details.get("episodecount").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                podcastname: details
+                    .get("podcastname")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                feedurl: details
+                    .get("feedurl")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                description: details
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                author: details
+                    .get("author")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                artworkurl: details
+                    .get("artworkurl")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                explicit: details
+                    .get("explicit")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+                episodecount: details
+                    .get("episodecount")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0) as i32,
                 categories,
-                websiteurl: details.get("websiteurl").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                podcastindexid: details.get("podcastindexid").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+                websiteurl: details
+                    .get("websiteurl")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                podcastindexid: details
+                    .get("podcastindexid")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0) as i32,
                 is_youtube: details.get("isyoutubechannel").and_then(|v| v.as_bool()),
             }))
         } else {
@@ -2123,34 +2442,77 @@ pub async fn get_podcast_details_dynamic(
         }
     } else {
         // Get podcast values from feed if not added
-        let podcast_values = state.db_pool.get_podcast_values_from_feed(&query.podcast_url, query.user_id, query.display_only.unwrap_or(false)).await?;
-        
-        let categories = if let Some(cats_str) = podcast_values.get("categories").and_then(|v| v.as_str()) {
-            if cats_str.starts_with('{') {
-                serde_json::from_str(cats_str).unwrap_or_else(|_| serde_json::json!({}))
+        let podcast_values = state
+            .db_pool
+            .get_podcast_values_from_feed(
+                &query.podcast_url,
+                query.user_id,
+                query.display_only.unwrap_or(false),
+            )
+            .await?;
+
+        let categories =
+            if let Some(cats_str) = podcast_values.get("categories").and_then(|v| v.as_str()) {
+                if cats_str.starts_with('{') {
+                    serde_json::from_str(cats_str).unwrap_or_else(|_| serde_json::json!({}))
+                } else {
+                    let categories_dict: serde_json::Map<String, serde_json::Value> = cats_str
+                        .split(',')
+                        .enumerate()
+                        .map(|(i, cat)| {
+                            (
+                                i.to_string(),
+                                serde_json::Value::String(cat.trim().to_string()),
+                            )
+                        })
+                        .collect();
+                    serde_json::Value::Object(categories_dict)
+                }
             } else {
-                let categories_dict: serde_json::Map<String, serde_json::Value> = cats_str
-                    .split(',')
-                    .enumerate()
-                    .map(|(i, cat)| (i.to_string(), serde_json::Value::String(cat.trim().to_string())))
-                    .collect();
-                serde_json::Value::Object(categories_dict)
-            }
-        } else {
-            serde_json::json!({})
-        };
+                serde_json::json!({})
+            };
 
         Ok(Json(ClickedFeedURLResponse {
             podcastid: 0,
-            podcastname: podcast_values.get("pod_title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            feedurl: podcast_values.get("pod_feed_url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            description: podcast_values.get("pod_description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            author: podcast_values.get("pod_author").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            artworkurl: podcast_values.get("pod_artwork").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            explicit: podcast_values.get("pod_explicit").and_then(|v| v.as_bool()).unwrap_or(false),
-            episodecount: podcast_values.get("pod_episode_count").and_then(|v| v.as_i64()).unwrap_or(0) as i32,
+            podcastname: podcast_values
+                .get("pod_title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            feedurl: podcast_values
+                .get("pod_feed_url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            description: podcast_values
+                .get("pod_description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            author: podcast_values
+                .get("pod_author")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            artworkurl: podcast_values
+                .get("pod_artwork")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            explicit: podcast_values
+                .get("pod_explicit")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false),
+            episodecount: podcast_values
+                .get("pod_episode_count")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0) as i32,
             categories,
-            websiteurl: podcast_values.get("pod_website").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            websiteurl: podcast_values
+                .get("pod_website")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
             podcastindexid: query.podcast_index_id,
             is_youtube: Some(false),
         }))
@@ -2180,7 +2542,8 @@ pub async fn get_host_podcasts(
     validate_api_key(&state, &api_key).await?;
 
     // Get people URL from config
-    let people_url = std::env::var("PEOPLE_API_URL").unwrap_or_else(|_| "https://people.pinepods.online".to_string());
+    let people_url = std::env::var("PEOPLE_API_URL")
+        .unwrap_or_else(|_| "https://people.pinepods.online".to_string());
 
     // Make request to podpeople database
     let client = reqwest::Client::new();
@@ -2192,10 +2555,9 @@ pub async fn get_host_podcasts(
         .map_err(|e| AppError::external_error(&format!("Failed to fetch from podpeople: {}", e)))?;
 
     if response.status().is_success() {
-        let podpeople_data: Vec<serde_json::Value> = response
-            .json()
-            .await
-            .map_err(|e| AppError::external_error(&format!("Failed to parse podpeople response: {}", e)))?;
+        let podpeople_data: Vec<serde_json::Value> = response.json().await.map_err(|e| {
+            AppError::external_error(&format!("Failed to parse podpeople response: {}", e))
+        })?;
 
         Ok(Json(PodPeopleResponse {
             success: true,
@@ -2232,14 +2594,21 @@ pub async fn update_feed_cutoff_days(
 
     // Allow the action if the API key belongs to the user or it's the web API key
     if key_id == data.user_id || is_web_key {
-        let success = state.db_pool.update_feed_cutoff_days(data.podcast_id, data.user_id, data.feed_cutoff_days).await?;
+        let success = state
+            .db_pool
+            .update_feed_cutoff_days(data.podcast_id, data.user_id, data.feed_cutoff_days)
+            .await?;
         if success {
-            Ok(Json(serde_json::json!({"detail": "Feed cutoff days updated successfully!"})))
+            Ok(Json(
+                serde_json::json!({"detail": "Feed cutoff days updated successfully!"}),
+            ))
         } else {
             Err(AppError::bad_request("Error updating feed cutoff days"))
         }
     } else {
-        Err(AppError::forbidden("You can only modify settings of your own podcasts!"))
+        Err(AppError::forbidden(
+            "You can only modify settings of your own podcasts!",
+        ))
     }
 }
 
@@ -2260,8 +2629,11 @@ pub async fn fetch_podcast_feed(
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
 
     // Parse feed and extract episodes using feed-rs (same logic as add_episodes but without DB insertion)
-    let episodes = state.db_pool.parse_feed_episodes(&query.podcast_feed, user_id).await
+    let episodes = state
+        .db_pool
+        .parse_feed_episodes(&query.podcast_feed, user_id)
+        .await
         .map_err(|e| AppError::external_error(&format!("Failed to parse podcast feed: {}", e)))?;
-    
+
     Ok(Json(serde_json::json!({ "episodes": episodes })))
 }
