@@ -114,6 +114,24 @@ pub fn feed() -> Html {
                                     state.queued_episode_ids = Some(queued_episode_ids);
                                     state.downloaded_episode_ids = Some(downloaded_episode_ids);
                                 });
+
+                                // Fetch local episode IDs for Tauri mode
+                                #[cfg(not(feature = "server_build"))]
+                                {
+                                    let dispatch_local = dispatch.clone();
+                                    wasm_bindgen_futures::spawn_local(async move {
+                                        if let Ok(local_episodes) = crate::components::downloads_tauri::fetch_local_episodes().await {
+                                            let local_episode_ids: Vec<i32> = local_episodes
+                                                .iter()
+                                                .map(|ep| ep.episodeid)
+                                                .collect();
+                                            dispatch_local.reduce_mut(move |state| {
+                                                state.locally_downloaded_episodes = Some(local_episode_ids);
+                                            });
+                                        }
+                                    });
+                                }
+
                                 loading_ep.set(false);
                             }
                             Err(e) => {
