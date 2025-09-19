@@ -13,11 +13,6 @@ on:
       version:
         description: "Manual override version tag (optional)"
         required: false
-      commit_version:
-        description: "Commit version update to git"
-        type: boolean
-        default: false
-        required: false
 
 jobs:
   build:
@@ -63,40 +58,15 @@ jobs:
           echo "storeFile=../upload-keystore.jks" >> key.properties
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > upload-keystore.jks
 
-      - name: Update app version
+      - name: Verify version files
         run: |
           cd mobile
-          # Update pubspec.yaml version to use Flutter format (version+build)
-          if [[ "$IMAGE_TAG" != "latest" ]]; then
-            # Remove 'v' prefix if present and create build number from git count with offset
-            VERSION_NAME=${IMAGE_TAG#v}
-            BUILD_NUMBER=$(($(git rev-list --count HEAD) + 20250000))
-            sed -i "s/^version: .*/version: ${VERSION_NAME}+${BUILD_NUMBER}/" pubspec.yaml
-            
-            # Also update environment.dart constants
-            sed -i "s/static const _projectVersion = '[^']*';/static const _projectVersion = '${VERSION_NAME}';/" lib/core/environment.dart
-            sed -i "s/static const _build = '[^']*';/static const _build = '${BUILD_NUMBER}';/" lib/core/environment.dart
-            
-            echo "Updated version to ${VERSION_NAME}+${BUILD_NUMBER}"
-          fi
+          echo "Current version in pubspec.yaml:"
+          grep "^version:" pubspec.yaml
+          echo "Current version in environment.dart:"
+          grep "_projectVersion\|_build" lib/core/environment.dart
+          echo "Build will use versions exactly as they are in the repository"
 
-      - name: Commit version update
-        if: github.event_name == 'release' || github.event.inputs.commit_version == 'true'
-        run: |
-          cd mobile
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add pubspec.yaml lib/core/environment.dart
-          if ! git diff --staged --quiet; then
-            # Use the correct tag name based on trigger type
-            if [[ "${{ github.event_name }}" == "release" ]]; then
-              TAG_NAME="${{ github.event.release.tag_name }}"
-            else
-              TAG_NAME="${{ github.event.inputs.version || env.IMAGE_TAG }}"
-            fi
-            git commit -m "chore: update version to ${TAG_NAME} [skip ci]"
-            git push
-          fi
 
       - name: Build APK
         run: |
