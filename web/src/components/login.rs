@@ -417,7 +417,11 @@ pub fn login() -> Html {
                 )
                 .await
                 {
-                    Ok(login_requests::LoginResult::Success(user_details, login_request, server_details)) => {
+                    Ok(login_requests::LoginResult::Success(
+                        user_details,
+                        login_request,
+                        server_details,
+                    )) => {
                         // After user login, update the image URL with user's email from user_details
                         let gravatar_url = generate_gravatar_url(&user_details.Email, 80); // 80 is the image size
                         let key_copy = login_request.clone();
@@ -568,19 +572,19 @@ pub fn login() -> Html {
                             }
                         }
                     }
-                    Ok(login_requests::LoginResult::MfaRequired { 
-                        server_name: mfa_server, 
-                        username: _mfa_username, 
-                        user_id: mfa_user_id, 
-                        mfa_session_token: session_token 
+                    Ok(login_requests::LoginResult::MfaRequired {
+                        server_name: mfa_server,
+                        username: _mfa_username,
+                        user_id: mfa_user_id,
+                        mfa_session_token: session_token,
                     }) => {
                         // Store MFA session data for the MFA prompt
                         temp_server_name.set(mfa_server.clone());
                         temp_user_id.set(mfa_user_id);
                         mfa_session_token.set(session_token);
-                        
+
                         console::log_1(&"MFA required - transitioning to MFA prompt".into());
-                        
+
                         // Set page state to show MFA prompt
                         page_state.set(PageState::MFAPrompt);
                     }
@@ -896,19 +900,17 @@ pub fn login() -> Html {
         let page_state = page_state.clone();
         let forgot_username = forgot_username.clone().to_string();
         let forgot_email = forgot_email.clone().to_string();
-        let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: yew::events::MouseEvent| {
             e.prevent_default();
             let window = window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location.href().expect("should have a href");
             let server_name = server_name.trim_end_matches('/').to_string();
-            let dispatch = dispatch_wasm.clone();
             let page_state = page_state.clone();
-            
+
             // Show loading state immediately
             page_state.set(PageState::ForgotPasswordLoading);
-            
+
             let reset_code_request = Some(ResetCodePayload {
                 username: forgot_username.clone(),
                 email: forgot_email.clone(),
@@ -923,7 +925,7 @@ pub fn login() -> Html {
                         page_state.set(PageState::EnterCode);
                     }
                     Err(_e) => {
-                        // Still show success for security - prevents user enumeration 
+                        // Still show success for security - prevents user enumeration
                         page_state.set(PageState::EnterCode);
                     }
                 }
@@ -1007,34 +1009,36 @@ pub fn login() -> Html {
         Callback::from(move |_e: yew::events::MouseEvent| {
             let dispatch = dispatch_wasm.clone();
             let page_state = page_state.clone();
-            
+
             // Validate password confirmation
             if reset_password.is_empty() || reset_password_confirm.is_empty() {
                 dispatch.reduce_mut(|state| {
-                    state.error_message = Option::from("Please fill in both password fields".to_string());
+                    state.error_message =
+                        Option::from("Please fill in both password fields".to_string());
                 });
                 return;
             }
-            
+
             if reset_password != reset_password_confirm {
                 dispatch.reduce_mut(|state| {
                     state.error_message = Option::from("Passwords do not match".to_string());
                 });
                 return;
             }
-            
+
             if reset_code.is_empty() {
                 dispatch.reduce_mut(|state| {
-                    state.error_message = Option::from("Please enter the reset code from your email".to_string());
+                    state.error_message =
+                        Option::from("Please enter the reset code from your email".to_string());
                 });
                 return;
             }
-            
+
             let window = window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location.href().expect("should have a href");
             let server_name = server_name.trim_end_matches('/').to_string();
-            
+
             match encode_password(&reset_password) {
                 Ok(hash_pw) => {
                     let reset_password_request = Some(ResetForgotPasswordPayload {
@@ -1402,18 +1406,16 @@ pub fn login() -> Html {
         let mfa_code = mfa_code.clone();
         let mfa_session_token = mfa_session_token.clone();
         let temp_server_name = temp_server_name.clone();
-        let temp_user_id = temp_user_id.clone();
         let history = history.clone();
-        
+
         Callback::from(move |e: MouseEvent| {
             let dispatch = dispatch.clone();
             let mfa_code = mfa_code.clone();
             let mfa_session_token = mfa_session_token.clone();
             let temp_server_name = temp_server_name.clone();
-            let temp_user_id = temp_user_id.clone();
             let page_state = page_state.clone();
             let history = history.clone();
-            
+
             e.prevent_default();
 
             wasm_bindgen_futures::spawn_local(async move {
@@ -1429,18 +1431,18 @@ pub fn login() -> Html {
                     Ok((user_details, login_request, server_details)) => {
                         // MFA verified successfully - complete the login process
                         let gravatar_url = generate_gravatar_url(&user_details.Email, 80);
-                        
+
                         // Extract values for theme/time/startpage operations before moving into closure
                         let server_name = login_request.server_name.clone();
                         let api_key = login_request.api_key.clone().unwrap();
                         let user_id = user_details.UserID;
-                        
+
                         dispatch.reduce_mut(move |state| {
                             state.user_details = Some(user_details);
                             state.auth_details = Some(login_request);
                             state.server_details = Some(server_details);
                             state.gravatar_url = Some(gravatar_url);
-                            
+
                             state.store_app_state();
                         });
 
@@ -1455,13 +1457,7 @@ pub fn login() -> Html {
                         let theme_api = api_key.clone();
                         let theme_server = server_name.clone();
                         wasm_bindgen_futures::spawn_local(async move {
-                            match call_get_theme(
-                                theme_server,
-                                theme_api,
-                                &user_id,
-                            )
-                            .await
-                            {
+                            match call_get_theme(theme_server, theme_api, &user_id).await {
                                 Ok(theme) => {
                                     crate::components::setting_components::theme_options::changeTheme(&theme);
                                     // Update local storage with the new theme
@@ -1484,13 +1480,7 @@ pub fn login() -> Html {
                         let time_server = server_name.clone();
                         let time_api = api_key.clone();
                         wasm_bindgen_futures::spawn_local(async move {
-                            match call_get_time_info(
-                                time_server,
-                                time_api,
-                                &user_id,
-                            )
-                            .await
-                            {
+                            match call_get_time_info(time_server, time_api, &user_id).await {
                                 Ok(tz_response) => {
                                     dispatch.reduce_mut(move |state| {
                                         state.user_tz = Some(tz_response.timezone);
@@ -1516,8 +1506,9 @@ pub fn login() -> Html {
                             // First check for requested route
                             let window = web_sys::window().expect("no global `window` exists");
                             let session_storage = window.session_storage().unwrap().unwrap();
-                            let requested_route = session_storage.get_item("requested_route").unwrap_or(None);
-                            
+                            let requested_route =
+                                session_storage.get_item("requested_route").unwrap_or(None);
+
                             if let Some(route) = requested_route {
                                 startpage_history.push(&route);
                                 return;

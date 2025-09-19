@@ -173,7 +173,7 @@ pub fn settings() -> Html {
             <div class="my-4">
                 <div class="settings-header">
                     <h1 class="item_container-text text-2xl font-bold">{ "Settings" }</h1>
-                    <div class="inline-flex tab-background p-1 rounded-lg bg-opacity-10">
+                    <div class="inline-flex tab-background p-1 rounded-lg bg-opacity-10 w-fit">
                         <Tab
                             is_active={*active_tab == "user"}
                             class="text-base"

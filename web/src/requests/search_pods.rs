@@ -1,6 +1,6 @@
 use crate::components::podcast_layout::ClickedFeedURL;
 use anyhow::Error;
-use chrono::{DateTime, Offset};
+use chrono::DateTime;
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
@@ -85,8 +85,8 @@ impl From<ITunesPodcast> for UnifiedPodcast {
             id: podcast.trackId,
             index_id: 0,
             title: podcast.trackName,
-            url: podcast.feedUrl.clone(),
-            originalUrl: podcast.feedUrl,
+            url: podcast.feedUrl.clone().unwrap_or_default(),
+            originalUrl: podcast.feedUrl.unwrap_or_default(),
             author: podcast.artistName.clone(),
             ownerName: podcast.artistName,
             description: String::from("Descriptions not provided by iTunes"),
@@ -139,7 +139,7 @@ pub struct ITunesPodcast {
     pub(crate) artistName: String,
     pub(crate) trackName: String,
     pub(crate) collectionViewUrl: String,
-    pub(crate) feedUrl: String,
+    pub(crate) feedUrl: Option<String>,
     pub(crate) artworkUrl100: String,
     pub(crate) releaseDate: String,
     pub(crate) genres: Vec<String>,
@@ -550,33 +550,36 @@ pub async fn call_parse_podcast_url(
         .await?;
     if request.ok() {
         let response_text = request.text().await?;
-        
+
         // Parse JSON response from backend (feed-rs parsed data)
         let json_response: serde_json::Value = serde_json::from_str(&response_text)?;
-        let episodes_json = json_response["episodes"].as_array()
+        let episodes_json = json_response["episodes"]
+            .as_array()
             .ok_or_else(|| anyhow::Error::msg("Invalid response format: missing episodes array"))?;
-        
+
         // Convert JSON episodes to Episode structs
         let mut episodes: Vec<Episode> = episodes_json
             .iter()
-            .map(|episode_json| {
-                Episode {
-                    title: episode_json["title"].as_str().map(|s| s.to_string()),
-                    description: episode_json["description"].as_str().map(|s| s.to_string()),
-                    content: episode_json["content"].as_str().map(|s| s.to_string()),
-                    enclosure_url: episode_json["enclosure_url"].as_str().map(|s| s.to_string()),
-                    enclosure_length: episode_json["enclosure_length"].as_str().map(|s| s.to_string()),
-                    pub_date: episode_json["pub_date"].as_str().map(|s| s.to_string()),
-                    artwork: episode_json["artwork"].as_str().map(|s| s.to_string()),
-                    duration: episode_json["duration"].as_i64().map(|d| d.to_string()),
-                    links: vec![],
-                    authors: vec![],
-                    guid: episode_json["guid"].as_str().map(|s| s.to_string()),
-                    episode_id: None,
-                    is_youtube: Some(false),
-                    completed: None,
-                    listen_duration: None,
-                }
+            .map(|episode_json| Episode {
+                title: episode_json["title"].as_str().map(|s| s.to_string()),
+                description: episode_json["description"].as_str().map(|s| s.to_string()),
+                content: episode_json["content"].as_str().map(|s| s.to_string()),
+                enclosure_url: episode_json["enclosure_url"]
+                    .as_str()
+                    .map(|s| s.to_string()),
+                enclosure_length: episode_json["enclosure_length"]
+                    .as_str()
+                    .map(|s| s.to_string()),
+                pub_date: episode_json["pub_date"].as_str().map(|s| s.to_string()),
+                artwork: episode_json["artwork"].as_str().map(|s| s.to_string()),
+                duration: episode_json["duration"].as_i64().map(|d| d.to_string()),
+                links: vec![],
+                authors: vec![],
+                guid: episode_json["guid"].as_str().map(|s| s.to_string()),
+                episode_id: None,
+                is_youtube: Some(false),
+                completed: None,
+                listen_duration: None,
             })
             .collect();
 

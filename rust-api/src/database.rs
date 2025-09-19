@@ -10270,12 +10270,18 @@ impl DatabasePool {
             }
         }
         
-        // Perform initial full sync for external GPodder server to get ALL user subscriptions
-        if let Some(device_name) = &default_device_name {
-            if let Err(e) = self.call_gpodder_initial_full_sync(user_id, gpodder_url, username, password, device_name).await {
-                tracing::warn!("Initial GPodder full sync failed during external server setup: {}", e);
-                // Don't fail setup if initial sync fails
-            }
+        // Spawn initial full sync as background task to avoid blocking the API response
+        if let Some(device_name) = default_device_name.clone() {
+            let pool_clone = self.clone();
+            let gpodder_url_owned = gpodder_url.to_string();
+            let username_owned = username.to_string();
+            let password_owned = password.to_string();
+            
+            tokio::spawn(async move {
+                if let Err(e) = pool_clone.call_gpodder_initial_full_sync(user_id, &gpodder_url_owned, &username_owned, &password_owned, &device_name).await {
+                    tracing::warn!("Initial GPodder full sync failed during external server setup: {}", e);
+                }
+            });
         }
         
         Ok(true)
