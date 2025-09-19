@@ -6,10 +6,9 @@ use super::gen_components::{
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
-use crate::components::episodes_layout::AppStateMsg;
 use crate::components::gen_funcs::{
-    format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
-    get_filter_preference, set_filter_preference, get_default_sort_direction,
+    format_datetime, get_default_sort_direction, get_filter_preference, match_date_format,
+    parse_date, sanitize_html_with_blank_target, set_filter_preference,
 };
 use crate::requests::pod_req::{self, HistoryDataResponse};
 use gloo::events::EventListener;
@@ -36,16 +35,14 @@ pub enum HistorySortDirection {
 #[function_component(PodHistory)]
 pub fn history() -> Html {
     let (state, dispatch) = use_store::<AppState>();
-    let history = BrowserHistory::new();
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let dropdown_open = use_state(|| false);
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
 
     let episode_search_term = use_state(|| String::new());
-    
+
     // Initialize sort direction from local storage or default to newest first
     let episode_sort_direction = use_state(|| {
         let saved_preference = get_filter_preference("history");
@@ -59,7 +56,7 @@ pub fn history() -> Html {
             _ => Some(HistorySortDirection::NewestFirst), // Default to newest first
         }
     });
-    
+
     let show_completed = use_state(|| false); // Toggle for showing completed episodes only
     let show_in_progress = use_state(|| false); // Toggle for showing in-progress episodes only
 
@@ -185,8 +182,6 @@ pub fn history() -> Html {
         },
     );
 
-    let show_in_prog_button = show_in_progress.clone();
-
     html! {
         <>
         <div class="main-container">
@@ -243,10 +238,10 @@ pub fn history() -> Html {
                                                 Callback::from(move |e: Event| {
                                                     let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
                                                     let value = target.value();
-                                                    
+
                                                     // Save preference to local storage
                                                     set_filter_preference("history", &value);
-                                                    
+
                                                     match value.as_str() {
                                                         "newest" => episode_sort_direction.set(Some(HistorySortDirection::NewestFirst)),
                                                         "oldest" => episode_sort_direction.set(Some(HistorySortDirection::OldestFirst)),
@@ -431,37 +426,42 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
             if let Some(container) = container_ref.cast::<HtmlElement>() {
                 let scroll_pos_clone = scroll_pos.clone();
                 let is_updating = std::rc::Rc::new(std::cell::RefCell::new(false));
-                
+
                 let scroll_listener = EventListener::new(&container, "scroll", move |event| {
                     // Prevent re-entrant calls that cause feedback loops
                     if *is_updating.borrow() {
                         return;
                     }
-                    
+
                     if let Some(target) = event.target() {
                         if let Ok(element) = target.dyn_into::<Element>() {
                             let new_scroll_top = element.scroll_top() as f64;
                             let old_scroll_top = *scroll_pos_clone;
-                            
+
                             // Always update scroll position for smoothest scrolling
                             if new_scroll_top != old_scroll_top {
                                 *is_updating.borrow_mut() = true;
-                                
+
                                 // Use requestAnimationFrame to batch updates and prevent feedback
                                 let scroll_pos_clone2 = scroll_pos_clone.clone();
                                 let is_updating_clone = is_updating.clone();
-                                let callback = wasm_bindgen::closure::Closure::wrap(Box::new(move || {
-                                    scroll_pos_clone2.set(new_scroll_top);
-                                    *is_updating_clone.borrow_mut() = false;
-                                }) as Box<dyn FnMut()>);
-                                
-                                web_sys::window().unwrap().request_animation_frame(callback.as_ref().unchecked_ref()).unwrap();
+                                let callback =
+                                    wasm_bindgen::closure::Closure::wrap(Box::new(move || {
+                                        scroll_pos_clone2.set(new_scroll_top);
+                                        *is_updating_clone.borrow_mut() = false;
+                                    })
+                                        as Box<dyn FnMut()>);
+
+                                web_sys::window()
+                                    .unwrap()
+                                    .request_animation_frame(callback.as_ref().unchecked_ref())
+                                    .unwrap();
                                 callback.forget();
                             }
                         }
                     }
                 });
-                
+
                 Box::new(move || {
                     drop(scroll_listener);
                 }) as Box<dyn FnOnce()>
@@ -473,7 +473,7 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
 
     let start_index = (*scroll_pos / *item_height).floor() as usize;
     let visible_count = ((*container_height / *item_height).ceil() as usize) + 1;
-    
+
     // Add buffer episodes above and below for smooth scrolling
     let buffer_size = 2; // Render 2 extra episodes above and below
     let buffered_start = start_index.saturating_sub(buffer_size);
@@ -503,12 +503,12 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
         >
             // Top spacer to push content down without using transforms
             <div style={format!("height: {}px; flex-shrink: 0;", offset_y)}></div>
-            
-            // Visible episodes 
+
+            // Visible episodes
             <div>
                 { visible_episodes }
             </div>
-            
+
             // Bottom spacer to maintain total height
             <div style={format!("height: {}px; flex-shrink: 0;", total_height - offset_y - (buffered_end - buffered_start) as f64 * *item_height)}></div>
         </div>
@@ -531,7 +531,7 @@ pub struct HistoryEpisodeProps {
 pub fn history_episode(props: &HistoryEpisodeProps) -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
-    let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
+    let (_desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());

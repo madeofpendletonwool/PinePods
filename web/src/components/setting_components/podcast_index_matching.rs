@@ -1,7 +1,6 @@
 use crate::components::context::AppState;
 use crate::components::gen_components::FallbackImage;
-use crate::components::gen_funcs::format_error_message;
-use crate::requests::search_pods::{call_get_podcast_info, PodcastSearchResult, UnifiedPodcast};
+use crate::requests::search_pods::{call_get_podcast_info, UnifiedPodcast};
 use crate::requests::setting_reqs::{
     call_get_ignored_podcasts, call_get_unmatched_podcasts, call_ignore_podcast_index_id,
     call_update_podcast_index_id, UnmatchedPodcast,

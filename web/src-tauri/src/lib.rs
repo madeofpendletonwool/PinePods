@@ -2,7 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use directories::ProjectDirs;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
 use std::fs::OpenOptions;
@@ -10,6 +11,51 @@ use std::io::copy;
 use std::io::Write;
 use std::path::PathBuf;
 use tauri::command;
+
+fn deserialize_categories<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    struct CategoriesVisitor;
+
+    impl<'de> Visitor<'de> for CategoriesVisitor {
+        type Value = HashMap<String, String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a string or a map")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            // Convert comma-separated string to HashMap
+            let mut map = HashMap::new();
+            if !value.is_empty() && value != "{}" {
+                for (i, category) in value.split(',').enumerate() {
+                    map.insert(i.to_string(), category.trim().to_string());
+                }
+            }
+            Ok(map)
+        }
+
+        fn visit_map<M>(self, mut map: M) -> Result<Self::Value, M::Error>
+        where
+            M: de::MapAccess<'de>,
+        {
+            let mut categories = HashMap::new();
+            while let Some((key, value)) = map.next_entry()? {
+                categories.insert(key, value);
+            }
+            Ok(categories)
+        }
+    }
+
+    deserializer.deserialize_any(CategoriesVisitor)
+}
 
 // Define the structure for the file entries
 #[derive(Serialize, Deserialize)]
@@ -150,7 +196,10 @@ async fn update_local_db(mut episode_info: EpisodeInfo) -> Result<(), String> {
         Vec::new()
     };
 
-    episodes.push(episode_info);
+    // Check if episode already exists before adding
+    if !episodes.iter().any(|ep| ep.episodeid == episode_info.episodeid) {
+        episodes.push(episode_info);
+    }
 
     let file = OpenOptions::new()
         .write(true)
@@ -159,6 +208,51 @@ async fn update_local_db(mut episode_info: EpisodeInfo) -> Result<(), String> {
         .open(&db_path)
         .map_err(|e| e.to_string())?;
     serde_json::to_writer(file, &episodes).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[command]
+async fn remove_multiple_from_local_db(episode_ids: Vec<i32>) -> Result<(), String> {
+    let proj_dirs = get_project_dirs().map_err(|e| e.to_string())?;
+    let db_path = proj_dirs.data_dir().join("local_episodes.json");
+
+    let mut episodes = if db_path.exists() {
+        let data = std::fs::read_to_string(&db_path).map_err(|e| e.to_string())?;
+        serde_json::from_str::<Vec<EpisodeInfo>>(&data).map_err(|e| e.to_string())?
+    } else {
+        return Ok(()); // No episodes to remove if file doesn't exist
+    };
+
+    // Remove episodes with matching IDs
+    episodes.retain(|episode| !episode_ids.contains(&episode.episodeid));
+
+    // Write updated episodes back to file
+    let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&db_path)
+        .map_err(|e| e.to_string())?;
+    serde_json::to_writer(file, &episodes).map_err(|e| e.to_string())?;
+
+    // Delete the audio files and artwork for each episode
+    for episodeid in episode_ids {
+        let audio_file_path = proj_dirs
+            .data_dir()
+            .join(format!("episode_{}.mp3", episodeid));
+        let artwork_file_path = proj_dirs
+            .data_dir()
+            .join(format!("artwork_{}.jpg", episodeid));
+
+        if audio_file_path.exists() {
+            std::fs::remove_file(audio_file_path).map_err(|e| e.to_string())?;
+        }
+
+        if artwork_file_path.exists() {
+            std::fs::remove_file(artwork_file_path).map_err(|e| e.to_string())?;
+        }
+    }
 
     Ok(())
 }
@@ -200,6 +294,47 @@ async fn remove_from_local_db(episodeid: i32) -> Result<(), String> {
     if artwork_file_path.exists() {
         std::fs::remove_file(artwork_file_path).map_err(|e| e.to_string())?;
     }
+
+    Ok(())
+}
+
+#[command]
+async fn deduplicate_local_episodes() -> Result<(), String> {
+    let proj_dirs = get_project_dirs().map_err(|e| e.to_string())?;
+    let db_path = proj_dirs.data_dir().join("local_episodes.json");
+
+    if !db_path.exists() {
+        return Ok(());
+    }
+
+    let data = std::fs::read_to_string(&db_path).map_err(|e| e.to_string())?;
+    let episodes = match serde_json::from_str::<Vec<EpisodeInfo>>(&data) {
+        Ok(eps) => eps,
+        Err(e) => {
+            println!("JSON parsing error: {}, resetting file", e);
+            std::fs::write(&db_path, "[]").map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+    };
+
+    // Remove duplicates based on episodeid
+    let mut unique_episodes = Vec::new();
+    let mut seen_ids = HashSet::new();
+
+    for episode in episodes {
+        if seen_ids.insert(episode.episodeid) {
+            unique_episodes.push(episode);
+        }
+    }
+
+    // Write back the deduplicated episodes
+    let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&db_path)
+        .map_err(|e| e.to_string())?;
+    serde_json::to_writer(file, &unique_episodes).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -287,7 +422,8 @@ pub struct PodcastDetails {
     pub podcastindexid: Option<i64>,
     pub artworkurl: String,
     pub author: String,
-    pub categories: String,
+    #[serde(deserialize_with = "deserialize_categories")]
+    pub categories: HashMap<String, String>,
     pub description: String,
     pub episodecount: i32,
     pub explicit: bool,
@@ -339,7 +475,8 @@ pub struct Podcast {
     pub websiteurl: Option<String>,
     pub feedurl: String,
     pub author: Option<String>,
-    pub categories: String, // Keeping as String since it's handled as empty string "{}" or "{}"
+    #[serde(deserialize_with = "deserialize_categories")]
+    pub categories: HashMap<String, String>,
     pub explicit: bool,
     // pub is_youtube: bool,
 }
@@ -412,9 +549,11 @@ pub fn run() {
             delete_file,
             update_local_db,
             remove_from_local_db,
+            remove_multiple_from_local_db,
             update_podcast_db,
             get_local_podcasts,
             get_local_episodes,
+            deduplicate_local_episodes,
             list_app_files,
             get_local_file,
             start_file_server
