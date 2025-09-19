@@ -114,7 +114,7 @@ pub fn pod_layout() -> Html {
                 {
                     if let Some(results) = search_results {
                         let podcasts = results.feeds.as_ref().map_or_else(
-                            || results.results.as_ref().map(|r| r.iter().map(|item| item.clone().into()).collect::<Vec<UnifiedPodcast>>()),
+                            || results.results.as_ref().map(|r| r.iter().filter(|item| item.feedUrl.is_some()).map(|item| item.clone().into()).collect::<Vec<UnifiedPodcast>>()),
                             |f| Some(f.iter().map(|item| item.clone().into()).collect::<Vec<UnifiedPodcast>>())
                         );
 
