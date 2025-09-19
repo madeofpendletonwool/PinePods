@@ -1,0 +1,53 @@
+name: Pre-Release Version Update
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to set (e.g., 0.8.0)"
+        required: true
+        type: string
+
+jobs:
+  update-version:
+    name: Update Version Files
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update app version
+        run: |
+          cd mobile
+          VERSION_NAME=${{ github.event.inputs.version }}
+          # Calculate what the git count WILL BE after we commit (current + 1)
+          BUILD_NUMBER=$(($(git rev-list --count HEAD) + 1 + 20250000))
+          
+          # Update pubspec.yaml version
+          sed -i "s/^version: .*/version: ${VERSION_NAME}+${BUILD_NUMBER}/" pubspec.yaml
+          
+          # Update environment.dart constants
+          sed -i "s/static const _projectVersion = '[^']*';/static const _projectVersion = '${VERSION_NAME}';/" lib/core/environment.dart
+          sed -i "s/static const _build = '[^']*';/static const _build = '${BUILD_NUMBER}';/" lib/core/environment.dart
+          
+          echo "Updated version to ${VERSION_NAME}+${BUILD_NUMBER}"
+
+      - name: Commit and push version update
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add mobile/pubspec.yaml mobile/lib/core/environment.dart
+          git commit -m "chore: update version to ${{ github.event.inputs.version }} [skip ci]"
+          git push
+
+      - name: Summary
+        run: |
+          echo "✅ Version updated to ${{ github.event.inputs.version }}"
+          echo "📋 Next steps:"
+          echo "1. Create a GitHub release pointing to the latest commit"
+          echo "2. The release workflow will build from that exact commit"
+          echo "3. Version files will match the commit for reproducible builds"
