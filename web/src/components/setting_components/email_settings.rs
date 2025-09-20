@@ -1,7 +1,7 @@
 use crate::components::context::AppState;
 use crate::requests::setting_reqs::{
-    call_get_email_settings, call_save_email_settings, call_send_test_email,
-    EmailSettingsResponse, TestEmailSettings,
+    call_get_email_settings, call_save_email_settings, call_send_test_email, EmailSettingsResponse,
+    TestEmailSettings,
 };
 use std::ops::Deref;
 use yew::platform::spawn_local;
@@ -16,18 +16,18 @@ pub fn email_settings() -> Html {
     let user_email = state.user_details.as_ref().map(|ud| ud.Email.clone());
 
     // Current settings from database
-    let current_settings: UseStateHandle<EmailSettingsResponse> = use_state(EmailSettingsResponse::default);
-    
+    let current_settings: UseStateHandle<EmailSettingsResponse> =
+        use_state(EmailSettingsResponse::default);
+
     // Form inputs
     let form_server_name = use_state(|| "".to_string());
     let form_server_port = use_state(|| "587".to_string());
     let form_from_email = use_state(|| "".to_string());
-    let form_send_mode = use_state(|| "SMTP".to_string());
     let form_encryption = use_state(|| "StartTLS".to_string());
     let form_username = use_state(|| "".to_string());
     let form_password = use_state(|| "".to_string());
     let form_auth_required = use_state(|| true);
-    
+
     // UI state
     let is_testing = use_state(|| false);
     let test_success = use_state(|| false);
@@ -43,7 +43,7 @@ pub fn email_settings() -> Html {
         let form_username = form_username.clone();
         let form_auth_required = form_auth_required.clone();
         let dispatch = dispatch.clone();
-        
+
         use_effect_with(
             (api_key.clone(), server_name.clone()),
             move |(api_key, server_name)| {
@@ -57,7 +57,7 @@ pub fn email_settings() -> Html {
                 let api_key = api_key.clone();
                 let server_name = server_name.clone();
                 let dispatch = dispatch.clone();
-                
+
                 spawn_local(async move {
                     if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
                         match call_get_email_settings(server_name, api_key.unwrap()).await {
@@ -73,7 +73,8 @@ pub fn email_settings() -> Html {
                             }
                             Err(e) => {
                                 dispatch.reduce_mut(|state| {
-                                    state.error_message = Some(format!("Error loading email settings: {}", e));
+                                    state.error_message =
+                                        Some(format!("Error loading email settings: {}", e));
                                 });
                             }
                         }
@@ -88,21 +89,30 @@ pub fn email_settings() -> Html {
     let on_server_name_change = {
         let form_server_name = form_server_name.clone();
         Callback::from(move |e: InputEvent| {
-            form_server_name.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            form_server_name.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
 
     let on_server_port_change = {
         let form_server_port = form_server_port.clone();
         Callback::from(move |e: InputEvent| {
-            form_server_port.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            form_server_port.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
 
     let on_from_email_change = {
         let form_from_email = form_from_email.clone();
         Callback::from(move |e: InputEvent| {
-            form_from_email.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            form_from_email.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
 
@@ -117,14 +127,20 @@ pub fn email_settings() -> Html {
     let on_username_change = {
         let form_username = form_username.clone();
         Callback::from(move |e: InputEvent| {
-            form_username.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            form_username.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
 
     let on_password_change = {
         let form_password = form_password.clone();
         Callback::from(move |e: InputEvent| {
-            form_password.set(e.target_unchecked_into::<web_sys::HtmlInputElement>().value());
+            form_password.set(
+                e.target_unchecked_into::<web_sys::HtmlInputElement>()
+                    .value(),
+            );
         })
     };
 
@@ -170,9 +186,9 @@ pub fn email_settings() -> Html {
                 is_testing.set(true);
                 test_success.set(false);
 
-                if let (Some(api_key), Some(server_name), Some(user_email)) = 
-                    (api_key, server_name, user_email) {
-                    
+                if let (Some(api_key), Some(server_name), Some(user_email)) =
+                    (api_key, server_name, user_email)
+                {
                     let test_settings = TestEmailSettings {
                         server_name: form_server_name.deref().clone(),
                         server_port: form_server_port.deref().clone(),
@@ -190,12 +206,15 @@ pub fn email_settings() -> Html {
                         Ok(_) => {
                             test_success.set(true);
                             dispatch.reduce_mut(|state| {
-                                state.info_message = Some("Test email sent successfully! Check your inbox.".to_string());
+                                state.info_message = Some(
+                                    "Test email sent successfully! Check your inbox.".to_string(),
+                                );
                             });
                         }
                         Err(e) => {
                             dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!("Failed to send test email: {}", e));
+                                state.error_message =
+                                    Some(format!("Failed to send test email: {}", e));
                             });
                         }
                     }
@@ -247,15 +266,19 @@ pub fn email_settings() -> Html {
                         email_password: form_password.deref().clone(),
                     };
 
-                    match call_save_email_settings(server_name, api_key.unwrap(), email_settings).await {
+                    match call_save_email_settings(server_name, api_key.unwrap(), email_settings)
+                        .await
+                    {
                         Ok(_) => {
                             dispatch.reduce_mut(|state| {
-                                state.info_message = Some("Email settings saved successfully!".to_string());
+                                state.info_message =
+                                    Some("Email settings saved successfully!".to_string());
                             });
                         }
                         Err(e) => {
                             dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!("Failed to save email settings: {}", e));
+                                state.error_message =
+                                    Some(format!("Failed to save email settings: {}", e));
                             });
                         }
                     }
@@ -308,7 +331,7 @@ pub fn email_settings() -> Html {
             // Settings Form
             <div class="space-y-6">
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{"Update Settings"}</h3>
-                
+
                 // Server Configuration
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>

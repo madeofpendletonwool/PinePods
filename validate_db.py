@@ -15,11 +15,11 @@ def main():
     db_user = os.environ.get('DB_USER', 'postgres' if db_type == 'postgresql' else 'root')
     db_password = os.environ.get('DB_PASSWORD', '')
     db_name = os.environ.get('DB_NAME', 'pinepods_database')
-
+    
     if not db_password:
         print("Error: DB_PASSWORD environment variable is required")
         sys.exit(1)
-
+    
     # Build command
     cmd = [
         sys.executable,
@@ -31,15 +31,15 @@ def main():
         '--db-password', db_password,
         '--db-name', db_name
     ]
-
+    
     # Add verbose flag if requested
     if '--verbose' in sys.argv or '-v' in sys.argv:
         cmd.append('--verbose')
-
+    
     print(f"Validating {db_type} database: {db_user}@{db_host}:{db_port}/{db_name}")
     print("Running database validation...")
     print()
-
+    
     # Run the validator
     result = subprocess.run(cmd)
     sys.exit(result.returncode)

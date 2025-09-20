@@ -304,6 +304,60 @@ class DatabaseMigrationManager:
                     applied.append("004")
                     logger.info("Detected existing schema for migration 004")
             
+            # Check for gpodder tables - if ANY exist, ALL gpodder migrations are applied
+            # (since they were created by the Go gpodder-api service and haven't changed)
+            gpodder_indicator_tables = ['"GpodderSyncMigrations"', '"GpodderSyncDeviceState"', 
+                                      '"GpodderSyncSubscriptions"', '"GpodderSyncSettings"', 
+                                      '"GpodderSessions"', '"GpodderSyncState"']
+            gpodder_migration_versions = ["100", "101", "102", "103", "104"]
+            
+            gpodder_tables_exist = False
+            for table in gpodder_indicator_tables:
+                table_name = table.strip('"')
+                if self.db_type == 'postgresql':
+                    cursor.execute("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables 
+                            WHERE table_schema = 'public' AND table_name = %s
+                        )
+                    """, (table_name,))
+                else:  # mysql
+                    cursor.execute("""
+                        SELECT COUNT(*) 
+                        FROM information_schema.tables 
+                        WHERE table_schema = DATABASE() AND table_name = %s
+                    """, (table_name,))
+                
+                if cursor.fetchone()[0]:
+                    gpodder_tables_exist = True
+                    break
+            
+            if gpodder_tables_exist:
+                for version in gpodder_migration_versions:
+                    if version not in applied:
+                        applied.append(version)
+                        logger.info(f"Detected existing gpodder tables, marking migration {version} as applied")
+            
+            # Check for PeopleEpisodes_backup table separately (migration 104)
+            backup_table = "PeopleEpisodes_backup"
+            if self.db_type == 'postgresql':
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' AND table_name = %s
+                    )
+                """, (backup_table,))
+            else:  # mysql
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM information_schema.tables 
+                    WHERE table_schema = DATABASE() AND table_name = %s
+                """, (backup_table,))
+            
+            if cursor.fetchone()[0] and "104" not in applied:
+                applied.append("104")
+                logger.info("Detected existing PeopleEpisodes_backup table, marking migration 104 as applied")
+            
             return applied
             
         except Exception as e:

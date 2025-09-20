@@ -11,8 +11,7 @@ use crate::components::gen_funcs::{
 };
 use crate::requests::pod_req::{
     call_bulk_delete_downloaded_episodes, call_get_episode_downloads, call_get_podcasts,
-    BulkEpisodeActionRequest, DownloadEpisodeRequest, EpisodeDownload, EpisodeDownloadResponse,
-    Podcast, PodcastResponse,
+    BulkEpisodeActionRequest, EpisodeDownload, EpisodeDownloadResponse, Podcast, PodcastResponse,
 };
 use std::borrow::Borrow;
 use std::collections::HashMap;
@@ -206,9 +205,13 @@ pub fn downloads() -> Html {
             let user_id_cloned = user_id.unwrap();
 
             dispatch.reduce_mut(move |state| {
-                let selected_episodes: Vec<i32> = state.selected_episodes_for_deletion.iter().cloned().collect();
+                let selected_episodes: Vec<i32> = state
+                    .selected_episodes_for_deletion
+                    .iter()
+                    .cloned()
+                    .collect();
                 let is_youtube = state.selected_is_youtube.unwrap_or(false);
-                
+
                 // Clear the selected episodes for deletion right away to prevent re-deletion
                 state.selected_episodes_for_deletion.clear();
 
@@ -231,7 +234,9 @@ pub fn downloads() -> Html {
                             Ok(success_message) => {
                                 dispatch_for_future.reduce_mut(|state| {
                                     // Remove deleted episodes from the state
-                                    if let Some(downloaded_episodes) = &mut state.downloaded_episodes {
+                                    if let Some(downloaded_episodes) =
+                                        &mut state.downloaded_episodes
+                                    {
                                         downloaded_episodes.episodes.retain(|ep| {
                                             !selected_episodes.contains(&ep.episodeid)
                                         });
@@ -241,7 +246,8 @@ pub fn downloads() -> Html {
                             }
                             Err(e) => {
                                 dispatch_for_future.reduce_mut(|state| {
-                                    state.error_message = Some(format!("Failed to delete episodes: {}", e));
+                                    state.error_message =
+                                        Some(format!("Failed to delete episodes: {}", e));
                                 });
                             }
                         }

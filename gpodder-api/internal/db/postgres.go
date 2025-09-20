@@ -78,11 +78,9 @@ func NewPostgresDB(cfg config.DatabaseConfig) (*PostgresDB, error) {
 
 	fmt.Println("Successfully connected to the database")
 
-	// Run migrations to ensure schema is up to date
-	if err := RunMigrations(db, "postgresql"); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to run migrations: %w", err)
-	}
+	// Migrations are now handled by the Python migration system
+	// Skip Go migrations to avoid conflicts
+	fmt.Println("Skipping Go migrations - now handled by Python migration system")
 
 	return &PostgresDB{DB: db}, nil
 }
