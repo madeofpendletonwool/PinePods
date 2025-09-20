@@ -3436,8 +3436,6 @@ pub async fn manual_backup_to_directory(
 
                 reporter.update_progress(90.0, Some("Finalizing backup...".to_string())).await?;
 
-<<<<<<< HEAD
-=======
                 // Set file ownership using PUID/PGID environment variables
                 let puid: u32 = std::env::var("PUID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
                 let pgid: u32 = std::env::var("PGID").unwrap_or_else(|_| "1000".to_string()).parse().unwrap_or(1000);
@@ -3446,8 +3444,6 @@ pub async fn manual_backup_to_directory(
                 let _ = std::process::Command::new("chown")
                     .args(&[format!("{}:{}", puid, pgid), backup_path.clone()])
                     .output();
-
->>>>>>> 498cce0 (revert api warnings as chunk error)
                 // Check if backup file was created and get its size
                 let backup_info = match std::fs::metadata(&backup_path) {
                     Ok(metadata) => serde_json::json!({
