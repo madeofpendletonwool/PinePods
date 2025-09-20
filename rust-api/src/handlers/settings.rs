@@ -3444,6 +3444,7 @@ pub async fn manual_backup_to_directory(
                 let _ = std::process::Command::new("chown")
                     .args(&[format!("{}:{}", puid, pgid), backup_path.clone()])
                     .output();
+
                 // Check if backup file was created and get its size
                 let backup_info = match std::fs::metadata(&backup_path) {
                     Ok(metadata) => serde_json::json!({
