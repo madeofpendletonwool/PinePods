@@ -317,7 +317,6 @@ fn render_host_with_episodes(
     on_modal_close: Callback<MouseEvent>,
     active_modal: UseStateHandle<Option<i32>>,
 ) -> Html {
-    let episode_count = episodes.len();
     let history_clone = BrowserHistory::new();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -370,7 +369,7 @@ fn render_host_with_episodes(
                             api_key={api_key.clone()}
                         />
                         // Old episode rendering code (disabled for virtual scrolling)
-                        { if false { 
+                        { if false {
                             let _ = episodes.iter().map(|episode| {
                             let id_string = episode.episodeid.to_string();
                             let desc_expanded = desc_rc.expanded_descriptions.contains(&id_string);

@@ -10,6 +10,7 @@ attempts = 0
 
 [environment]
 keep-env = true
+additional = { PUID = "${PUID}", PGID = "${PGID}" }
 
 [termination]
 signal = "TERM"

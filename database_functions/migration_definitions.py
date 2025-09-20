@@ -2563,6 +2563,418 @@ def migration_029_fix_people_episodes_table_schema(conn, db_type: str):
         cursor.close()
 
 
+# ============================================================================
+# GPODDER SYNC MIGRATIONS
+# These migrations match the gpodder-api service migrations from Go code
+# ============================================================================
+
+@register_migration("100", "gpodder_initial_schema", "Create initial gpodder sync tables")
+def migration_100_gpodder_initial_schema(conn, db_type: str):
+    """Create initial gpodder sync schema - matches Go migration version 1"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting gpodder migration 100: Initial schema creation")
+        
+        if db_type == 'postgresql':
+            # Create all gpodder sync tables for PostgreSQL
+            tables_sql = [
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncMigrations" (
+                    Version INT PRIMARY KEY,
+                    Description TEXT NOT NULL,
+                    AppliedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncDeviceState" (
+                    DeviceStateID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    SubscriptionCount INT DEFAULT 0,
+                    LastUpdated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID)
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncSubscriptions" (
+                    SubscriptionID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    PodcastURL TEXT NOT NULL,
+                    Action VARCHAR(10) NOT NULL,
+                    Timestamp BIGINT NOT NULL,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncEpisodeActions" (
+                    ActionID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT,
+                    PodcastURL TEXT NOT NULL,
+                    EpisodeURL TEXT NOT NULL,
+                    Action VARCHAR(20) NOT NULL,
+                    Timestamp BIGINT NOT NULL,
+                    Started INT,
+                    Position INT,
+                    Total INT,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncPodcastLists" (
+                    ListID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(255) NOT NULL,
+                    Title VARCHAR(255) NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, Name)
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncPodcastListEntries" (
+                    EntryID SERIAL PRIMARY KEY,
+                    ListID INT NOT NULL,
+                    PodcastURL TEXT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (ListID) REFERENCES "GpodderSyncPodcastLists"(ListID) ON DELETE CASCADE
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncDevicePairs" (
+                    PairID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID1 INT NOT NULL,
+                    DeviceID2 INT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID1) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID2) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID1, DeviceID2)
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncSettings" (
+                    SettingID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Scope VARCHAR(20) NOT NULL,
+                    DeviceID INT,
+                    PodcastURL TEXT,
+                    EpisodeURL TEXT,
+                    SettingKey VARCHAR(255) NOT NULL,
+                    SettingValue TEXT,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    LastUpdated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE
+                )
+                '''
+            ]
+            
+            # Create indexes
+            indexes_sql = [
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sync_subscriptions_userid ON "GpodderSyncSubscriptions"(UserID)',
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sync_subscriptions_deviceid ON "GpodderSyncSubscriptions"(DeviceID)',
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sync_episode_actions_userid ON "GpodderSyncEpisodeActions"(UserID)',
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sync_podcast_lists_userid ON "GpodderSyncPodcastLists"(UserID)'
+            ]
+            
+        else:  # mysql
+            # Create all gpodder sync tables for MySQL
+            tables_sql = [
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncMigrations (
+                    Version INT PRIMARY KEY,
+                    Description TEXT NOT NULL,
+                    AppliedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncDeviceState (
+                    DeviceStateID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    SubscriptionCount INT DEFAULT 0,
+                    LastUpdated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID)
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncSubscriptions (
+                    SubscriptionID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    PodcastURL TEXT NOT NULL,
+                    Action VARCHAR(10) NOT NULL,
+                    Timestamp BIGINT NOT NULL,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncEpisodeActions (
+                    ActionID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT,
+                    PodcastURL TEXT NOT NULL,
+                    EpisodeURL TEXT NOT NULL,
+                    Action VARCHAR(20) NOT NULL,
+                    Timestamp BIGINT NOT NULL,
+                    Started INT,
+                    Position INT,
+                    Total INT,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncPodcastLists (
+                    ListID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Name VARCHAR(255) NOT NULL,
+                    Title VARCHAR(255) NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE(UserID, Name)
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncPodcastListEntries (
+                    EntryID INT AUTO_INCREMENT PRIMARY KEY,
+                    ListID INT NOT NULL,
+                    PodcastURL TEXT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (ListID) REFERENCES GpodderSyncPodcastLists(ListID) ON DELETE CASCADE
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncDevicePairs (
+                    PairID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID1 INT NOT NULL,
+                    DeviceID2 INT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID1) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID2) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID1, DeviceID2)
+                )
+                ''',
+                '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncSettings (
+                    SettingID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    Scope VARCHAR(20) NOT NULL,
+                    DeviceID INT,
+                    PodcastURL TEXT,
+                    EpisodeURL TEXT,
+                    SettingKey VARCHAR(255) NOT NULL,
+                    SettingValue TEXT,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    LastUpdated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE
+                )
+                '''
+            ]
+            
+            # Create indexes
+            indexes_sql = [
+                'CREATE INDEX idx_gpodder_sync_subscriptions_userid ON GpodderSyncSubscriptions(UserID)',
+                'CREATE INDEX idx_gpodder_sync_subscriptions_deviceid ON GpodderSyncSubscriptions(DeviceID)',
+                'CREATE INDEX idx_gpodder_sync_episode_actions_userid ON GpodderSyncEpisodeActions(UserID)',
+                'CREATE INDEX idx_gpodder_sync_podcast_lists_userid ON GpodderSyncPodcastLists(UserID)'
+            ]
+        
+        # Execute table creation
+        for sql in tables_sql:
+            safe_execute_sql(cursor, sql, conn=conn)
+        
+        # Execute index creation
+        for sql in indexes_sql:
+            safe_execute_sql(cursor, sql, conn=conn)
+        
+        logger.info("Created gpodder sync initial schema successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 100: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("101", "gpodder_add_api_version", "Add API version column to GpodderSyncSettings")
+def migration_101_gpodder_add_api_version(conn, db_type: str):
+    """Add API version column - matches Go migration version 2"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting gpodder migration 101: Add API version column")
+        
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "GpodderSyncSettings"
+                ADD COLUMN IF NOT EXISTS APIVersion VARCHAR(10) DEFAULT '2.0'
+            ''', conn=conn)
+        else:  # mysql
+            # Check if column exists first, then add if it doesn't
+            cursor.execute("""
+                SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'GpodderSyncSettings'
+                AND COLUMN_NAME = 'APIVersion'
+                AND TABLE_SCHEMA = DATABASE()
+            """)
+            
+            if cursor.fetchone()[0] == 0:
+                safe_execute_sql(cursor, '''
+                    ALTER TABLE GpodderSyncSettings
+                    ADD COLUMN APIVersion VARCHAR(10) DEFAULT '2.0'
+                ''', conn=conn)
+                logger.info("Added APIVersion column to GpodderSyncSettings")
+            else:
+                logger.info("APIVersion column already exists in GpodderSyncSettings")
+        
+        logger.info("Gpodder API version migration completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 101: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("102", "gpodder_create_sessions", "Create GpodderSessions table for API sessions")
+def migration_102_gpodder_create_sessions(conn, db_type: str):
+    """Create GpodderSessions table - matches Go migration version 3"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting gpodder migration 102: Create GpodderSessions table")
+        
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS "GpodderSessions" (
+                    SessionID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    SessionToken TEXT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ExpiresAt TIMESTAMP NOT NULL,
+                    LastActive TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UserAgent TEXT,
+                    ClientIP TEXT,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    UNIQUE(SessionToken)
+                )
+            ''', conn=conn)
+            
+            # Create indexes
+            indexes_sql = [
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sessions_token ON "GpodderSessions"(SessionToken)',
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sessions_userid ON "GpodderSessions"(UserID)',
+                'CREATE INDEX IF NOT EXISTS idx_gpodder_sessions_expires ON "GpodderSessions"(ExpiresAt)'
+            ]
+        else:  # mysql
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS GpodderSessions (
+                    SessionID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    SessionToken TEXT NOT NULL,
+                    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    ExpiresAt TIMESTAMP NOT NULL,
+                    LastActive TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UserAgent TEXT,
+                    ClientIP TEXT,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE
+                )
+            ''', conn=conn)
+            
+            # Create indexes
+            indexes_sql = [
+                'CREATE INDEX idx_gpodder_sessions_userid ON GpodderSessions(UserID)',
+                'CREATE INDEX idx_gpodder_sessions_expires ON GpodderSessions(ExpiresAt)'
+            ]
+        
+        # Execute index creation
+        for sql in indexes_sql:
+            safe_execute_sql(cursor, sql, conn=conn)
+        
+        logger.info("Created GpodderSessions table successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 102: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("103", "gpodder_sync_state_table", "Add sync state table for tracking device sync status")
+def migration_103_gpodder_sync_state_table(conn, db_type: str):
+    """Create GpodderSyncState table - matches Go migration version 4"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting gpodder migration 103: Add sync state table")
+        
+        if db_type == 'postgresql':
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS "GpodderSyncState" (
+                    SyncStateID SERIAL PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    LastTimestamp BIGINT DEFAULT 0,
+                    LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES "Users"(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES "GpodderDevices"(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID)
+                )
+            ''', conn=conn)
+            
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_syncstate_userid_deviceid ON "GpodderSyncState"(UserID, DeviceID)
+            ''', conn=conn)
+        else:  # mysql
+            safe_execute_sql(cursor, '''
+                CREATE TABLE IF NOT EXISTS GpodderSyncState (
+                    SyncStateID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    DeviceID INT NOT NULL,
+                    LastTimestamp BIGINT DEFAULT 0,
+                    LastSync TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (DeviceID) REFERENCES GpodderDevices(DeviceID) ON DELETE CASCADE,
+                    UNIQUE(UserID, DeviceID)
+                )
+            ''', conn=conn)
+            
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_syncstate_userid_deviceid ON GpodderSyncState(UserID, DeviceID)
+            ''', conn=conn)
+        
+        logger.info("Created GpodderSyncState table successfully")
+        
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 103: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("104", "create_people_episodes_backup", "Skip PeopleEpisodes_backup - varies by installation")
+def migration_104_create_people_episodes_backup(conn, db_type: str):
+    """Skip PeopleEpisodes_backup table - this varies by installation and shouldn't be validated"""
+    logger.info("Skipping migration 104: PeopleEpisodes_backup table varies by installation")
+    # This migration is a no-op since backup tables vary by installation
+    # and shouldn't be part of the expected schema
+
+
 if __name__ == "__main__":
     # Register all migrations and run them
     register_all_migrations()

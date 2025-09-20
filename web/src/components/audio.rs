@@ -7,11 +7,10 @@ use crate::components::gen_funcs::format_time_rm_hour;
 use crate::requests::pod_req::EpisodeDownload;
 use crate::requests::pod_req::FetchPodcasting2DataRequest;
 use crate::requests::pod_req::{
-    call_add_history, call_check_episode_in_db, call_fetch_podcasting_2_data,
-    call_get_auto_skip_times, call_get_episode_id, call_get_play_episode_details,
-    call_get_podcast_id_from_ep, call_get_queued_episodes, call_increment_listen_time,
-    call_increment_played, call_mark_episode_completed, call_queue_episode,
-    call_record_listen_duration, call_remove_queued_episode, HistoryAddRequest,
+    call_add_history, call_check_episode_in_db, call_fetch_podcasting_2_data, call_get_episode_id,
+    call_get_play_episode_details, call_get_podcast_id_from_ep, call_get_queued_episodes,
+    call_increment_listen_time, call_increment_played, call_mark_episode_completed,
+    call_queue_episode, call_record_listen_duration, call_remove_queued_episode, HistoryAddRequest,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, RecordListenDurationRequest,
 };
 use gloo_timers::callback::Interval;
@@ -1406,10 +1405,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 }
             }
             <div class={audio_bar_class} ref={container_ref.clone()}
-                 style={if *is_dragging { 
-                     format!("transform: translateY({}px); transition: none;", -*drag_offset) 
-                 } else { 
-                     String::new() 
+                 style={if *is_dragging {
+                     format!("transform: translateY({}px); transition: none;", -*drag_offset)
+                 } else {
+                     String::new()
                  }}>
                 <div class="top-section">
                     <div>
@@ -2191,7 +2190,10 @@ pub fn on_play_click_offline(
                             let onloadedmetadata =
                                 Closure::wrap(Box::new(move |_event: web_sys::Event| {
                                     let duration = src_audio.duration();
-                                    if !duration.is_nan() && !duration.is_infinite() && duration > 0.0 {
+                                    if !duration.is_nan()
+                                        && !duration.is_infinite()
+                                        && duration > 0.0
+                                    {
                                         resolve_clone
                                             .call1(
                                                 &JsValue::UNDEFINED,
