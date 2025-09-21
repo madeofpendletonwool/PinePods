@@ -24,10 +24,14 @@ except ImportError:
     POSTGRES_AVAILABLE = False
 
 try:
-    import mysql.connector
+    import mariadb as mysql_connector
     MYSQL_AVAILABLE = True
 except ImportError:
-    MYSQL_AVAILABLE = False
+    try:
+        import mysql.connector
+        MYSQL_AVAILABLE = True
+    except ImportError:
+        MYSQL_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +82,17 @@ class DatabaseMigrationManager:
             self._connection = psycopg.connect(**self.connection_params)
         elif self.db_type == 'mysql':
             if not MYSQL_AVAILABLE:
-                raise ImportError("mysql-connector-python not available for MySQL connections")
-            self._connection = mysql.connector.connect(**self.connection_params)
+                raise ImportError("MariaDB/MySQL connector not available for MySQL connections")
+            # Use MariaDB connector parameters
+            mysql_params = self.connection_params.copy()
+            # Convert mysql.connector parameter names to mariadb parameter names
+            if 'connection_timeout' in mysql_params:
+                mysql_params['connect_timeout'] = mysql_params.pop('connection_timeout')
+            if 'charset' in mysql_params:
+                mysql_params.pop('charset')  # MariaDB connector doesn't use charset parameter
+            if 'collation' in mysql_params:
+                mysql_params.pop('collation')  # MariaDB connector doesn't use collation parameter
+            self._connection = mysql_connector.connect(**mysql_params)
         
         return self._connection
 

@@ -281,6 +281,7 @@ class DatabaseValidator:
         # Connect to MySQL server
         config = self.db_config.copy()
         config.pop('database', None)  # Remove database from config
+        config['use_pure'] = True  # Use pure Python implementation to avoid auth plugin issues
         
         conn = mysql.connector.connect(**config)
         cursor = conn.cursor()
@@ -473,6 +474,7 @@ class DatabaseValidator:
             config = self.db_config.copy()
             # Ensure autocommit is enabled for MySQL
             config['autocommit'] = True
+            config['use_pure'] = True  # Use pure Python implementation to avoid auth plugin issues
             return mysql.connector.connect(**config)
         else:
             return psycopg.connect(**self.db_config)
@@ -487,6 +489,7 @@ class DatabaseValidator:
             if self.db_type == 'mysql':
                 config = self.db_config.copy()
                 config.pop('database', None)
+                config['use_pure'] = True  # Use pure Python implementation to avoid auth plugin issues
                 cleanup_conn = mysql.connector.connect(**config)
                 cursor = cleanup_conn.cursor()
                 cursor.execute(f"DROP DATABASE IF EXISTS `{test_db_name}`")

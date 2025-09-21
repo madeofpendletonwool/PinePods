@@ -44,8 +44,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o gpodder-api ./cmd/serv
 FROM python:3.11-alpine AS python-builder
 WORKDIR /build
 
-# Install build dependencies for PyInstaller
-RUN apk add --no-cache gcc musl-dev libffi-dev openssl-dev
+# Install build dependencies for PyInstaller and MariaDB connector
+RUN apk add --no-cache gcc musl-dev libffi-dev openssl-dev mariadb-connector-c-dev
 
 # Copy Python source files
 COPY ./database_functions ./database_functions

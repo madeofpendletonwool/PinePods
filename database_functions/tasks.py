@@ -307,14 +307,16 @@ def get_direct_db_connection():
         conninfo = f"host={db_host} port={db_port} user={db_user} password={db_password} dbname={db_name}"
         return psycopg.connect(conninfo)
     else:  # Default to MariaDB/MySQL
-        import mysql.connector
-        return mysql.connector.connect(
+        try:
+            import mariadb as mysql_connector
+        except ImportError:
+            import mysql.connector
+        return mysql_connector.connect(
             host=db_host,
             port=db_port,
             user=db_user,
             password=db_password,
-            database=db_name,
-            collation="utf8mb4_general_ci"
+            database=db_name
         )
 
 def close_direct_db_connection(cnx):
