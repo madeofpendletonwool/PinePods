@@ -584,17 +584,11 @@ Finally, you can check out the Repo for it [here!](https://github.com/madeofpend
 
 ## Pinepods Firewood
 
-A CLI only client that can be used to remotely share your podcasts to is in the works! Check out [Pinepods Firewood!](https://github.com/madeofpendletonwool/pinepods-firewood)
+A CLI only client that can be used to remotely share your podcasts to has had it's first release! Now you can enjoy podcasts from the comfort of your terminal! Check out [Pinepods Firewood!](https://github.com/madeofpendletonwool/pinepods-firewood)
 
 ## Platform Availability
 
-The Intention is for this app to become available on Windows, Linux, Mac, Android, and iOS. Windows, Linux, Mac, web, and android are all currently available and working. The android app is in a sort of beta currently as I finalize any remaining issues with it. Track those [here](https://github.com/madeofpendletonwool/PinePods/issues/320). This app is built with Tauri, therefore once the Android version is in a final state there's no reason I can't just compile it to iOS as well.
-
-For a podcast sync app I recommend Opodsync, but nextcloud sync works great too! This is only required if you use an app like AntennaPods. So then your Pinepods and Antennapods sync up podcasts.
-
-[OpodSync](https://github.com/kd2org/opodsync)
-
-[Nextcloud Podcast Sync App](https://apps.nextcloud.com/apps/gpoddersync)
+The Intention is for this app to become available on Windows, Linux, Mac, Android, and iOS. Windows, Linux, Mac, web, and android are all currently available and working.
 
 ARM devices are also supported including raspberry pis. The app is shockingly performant on a raspberry pi as well. The only limitation is that a 64bit OS is required on an ARM device. Setup is exactly the same, just use the latest tag and docker will auto pull the ARM version.
 
@@ -605,16 +599,11 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Nix Package
 - [x] Aur Package
 - [x] Helm Chart and repo for kubernetes deployment
-- [ ] Mobile Apps
+- [x] Mobile Apps
   - [x] Android App - Beta
     - [ ] Android Auto support
-  - [ ] iOS App
+  - [x] iOS App
   - [ ] Packaging and automation
-
-### Long term goals
-
-- [ ] Podcast ad blocking. Either by parsing audio blocks with ai and filtering ads or by utilizing a centralized server to allow others to send their ad block info to after determining the timestamps for ads.
-
 
 ## Screenshots :camera:
 
