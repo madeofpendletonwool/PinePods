@@ -2975,6 +2975,82 @@ def migration_104_create_people_episodes_backup(conn, db_type: str):
     # and shouldn't be part of the expected schema
 
 
+@register_migration("105", "optimize_episode_actions_performance", "Add indexes and optimize episode actions queries")
+def migration_105_optimize_episode_actions_performance(conn, db_type: str):
+    """Add critical indexes for episode actions performance and create optimized views"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Adding performance indexes for episode actions...")
+        
+        if db_type == 'postgresql':
+            # Critical indexes for episode actions performance
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_episode_actions_user_timestamp 
+                ON "GpodderSyncEpisodeActions"(UserID, Timestamp DESC)
+            ''', conn=conn)
+            
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_episode_actions_device_timestamp 
+                ON "GpodderSyncEpisodeActions"(DeviceID, Timestamp DESC) 
+                WHERE DeviceID IS NOT NULL
+            ''', conn=conn)
+            
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_episode_actions_podcast_episode 
+                ON "GpodderSyncEpisodeActions"(UserID, PodcastURL, EpisodeURL, Timestamp DESC)
+            ''', conn=conn)
+            
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_episode_actions_since_filter 
+                ON "GpodderSyncEpisodeActions"(UserID, Timestamp DESC, DeviceID) 
+                WHERE Timestamp > 0
+            ''', conn=conn)
+            
+            # Optimize devices table lookups
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_devices_user_name 
+                ON "GpodderDevices"(UserID, DeviceName) 
+                WHERE IsActive = true
+            ''', conn=conn)
+            
+        else:  # mysql/mariadb
+            # Critical indexes for episode actions performance
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_episode_actions_user_timestamp 
+                ON GpodderSyncEpisodeActions(UserID, Timestamp DESC)
+            ''', conn=conn)
+            
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_episode_actions_device_timestamp 
+                ON GpodderSyncEpisodeActions(DeviceID, Timestamp DESC)
+            ''', conn=conn)
+            
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_episode_actions_podcast_episode 
+                ON GpodderSyncEpisodeActions(UserID, PodcastURL(255), EpisodeURL(255), Timestamp DESC)
+            ''', conn=conn)
+            
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_episode_actions_since_filter 
+                ON GpodderSyncEpisodeActions(UserID, Timestamp DESC, DeviceID)
+            ''', conn=conn)
+            
+            # Optimize devices table lookups
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_devices_user_name 
+                ON GpodderDevices(UserID, DeviceName)
+            ''', conn=conn)
+        
+        logger.info("Successfully added episode actions performance indexes")
+        
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 105: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 if __name__ == "__main__":
     # Register all migrations and run them
     register_all_migrations()

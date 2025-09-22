@@ -51,7 +51,7 @@ type SubscriptionResponse struct {
 	Add        []string   `json:"add"`
 	Remove     []string   `json:"remove"`
 	Timestamp  int64      `json:"timestamp"`
-	UpdateURLs [][]string `json:"update_urls,omitempty"`
+	UpdateURLs [][]string `json:"update_urls"` // Removed omitempty to ensure field is always present
 }
 
 // EpisodeAction represents an action performed on an episode
