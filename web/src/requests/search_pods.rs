@@ -238,6 +238,7 @@ pub struct Episode {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "Episodeid")]
     pub episode_id: Option<i32>,
+    #[serde(default)]
     pub is_youtube: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "Completed")]

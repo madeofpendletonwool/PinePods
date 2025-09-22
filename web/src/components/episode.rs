@@ -1277,7 +1277,7 @@ pub fn epsiode() -> Html {
                         let podcast_of_episode = episode.episode.podcastid.clone();
                         let episode_listened_clone = episode.episode.listenduration.clone();
                         let episode_id_clone = episode.episode.episodeid.clone();
-                        let episode_is_youtube = Some(episode.episode.is_youtube.clone());
+                        let episode_is_youtube = episode.episode.is_youtube.clone();
 
                         let sanitized_description = sanitize_html_with_blank_target(&episode.episode.episodedescription.clone());
                         let description = sanitized_description;
@@ -1327,7 +1327,7 @@ pub fn epsiode() -> Html {
                                 audio_dispatch.clone(),
                                 audio_state.clone(),
                                 None,
-                                episode_is_youtube,
+                                Some(episode_is_youtube),
                             );
 
                             Callback::from(move |e: MouseEvent| {
@@ -1360,7 +1360,7 @@ pub fn epsiode() -> Html {
                                 let post_dispatch = complete_post.clone();
                                 let server_name_copy = complete_server_name.clone();
                                 let api_key_copy = complete_api_key.clone();
-                                let is_youtube = episode_is_youtube.unwrap_or(false);
+                                let is_youtube = episode_is_youtube;
                                 let request = MarkEpisodeCompletedRequest {
                                     episode_id: episode_id_for_closure,
                                     user_id: user_id_complete.unwrap(), // replace with the actual user ID
@@ -1412,7 +1412,7 @@ pub fn epsiode() -> Html {
                         let uncomplete_post = dispatch.clone();
                         let user_id_uncomplete = user_id.clone();
                         let uncomplete_status_clone = completion_status.clone();
-                        let is_youtube = episode_is_youtube.unwrap_or(false);
+                        let is_youtube = episode_is_youtube;
 
                         let on_uncomplete_episode = {
                             Callback::from(move |_| {
@@ -1490,7 +1490,7 @@ pub fn epsiode() -> Html {
                             let user_id_queue = user_id.clone();
                             let dispatch_queue = _post_dispatch.clone();
                             let episode_id = episode_id_for_closure;
-                            let is_youtube = episode_is_youtube.unwrap_or(false);
+                            let is_youtube = episode_is_youtube;
 
                             Callback::from(move |_: MouseEvent| {
                                 let server_name_copy = server_name_queue.clone();
@@ -1532,7 +1532,7 @@ pub fn epsiode() -> Html {
                             let save_post = _post_dispatch.clone();
                             let user_id_save = user_id.clone();
                             let episode_id = episode_id_for_closure;
-                            let is_youtube = episode_is_youtube.unwrap_or(false);
+                            let is_youtube = episode_is_youtube;
 
                             Callback::from(move |_: MouseEvent| {
                                 let server_name_copy = saved_server_name.clone();

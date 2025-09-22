@@ -10525,6 +10525,75 @@ impl DatabasePool {
         }
     }
 
+    // Set default gPodder device by name - for frontend compatibility
+    pub async fn gpodder_set_default_device_by_name(&self, user_id: i32, device_name: &str) -> AppResult<bool> {
+        println!("Setting default device: user_id={}, device_name='{}'", user_id, device_name);
+        
+        // Check sync type to determine which tables to update
+        let sync_settings = self.get_user_sync_settings(user_id).await?;
+        let is_external = sync_settings
+            .as_ref()
+            .map(|s| s.sync_type == "external")
+            .unwrap_or(false);
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                if !is_external {
+                    // For internal/both: update GpodderDevices table
+                    let clear_result = sqlx::query(r#"UPDATE "GpodderDevices" SET isdefault = false WHERE userid = $1"#)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                    println!("Cleared {} devices for user {}", clear_result.rows_affected(), user_id);
+                    
+                    let result = sqlx::query(r#"UPDATE "GpodderDevices" SET isdefault = true WHERE devicename = $1 AND userid = $2"#)
+                        .bind(device_name)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                    println!("Set default result: {} rows affected", result.rows_affected());
+                }
+                
+                // Always update Users table (for both internal and external)
+                sqlx::query(r#"UPDATE "Users" SET defaultgpodderdevice = $1 WHERE userid = $2"#)
+                    .bind(device_name)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                println!("Updated Users table with default device");
+                
+                Ok(true)
+            }
+            DatabasePool::MySQL(pool) => {
+                if !is_external {
+                    // For internal/both: update GpodderDevices table
+                    let clear_result = sqlx::query("UPDATE GpodderDevices SET IsDefault = false WHERE UserID = ?")
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                    println!("Cleared {} devices for user {}", clear_result.rows_affected(), user_id);
+                    
+                    let result = sqlx::query("UPDATE GpodderDevices SET IsDefault = true WHERE DeviceName = ? AND UserID = ?")
+                        .bind(device_name)
+                        .bind(user_id)
+                        .execute(pool)
+                        .await?;
+                    println!("Set default result: {} rows affected", result.rows_affected());
+                }
+                
+                // Always update Users table (for both internal and external)
+                sqlx::query("UPDATE Users SET DefaultGpodderDevice = ? WHERE UserID = ?")
+                    .bind(device_name)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                println!("Updated Users table with default device");
+                
+                Ok(true)
+            }
+        }
+    }
+
     // Get gPodder devices for user - matches Python get_devices function exactly with remote device support
     pub async fn gpodder_get_user_devices(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
         // Check what type of sync is configured
