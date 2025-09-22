@@ -36,7 +36,7 @@
 
 # Getting Started
 
-PinePods is a Rust based podcast management system that manages podcasts with multi-user support and relies on a central database with clients to connect to it. It's browser based and your podcasts and settings follow you from device to device due to everything being stored on the server. You can subscribe to podcasts and even hosts for podcasts with the help of the PodPeopleDB. It works on mobile devices and can also sync with a Nextcloud server or gpodder compatible sync server so you can use external apps like Antennapod as well!
+PinePods is a Rust based podcast management system that manages podcasts with multi-user support and relies on a central database with clients to connect to it. It's browser based and your podcasts and settings follow you from device to device due to everything being stored on the server. You can subscribe to podcasts and even hosts for podcasts with the help of the PodPeopleDB. It has a native mobile app for Ios and Android and comes prebaked with it own internal gpodder server so you can use external apps like Antennapod as well!
 
 For more information than what's provided in this repo visit the [documentation site](https://www.pinepods.online/).
 
@@ -46,7 +46,9 @@ For more information than what's provided in this repo visit the [documentation 
 
 ## Features
 
-Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you (or any of your users) enjoy. It allows for searching and subscribing to hosts and podcasts using The Podcast Index or Itunes and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user management and can be used by multiple users at once using a browser or app version. Everything is saved into a MySQL or Postgres database including user settings, podcasts and episodes. It's fully self-hosted, open-sourced, and I provide an option to use a hosted search API or you can also get one from the Podcast Index and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install and run Pinepods on your own system.
+Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you (or any of your users) enjoy. It allows for searching and subscribing to hosts and podcasts using The Podcast Index or Itunes and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user management and can be used by multiple users at once using a browser or app version. Everything is saved into a MySQL, MariaDB, or Postgres database including user settings, podcasts and episodes. It's fully self-hosted, open-sourced, and I provide an option to use a hosted search API or you can also get one from the Podcast Index and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install and run Pinepods on your own system.
+
+There's plenty more features as well, check out the [Pinepods Site](https://www.pinepods.online/docs/Features/smart-playlists) for more!
 
 ## Try it out! :zap:
 
@@ -223,12 +225,12 @@ Most of those are pretty obvious, but let's break a couple of them down.
 
 #### Admin User Info
 
-First of all, the USERNAME, PASSWORD, FULLNAME, and EMAIL vars are your details for your default admin account. This account will have admin credentials and will be able to log in right when you start up the app. Once started you'll be able to create more users and even more admins but you need an account to kick things off on. If you don't specify credentials in the compose file it will create an account with a random password for you but I would recommend just creating one for yourself.
+First of all, the USERNAME, PASSWORD, FULLNAME, and EMAIL vars are your details for your default admin account. This account will have admin credentials and will be able to log in right when you start up the app. Once started you'll be able to create more users and even more admins but you need an account to kick things off on. If you don't specify credentials in the compose file it will prompt you to create an account before first login.
 
 
 #### Note on the Search API
 
-Let's talk quickly about the searching API. This allows you to search for new podcasts and it queries either itunes or the podcast index for new podcasts. The podcast index requires an api key while itunes does not. If you'd rather not mess with the api at all simply set the API_URL to the one below.
+Let's talk quickly about the searching API. This allows you to search for new podcasts and it queries either itunes or the podcast index for new podcasts. It also allows for searching youtube channels via the Google Search API. The podcast index and Google Search require an api key while itunes does not. If you'd rather not mess with the api at all simply set the API_URL to the one below, however, know that Google implements a limit per day on youtube searches and the search api that I maintain below hits it's limit pretty quick. So if you're a big youtube user you might want to host your own.
 
 ```
 SEARCH_API_URL: 'https://search.pinepods.online/api/search'
@@ -524,7 +526,7 @@ I have had such a nightmare trying to make the snap client work. Pass, use the f
 
 ### Windows Client Install :computer:
 
-Any of the client additions are super easy to get going. First head over to the releases page on Github
+First head over to the releases page on Github
 
 https://github.com/madeofpendletonwool/PinePods/releases
 
@@ -540,7 +542,7 @@ Once started you'll be able to sign in with your username and password. The serv
 
 ### Mac Client Install :computer:
 
-Any of the client additions are super easy to get going. First head over to the releases page on Github
+First head over to the releases page on Github
 
 https://github.com/madeofpendletonwool/PinePods/releases
 
