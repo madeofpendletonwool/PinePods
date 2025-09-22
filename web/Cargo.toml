@@ -56,7 +56,7 @@ web-sys = { version = "0.3.79", features = [
 log = "0.4.28"
 wasm-bindgen = "0.2.102"
 yew-router = { version = "0.18.0" }
-serde = { version = "1.0.225", features = ["derive"] }
+serde = { version = "1.0.226", features = ["derive"] }
 gloo-net = { version = "0.6.0", features = ["websocket"] }
 gloo = "0.11.0"
 anyhow = { version = "1.0.99", features = [] }
