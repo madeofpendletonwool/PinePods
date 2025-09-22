@@ -562,7 +562,7 @@ Once started you'll be able to sign in with your username and password. The serv
   <img src="./images/badge_obtainium.png" alt="Get it on Obtainium" width="200">
 </a>
 
-For now, it's a manual install and there are some issues with the app. Check the releases page for the latest apk.
+Currently there's options for direct downloads and Pinepods is on the IzzyOnDroid storefront! More locations coming soon!
 
 ### iOS Install :iphone:
 
@@ -570,7 +570,7 @@ For now, it's a manual install and there are some issues with the app. Check the
   <img src="./images/Download_on_the_App_Store_Badge_US-UK_RGB_blk_092917.svg" alt="Download on the App Store" width="200">
 </a>
 
-Coming Soon - The web app works great for phones.
+The iOS app has arrived! Enjoy!
 
 ## PodPeople DB
 
