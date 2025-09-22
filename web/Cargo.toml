@@ -71,7 +71,7 @@ yewtil = "0.4.0"
 gloo-utils = "0.2.0"
 gloo-events = "0.2.0"
 md5 = "0.8.0"
-ammonia = "4.1.1"
+ammonia = "4.1.2"
 pulldown-cmark = "0.13.0"
 async-std = "1.13.2"
 argon2 = { version = "0.5.3", features = ["std", "password-hash"] }
