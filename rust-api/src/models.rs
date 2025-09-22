@@ -179,6 +179,17 @@ pub struct CreatePlaylistResponse {
     pub playlist_id: i32,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct DeletePlaylistRequest {
+    pub user_id: i32,
+    pub playlist_id: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeletePlaylistResponse {
+    pub detail: String,
+}
+
 // Search models
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SearchRequest {

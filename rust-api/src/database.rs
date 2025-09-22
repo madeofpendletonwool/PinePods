@@ -15235,7 +15235,7 @@ impl DatabasePool {
             DatabasePool::MySQL(pool) => {
                 // Get playlist configuration first
                 let playlist = sqlx::query("
-                    SELECT PlaylistID, Name, UserID, PodcastIds, IncludeUnplayed, 
+                    SELECT PlaylistID, Name, UserID, PodcastIDs, IncludeUnplayed, 
                            IncludePartiallyPlayed, IncludePlayed, PlayProgressMin, PlayProgressMax, 
                            TimeFilterHours, MinDuration, MaxDuration, SortOrder, 
                            GroupByPodcast, MaxEpisodes, IsSystemPlaylist
@@ -16181,8 +16181,8 @@ impl DatabasePool {
                     SELECT e.episodeid, p.podcastid, u.timezone
                     FROM "Episodes" e
                     JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $1
-                    JOIN "Users" u ON u.userid = $2
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
+                    JOIN "Users" u ON u.userid = $3
                     WHERE 1=1
                 "#.to_string(), vec![user_id, user_id])
             } else {
@@ -16192,8 +16192,8 @@ impl DatabasePool {
                     SELECT e.episodeid, p.podcastid, u.timezone
                     FROM "Episodes" e
                     JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $1
-                    JOIN "Users" u ON u.userid = $2
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
+                    JOIN "Users" u ON u.userid = $3
                     WHERE 1=1
                 "#.to_string(), vec![user_id, user_id])
             }
@@ -16203,9 +16203,9 @@ impl DatabasePool {
                 SELECT e.episodeid, p.podcastid, u.timezone
                 FROM "Episodes" e
                 JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $1
-                JOIN "Users" u ON u.userid = $2
-                WHERE p.userid = $3
+                LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
+                JOIN "Users" u ON u.userid = $3
+                WHERE p.userid = $4
             "#.to_string(), vec![user_id, user_id, user_id])
         };
         
@@ -16376,16 +16376,30 @@ impl DatabasePool {
         );
         
         let mut all_params = params;
-        let mut param_index = all_params.len() + 1;
+        let mut param_index = all_params.len() + 2; // +2 because playlist_id will be inserted as $1
         
-        // Add podcast filter (PostgreSQL array support)
+        // Add podcast filter (PostgreSQL IN clause support)
         if let Some(ref podcast_ids) = config.podcast_ids {
+            println!("PostgreSQL applying podcast filter with IDs: {:?}", podcast_ids);
             if !podcast_ids.is_empty() {
-                select_query.push_str(&format!(" AND p.podcastid = ANY(${})", param_index));
-                // For now, we'll handle the first podcast ID only due to sqlx limitations
-                all_params.push(podcast_ids[0]);
-                param_index += 1;
+                if podcast_ids.len() == 1 {
+                    println!("PostgreSQL single podcast filter: p.podcastid = {}", podcast_ids[0]);
+                    select_query.push_str(&format!(" AND p.podcastid = ${}", param_index));
+                    all_params.push(podcast_ids[0]);
+                    param_index += 1;
+                } else {
+                    let placeholders: String = (0..podcast_ids.len())
+                        .map(|i| format!("${}", param_index + i))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    println!("PostgreSQL multiple podcast filter: p.podcastid IN ({})", placeholders);
+                    select_query.push_str(&format!(" AND p.podcastid IN ({})", placeholders));
+                    all_params.extend(podcast_ids);
+                    param_index += podcast_ids.len();
+                }
             }
+        } else {
+            println!("PostgreSQL no podcast filter applied - config.podcast_ids is None");
         }
         
         // Add duration filters
@@ -16493,15 +16507,22 @@ impl DatabasePool {
         // Add podcast filter (MySQL JSON/IN support)
         if let Some(ref podcast_ids) = config.podcast_ids {
             if !podcast_ids.is_empty() {
+                println!("MySQL applying podcast filter with IDs: {:?}", podcast_ids);
                 if podcast_ids.len() == 1 {
                     select_query.push_str(" AND p.PodcastID = ?");
                     all_params.push(podcast_ids[0]);
+                    println!("MySQL single podcast filter: p.PodcastID = {}", podcast_ids[0]);
                 } else {
                     let placeholders: String = podcast_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
                     select_query.push_str(&format!(" AND p.PodcastID IN ({})", placeholders));
                     all_params.extend(podcast_ids);
+                    println!("MySQL multiple podcast filter: p.PodcastID IN ({})", placeholders);
                 }
+            } else {
+                println!("MySQL podcast_ids is empty, no filter applied");
             }
+        } else {
+            println!("MySQL no podcast_ids specified, no filter applied");
         }
         
         // Add duration filters
@@ -16685,9 +16706,9 @@ impl DatabasePool {
 
     // Execute the final playlist query for PostgreSQL - FIXED VERSION
     async fn execute_playlist_query_postgres(&self, pool: &Pool<Postgres>, query: &str, params: &[i32], _playlist_id: i32) -> AppResult<i32> {
-        tracing::info!("Executing PostgreSQL playlist query with {} parameters", params.len());
-        tracing::debug!("Query: {}", query);
-        tracing::debug!("Params: {:?}", params);
+        println!("PostgreSQL executing playlist query with {} parameters", params.len());
+        println!("PostgreSQL Query: {}", query);
+        println!("PostgreSQL Params: {:?}", params);
         
         // Build query with proper parameter binding
         let mut sqlx_query = sqlx::query(query);
@@ -16696,6 +16717,7 @@ impl DatabasePool {
         }
         
         let result = sqlx_query.execute(pool).await?;
+        println!("PostgreSQL playlist query affected {} rows", result.rows_affected());
         Ok(result.rows_affected() as i32)
     }
 
@@ -17597,8 +17619,8 @@ impl DatabasePool {
                     let saved: bool = row.try_get::<i8, _>("saved")? != 0;
                     let queued: bool = row.try_get::<i8, _>("queued")? != 0;
                     let downloaded: bool = row.try_get::<i8, _>("downloaded")? != 0;
-                    let addeddate_naive = row.try_get::<chrono::NaiveDateTime, _>("addeddate")?;
-                    let addeddate = addeddate_naive.format("%Y-%m-%dT%H:%M:%S").to_string();
+                    let addeddate_dt = row.try_get::<sqlx::types::chrono::DateTime<sqlx::types::chrono::Utc>, _>("addeddate")?;
+                    let addeddate = addeddate_dt.format("%Y-%m-%dT%H:%M:%S").to_string();
 
                     episodes.push(serde_json::json!({
                         "episodeid": episodeid,
@@ -17908,34 +17930,24 @@ impl PlaylistConfig {
     pub fn from_postgres_row(row: &sqlx::postgres::PgRow) -> AppResult<Self> {
         use sqlx::Row;
         
-        // Parse podcast IDs from PostgreSQL array or JSON
-        let podcast_ids = if let Ok(ids_str) = row.try_get::<Option<String>, _>("podcastids") {
-            if let Some(ids_str) = ids_str {
-                if ids_str.is_empty() || ids_str == "[]" || ids_str == "{}" {
+        // Parse podcast IDs from PostgreSQL int4 array - can be NULL or {29,57} format
+        let podcast_ids = match row.try_get::<Option<Vec<i32>>, _>("podcastids") {
+            Ok(Some(ids)) => {
+                println!("PostgreSQL got podcastids array: {:?}", ids);
+                if ids.is_empty() {
                     None
-                } else if ids_str.starts_with('{') && ids_str.ends_with('}') {
-                    // PostgreSQL array format: {1,2,3}
-                    let trimmed = ids_str.trim_start_matches('{').trim_end_matches('}');
-                    if trimmed.is_empty() {
-                        None
-                    } else {
-                        let ids: Result<Vec<i32>, _> = trimmed
-                            .split(',')
-                            .map(|s| s.trim().parse::<i32>())
-                            .collect();
-                        Some(ids.unwrap_or_default())
-                    }
-                } else if ids_str.starts_with('[') && ids_str.ends_with(']') {
-                    // JSON array format: [1,2,3]
-                    serde_json::from_str(&ids_str).unwrap_or(None)
                 } else {
-                    None
+                    Some(ids)
                 }
-            } else {
+            }
+            Ok(None) => {
+                println!("PostgreSQL podcastids is NULL");
                 None
             }
-        } else {
-            None
+            Err(_) => {
+                println!("PostgreSQL failed to get podcastids as array");
+                None
+            }
         };
         
         Ok(PlaylistConfig {
@@ -17962,19 +17974,41 @@ impl PlaylistConfig {
     pub fn from_mysql_row(row: &sqlx::mysql::MySqlRow) -> AppResult<Self> {
         use sqlx::Row;
         
-        // Parse podcast IDs from MySQL JSON
-        let podcast_ids = if let Ok(ids_str) = row.try_get::<Option<String>, _>("PodcastIds") {
-            if let Some(ids_str) = ids_str {
-                if ids_str.is_empty() || ids_str == "null" {
+        // Parse podcast IDs from MySQL JSON (stored as BLOB)
+        let podcast_ids = match row.try_get::<Option<Vec<u8>>, _>("PodcastIDs") {
+            Ok(Some(ids_bytes)) => {
+                let ids_str = String::from_utf8_lossy(&ids_bytes);
+                println!("Got PodcastIDs from BLOB: '{}'", ids_str);
+                if ids_str.is_empty() || ids_str == "null" || ids_str == "[]" {
                     None
                 } else {
-                    serde_json::from_str(&ids_str).unwrap_or(None)
+                    let parsed: Vec<i32> = serde_json::from_str(&ids_str).unwrap_or_default();
+                    if parsed.is_empty() {
+                        None
+                    } else {
+                        Some(parsed)
+                    }
                 }
-            } else {
+            }
+            Ok(None) => {
+                println!("PodcastIDs is NULL");
                 None
             }
-        } else {
-            None
+            Err(_) => {
+                // Fallback to try as String for older records
+                match row.try_get::<Option<String>, _>("PodcastIDs") {
+                    Ok(Some(ids_str)) => {
+                        println!("Got PodcastIDs as String: '{}'", ids_str);
+                        if ids_str.is_empty() || ids_str == "null" || ids_str == "[]" {
+                            None
+                        } else {
+                            let parsed: Vec<i32> = serde_json::from_str(&ids_str).unwrap_or_default();
+                            if parsed.is_empty() { None } else { Some(parsed) }
+                        }
+                    }
+                    _ => None
+                }
+            }
         };
         
         Ok(PlaylistConfig {
@@ -22086,9 +22120,77 @@ impl DatabasePool {
             }
         }
     }
+
+    pub async fn delete_playlist(&self, user_id: i32, playlist_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Check if playlist exists and belongs to user
+                let playlist = sqlx::query(
+                    r#"SELECT issystemplaylist, userid FROM "Playlists" WHERE playlistid = $1"#
+                )
+                .bind(playlist_id)
+                .fetch_optional(pool)
+                .await?;
+
+                let playlist = playlist.ok_or_else(|| AppError::not_found("Playlist not found"))?;
+
+                let is_system: bool = playlist.try_get("issystemplaylist")?;
+                let owner_id: i32 = playlist.try_get("userid")?;
+
+                if is_system {
+                    return Err(AppError::bad_request("Cannot delete system playlists"));
+                }
+
+                if owner_id != user_id {
+                    return Err(AppError::forbidden("Unauthorized to delete this playlist"));
+                }
+
+                // Delete the playlist
+                sqlx::query(r#"DELETE FROM "Playlists" WHERE playlistid = $1"#)
+                    .bind(playlist_id)
+                    .execute(pool)
+                    .await?;
+
+                Ok(())
+            }
+            DatabasePool::MySQL(pool) => {
+                // Check if playlist exists and belongs to user
+                let playlist = sqlx::query("SELECT IsSystemPlaylist, UserID FROM Playlists WHERE PlaylistID = ?")
+                    .bind(playlist_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                let playlist = playlist.ok_or_else(|| AppError::not_found("Playlist not found"))?;
+
+                let is_system: i8 = playlist.try_get("IsSystemPlaylist")?;
+                let owner_id: i32 = playlist.try_get("UserID")?;
+
+                if is_system != 0 {
+                    return Err(AppError::bad_request("Cannot delete system playlists"));
+                }
+
+                if owner_id != user_id {
+                    return Err(AppError::forbidden("Unauthorized to delete this playlist"));
+                }
+
+                // Delete the playlist
+                sqlx::query("DELETE FROM Playlists WHERE PlaylistID = ?")
+                    .bind(playlist_id)
+                    .execute(pool)
+                    .await?;
+
+                Ok(())
+            }
+        }
+    }
 }
 
 // Standalone create_playlist function that matches Python API
 pub async fn create_playlist(pool: &DatabasePool, config: &Config, playlist_data: &crate::models::CreatePlaylistRequest) -> AppResult<i32> {
     pool.create_playlist(config, playlist_data).await
+}
+
+// Standalone delete_playlist function that matches Python API
+pub async fn delete_playlist(pool: &DatabasePool, _config: &Config, playlist_data: &crate::models::DeletePlaylistRequest) -> AppResult<()> {
+    pool.delete_playlist(playlist_data.user_id, playlist_data.playlist_id).await
 }

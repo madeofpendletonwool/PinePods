@@ -71,8 +71,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o gpodder-api ./cmd/server/
 FROM python:3.11-alpine AS python-builder
 WORKDIR /build
 
-# Install build dependencies for PyInstaller
-RUN apk add --no-cache gcc musl-dev libffi-dev openssl-dev
+# Install build dependencies for PyInstaller and MariaDB connector
+RUN apk add --no-cache gcc musl-dev libffi-dev openssl-dev mariadb-connector-c-dev
 
 # Copy Python source files
 COPY ./database_functions ./database_functions
@@ -125,7 +125,7 @@ FROM alpine
 LABEL maintainer="Collin Pendleton <collinp@collinpendleton.com>"
 
 # Install runtime dependencies
-RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg wget jq
+RUN apk add --no-cache tzdata nginx openssl bash mariadb-client postgresql-client curl ffmpeg wget jq mariadb-connector-c-dev
 
 
 # Download and install latest yt-dlp binary for ARM64

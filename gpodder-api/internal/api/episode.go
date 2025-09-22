@@ -101,7 +101,14 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			latestTimestamp = time.Now().Unix() // Fallback to current time
 		}
 
-		// Build query based on parameters
+		// Performance optimization: Add limits and optimize query structure
+		const MAX_EPISODE_ACTIONS = 10000 // Reasonable limit for sync operations
+		
+		// Log query performance info
+		log.Printf("[DEBUG] getEpisodeActions: Query for user %v with since=%d, device=%s, aggregated=%v", 
+			userID, since, deviceName, aggregated)
+		
+		// Build query based on parameters with performance optimizations
 		var queryParts []string
 
 		if database.IsPostgreSQLDB() {
@@ -109,7 +116,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				"SELECT " +
 					"e.ActionID, e.UserID, e.DeviceID, e.PodcastURL, e.EpisodeURL, " +
 					"e.Action, e.Timestamp, e.Started, e.Position, e.Total, " +
-					"d.DeviceName " +
+					"COALESCE(d.DeviceName, '') as DeviceName " +
 					"FROM \"GpodderSyncEpisodeActions\" e " +
 					"LEFT JOIN \"GpodderDevices\" d ON e.DeviceID = d.DeviceID " +
 					"WHERE e.UserID = $1",
@@ -119,7 +126,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				"SELECT " +
 					"e.ActionID, e.UserID, e.DeviceID, e.PodcastURL, e.EpisodeURL, " +
 					"e.Action, e.Timestamp, e.Started, e.Position, e.Total, " +
-					"d.DeviceName " +
+					"COALESCE(d.DeviceName, '') as DeviceName " +
 					"FROM GpodderSyncEpisodeActions e " +
 					"LEFT JOIN GpodderDevices d ON e.DeviceID = d.DeviceID " +
 					"WHERE e.UserID = ?",
@@ -179,7 +186,8 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 					LEFT JOIN "GpodderDevices" d ON e.DeviceID = d.DeviceID
 					WHERE e.UserID = $1
 					ORDER BY e.Timestamp DESC
-				`, conditionsStr)
+					LIMIT %d
+				`, conditionsStr, MAX_EPISODE_ACTIONS)
 			} else {
 				// For MySQL, we need to use ? placeholders and rebuild the argument list
 				args = []interface{}{userID} // Reset args to just include userID for now
@@ -232,7 +240,8 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 					LEFT JOIN GpodderDevices d ON e.DeviceID = d.DeviceID
 					WHERE e.UserID = ?
 					ORDER BY e.Timestamp DESC
-				`, conditionsStr)
+					LIMIT %d
+				`, conditionsStr, MAX_EPISODE_ACTIONS)
 			}
 		} else {
 			// Simple query with ORDER BY
@@ -272,17 +281,30 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			}
 
 			queryParts = append(queryParts, "ORDER BY e.Timestamp DESC")
+			
+			// Add LIMIT for performance - prevents returning massive datasets
+			if database.IsPostgreSQLDB() {
+				queryParts = append(queryParts, fmt.Sprintf("LIMIT %d", MAX_EPISODE_ACTIONS))
+			} else {
+				queryParts = append(queryParts, fmt.Sprintf("LIMIT %d", MAX_EPISODE_ACTIONS))
+			}
+			
 			query = strings.Join(queryParts, " ")
 		}
 
-		// Execute query
+		// Execute query with timing
+		startTime := time.Now()
 		rows, err := database.Query(query, args...)
+		queryDuration := time.Since(startTime)
+		
 		if err != nil {
-			log.Printf("[ERROR] getEpisodeActions: Error querying episode actions: %v", err)
+			log.Printf("[ERROR] getEpisodeActions: Error querying episode actions (took %v): %v", queryDuration, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get episode actions"})
 			return
 		}
 		defer rows.Close()
+		
+		log.Printf("[DEBUG] getEpisodeActions: Query executed in %v", queryDuration)
 
 		// Build response
 		actions := make([]models.EpisodeAction, 0)
@@ -338,6 +360,10 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 			log.Printf("[ERROR] getEpisodeActions: Error iterating rows: %v", err)
 			// Continue with what we've got so far
 		}
+
+		// Log performance results
+		totalDuration := time.Since(startTime)
+		log.Printf("[DEBUG] getEpisodeActions: Returning %d actions, total time: %v", len(actions), totalDuration)
 
 		// Return response in gpodder format
 		c.JSON(http.StatusOK, models.EpisodeActionsResponse{

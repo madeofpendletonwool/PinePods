@@ -71,7 +71,10 @@ def wait_for_postgresql_ready():
 def wait_for_mysql_ready():
     """Wait for MySQL/MariaDB to be ready to accept connections"""
     import time
-    import mysql.connector
+    try:
+        import mariadb as mysql_connector
+    except ImportError:
+        import mysql.connector
     
     db_host = os.environ.get("DB_HOST", "127.0.0.1")
     db_port = int(os.environ.get("DB_PORT", "3306"))
@@ -85,13 +88,14 @@ def wait_for_mysql_ready():
     
     while attempt <= max_attempts:
         try:
-            # Try to connect to MySQL
-            conn = mysql.connector.connect(
+            # Try to connect to MySQL/MariaDB
+            conn = mysql_connector.connect(
                 host=db_host,
                 port=db_port,
                 user=db_user,
                 password=db_password,
-                connection_timeout=3
+                connect_timeout=3,
+                autocommit=True
             )
             cursor = conn.cursor()
             # Test if MySQL is ready to accept queries
