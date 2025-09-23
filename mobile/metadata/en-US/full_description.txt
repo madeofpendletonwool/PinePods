@@ -3,6 +3,7 @@ PinePods is a complete podcast management solution that allows you to host your 
 This is the official Pinepods companion app for Android.
 
 Features of Pinepods:
+
 • Self-hosted podcast server synchronization that syncs everything between your devices
 • Beautiful, intuitive mobile interface with loads of themes that sync between devices and platforms
 • Download episodes for offline listening or archiving on your server

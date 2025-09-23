@@ -1655,6 +1655,7 @@ pub fn on_play_pause(
     is_local: Option<bool>,
     is_youtube_vid: Option<bool>,
 ) -> Callback<MouseEvent> {
+    web_sys::console::log_1(&format!("on_play_pause - is_youtube_vid: {:?}", is_youtube_vid).into());
     Callback::from(move |e: MouseEvent| {
         let episode_url_for_play = episode_url_for_closure.clone();
         let episode_title_for_play = episode_title_for_closure.clone();
@@ -1687,6 +1688,7 @@ pub fn on_play_pause(
                 }
             });
         } else {
+            web_sys::console::log_1(&format!("on_play_pause calling on_play_click with is_youtube_vid: {:?}", is_youtube_vid).into());
             on_play_click(
                 episode_url_for_play,
                 episode_title_for_play,
@@ -1735,7 +1737,9 @@ pub fn on_play_click(
         let episode_duration_for_closure = episode_duration_for_closure.clone();
         let listen_duration_for_closure = listen_duration_for_closure.clone();
         let episode_id_for_closure = episode_id_for_closure.clone();
-        let episode_is_youtube = is_youtube_vid.clone().unwrap();
+        web_sys::console::log_1(&format!("on_play_click - is_youtube_vid: {:?}", is_youtube_vid).into());
+        let episode_is_youtube = is_youtube_vid.unwrap_or(false);
+        web_sys::console::log_1(&format!("on_play_click - episode_is_youtube: {}", episode_is_youtube).into());
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let server_name = server_name.clone();

@@ -36,7 +36,7 @@
 
 # Getting Started
 
-PinePods is a Rust based podcast management system that manages podcasts with multi-user support and relies on a central database with clients to connect to it. It's browser based and your podcasts and settings follow you from device to device due to everything being stored on the server. You can subscribe to podcasts and even hosts for podcasts with the help of the PodPeopleDB. It works on mobile devices and can also sync with a Nextcloud server or gpodder compatible sync server so you can use external apps like Antennapod as well!
+PinePods is a Rust based podcast management system that manages podcasts with multi-user support and relies on a central database with clients to connect to it. It's browser based and your podcasts and settings follow you from device to device due to everything being stored on the server. You can subscribe to podcasts and even hosts for podcasts with the help of the PodPeopleDB. It has a native mobile app for Ios and Android and comes prebaked with it own internal gpodder server so you can use external apps like Antennapod as well!
 
 For more information than what's provided in this repo visit the [documentation site](https://www.pinepods.online/).
 
@@ -46,7 +46,9 @@ For more information than what's provided in this repo visit the [documentation 
 
 ## Features
 
-Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you (or any of your users) enjoy. It allows for searching and subscribing to hosts and podcasts using The Podcast Index or Itunes and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user management and can be used by multiple users at once using a browser or app version. Everything is saved into a MySQL or Postgres database including user settings, podcasts and episodes. It's fully self-hosted, open-sourced, and I provide an option to use a hosted search API or you can also get one from the Podcast Index and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install and run Pinepods on your own system.
+Pinepods is a complete podcast management system and allows you to play, download, and keep track of podcasts you (or any of your users) enjoy. It allows for searching and subscribing to hosts and podcasts using The Podcast Index or Itunes and provides a modern looking UI to browse through shows and episodes. In addition, Pinepods provides simple user management and can be used by multiple users at once using a browser or app version. Everything is saved into a MySQL, MariaDB, or Postgres database including user settings, podcasts and episodes. It's fully self-hosted, open-sourced, and I provide an option to use a hosted search API or you can also get one from the Podcast Index and use your own. There's even many different themes to choose from! Everything is fully dockerized and I provide a simple guide found below explaining how to install and run Pinepods on your own system.
+
+There's plenty more features as well, check out the [Pinepods Site](https://www.pinepods.online/docs/Features/smart-playlists) for more!
 
 ## Try it out! :zap:
 
@@ -223,12 +225,12 @@ Most of those are pretty obvious, but let's break a couple of them down.
 
 #### Admin User Info
 
-First of all, the USERNAME, PASSWORD, FULLNAME, and EMAIL vars are your details for your default admin account. This account will have admin credentials and will be able to log in right when you start up the app. Once started you'll be able to create more users and even more admins but you need an account to kick things off on. If you don't specify credentials in the compose file it will create an account with a random password for you but I would recommend just creating one for yourself.
+First of all, the USERNAME, PASSWORD, FULLNAME, and EMAIL vars are your details for your default admin account. This account will have admin credentials and will be able to log in right when you start up the app. Once started you'll be able to create more users and even more admins but you need an account to kick things off on. If you don't specify credentials in the compose file it will prompt you to create an account before first login.
 
 
 #### Note on the Search API
 
-Let's talk quickly about the searching API. This allows you to search for new podcasts and it queries either itunes or the podcast index for new podcasts. The podcast index requires an api key while itunes does not. If you'd rather not mess with the api at all simply set the API_URL to the one below.
+Let's talk quickly about the searching API. This allows you to search for new podcasts and it queries either itunes or the podcast index for new podcasts. It also allows for searching youtube channels via the Google Search API. The podcast index and Google Search require an api key while itunes does not. If you'd rather not mess with the api at all simply set the API_URL to the one below, however, know that Google implements a limit per day on youtube searches and the search api that I maintain below hits it's limit pretty quick. So if you're a big youtube user you might want to host your own.
 
 ```
 SEARCH_API_URL: 'https://search.pinepods.online/api/search'
@@ -506,6 +508,10 @@ paru -S pinepods
 
 #### Flatpak
 
+<a href="https://flathub.org/en/apps/com.gooseberrydevelopment.pinepods">
+  <img src="https://flathub.org/api/badge?locale=en" alt="Get it on Flathub" width="240">
+</a>
+
 You can search for Pinepods in your favorite flatpak installer gui app such as Gnome Software.
 
 Flathub page can be found [here](https://flathub.org/apps/com.gooseberrydevelopment.pinepods)
@@ -520,7 +526,7 @@ I have had such a nightmare trying to make the snap client work. Pass, use the f
 
 ### Windows Client Install :computer:
 
-Any of the client additions are super easy to get going. First head over to the releases page on Github
+First head over to the releases page on Github
 
 https://github.com/madeofpendletonwool/PinePods/releases
 
@@ -536,7 +542,7 @@ Once started you'll be able to sign in with your username and password. The serv
 
 ### Mac Client Install :computer:
 
-Any of the client additions are super easy to get going. First head over to the releases page on Github
+First head over to the releases page on Github
 
 https://github.com/madeofpendletonwool/PinePods/releases
 
@@ -550,11 +556,23 @@ Once started you'll be able to sign in with your username and password. The serv
 
 ### Android Install :iphone:
 
-For now, it's a manual install and there are some issues with the app. Check the releases page for the latest apk.
+<a href="https://apt.izzysoft.de/fdroid/index/apk/com.gooseberrydevelopment.pinepods">
+  <img src="https://gitlab.com/IzzyOnDroid/repo/-/raw/master/assets/IzzyOnDroid.png" alt="Get it on IzzyOnDroid" width="200">
+</a>
+
+<a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22com.gooseberrydevelopment.pinepods%22%2C%22url%22%3A%22https%3A//github.com/madeofpendletonwool/PinePods%22%2C%22author%22%3A%22madeofpendletonwool%22%2C%22name%22%3A%22PinePods%22%2C%22installerUrl%22%3A%22https%3A//github.com/madeofpendletonwool/PinePods/releases/latest%22%7D">
+  <img src="./images/badge_obtainium.png" alt="Get it on Obtainium" width="200">
+</a>
+
+Currently there's options for direct downloads and Pinepods is on the IzzyOnDroid storefront! More locations coming soon!
 
 ### iOS Install :iphone:
 
-Coming Soon - The web app works great for phones.
+<a href="https://apps.apple.com/us/app/pinepods/id6751441116">
+  <img src="./images/Download_on_the_App_Store_Badge_US-UK_RGB_blk_092917.svg" alt="Download on the App Store" width="200">
+</a>
+
+The iOS app has arrived! Enjoy!
 
 ## PodPeople DB
 
@@ -568,17 +586,11 @@ Finally, you can check out the Repo for it [here!](https://github.com/madeofpend
 
 ## Pinepods Firewood
 
-A CLI only client that can be used to remotely share your podcasts to is in the works! Check out [Pinepods Firewood!](https://github.com/madeofpendletonwool/pinepods-firewood)
+A CLI only client that can be used to remotely share your podcasts to has had it's first release! Now you can enjoy podcasts from the comfort of your terminal! Check out [Pinepods Firewood!](https://github.com/madeofpendletonwool/pinepods-firewood)
 
 ## Platform Availability
 
-The Intention is for this app to become available on Windows, Linux, Mac, Android, and iOS. Windows, Linux, Mac, web, and android are all currently available and working. The android app is in a sort of beta currently as I finalize any remaining issues with it. Track those [here](https://github.com/madeofpendletonwool/PinePods/issues/320). This app is built with Tauri, therefore once the Android version is in a final state there's no reason I can't just compile it to iOS as well.
-
-For a podcast sync app I recommend Opodsync, but nextcloud sync works great too! This is only required if you use an app like AntennaPods. So then your Pinepods and Antennapods sync up podcasts.
-
-[OpodSync](https://github.com/kd2org/opodsync)
-
-[Nextcloud Podcast Sync App](https://apps.nextcloud.com/apps/gpoddersync)
+The Intention is for this app to become available on Windows, Linux, Mac, Android, and iOS. Windows, Linux, Mac, web, and android are all currently available and working.
 
 ARM devices are also supported including raspberry pis. The app is shockingly performant on a raspberry pi as well. The only limitation is that a 64bit OS is required on an ARM device. Setup is exactly the same, just use the latest tag and docker will auto pull the ARM version.
 
@@ -589,16 +601,11 @@ ARM devices are also supported including raspberry pis. The app is shockingly pe
 - [ ] Nix Package
 - [x] Aur Package
 - [x] Helm Chart and repo for kubernetes deployment
-- [ ] Mobile Apps
+- [x] Mobile Apps
   - [x] Android App - Beta
     - [ ] Android Auto support
-  - [ ] iOS App
+  - [x] iOS App
   - [ ] Packaging and automation
-
-### Long term goals
-
-- [ ] Podcast ad blocking. Either by parsing audio blocks with ai and filtering ads or by utilizing a centralized server to allow others to send their ad block info to after determining the timestamps for ads.
-
 
 ## Screenshots :camera:
 

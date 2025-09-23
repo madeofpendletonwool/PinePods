@@ -21,20 +21,24 @@ pub struct RemoveSyncRequest {
     pub user_id: i32,
 }
 
-// Set default gPodder device - matches Python set_default_device function exactly
+// Set default gPodder device - accepts device name for frontend compatibility
 pub async fn gpodder_set_default(
     State(state): State<AppState>,
-    Path(device_id): Path<i32>,
+    Path(device_name): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let api_key = extract_api_key(&headers)?;
     validate_api_key(&state, &api_key).await?;
 
     let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
-    let success = state.db_pool.gpodder_set_default_device(user_id, device_id).await?;
+    let success = state.db_pool.gpodder_set_default_device_by_name(user_id, &device_name).await?;
     
     if success {
-        Ok(Json(serde_json::json!({ "status": "success" })))
+        Ok(Json(serde_json::json!({ 
+            "success": true,
+            "message": "Default device set successfully",
+            "data": null
+        })))
     } else {
         Err(AppError::internal("Failed to set default device"))
     }
@@ -396,7 +400,7 @@ pub async fn gpodder_create_device(
         .ok_or_else(|| AppError::BadRequest("User not found or GPodder sync not configured".to_string()))?;
     
     // Validate that GPodder sync is enabled
-    if settings.sync_type != "gpodder" && settings.sync_type != "both" {
+    if settings.sync_type != "gpodder" && settings.sync_type != "both" && settings.sync_type != "external" {
         return Err(AppError::BadRequest("GPodder sync is not enabled for this user".to_string()));
     }
     
