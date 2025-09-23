@@ -3043,9 +3043,72 @@ def migration_105_optimize_episode_actions_performance(conn, db_type: str):
             ''', conn=conn)
         
         logger.info("Successfully added episode actions performance indexes")
-        
+
     except Exception as e:
         logger.error(f"Error in gpodder migration 105: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("106", "optimize_subscription_sync_performance", "Add missing indexes for subscription sync queries", requires=["103"])
+def migration_106_optimize_subscription_sync_performance(conn, db_type: str):
+    """Add critical indexes for subscription sync performance to prevent AntennaPod timeouts"""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Adding performance indexes for subscription sync...")
+
+        if db_type == 'postgresql':
+            # Critical indexes for subscription sync performance
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_sync_subs_user_device_timestamp
+                ON "GpodderSyncSubscriptions"(UserID, DeviceID, Timestamp DESC)
+            ''', conn=conn)
+
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_sync_subs_user_action_timestamp
+                ON "GpodderSyncSubscriptions"(UserID, Action, Timestamp DESC)
+            ''', conn=conn)
+
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_sync_subs_podcast_url_user
+                ON "GpodderSyncSubscriptions"(UserID, PodcastURL, Timestamp DESC)
+            ''', conn=conn)
+
+            # Optimize subscription change queries with compound index
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_sync_subs_complex_query
+                ON "GpodderSyncSubscriptions"(UserID, DeviceID, Action, Timestamp DESC, PodcastURL)
+            ''', conn=conn)
+
+        else:  # mysql/mariadb
+            # Critical indexes for subscription sync performance
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_sync_subs_user_device_timestamp
+                ON GpodderSyncSubscriptions(UserID, DeviceID, Timestamp DESC)
+            ''', conn=conn)
+
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_sync_subs_user_action_timestamp
+                ON GpodderSyncSubscriptions(UserID, Action, Timestamp DESC)
+            ''', conn=conn)
+
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_sync_subs_podcast_url_user
+                ON GpodderSyncSubscriptions(UserID, PodcastURL(255), Timestamp DESC)
+            ''', conn=conn)
+
+            # Optimize subscription change queries with compound index
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_sync_subs_complex_query
+                ON GpodderSyncSubscriptions(UserID, DeviceID, Action, Timestamp DESC, PodcastURL(255))
+            ''', conn=conn)
+
+        logger.info("Successfully added subscription sync performance indexes")
+
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 106: {e}")
         raise
     finally:
         cursor.close()
