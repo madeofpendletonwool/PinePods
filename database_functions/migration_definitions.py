@@ -2563,6 +2563,52 @@ def migration_029_fix_people_episodes_table_schema(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("030", "add_user_language_preference", "Add Language column to Users table for user-specific language preferences", requires=["001"])
+def migration_030_add_user_language_preference(conn, db_type: str):
+    """Add Language column to Users table for user-specific language preferences"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Adding Language column to Users table")
+        
+        if db_type == 'postgresql':
+            # Add Language column with default 'en' (English)
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "Users" 
+                ADD COLUMN IF NOT EXISTS Language VARCHAR(10) DEFAULT 'en'
+            ''', conn=conn)
+            
+            # Add comment to document the column
+            safe_execute_sql(cursor, '''
+                COMMENT ON COLUMN "Users".Language IS 'ISO 639-1 language code for user interface language preference'
+            ''', conn=conn)
+            
+        else:  # mysql/mariadb
+            # Check if column exists first
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'Users' 
+                AND COLUMN_NAME = 'Language'
+            """)
+            
+            if cursor.fetchone()[0] == 0:
+                safe_execute_sql(cursor, '''
+                    ALTER TABLE Users 
+                    ADD COLUMN Language VARCHAR(10) DEFAULT 'en' 
+                    COMMENT 'ISO 639-1 language code for user interface language preference'
+                ''', conn=conn)
+        
+        logger.info("Successfully added Language column to Users table")
+
+    except Exception as e:
+        logger.error(f"Error in migration 030: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 # ============================================================================
 # GPODDER SYNC MIGRATIONS
 # These migrations match the gpodder-api service migrations from Go code

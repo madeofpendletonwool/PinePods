@@ -2930,3 +2930,106 @@ pub async fn call_get_ignored_podcasts(
         )))
     }
 }
+
+// Language preference requests
+#[derive(Serialize, Debug)]
+pub struct UpdateUserLanguageRequest {
+    pub user_id: i32,
+    pub language: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct UserLanguageResponse {
+    pub language: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AvailableLanguage {
+    pub code: String,
+    pub name: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct AvailableLanguagesResponse {
+    pub languages: Vec<AvailableLanguage>,
+}
+
+pub async fn call_get_user_language(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/get_user_language?user_id={}", server_name, user_id);
+
+    let response = Request::get(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: UserLanguageResponse = response.json().await?;
+        Ok(response_data.language)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting user language: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_update_user_language(
+    server_name: String,
+    api_key: String,
+    user_id: i32,
+    language: String,
+) -> Result<bool, Error> {
+    let url = format!("{}/api/data/update_user_language", server_name);
+    
+    let request_body = UpdateUserLanguageRequest {
+        user_id,
+        language,
+    };
+
+    let response = Request::put(&url)
+        .header("Api-Key", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: UpdateSettingResponse = response.json().await?;
+        Ok(response_data.success)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating user language: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_get_available_languages(
+    server_name: String,
+) -> Result<Vec<AvailableLanguage>, Error> {
+    let url = format!("{}/api/data/get_available_languages", server_name);
+
+    let response = Request::get(&url)
+        .header("Content-Type", "application/json")
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: AvailableLanguagesResponse = response.json().await?;
+        Ok(response_data.languages)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting available languages: {}",
+            response.status_text()
+        )))
+    }
+}

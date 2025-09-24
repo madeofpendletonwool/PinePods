@@ -342,6 +342,10 @@ fn create_data_routes() -> Router<AppState> {
         .route("/update_podcast_index_id", post(handlers::settings::update_podcast_index_id))
         .route("/ignore_podcast_index_id", post(handlers::settings::ignore_podcast_index_id))
         .route("/get_ignored_podcasts", post(handlers::settings::get_ignored_podcasts))
+        // Language preference endpoints
+        .route("/get_user_language", get(handlers::settings::get_user_language))
+        .route("/update_user_language", put(handlers::settings::update_user_language))
+        .route("/get_available_languages", get(handlers::settings::get_available_languages))
         // Add more data routes as needed
 }
 

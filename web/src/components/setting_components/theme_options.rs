@@ -7,9 +7,11 @@ use web_sys::window;
 use web_sys::HtmlSelectElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[function_component(ThemeOptions)]
 pub fn theme() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     // Use state to manage the selected theme
     let selected_theme = use_state(|| "".to_string());
@@ -141,12 +143,12 @@ pub fn theme() -> Html {
         <div class="p-6 space-y-4">
             <div class="flex items-center gap-3 mb-6">
                 <i class="ph ph-paint-roller text-2xl"></i>
-                <h2 class="text-xl font-semibold item_container-text">{"Theme Settings"}</h2>
+                <h2 class="text-xl font-semibold item_container-text">{i18n.t("settings.theme_settings")}</h2>
             </div>
 
             <div class="mb-6">
                 <p class="item_container-text mb-2">
-                    {"Choose your preferred theme. Your selection will sync across all your Pinepods applications."}
+                    {i18n.t("settings.choose_preferred_theme")}
                 </p>
             </div>
 
@@ -161,7 +163,7 @@ pub fn theme() -> Html {
                         class="theme-select-dropdown w-full p-3 pr-10 rounded-lg border appearance-none cursor-pointer"
                         value={(*selected_theme).clone()}
                     >
-                        <option value="" disabled=true>{"Select a theme"}</option>
+                        <option value="" disabled=true>{i18n.t("settings.select_a_theme")}</option>
                         {theme_options.into_iter().map(|theme| {
                             let current_theme = (*selected_theme).clone();
                             html! {
@@ -181,7 +183,7 @@ pub fn theme() -> Html {
                     class="theme-submit-button mt-4 w-full p-3 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
                 >
                     <i class="ph ph-thumbs-up text-2xl"></i>
-                    {"Apply Theme"}
+                    {i18n.t("settings.apply_theme")}
                 </button>
             }
         </div>

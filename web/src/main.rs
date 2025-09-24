@@ -47,6 +47,8 @@ use {
 // Yew Imports
 use yew::prelude::*;
 use yew_router::prelude::*;
+use i18nrs::yew::{I18nProvider, I18nProviderConfig};
+use std::collections::HashMap;
 
 #[function_component(NotFound)]
 pub fn not_found() -> Html {
@@ -134,15 +136,25 @@ fn switch(route: Route) -> Html {
 
 #[function_component(Main)]
 fn main_component() -> Html {
-    // console::log_1(&format!("Initial User Context: {:?}", (*user_context).clone()).into());
-    // console::log_1(&format!("Initial Auth Context: {:?}", (*user_auth_context).clone()).into());
+    // Set up translations according to i18nrs documentation
+    let translations = HashMap::from([
+        ("en", include_str!("translations/en.json")),
+    ]);
+
+    let config = I18nProviderConfig {
+        translations: translations,
+        default_language: "en".to_string(),
+        ..Default::default()
+    };
 
     html! {
-        <BrowserRouter>
-            <NavigationHandler>
-                <Switch<Route> render={switch} />
-            </NavigationHandler>
-        </BrowserRouter>
+        <I18nProvider ..config>
+            <BrowserRouter>
+                <NavigationHandler>
+                    <Switch<Route> render={switch} />
+                </NavigationHandler>
+            </BrowserRouter>
+        </I18nProvider>
     }
 }
 

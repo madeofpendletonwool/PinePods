@@ -7,9 +7,11 @@ use std::ops::Deref;
 use yew::platform::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[function_component(EmailSettings)]
 pub fn email_settings() -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -32,6 +34,38 @@ pub fn email_settings() -> Html {
     let is_testing = use_state(|| false);
     let test_success = use_state(|| false);
     let is_saving = use_state(|| false);
+
+    // Capture all i18n strings before any closures
+    let i18n_error_loading_email_settings = i18n.t("email_settings.error_loading_email_settings").to_string();
+    let i18n_test_email_success = i18n.t("email_settings.test_email_success").to_string();
+    let i18n_test_email_failed = i18n.t("email_settings.test_email_failed").to_string();
+    let i18n_email_settings_saved = i18n.t("email_settings.email_settings_saved").to_string();
+    let i18n_save_settings_failed = i18n.t("email_settings.save_settings_failed").to_string();
+    let i18n_email_settings = i18n.t("email_settings.email_settings").to_string();
+    let i18n_email_settings_description = i18n.t("email_settings.email_settings_description").to_string();
+    let i18n_current_settings = i18n.t("email_settings.current_settings").to_string();
+    let i18n_server = i18n.t("email_settings.server").to_string();
+    let i18n_from_email = i18n.t("email_settings.from_email").to_string();
+    let i18n_encryption = i18n.t("email_settings.encryption").to_string();
+    let i18n_auth_required = i18n.t("email_settings.auth_required").to_string();
+    let i18n_username = i18n.t("email_settings.username").to_string();
+    let i18n_yes = i18n.t("email_settings.yes").to_string();
+    let i18n_no = i18n.t("email_settings.no").to_string();
+    let i18n_update_settings = i18n.t("email_settings.update_settings").to_string();
+    let i18n_smtp_server = i18n.t("email_settings.smtp_server").to_string();
+    let i18n_port = i18n.t("email_settings.port").to_string();
+    let i18n_from_email_address = i18n.t("email_settings.from_email_address").to_string();
+    let i18n_encryption_method = i18n.t("email_settings.encryption_method").to_string();
+    let i18n_none = i18n.t("email_settings.none").to_string();
+    let i18n_authentication = i18n.t("email_settings.authentication").to_string();
+    let i18n_auth_username = i18n.t("email_settings.auth_username").to_string();
+    let i18n_password = i18n.t("email_settings.password").to_string();
+    let i18n_require_authentication = i18n.t("email_settings.require_authentication").to_string();
+    let i18n_test_settings = i18n.t("email_settings.test_settings").to_string();
+    let i18n_send_test_email = i18n.t("email_settings.send_test_email").to_string();
+    let i18n_testing = i18n.t("email_settings.testing").to_string();
+    let i18n_save_settings = i18n.t("email_settings.save_settings").to_string();
+    let i18n_saving = i18n.t("email_settings.saving").to_string();
 
     // Load current settings on component mount
     {
@@ -73,7 +107,7 @@ pub fn email_settings() -> Html {
                             }
                             Err(e) => {
                                 dispatch.reduce_mut(|state| {
-                                    state.error_message = Some(format!("Error loading email settings: {}", e));
+                                    state.error_message = Some(format!("{}{}", i18n_error_loading_email_settings.clone(), e));
                                 });
                             }
                         }
@@ -152,6 +186,8 @@ pub fn email_settings() -> Html {
         let user_email = user_email.clone();
 
         Callback::from(move |_: MouseEvent| {
+            let i18n_test_email_success = i18n_test_email_success.clone();
+            let i18n_test_email_failed = i18n_test_email_failed.clone();
             let form_server_name = form_server_name.clone();
             let form_server_port = form_server_port.clone();
             let form_from_email = form_from_email.clone();
@@ -190,12 +226,12 @@ pub fn email_settings() -> Html {
                         Ok(_) => {
                             test_success.set(true);
                             dispatch.reduce_mut(|state| {
-                                state.info_message = Some("Test email sent successfully! Check your inbox.".to_string());
+                                state.info_message = Some(i18n_test_email_success.clone());
                             });
                         }
                         Err(e) => {
                             dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!("Failed to send test email: {}", e));
+                                state.error_message = Some(format!("{}{}", i18n_test_email_failed.clone(), e));
                             });
                         }
                     }
@@ -220,6 +256,8 @@ pub fn email_settings() -> Html {
         let server_name = server_name.clone();
 
         Callback::from(move |_: MouseEvent| {
+            let i18n_email_settings_saved = i18n_email_settings_saved.clone();
+            let i18n_save_settings_failed = i18n_save_settings_failed.clone();
             let form_server_name = form_server_name.clone();
             let form_server_port = form_server_port.clone();
             let form_from_email = form_from_email.clone();
@@ -250,12 +288,12 @@ pub fn email_settings() -> Html {
                     match call_save_email_settings(server_name, api_key.unwrap(), email_settings).await {
                         Ok(_) => {
                             dispatch.reduce_mut(|state| {
-                                state.info_message = Some("Email settings saved successfully!".to_string());
+                                state.info_message = Some(i18n_email_settings_saved.clone());
                             });
                         }
                         Err(e) => {
                             dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!("Failed to save email settings: {}", e));
+                                state.error_message = Some(format!("{}{}", i18n_save_settings_failed.clone(), e));
                             });
                         }
                     }
@@ -268,38 +306,38 @@ pub fn email_settings() -> Html {
     html! {
         <div class="max-w-4xl mx-auto p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
             <div class="mb-8">
-                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{"Email Settings"}</h2>
+                <h2 class="text-2xl font-bold text-gray-900 dark:text-white mb-2">{&i18n_email_settings}</h2>
                 <p class="text-gray-600 dark:text-gray-400">
-                    {"Configure your SMTP email settings for password resets and notifications. Test your settings before saving to ensure they work correctly."}
+                    {&i18n_email_settings_description}
                 </p>
             </div>
 
             // Current Settings Display
             <div class="mb-8 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{"Current Settings"}</h3>
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">{&i18n_current_settings}</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                     <div>
-                        <span class="font-medium text-gray-700 dark:text-gray-300">{"Server:"}</span>
+                        <span class="font-medium text-gray-700 dark:text-gray-300">{&i18n_server}</span>
                         <span class="ml-2 text-gray-600 dark:text-gray-400">
                             {format!("{}:{}", current_settings.ServerName, current_settings.ServerPort)}
                         </span>
                     </div>
                     <div>
-                        <span class="font-medium text-gray-700 dark:text-gray-300">{"From Email:"}</span>
+                        <span class="font-medium text-gray-700 dark:text-gray-300">{&i18n_from_email}</span>
                         <span class="ml-2 text-gray-600 dark:text-gray-400">{&current_settings.FromEmail}</span>
                     </div>
                     <div>
-                        <span class="font-medium text-gray-700 dark:text-gray-300">{"Encryption:"}</span>
+                        <span class="font-medium text-gray-700 dark:text-gray-300">{&i18n_encryption}</span>
                         <span class="ml-2 text-gray-600 dark:text-gray-400">{&current_settings.Encryption}</span>
                     </div>
                     <div>
-                        <span class="font-medium text-gray-700 dark:text-gray-300">{"Auth Required:"}</span>
+                        <span class="font-medium text-gray-700 dark:text-gray-300">{&i18n_auth_required}</span>
                         <span class="ml-2 text-gray-600 dark:text-gray-400">
-                            {if current_settings.AuthRequired == 1 { "Yes" } else { "No" }}
+                            {if current_settings.AuthRequired == 1 { &i18n_yes } else { &i18n_no }}
                         </span>
                     </div>
                     <div>
-                        <span class="font-medium text-gray-700 dark:text-gray-300">{"Username:"}</span>
+                        <span class="font-medium text-gray-700 dark:text-gray-300">{&i18n_username}</span>
                         <span class="ml-2 text-gray-600 dark:text-gray-400">{&current_settings.Username}</span>
                     </div>
                 </div>
@@ -307,13 +345,13 @@ pub fn email_settings() -> Html {
 
             // Settings Form
             <div class="space-y-6">
-                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{"Update Settings"}</h3>
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white">{&i18n_update_settings}</h3>
                 
                 // Server Configuration
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            {"SMTP Server"}
+                            {&i18n_smtp_server}
                         </label>
                         <input
                             type="text"
@@ -325,7 +363,7 @@ pub fn email_settings() -> Html {
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            {"Port"}
+                            {&i18n_port}
                         </label>
                         <input
                             type="number"
@@ -340,7 +378,7 @@ pub fn email_settings() -> Html {
                 // From Email
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        {"From Email Address"}
+                        {&i18n_from_email_address}
                     </label>
                     <input
                         type="email"
@@ -354,14 +392,14 @@ pub fn email_settings() -> Html {
                 // Encryption
                 <div>
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        {"Encryption"}
+                        {&i18n_encryption_method}
                     </label>
                     <select
                         value={form_encryption.deref().clone()}
                         onchange={on_encryption_change}
                         class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
                     >
-                        <option value="none">{"None"}</option>
+                        <option value="none">{&i18n_none}</option>
                         <option value="SSL/TLS">{"SSL/TLS"}</option>
                         <option value="StartTLS">{"StartTLS"}</option>
                     </select>
@@ -378,7 +416,7 @@ pub fn email_settings() -> Html {
                             class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                         />
                         <label for="auth_required" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-                            {"Authentication Required"}
+                            {&i18n_require_authentication}
                         </label>
                     </div>
 
@@ -387,7 +425,7 @@ pub fn email_settings() -> Html {
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pl-6">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                        {"Username"}
+                                        {&i18n_auth_username}
                                     </label>
                                     <input
                                         type="text"
@@ -399,7 +437,7 @@ pub fn email_settings() -> Html {
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                        {"Password"}
+                                        {&i18n_password}
                                     </label>
                                     <input
                                         type="password"
@@ -430,11 +468,11 @@ pub fn email_settings() -> Html {
                                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                     </svg>
-                                    {"Testing..."}
+                                    {&i18n_testing}
                                 </>
                             }
                         } else {
-                            html! { "Test Email Settings" }
+                            html! { &i18n_send_test_email }
                         }}
                     </button>
 
@@ -452,11 +490,11 @@ pub fn email_settings() -> Html {
                                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                                                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                             </svg>
-                                            {"Saving..."}
+                                            {&i18n_saving}
                                         </>
                                     }
                                 } else {
-                                    html! { "Save Settings" }
+                                    html! { &i18n_save_settings }
                                 }}
                             </button>
                         }

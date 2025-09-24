@@ -5,14 +5,18 @@ use crate::requests::setting_reqs::{call_get_my_user_info, MyUserInfo};
 use crate::requests::setting_reqs::{
     call_set_email, call_set_fullname, call_set_password, call_set_username,
     call_update_timezone, call_update_date_format, call_update_time_format,
+    call_get_user_language, call_update_user_language, call_get_available_languages,
+    AvailableLanguage,
 };
 use chrono_tz::{Tz, TZ_VARIANTS};
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[function_component(UserSelfSettings)]
 pub fn user_self_settings() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -35,6 +39,10 @@ pub fn user_self_settings() -> Html {
     let timezone = use_state(|| "".to_string());
     let date_format = use_state(|| "".to_string());
     let time_format = use_state(|| "".to_string()); // Default to empty string
+    
+    // Language state
+    let user_language = use_state(|| "en".to_string());
+    let available_languages: UseStateHandle<Vec<AvailableLanguage>> = use_state(Vec::new);
 
     // Main user info state
     let user_info: UseStateHandle<Option<MyUserInfo>> = use_state(|| None);
@@ -57,7 +65,10 @@ pub fn user_self_settings() -> Html {
 
         use_effect_with(
             (api_key.clone(), server_name.clone(), *update_trigger), // Include update_trigger in dependencies
-            move |(api_key, server_name, _)| {
+            {
+                let user_language = user_language.clone();
+                let available_languages = available_languages.clone();
+                move |(api_key, server_name, _)| {
                 if let (Some(api_key), Some(server_name), Some(user_id)) =
                     (api_key.clone(), server_name.clone(), user_id)
                 {
@@ -65,7 +76,7 @@ pub fn user_self_settings() -> Html {
                     let api_key = api_key.unwrap().clone();
 
                     wasm_bindgen_futures::spawn_local(async move {
-                        match call_get_my_user_info(&server_name, api_key, user_id).await {
+                        match call_get_my_user_info(&server_name, api_key.clone(), user_id).await {
                             Ok(info) => {
                                 user_info.set(Some(info));
                             }
@@ -79,10 +90,34 @@ pub fn user_self_settings() -> Html {
                                 });
                             }
                         }
+                        
+                        // Load user language preference
+                        let user_language_clone = user_language.clone();
+                        match call_get_user_language(server_name.clone(), api_key.clone(), user_id).await {
+                            Ok(language) => {
+                                user_language_clone.set(language);
+                            }
+                            Err(e) => {
+                                web_sys::console::log_1(&format!("Failed to fetch user language: {}", e).into());
+                                // Don't show error to user, just use default
+                            }
+                        }
+                        
+                        // Load available languages
+                        let available_languages_clone = available_languages.clone();
+                        match call_get_available_languages(server_name).await {
+                            Ok(languages) => {
+                                available_languages_clone.set(languages);
+                            }
+                            Err(e) => {
+                                web_sys::console::log_1(&format!("Failed to fetch available languages: {}", e).into());
+                            }
+                        }
                     });
                 }
                 || ()
-            },
+            }
+        },
         );
     }
 
@@ -151,6 +186,14 @@ pub fn user_self_settings() -> Html {
         })
     };
 
+    let on_language_change = {
+        let user_language = user_language.clone();
+        Callback::from(move |e: Event| {
+            let target = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
+            user_language.set(target.value());
+        })
+    };
+
     // Helper function to render timezone options
     fn render_time_zone_option(tz: Tz) -> Html {
         html! {
@@ -168,6 +211,7 @@ pub fn user_self_settings() -> Html {
         let timezone = timezone.clone();
         let date_format = date_format.clone();
         let time_format = time_format.clone();
+        let user_language = user_language.clone();
         let show_username_error = show_username_error.clone();
         let show_email_error = show_email_error.clone();
         let show_password_error = show_password_error.clone();
@@ -176,12 +220,24 @@ pub fn user_self_settings() -> Html {
         let success_message = success_message.clone();
         let _dispatch = _dispatch.clone();
         let updated_fields_call = updated_fields.clone();
+        // Capture translated message before move
+        let success_message_text = i18n.t("settings.successfully_updated_user_values").to_string();
 
         Callback::from(move |e: SubmitEvent| {
             e.prevent_default();
             // let audio_dispatch_clone = audio_dispatch.clone();
             // let show_success_clone = show_success.clone();
             // let success_message_clone = success_message.clone();
+            
+            // Create separate copies of the success message for each async block
+            let success_msg_1 = success_message_text.clone();
+            let success_msg_2 = success_message_text.clone();
+            let success_msg_3 = success_message_text.clone();
+            let success_msg_4 = success_message_text.clone();
+            let success_msg_5 = success_message_text.clone();
+            let success_msg_6 = success_message_text.clone();
+            let success_msg_7 = success_message_text.clone();
+            let success_msg_8 = success_message_text.clone();
 
             let server_name = state
                 .auth_details
@@ -234,7 +290,7 @@ pub fn user_self_settings() -> Html {
                             show_success.set(true);
                             updated_trigger_call.set(!*updated_trigger_call);
 
-                            success_message.set("Successfully updated user values".to_string());
+                            success_message.set(success_msg_1);
                         }
                         Err(e) => {
                             web_sys::console::log_1(
@@ -276,7 +332,7 @@ pub fn user_self_settings() -> Html {
                             show_success.set(true);
                             updated_trigger_call.set(!*updated_trigger_call);
 
-                            success_message.set("Successfully updated user values".to_string());
+                            success_message.set(success_msg_2);
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
@@ -309,7 +365,7 @@ pub fn user_self_settings() -> Html {
                             show_success.set(true);
                             updated_trigger_call.set(!*updated_trigger_call);
 
-                            success_message.set("Successfully updated user values".to_string());
+                            success_message.set(success_msg_3);
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
@@ -353,6 +409,7 @@ pub fn user_self_settings() -> Html {
                         let success_message = success_message.clone();
                         let _dispatch = _dispatch.clone();
                         let updated_trigger_call = update_trigger.clone();
+                        let success_msg_password = success_msg_7;
 
                         wasm_bindgen_futures::spawn_local(async move {
                             match call_set_password(server_name, api_key, user_id, hashed_password)
@@ -361,8 +418,7 @@ pub fn user_self_settings() -> Html {
                                 Ok(_) => {
                                     show_success.set(true);
                                     updated_trigger_call.set(!*updated_trigger_call);
-                                    success_message
-                                        .set("Successfully updated user values".to_string());
+                                    success_message.set(success_msg_password);
                                 }
                                 Err(e) => {
                                     let formatted_error = format_error_message(&e.to_string());
@@ -405,7 +461,7 @@ pub fn user_self_settings() -> Html {
                             updated_user.set(fields.clone());
                             show_success.set(true);
                             updated_trigger_call.set(!*updated_trigger_call);
-                            success_message.set("Successfully updated user values".to_string());
+                            success_message.set(success_msg_4);
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
@@ -439,7 +495,7 @@ pub fn user_self_settings() -> Html {
                             updated_user.set(fields.clone());
                             show_success.set(true);
                             updated_trigger_call.set(!*updated_trigger_call);
-                            success_message.set("Successfully updated user values".to_string());
+                            success_message.set(success_msg_5);
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
@@ -474,7 +530,7 @@ pub fn user_self_settings() -> Html {
                                 updated_user.set(fields.clone());
                                 show_success.set(true);
                                 updated_trigger_call.set(!*updated_trigger_call);
-                                success_message.set("Successfully updated user values".to_string());
+                                success_message.set(success_msg_6.clone());
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
@@ -489,15 +545,50 @@ pub fn user_self_settings() -> Html {
                     });
                 }
             }
+
+            // Update user language if changed
+            if !user_language.is_empty() && *user_language != "en" {
+                let server_name = server_name.clone();
+                let api_key = api_key.clone();
+                let show_success = show_success.clone();
+                let success_message = success_message.clone();
+                let _dispatch = _dispatch.clone();
+                let updated_user = updated_fields_call.clone();
+                let updated_trigger_call = update_trigger.clone();
+                let language_clone = (*user_language).clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_update_user_language(server_name, api_key, user_id, language_clone).await {
+                        Ok(_) => {
+                            let mut fields = (*updated_user).clone();
+                            fields.push("language");
+                            updated_user.set(fields.clone());
+                            show_success.set(true);
+                            updated_trigger_call.set(!*updated_trigger_call);
+                            success_message.set(success_msg_8);
+                        }
+                        Err(e) => {
+                            let formatted_error = format_error_message(&e.to_string());
+                            _dispatch.reduce_mut(|state| {
+                                state.error_message = Some(format!(
+                                    "Failed to update language: {}",
+                                    formatted_error
+                                ));
+                            });
+                        }
+                    }
+                });
+            }
         })
     };
 
+    let available_languages_clone = available_languages.clone();
+    
     html! {
         <div class="user-settings-container">
             <div class="settings-header">
                 <div class="flex items-center gap-4">
                     <i class="ph ph-user-circle text-2xl"></i>
-                    <h2 class="text-xl font-semibold">{"Account Settings"}</h2>
+                    <h2 class="text-xl font-semibold">{i18n.t("settings.account_settings")}</h2>
                 </div>
                 if let Some(info) = &*user_info {
                     <div class="user-info-container mt-4 p-4 border border-solid border-opacity-10 rounded-lg overflow-hidden">
@@ -521,87 +612,106 @@ pub fn user_self_settings() -> Html {
 
             <form onsubmit={on_submit} class="space-y-4">
                 <div class="form-group">
-                    <label for="username" class="form-label">{"Username"}</label>
+                    <label for="username" class="form-label">{i18n.t("settings.username")}</label>
                     <input
                         type="text"
                         id="username"
                         value={(*username).clone()}
                         oninput={on_username_change}
                         class="form-input"
-                        placeholder="Enter username"
+                        placeholder={i18n.t("settings.enter_username")}
                     />
                     if *show_username_error {
-                        <p class="error-text">{"Username must be at least 4 characters long"}</p>
+                        <p class="error-text">{i18n.t("settings.username_min_length")}</p>
                     }
                 </div>
 
                 <div class="form-group">
-                    <label for="fullname" class="form-label">{"Full Name"}</label>
+                    <label for="fullname" class="form-label">{i18n.t("settings.full_name")}</label>
                     <input
                         type="text"
                         id="fullname"
                         value={(*fullname).clone()}
                         oninput={on_fullname_change}
                         class="form-input"
-                        placeholder="Enter full name"
+                        placeholder={i18n.t("settings.enter_full_name")}
                     />
                 </div>
 
                 <div class="form-group">
-                    <label for="email" class="form-label">{"Email"}</label>
+                    <label for="email" class="form-label">{i18n.t("settings.email")}</label>
                     <input
                         type="email"
                         id="email"
                         value={(*email).clone()}
                         oninput={on_email_change}
                         class="form-input"
-                        placeholder="Enter email address"
+                        placeholder={i18n.t("settings.enter_email")}
                     />
                     if *show_email_error {
-                        <p class="error-text">{"Please enter a valid email address"}</p>
+                        <p class="error-text">{i18n.t("settings.please_enter_valid_email")}</p>
                     }
                 </div>
 
                 <div class="password-section">
-                    <h3 class="text-lg font-medium">{"Change Password"}</h3>
+                    <h3 class="text-lg font-medium">{i18n.t("settings.change_password")}</h3>
                     <div class="form-group">
-                        <label for="new-password" class="form-label">{"New Password"}</label>
+                        <label for="new-password" class="form-label">{i18n.t("settings.new_password")}</label>
                         <input
                             type="password"
                             id="new-password"
                             value={(*new_password).clone()}
                             oninput={on_password_change}
                             class="form-input"
-                            placeholder="Enter new password"
+                            placeholder={i18n.t("settings.enter_new_password")}
                         />
                         if *show_password_error {
-                            <p class="error-text">{"Password must be at least 6 characters long"}</p>
+                            <p class="error-text">{i18n.t("settings.password_min_length")}</p>
                         }
                     </div>
 
                     <div class="form-group">
-                        <label for="confirm-password" class="form-label">{"Confirm Password"}</label>
+                        <label for="confirm-password" class="form-label">{i18n.t("settings.confirm_password")}</label>
                         <input
                             type="password"
                             id="confirm-password"
                             value={(*confirm_password).clone()}
                             oninput={on_confirm_password_change}
                             class="form-input"
-                            placeholder="Confirm new password"
+                            placeholder={i18n.t("settings.confirm_new_password")}
                         />
                         if *show_password_match_error {
-                            <p class="error-text">{"Passwords do not match"}</p>
+                            <p class="error-text">{i18n.t("settings.passwords_do_not_match")}</p>
                         }
                     </div>
                 </div>
 
                 <div class="timezone-section">
-                    <h3 class="text-lg font-medium">{"Time & Date Settings"}</h3>
+                    <h3 class="text-lg font-medium">{i18n.t("settings.regional_settings")}</h3>
+                    
+                    <div class="form-group">
+                        <label for="language" class="form-label">
+                            <i class="ph ph-translate"></i>
+                            {i18n.t("settings.language")}
+                        </label>
+                        <select
+                            id="language"
+                            class="form-input"
+                            onchange={on_language_change}
+                            value={(*user_language).clone()}
+                        >
+                            { for available_languages_clone.iter().map(|lang| {
+                                html! {
+                                    <option value={lang.code.clone()}>{&lang.name}</option>
+                                }
+                            })}
+                        </select>
+                    </div>
                     
                     <div class="form-group">
                         <label for="timezone" class="form-label">
                             <i class="ph ph-globe"></i>
-                            {"Time Zone"}
+                            {i18n.t("settings.timezone")}
                         </label>
                         <select
                             id="timezone"
@@ -617,7 +727,7 @@ pub fn user_self_settings() -> Html {
                     <div class="form-group">
                         <label for="date_format" class="form-label">
                             <i class="ph ph-calendar"></i>
-                            {"Date Format"}
+                            {i18n.t("settings.date_format")}
                         </label>
                         <select
                             id="date_format"
@@ -640,7 +750,7 @@ pub fn user_self_settings() -> Html {
                     <div class="form-group">
                         <label for="time_format" class="form-label">
                             <i class="ph ph-clock-clockwise"></i>
-                            {"Time Format"}
+                            {i18n.t("settings.time_format")}
                         </label>
                         <select
                             id="time_format"
@@ -662,7 +772,7 @@ pub fn user_self_settings() -> Html {
 
                 <button type="submit" class="submit-button">
                     <i class="ph ph-floppy-disk"></i>
-                    {"Save Changes"}
+                    {i18n.t("settings.save_changes")}
                 </button>
             </form>
         </div>

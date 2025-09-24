@@ -12,7 +12,10 @@ use crate::requests::login_requests::{
     call_store_oidc_state, call_verify_and_reset_password, call_verify_key, call_verify_mfa,
     ResetCodePayload, ResetForgotPasswordPayload, TimeZoneInfo,
 };
-use crate::requests::setting_reqs::{call_get_startpage, call_get_theme};
+use crate::requests::setting_reqs::{
+    call_get_available_languages, call_get_startpage, call_get_theme, call_update_user_language,
+    AvailableLanguage,
+};
 use chrono_tz::{Tz, TZ_VARIANTS};
 use md5;
 use rand::Rng;
@@ -51,6 +54,8 @@ pub fn login() -> Html {
     let time_zone = use_state(|| "".to_string());
     let date_format = use_state(|| "".to_string());
     let time_pref = use_state(|| 12);
+    let user_language = use_state(|| "en".to_string());
+    let available_languages: UseStateHandle<Vec<AvailableLanguage>> = use_state(Vec::new);
     let mfa_code = use_state(|| "".to_string());
     let mfa_session_token = use_state(|| "".to_string());
     let temp_api_key = use_state(|| "".to_string());
@@ -97,6 +102,7 @@ pub fn login() -> Html {
     });
 
     let effect_providers = oidc_providers.clone();
+
     use_effect_with((), move |_| {
         let providers = effect_providers.clone();
         wasm_bindgen_futures::spawn_local(async move {
@@ -121,6 +127,33 @@ pub fn login() -> Html {
         });
         || ()
     });
+
+    // Load available languages for first-time setup
+    let effect_available_languages = available_languages.clone();
+    use_effect_with((), move |_| {
+        let languages = effect_available_languages.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let window = web_sys::window().expect("no global `window` exists");
+            let location = window.location();
+            let server_name = location
+                .href()
+                .expect("should have a href")
+                .trim_end_matches('/')
+                .to_string();
+            match call_get_available_languages(server_name).await {
+                Ok(response) => {
+                    languages.set(response);
+                }
+                Err(e) => {
+                    web_sys::console::log_1(
+                        &format!("Error fetching available languages: {:?}", e).into(),
+                    );
+                }
+            }
+        });
+        || ()
+    });
+
     let effect_displatch = dispatch.clone();
     let effect_loading = loading.clone();
     // User Auto Login with saved state
@@ -417,7 +450,11 @@ pub fn login() -> Html {
                 )
                 .await
                 {
-                    Ok(login_requests::LoginResult::Success(user_details, login_request, server_details)) => {
+                    Ok(login_requests::LoginResult::Success(
+                        user_details,
+                        login_request,
+                        server_details,
+                    )) => {
                         // After user login, update the image URL with user's email from user_details
                         let gravatar_url = generate_gravatar_url(&user_details.Email, 80); // 80 is the image size
                         let key_copy = login_request.clone();
@@ -568,19 +605,19 @@ pub fn login() -> Html {
                             }
                         }
                     }
-                    Ok(login_requests::LoginResult::MfaRequired { 
-                        server_name: mfa_server, 
-                        username: _mfa_username, 
-                        user_id: mfa_user_id, 
-                        mfa_session_token: session_token 
+                    Ok(login_requests::LoginResult::MfaRequired {
+                        server_name: mfa_server,
+                        username: _mfa_username,
+                        user_id: mfa_user_id,
+                        mfa_session_token: session_token,
                     }) => {
                         // Store MFA session data for the MFA prompt
                         temp_server_name.set(mfa_server.clone());
                         temp_user_id.set(mfa_user_id);
                         mfa_session_token.set(session_token);
-                        
+
                         console::log_1(&"MFA required - transitioning to MFA prompt".into());
-                        
+
                         // Set page state to show MFA prompt
                         page_state.set(PageState::MFAPrompt);
                     }
@@ -905,10 +942,10 @@ pub fn login() -> Html {
             let server_name = server_name.trim_end_matches('/').to_string();
             let dispatch = dispatch_wasm.clone();
             let page_state = page_state.clone();
-            
+
             // Show loading state immediately
             page_state.set(PageState::ForgotPasswordLoading);
-            
+
             let reset_code_request = Some(ResetCodePayload {
                 username: forgot_username.clone(),
                 email: forgot_email.clone(),
@@ -923,7 +960,7 @@ pub fn login() -> Html {
                         page_state.set(PageState::EnterCode);
                     }
                     Err(_e) => {
-                        // Still show success for security - prevents user enumeration 
+                        // Still show success for security - prevents user enumeration
                         page_state.set(PageState::EnterCode);
                     }
                 }
@@ -1007,34 +1044,36 @@ pub fn login() -> Html {
         Callback::from(move |_e: yew::events::MouseEvent| {
             let dispatch = dispatch_wasm.clone();
             let page_state = page_state.clone();
-            
+
             // Validate password confirmation
             if reset_password.is_empty() || reset_password_confirm.is_empty() {
                 dispatch.reduce_mut(|state| {
-                    state.error_message = Option::from("Please fill in both password fields".to_string());
+                    state.error_message =
+                        Option::from("Please fill in both password fields".to_string());
                 });
                 return;
             }
-            
+
             if reset_password != reset_password_confirm {
                 dispatch.reduce_mut(|state| {
                     state.error_message = Option::from("Passwords do not match".to_string());
                 });
                 return;
             }
-            
+
             if reset_code.is_empty() {
                 dispatch.reduce_mut(|state| {
-                    state.error_message = Option::from("Please enter the reset code from your email".to_string());
+                    state.error_message =
+                        Option::from("Please enter the reset code from your email".to_string());
                 });
                 return;
             }
-            
+
             let window = window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location.href().expect("should have a href");
             let server_name = server_name.trim_end_matches('/').to_string();
-            
+
             match encode_password(&reset_password) {
                 Ok(hash_pw) => {
                     let reset_password_request = Some(ResetForgotPasswordPayload {
@@ -1175,12 +1214,21 @@ pub fn login() -> Html {
         })
     };
 
+    let on_language_change = {
+        let user_language = user_language.clone();
+        Callback::from(move |e: InputEvent| {
+            let select_element = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
+            user_language.set(select_element.value());
+        })
+    };
+
     let on_time_zone_submit = {
         // let (state, dispatch) = use_store::<AppState>();
         let page_state = page_state.clone();
         let time_pref = time_pref.clone();
         let time_zone = time_zone.clone();
         let date_format = date_format.clone();
+        let user_language = user_language.clone();
         // let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
         // let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         // let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -1198,6 +1246,7 @@ pub fn login() -> Html {
             let user_id = *temp_user_id;
             let page_state = page_state.clone();
             let history = history.clone();
+            let user_language = (*user_language).clone();
             // let error_message_clone = error_message_create.clone();
             e.prevent_default();
             // page_state.set(PageState::Default);
@@ -1216,6 +1265,31 @@ pub fn login() -> Html {
                 {
                     Ok(success) => {
                         if success.success {
+                            // Update language preference if not English
+                            let user_lang = (user_language).to_string();
+                            if !user_lang.is_empty() && user_lang != "en" {
+                                match call_update_user_language(
+                                    server_name.clone(),
+                                    api_key.clone(),
+                                    user_id,
+                                    user_lang,
+                                )
+                                .await
+                                {
+                                    Ok(_) => {
+                                        web_sys::console::log_1(
+                                            &"Language preference updated".into(),
+                                        );
+                                    }
+                                    Err(e) => {
+                                        web_sys::console::log_1(
+                                            &format!("Failed to update language preference: {}", e)
+                                                .into(),
+                                        );
+                                        // Don't fail the entire setup if language update fails
+                                    }
+                                }
+                            }
                             page_state.set(PageState::Default);
                             match call_check_mfa_enabled(
                                 server_name.clone(),
@@ -1306,7 +1380,7 @@ pub fn login() -> Html {
                 // Header
                 <div class="modal-header">
                     <i class="ph ph-clock text-xl"></i>
-                    <h3 class="text-lg">{"Time Zone Setup"}</h3>
+                    <h3 class="text-lg">{"Initial Setup"}</h3>
                 </div>
 
                 // Content
@@ -1315,8 +1389,28 @@ pub fn login() -> Html {
                         <div class="modal-welcome">
                             <i class="ph ph-hand-waving text-xl"></i>
                             <p>
-                                {"Welcome to Pinepods! This appears to be your first time logging in. To start, let's get some basic information about your time and time zone preferences. This will determine how times appear throughout the app."}
+                                {"Welcome to PinePods! This appears to be your first time logging in. Let's set up your preferences including language, time zone, and date/time formats."}
                             </p>
+                        </div>
+
+                        <div class="modal-form-group">
+                            <label class="modal-label">
+                                <i class="ph ph-translate"></i>
+                                <span>{"Language"}</span>
+                            </label>
+                            <select
+                                id="language"
+                                name="language"
+                                class="modal-select"
+                                oninput={on_language_change.clone()}
+                                value={(*user_language).clone()}
+                            >
+                                { for available_languages.iter().map(|lang| {
+                                    html! {
+                                        <option value={lang.code.clone()}>{&lang.name}</option>
+                                    }
+                                })}
+                            </select>
                         </div>
 
                         <div class="modal-form-group">
@@ -1404,7 +1498,7 @@ pub fn login() -> Html {
         let temp_server_name = temp_server_name.clone();
         let temp_user_id = temp_user_id.clone();
         let history = history.clone();
-        
+
         Callback::from(move |e: MouseEvent| {
             let dispatch = dispatch.clone();
             let mfa_code = mfa_code.clone();
@@ -1413,7 +1507,7 @@ pub fn login() -> Html {
             let temp_user_id = temp_user_id.clone();
             let page_state = page_state.clone();
             let history = history.clone();
-            
+
             e.prevent_default();
 
             wasm_bindgen_futures::spawn_local(async move {
@@ -1429,18 +1523,18 @@ pub fn login() -> Html {
                     Ok((user_details, login_request, server_details)) => {
                         // MFA verified successfully - complete the login process
                         let gravatar_url = generate_gravatar_url(&user_details.Email, 80);
-                        
+
                         // Extract values for theme/time/startpage operations before moving into closure
                         let server_name = login_request.server_name.clone();
                         let api_key = login_request.api_key.clone().unwrap();
                         let user_id = user_details.UserID;
-                        
+
                         dispatch.reduce_mut(move |state| {
                             state.user_details = Some(user_details);
                             state.auth_details = Some(login_request);
                             state.server_details = Some(server_details);
                             state.gravatar_url = Some(gravatar_url);
-                            
+
                             state.store_app_state();
                         });
 
@@ -1455,13 +1549,7 @@ pub fn login() -> Html {
                         let theme_api = api_key.clone();
                         let theme_server = server_name.clone();
                         wasm_bindgen_futures::spawn_local(async move {
-                            match call_get_theme(
-                                theme_server,
-                                theme_api,
-                                &user_id,
-                            )
-                            .await
-                            {
+                            match call_get_theme(theme_server, theme_api, &user_id).await {
                                 Ok(theme) => {
                                     crate::components::setting_components::theme_options::changeTheme(&theme);
                                     // Update local storage with the new theme
@@ -1484,13 +1572,7 @@ pub fn login() -> Html {
                         let time_server = server_name.clone();
                         let time_api = api_key.clone();
                         wasm_bindgen_futures::spawn_local(async move {
-                            match call_get_time_info(
-                                time_server,
-                                time_api,
-                                &user_id,
-                            )
-                            .await
-                            {
+                            match call_get_time_info(time_server, time_api, &user_id).await {
                                 Ok(tz_response) => {
                                     dispatch.reduce_mut(move |state| {
                                         state.user_tz = Some(tz_response.timezone);
@@ -1516,8 +1598,9 @@ pub fn login() -> Html {
                             // First check for requested route
                             let window = web_sys::window().expect("no global `window` exists");
                             let session_storage = window.session_storage().unwrap().unwrap();
-                            let requested_route = session_storage.get_item("requested_route").unwrap_or(None);
-                            
+                            let requested_route =
+                                session_storage.get_item("requested_route").unwrap_or(None);
+
                             if let Some(route) = requested_route {
                                 startpage_history.push(&route);
                                 return;
@@ -1870,6 +1953,8 @@ pub fn login() -> Html {
     let temp_user_id = use_state(|| 0);
     let temp_server_name = use_state(|| "".to_string());
     let page_state = use_state(|| PageState::Default);
+    let user_language = use_state(|| "en".to_string());
+    let available_languages: UseStateHandle<Vec<AvailableLanguage>> = use_state(Vec::new);
 
     // This effect runs only once when the component mounts
     let background_image_url = use_state(|| String::new());
@@ -1888,6 +1973,32 @@ pub fn login() -> Html {
             || {}
         },
     );
+
+    // Load available languages
+    let effect_available_languages = available_languages.clone();
+    use_effect_with((), move |_| {
+        let languages = effect_available_languages.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let window = web_sys::window().expect("no global `window` exists");
+            let location = window.location();
+            let server_name = location
+                .href()
+                .expect("should have a href")
+                .trim_end_matches('/')
+                .to_string();
+            match call_get_available_languages(server_name).await {
+                Ok(response) => {
+                    languages.set(response);
+                }
+                Err(e) => {
+                    web_sys::console::log_1(
+                        &format!("Error fetching available languages: {:?}", e).into(),
+                    );
+                }
+            }
+        });
+        || ()
+    });
 
     let on_server_name_change = {
         let server_name = server_name.clone();
@@ -2194,6 +2305,15 @@ pub fn login() -> Html {
             }
         })
     };
+
+    let on_language_change = {
+        let user_language = user_language.clone();
+        Callback::from(move |e: InputEvent| {
+            let select_element = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
+            user_language.set(select_element.value());
+        })
+    };
+
     let dispatch_time = _app_dispatch.clone();
     let on_time_zone_submit = {
         // let (state, dispatch) = use_store::<AppState>();
@@ -2201,6 +2321,7 @@ pub fn login() -> Html {
         let time_pref = time_pref.clone();
         let time_zone = time_zone.clone();
         let date_format = date_format.clone();
+        let user_language = user_language.clone();
         // let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
         // let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         // let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -2217,6 +2338,7 @@ pub fn login() -> Html {
             let user_id = *temp_user_id;
             let page_state = page_state.clone();
             let history = history.clone();
+            let user_language_clone = user_language.clone();
             // let error_message_clone = error_message_create.clone();
             e.prevent_default();
             // page_state.set(PageState::Default);
@@ -2235,6 +2357,31 @@ pub fn login() -> Html {
                 {
                     Ok(success) => {
                         if success.success {
+                            // Update language preference if not English
+                            let user_lang = (*user_language_clone).to_string();
+                            if !user_lang.is_empty() && user_lang != "en" {
+                                match call_update_user_language(
+                                    server_name.clone(),
+                                    api_key.clone(),
+                                    user_id,
+                                    user_lang,
+                                )
+                                .await
+                                {
+                                    Ok(_) => {
+                                        web_sys::console::log_1(
+                                            &"Language preference updated".into(),
+                                        );
+                                    }
+                                    Err(e) => {
+                                        web_sys::console::log_1(
+                                            &format!("Failed to update language preference: {}", e)
+                                                .into(),
+                                        );
+                                        // Don't fail the entire setup if language update fails
+                                    }
+                                }
+                            }
                             page_state.set(PageState::Default);
                             match call_check_mfa_enabled(
                                 server_name.clone(),
@@ -2322,7 +2469,7 @@ pub fn login() -> Html {
                 // Header
                 <div class="item_container-text modal-header">
                     <i class="ph ph-clock text-xl"></i>
-                    <h3 class="text-lg">{"Time Zone Setup"}</h3>
+                    <h3 class="text-lg">{"Initial Setup"}</h3>
                 </div>
 
                 // Content
@@ -2331,8 +2478,28 @@ pub fn login() -> Html {
                         <div class="modal-welcome">
                             <i class="ph ph-hand-waving text-xl"></i>
                             <p>
-                                {"Welcome to Pinepods! This appears to be your first time logging in. To start, let's get some basic information about your time and time zone preferences. This will determine how times appear throughout the app."}
+                                {"Welcome to PinePods! This appears to be your first time logging in. Let's set up your preferences including language, time zone, and date/time formats."}
                             </p>
+                        </div>
+
+                        <div class="modal-form-group">
+                            <label class="modal-label">
+                                <i class="ph ph-translate"></i>
+                                <span>{"Language"}</span>
+                            </label>
+                            <select
+                                id="language"
+                                name="language"
+                                class="modal-select"
+                                oninput={on_language_change.clone()}
+                                value={(*user_language).clone()}
+                            >
+                                { for available_languages.iter().map(|lang| {
+                                    html! {
+                                        <option value={lang.code.clone()}>{&lang.name}</option>
+                                    }
+                                })}
+                            </select>
                         </div>
 
                         <div class="modal-form-group">

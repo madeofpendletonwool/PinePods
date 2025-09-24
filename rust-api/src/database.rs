@@ -22252,6 +22252,60 @@ impl DatabasePool {
             }
         }
     }
+
+    // Get user's language preference
+    pub async fn get_user_language(&self, user_id: i32) -> AppResult<String> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT language FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.get::<Option<String>, _>("language").unwrap_or_else(|| "en".to_string()))
+                } else {
+                    Ok("en".to_string())
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT Language FROM Users WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.get::<Option<String>, _>("Language").unwrap_or_else(|| "en".to_string()))
+                } else {
+                    Ok("en".to_string())
+                }
+            }
+        }
+    }
+
+    // Update user's language preference
+    pub async fn update_user_language(&self, user_id: i32, language: &str) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"UPDATE "Users" SET language = $1 WHERE userid = $2"#)
+                    .bind(language)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("UPDATE Users SET Language = ? WHERE UserID = ?")
+                    .bind(language)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+        }
+    }
 }
 
 // Standalone create_playlist function that matches Python API

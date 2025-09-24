@@ -18,6 +18,7 @@ use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 // Add this enum to define the layout options
 #[derive(Clone, PartialEq, Debug, Deserialize, Default)]
@@ -61,6 +62,7 @@ impl Reducer<AppState> for AppStateMsg {
 fn render_layout_toggle(
     dispatch: Dispatch<AppState>,
     current_layout: Option<PodcastLayout>,
+    i18n: &i18nrs::I18n,
 ) -> Html {
     let onclick = dispatch.reduce_mut_callback(|state| {
         state.podcast_layout = match state.podcast_layout {
@@ -71,9 +73,9 @@ fn render_layout_toggle(
     });
 
     let (icon, text) = match current_layout {
-        Some(PodcastLayout::List) => ("ph ph-squares-four", "Grid"),
-        Some(PodcastLayout::Grid) => ("ph ph-list-dashes", "List"),
-        None => ("ph ph-list-dashes", "List"),
+        Some(PodcastLayout::List) => ("ph ph-squares-four", &i18n.t("podcasts.grid_view")),
+        Some(PodcastLayout::Grid) => ("ph ph-list-dashes", &i18n.t("podcasts.list_view")),
+        None => ("ph ph-list-dashes", &i18n.t("podcasts.list_view")),
     };
 
     html! {
@@ -95,6 +97,7 @@ fn render_podcasts(
     desc_state: Rc<ExpandedDescriptions>,
     desc_dispatch: Dispatch<ExpandedDescriptions>,
     toggle_delete: Callback<(i32, std::string::String)>,
+    i18n: &i18nrs::I18n,
 ) -> Html {
     // Add a debug log at the start of render function
     web_sys::console::log_1(&format!("Rendering {} podcasts", podcasts.len()).into());
@@ -135,13 +138,13 @@ fn render_podcasts(
                             podcast.podcastindexid.clone(),
                             podcast.podcastname.clone(),
                             podcast.feedurl.clone(),
-                            podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
-                            podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
+                            podcast.description.clone().unwrap_or_else(|| i18n.t("podcasts.no_description_provided").to_string()),
+                            podcast.author.clone().unwrap_or_else(|| i18n.t("podcasts.unknown_author").to_string()),
                             podcast_artwork.clone(), // Use the saved artwork URL directly
                             podcast.explicit.clone(),
                             episode_count,
                             podcast.categories.as_ref().map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", ")),
-                            podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
+                            podcast.websiteurl.clone().unwrap_or_else(|| i18n.t("podcasts.no_website_provided").to_string()),
                             user_id.unwrap(),
                             podcast.is_youtube,
                         );
@@ -184,7 +187,7 @@ fn render_podcasts(
                                     <FallbackImage
                                         src={podcast_artwork} // Direct use of saved artwork URL
                                         onclick={on_title_click.clone()}
-                                        alt={format!("Cover for {}", podcast.podcastname.clone())}
+                                        alt={format!("{}{}", i18n.t("podcasts.cover_alt_text"), podcast.podcastname.clone())}
                                         class={"episode-image"}
                                     />
                                 </div>
@@ -202,7 +205,7 @@ fn render_podcasts(
                                             <SafeHtml html={podcast_description_clone.unwrap_or_default()} />
                                         </div>
                                     </div>
-                                    <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount.clone().unwrap_or_else(|| 0)) }</p>
+                                    <p class="item_container-text">{ format!("{}{}", &i18n.t("podcasts.episode_count"), &podcast.episodecount.clone().unwrap_or_else(|| 0)) }</p>
                                 </div>
                                 <button
                                     class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"}
@@ -238,13 +241,13 @@ fn render_podcasts(
                             podcast.podcastindexid.clone(),
                             podcast.podcastname.clone(),
                             podcast.feedurl.clone(),
-                            podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
-                            podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
+                            podcast.description.clone().unwrap_or_else(|| i18n.t("podcasts.no_description_provided").to_string()),
+                            podcast.author.clone().unwrap_or_else(|| i18n.t("podcasts.unknown_author").to_string()),
                             podcast_artwork.clone(), // Use the saved artwork URL directly
                             podcast.explicit.clone(),
                             podcast.episodecount.clone().unwrap_or_else(|| 0),
                             podcast.categories.as_ref().map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", ")),
-                            podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
+                            podcast.websiteurl.clone().unwrap_or_else(|| i18n.t("podcasts.no_website_provided").to_string()),
                             user_id.unwrap(),
                             podcast.is_youtube,
                         );
@@ -267,7 +270,7 @@ fn render_podcasts(
                                 <div class="podcast-image-container">
                                     <FallbackImage
                                         src={podcast_artwork}
-                                        alt={format!("Cover for {}", podcast.podcastname.clone())}
+                                        alt={format!("{}{}", i18n.t("podcasts.cover_alt_text"), podcast.podcastname.clone())}
                                         class={"podcast-image"}
                                     />
                                 </div>
@@ -285,6 +288,7 @@ fn render_podcasts(
 
 #[function_component(Podcasts)]
 pub fn podcasts() -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
@@ -308,6 +312,29 @@ pub fn podcasts() -> Html {
         LeastPlayed,
     }
     let sort_direction = use_state(|| Some(SortDirection::AlphaAsc));
+
+    // Capture all i18n strings at function start to avoid borrow checker issues
+    let i18n_delete_podcast = i18n.t("podcasts.delete_podcast").to_string();
+    let i18n_close_modal = i18n.t("podcasts.close_modal").to_string();
+    let i18n_delete_confirmation_text = i18n.t("podcasts.delete_confirmation_text").to_string();
+    let i18n_yes_delete_podcast = i18n.t("podcasts.yes_delete_podcast").to_string();
+    let i18n_no_take_me_back = i18n.t("podcasts.no_take_me_back").to_string();
+    let i18n_add_custom_podcast = i18n.t("podcasts.add_custom_podcast").to_string();
+    let i18n_custom_podcast_instructions = i18n.t("podcasts.custom_podcast_instructions").to_string();
+    let i18n_username_optional = i18n.t("podcasts.username_optional").to_string();
+    let i18n_password_optional = i18n.t("podcasts.password_optional").to_string();
+    let i18n_add_feed = i18n.t("podcasts.add_feed").to_string();
+    let i18n_custom_feed = i18n.t("podcasts.custom_feed").to_string();
+    let i18n_search_podcasts_placeholder = i18n.t("podcasts.search_podcasts_placeholder").to_string();
+    let i18n_no_podcasts_found = i18n.t("podcasts.no_podcasts_found").to_string();
+    let i18n_no_podcasts_found_description = i18n.t("podcasts.no_podcasts_found_description").to_string();
+    let i18n_youtube_channel_removed = i18n.t("podcasts.youtube_channel_removed").to_string();
+    let i18n_podcast_successfully_added = i18n.t("podcasts.podcast_successfully_added").to_string();
+    let i18n_podcast_removed = i18n.t("podcasts.podcast_removed").to_string();
+    let i18n_youtube_channel_remove_failed = i18n.t("podcasts.youtube_channel_remove_failed").to_string();
+    let i18n_podcast_remove_failed = i18n.t("podcasts.podcast_remove_failed").to_string();
+    let i18n_error_removing_content = i18n.t("podcasts.error_removing_content").to_string();
+    let i18n_failed_to_add_podcast = i18n.t("podcasts.failed_to_add_podcast").to_string();
 
     // filter selections
     let selected_category = use_state(|| None as Option<String>);
@@ -443,6 +470,13 @@ pub fn podcasts() -> Html {
                 let server_name_call = server_name.clone();
                 let user_id_call = user_id.unwrap();
 
+                // Capture translated messages before async block
+                let youtube_success_msg = i18n_youtube_channel_removed.clone();
+                let podcast_success_msg = i18n_podcast_removed.clone();
+                let youtube_error_msg = i18n_youtube_channel_remove_failed.clone();
+                let podcast_error_msg = i18n_podcast_remove_failed.clone();
+                let error_prefix = i18n_error_removing_content.clone();
+
                 let remove_values = RemovePodcastValues {
                     podcast_id: pid,
                     user_id: user_id_call,
@@ -473,18 +507,18 @@ pub fn podcasts() -> Html {
                                 dispatch_call.reduce_mut(|state| {
                                     state.info_message =
                                         Some(if url.starts_with("https://www.youtube.com") {
-                                            "YouTube channel successfully removed".to_string()
+                                            youtube_success_msg.clone()
                                         } else {
-                                            "Podcast successfully removed".to_string()
+                                            podcast_success_msg.clone()
                                         })
                                 });
                             } else {
                                 dispatch_call.reduce_mut(|state| {
                                     state.error_message =
                                         Some(if url.starts_with("https://www.youtube.com") {
-                                            "Failed to remove YouTube channel".to_string()
+                                            youtube_error_msg.clone()
                                         } else {
-                                            "Failed to remove podcast".to_string()
+                                            podcast_error_msg.clone()
                                         })
                                 });
                             }
@@ -493,7 +527,7 @@ pub fn podcasts() -> Html {
                             let formatted_error = format_error_message(&e.to_string());
                             dispatch_call.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Error removing content: {:?}", formatted_error))
+                                    Some(format!("{}{:?}", error_prefix, formatted_error))
                             });
                         }
                     }
@@ -510,25 +544,25 @@ pub fn podcasts() -> Html {
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
-                            {"Delete Podcast"}
+                            {&i18n_delete_podcast}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
-                            <span class="sr-only">{"Close modal"}</span>
+                            <span class="sr-only">{&i18n.t("podcasts.close_modal")}</span>
                         </button>
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
                             <div>
-                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{"Are you sure you want to delete the podcast from the database? This will remove it from every aspect of the app. Meaning this will remove any saved, downloaded, or queued episodes for this podcast. It will also remove any history that includes it."}</label>
+                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{&i18n.t("podcasts.delete_confirmation_text")}</label>
                                 <div class="flex justify-between space-x-4">
                                     <button onclick={on_remove_click} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                                        {"Yes, Delete Podcast"}
+                                        {&i18n_yes_delete_podcast}
                                     </button>
                                     <button onclick={on_close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                                        {"No, take me back"}
+                                        {&i18n_no_take_me_back}
                                     </button>
                                 </div>
                             </div>
@@ -591,6 +625,10 @@ pub fn podcasts() -> Html {
             let is_loading_wasm = is_loading_call.clone();
             let unstate_pod_user = (*pod_user).clone();
             let unstate_pod_pass = (*pod_pass).clone();
+            
+            // Capture translated messages before async block
+            let success_msg = i18n_podcast_successfully_added.clone();
+            let error_prefix = i18n_failed_to_add_podcast.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 match call_add_custom_feed(
                     &server_name,
@@ -604,7 +642,7 @@ pub fn podcasts() -> Html {
                 {
                     Ok(new_podcast) => {
                         dispatch_call.reduce_mut(|state| {
-                            state.info_message = Some("Podcast Successfully Added".to_string());
+                            state.info_message = Some(success_msg);
                         });
                         dispatch_call.reduce_mut(move |state| {
                             if let Some(ref mut podcast_response) = state.podcast_feed_return_extra
@@ -624,7 +662,7 @@ pub fn podcasts() -> Html {
                     }
                     Err(e) => {
                         dispatch_call.reduce_mut(|state| {
-                            state.error_message = Some(format!("Failed to add podcast: {}", e));
+                            state.error_message = Some(format!("{}{}", error_prefix, e));
                         });
                     }
                 }
@@ -640,19 +678,19 @@ pub fn podcasts() -> Html {
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
-                            {"Add Custom Podcast"}
+                            {&i18n_add_custom_podcast}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
-                            <span class="sr-only">{"Close modal"}</span>
+                            <span class="sr-only">{&i18n.t("podcasts.close_modal")}</span>
                         </button>
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
                             <div>
-                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{"Simply enter the feed url, optional credentials, and click the button below. This is great in case you subscibe to premium podcasts and they aren't availble in The Pocast Index or other indexing services."}</label>
+                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{&i18n.t("podcasts.custom_podcast_instructions")}</label>
                                 <div class="justify-between space-x-4">
                                     <div>
                                         <input id="feed_url" oninput={update_feed.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="https://bestpodcast.com/feed.xml" />
@@ -660,15 +698,15 @@ pub fn podcasts() -> Html {
                                 </div>
                                 <div class="flex justify-between space-x-4">
                                     <div>
-                                        <input id="username" oninput={update_pod_user.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder="Username (optional)" />
+                                        <input id="username" oninput={update_pod_user.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder={i18n.t("podcasts.username_optional")} />
                                     </div>
                                     <div>
-                                        <input id="password" type="password" oninput={update_pod_pass.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder="Password (optional)" />
+                                        <input id="password" type="password" oninput={update_pod_pass.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder={i18n.t("podcasts.password_optional")} />
                                     </div>
                                 </div>
                                 <div>
                                     <button onclick={add_custom_feed} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" disabled={*is_loading}>
-                                    {"Add Feed"}
+                                    {&i18n_add_feed}
                                     if *is_loading {
                                         <span class="ml-2 spinner-border animate-spin inline-block w-4 h-4 border-2 rounded-full"></span>
                                     }
@@ -854,9 +892,9 @@ pub fn podcasts() -> Html {
                                 <div class="flex gap-2 ml-auto items-center">
                                     <button class="filter-chip" onclick={toggle_custom_modal}>
                                         <i class="ph ph-plus-circle text-lg"></i>
-                                        <span class="text-sm font-medium">{"Custom Feed"}</span>
+                                        <span class="text-sm font-medium">{&i18n_custom_feed}</span>
                                     </button>
-                                    {render_layout_toggle(dispatch.clone(), state.podcast_layout.clone())}
+                                    {render_layout_toggle(dispatch.clone(), state.podcast_layout.clone(), &i18n)}
                                 </div>
                             </div>
 
@@ -867,7 +905,7 @@ pub fn podcasts() -> Html {
                                     <input
                                         type="text"
                                         class="search-input"
-                                        placeholder="Search podcasts..."
+                                        placeholder={i18n_search_podcasts_placeholder.clone()}
                                         value={(*search_term).clone()}
                                         oninput={let search_term = search_term.clone();
                                             Callback::from(move |e: InputEvent| {
@@ -904,14 +942,14 @@ pub fn podcasts() -> Html {
                                             })
                                         }
                                     >
-                                        <option value="alpha_asc" selected=true>{"A to Z ↑"}</option>
-                                        <option value="alpha_desc">{"Z to A ↓"}</option>
-                                        <option value="episodes_high">{"Most Episodes"}</option>
-                                        <option value="episodes_low">{"Least Episodes"}</option>
-                                        <option value="oldest">{"Oldest First"}</option>
-                                        <option value="newest">{"Newest First"}</option>
-                                        <option value="most_played">{"Most Played"}</option>
-                                        <option value="least_played">{"Least Played"}</option>
+                                        <option value="alpha_asc" selected=true>{&i18n.t("podcasts.sort_a_to_z_up")}</option>
+                                        <option value="alpha_desc">{&i18n.t("podcasts.sort_z_to_a_down")}</option>
+                                        <option value="episodes_high">{&i18n.t("podcasts.sort_most_episodes")}</option>
+                                        <option value="episodes_low">{&i18n.t("podcasts.sort_least_episodes")}</option>
+                                        <option value="oldest">{&i18n.t("podcasts.sort_oldest_first")}</option>
+                                        <option value="newest">{&i18n.t("podcasts.sort_newest_first")}</option>
+                                        <option value="most_played">{&i18n.t("podcasts.sort_most_played")}</option>
+                                        <option value="least_played">{&i18n.t("podcasts.sort_least_played")}</option>
                                     </select>
                                     <i class="ph ph-caret-down dropdown-arrow"></i>
                                 </div>
@@ -925,7 +963,7 @@ pub fn podcasts() -> Html {
                                     class="filter-chip"
                                 >
                                     <i class="ph ph-broom text-lg"></i>
-                                    <span class="text-sm font-medium">{"Clear All"}</span>
+                                    <span class="text-sm font-medium">{&i18n.t("podcasts.clear_all")}</span>
                                 </button>
 
                                 // Category filter chips (limited to prevent multiple lines)
@@ -968,8 +1006,8 @@ pub fn podcasts() -> Html {
                     if let Some(_pods) = int_podcasts.pods.clone() {
                         if filtered_pods.is_empty() {
                             empty_message(
-                                "No Podcasts Found",
-                                "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
+                                &i18n.t("podcasts.no_podcasts_found"),
+                                &i18n.t("podcasts.no_podcasts_found_description")
                             )
                         } else {
                             // render_podcasts(&filtered_pods, state.podcast_layout.clone(), dispatch.clone(), &history)
@@ -984,20 +1022,21 @@ pub fn podcasts() -> Html {
                                 desc_state,
                                 desc_dispatch.clone(),
                                 toggle_delete.clone(),
+                                &i18n,
                             )
                         }
 
 
                     } else {
                         empty_message(
-                            "No Podcasts Found",
-                            "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
+                            &i18n.t("podcasts.no_podcasts_found"),
+                            &i18n.t("podcasts.no_podcasts_found_description")
                         )
                     }
                 } else {
                     empty_message(
-                        "No Podcasts Found",
-                        "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
+                        &i18n.t("podcasts.no_podcasts_found"),
+                        &i18n.t("podcasts.no_podcasts_found_description")
                     )
                 }
             }

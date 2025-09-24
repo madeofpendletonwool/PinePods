@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     error::AppError,
     handlers::{extract_api_key, validate_api_key, check_user_access},
+    models::{AvailableLanguage, LanguageUpdateRequest, UserLanguageResponse, AvailableLanguagesResponse},
     AppState,
 };
 use sqlx::{Row, ValueRef};
@@ -3621,5 +3622,130 @@ pub async fn get_ignored_podcasts(
     } else {
         Err(AppError::forbidden("You can only view your own podcasts"))
     }
+}
+
+// Get user's language preference
+pub async fn get_user_language(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<UserLanguageResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+    
+    let user_id: i32 = params
+        .get("user_id")
+        .ok_or_else(|| AppError::bad_request("Missing user_id parameter"))?
+        .parse()
+        .map_err(|_| AppError::bad_request("Invalid user_id format"))?;
+    
+    check_user_access(&state, &api_key, user_id).await?;
+    
+    let language = state.db_pool.get_user_language(user_id).await?;
+    
+    Ok(Json(UserLanguageResponse { language }))
+}
+
+// Update user's language preference
+pub async fn update_user_language(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<LanguageUpdateRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+    
+    check_user_access(&state, &api_key, request.user_id).await?;
+    
+    let success = state.db_pool.update_user_language(request.user_id, &request.language).await?;
+    
+    if success {
+        Ok(Json(serde_json::json!({
+            "success": true,
+            "language": request.language
+        })))
+    } else {
+        Err(AppError::not_found("User not found"))
+    }
+}
+
+// Get available languages by scanning translation files
+pub async fn get_available_languages() -> Result<Json<AvailableLanguagesResponse>, AppError> {
+    let translations_dir = std::path::Path::new("/var/www/html/static/translations");
+    
+    let mut languages = Vec::new();
+    
+    if let Ok(entries) = std::fs::read_dir(translations_dir) {
+        for entry in entries.flatten() {
+            if let Some(file_name) = entry.file_name().to_str() {
+                if file_name.ends_with(".json") {
+                    let lang_code = file_name.strip_suffix(".json").unwrap_or("");
+                    
+                    // Map language codes to human-readable names
+                    let lang_name = match lang_code {
+                        "en" => "English",
+                        "es" => "Español",
+                        "fr" => "Français", 
+                        "de" => "Deutsch",
+                        "it" => "Italiano",
+                        "pt" => "Português",
+                        "ru" => "Русский",
+                        "ja" => "日本語",
+                        "ko" => "한국어",
+                        "zh" => "中文",
+                        "nl" => "Nederlands",
+                        "pl" => "Polski",
+                        "sv" => "Svenska",
+                        "da" => "Dansk",
+                        "no" => "Norsk",
+                        "fi" => "Suomi",
+                        "cs" => "Čeština",
+                        "hu" => "Magyar",
+                        "ro" => "Română",
+                        "tr" => "Türkçe",
+                        "ar" => "العربية",
+                        "he" => "עברית",
+                        "hi" => "हिन्दी",
+                        "th" => "ไทย",
+                        "vi" => "Tiếng Việt",
+                        "id" => "Bahasa Indonesia",
+                        "ms" => "Bahasa Melayu",
+                        "uk" => "Українська",
+                        "bg" => "Български",
+                        "hr" => "Hrvatski",
+                        "sk" => "Slovenčina",
+                        "sl" => "Slovenščina",
+                        "et" => "Eesti",
+                        "lv" => "Latviešu",
+                        "lt" => "Lietuvių",
+                        _ => lang_code, // Fallback to code if name not mapped
+                    };
+                    
+                    // Validate that the translation file contains valid JSON
+                    if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                        if serde_json::from_str::<serde_json::Value>(&content).is_ok() {
+                            languages.push(AvailableLanguage {
+                                code: lang_code.to_string(),
+                                name: lang_name.to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Sort by language code for consistent ordering
+    languages.sort_by(|a, b| a.code.cmp(&b.code));
+    
+    // Ensure English is always first if present
+    if let Some(en_index) = languages.iter().position(|l| l.code == "en") {
+        if en_index != 0 {
+            let en_lang = languages.remove(en_index);
+            languages.insert(0, en_lang);
+        }
+    }
+    
+    Ok(Json(AvailableLanguagesResponse { languages }))
 }
 

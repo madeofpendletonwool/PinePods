@@ -8,9 +8,11 @@ use crate::requests::stat_reqs;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[function_component(UserStats)]
 pub fn user_stats() -> Html {
+    let (i18n, _) = use_translation();
     let (stat_state, stat_dispatch) = use_store::<UserStatsStore>();
     let user_stats = stat_state.stats.as_ref();
     let pinepods_version = stat_state.pinepods_version.as_ref();
@@ -97,32 +99,32 @@ pub fn user_stats() -> Html {
                                 html! {
                                     <>
                                         <div class="stats-card">
-                                            <p class="stats-label">{"User Created"}</p>
+                                            <p class="stats-label">{i18n.t("user_stats.user_created")}</p>
                                             <p class="stats-value">{&formatted_date}</p>
                                         </div>
 
                                         <div class="stats-card">
-                                            <p class="stats-label">{"Podcasts Played"}</p>
+                                            <p class="stats-label">{i18n.t("user_stats.podcasts_played")}</p>
                                             <p class="stats-value">{ &stats.PodcastsPlayed }</p>
                                         </div>
 
                                         <div class="stats-card">
-                                            <p class="stats-label">{"Time Listened"}</p>
+                                            <p class="stats-label">{i18n.t("user_stats.time_listened")}</p>
                                             <p class="stats-value">{ &time_formatted }</p>
                                         </div>
 
                                         <div class="stats-card">
-                                            <p class="stats-label">{"Podcasts Added"}</p>
+                                            <p class="stats-label">{i18n.t("user_stats.podcasts_added")}</p>
                                             <p class="stats-value">{ &stats.PodcastsAdded }</p>
                                         </div>
 
                                         <div class="stats-card">
-                                            <p class="stats-label">{"Episodes Saved"}</p>
+                                            <p class="stats-label">{i18n.t("user_stats.episodes_saved")}</p>
                                             <p class="stats-value">{ &stats.EpisodesSaved }</p>
                                         </div>
 
                                         <div class="stats-card">
-                                            <p class="stats-label">{"Episodes Downloaded"}</p>
+                                            <p class="stats-label">{i18n.t("user_stats.episodes_downloaded")}</p>
                                             <p class="stats-value">{ &stats.EpisodesDownloaded }</p>
                                         </div>
                                         <div class={if let Some(stats) = user_stats { 
@@ -134,22 +136,22 @@ pub fn user_stats() -> Html {
                                         } else { 
                                             "stats-card" 
                                         }}>
-                                            <p class="stats-label">{"Podcast Sync Status"}</p>
+                                            <p class="stats-label">{i18n.t("user_stats.podcast_sync_status")}</p>
                                             {
                                                 if let Some(stats) = user_stats {
                                                     let sync_status = match stats.Pod_Sync_Type.as_str() {
-                                                        "None" => html! { <p class="stats-value">{"Not Syncing"}</p> },
+                                                        "None" => html! { <p class="stats-value">{i18n.t("user_stats.not_syncing")}</p> },
                                                         _ => {
                                                             let sync_type = if stats.Pod_Sync_Type == "gpodder" {
                                                                 if stats.GpodderUrl == "http://localhost:8042" {
-                                                                    "Internal gpodder"
+                                                                    &i18n.t("user_stats.internal_gpodder")
                                                                 } else {
-                                                                    "External gpodder"
+                                                                    &i18n.t("user_stats.external_gpodder")
                                                                 }
                                                             } else if stats.Pod_Sync_Type == "nextcloud" {
-                                                                "Nextcloud"
+                                                                &i18n.t("user_stats.nextcloud")
                                                             } else {
-                                                                "Unknown sync type"
+                                                                &i18n.t("user_stats.unknown_sync_type")
                                                             };
 
                                                             html! {
@@ -162,19 +164,19 @@ pub fn user_stats() -> Html {
                                                     };
                                                     sync_status
                                                 } else {
-                                                    html! { <p class="stats-value">{"Loading..."}</p> }
+                                                    html! { <p class="stats-value">{i18n.t("user_stats.loading")}</p> }
                                                 }
                                             }
                                         </div>
 
                                         <div class="large-card col-span-1 md:col-span-3">
                                             <img src="static/assets/favicon.png" alt="Pinepods Logo" class="large-card-image"/>
-                                            <p class="large-card-paragraph item_container-text">{ format!("Current Version: {}", display_version) }</p>
-                                            <p class="large-card-paragraph item_container-text">{"Thanks for using Pinepods! This app was born from a love for podcasts, of homelabs, and a desire to have a secure and central location to manage personal data. Feel free to reach out for questions and open an issue if you have ideas for new features. Pull Requests on this software are welcome and encouraged. If you feel that you've gotten use out of this software and are thankful for it's existence donations to my Buymeacoffee are welcome but never required. Lastly, this app will ALWAYS remain open source."}</p>
+                                            <p class="large-card-paragraph item_container-text">{ format!("{}{}", i18n.t("user_stats.current_version"), display_version) }</p>
+                                            <p class="large-card-paragraph item_container-text">{i18n.t("user_stats.about_text")}</p>
                                             <div class="large-card-content flex flex-col space-y-2">
-                                                <a href="https://pinepods.online" target="_blank" class="large-card-button focus:ring-4 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none">{"Pinepods Documentation"}</a>
-                                                <a href="https://github.com/madeofpendletonwool/pinepods" target="_blank" class="large-card-button focus:ring-4 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none">{"Pinepods Github Repo"}</a>
-                                                <a href="https://www.buymeacoffee.com/collinscoffee" target="_blank" class="large-card-button focus:ring-4 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none">{"Buy me a Coffee"}</a>
+                                                <a href="https://pinepods.online" target="_blank" class="large-card-button focus:ring-4 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none">{i18n.t("user_stats.pinepods_documentation")}</a>
+                                                <a href="https://github.com/madeofpendletonwool/pinepods" target="_blank" class="large-card-button focus:ring-4 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none">{i18n.t("user_stats.pinepods_github_repo")}</a>
+                                                <a href="https://www.buymeacoffee.com/collinscoffee" target="_blank" class="large-card-button focus:ring-4 font-medium rounded-lg text-sm px-5 py-2.5 focus:outline-none">{i18n.t("user_stats.buy_me_coffee")}</a>
 
                                                 // Additional content...
                                             </div>
@@ -183,7 +185,7 @@ pub fn user_stats() -> Html {
                                     </>
                                 }
                             } else {
-                                html! { <p class="item_container-text">{"Loading user stats..."}</p> } // or handle the `None` case appropriately
+                                html! { <p class="item_container-text">{i18n.t("user_stats.loading_user_stats")}</p> } // or handle the `None` case appropriately
                             }
                         }
                     // </div>
