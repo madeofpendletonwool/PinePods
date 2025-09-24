@@ -66,13 +66,16 @@ func sanitizeURL(rawURL string) (string, error) {
 // getSubscriptions handles GET /api/2/subscriptions/{username}/{deviceid}
 func getSubscriptions(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		log.Printf("[DEBUG] getSubscriptions: Starting request processing - %s %s", c.Request.Method, c.Request.URL.Path)
 
 		// Get user ID from middleware
 		userID, exists := c.Get("userID")
 		if !exists {
+			log.Printf("[ERROR] getSubscriptions: userID not found in context")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
+		log.Printf("[DEBUG] getSubscriptions: userID found: %v", userID)
 
 		// Get device ID from URL - with fix for .json suffix
 		deviceName := c.Param("deviceid")
