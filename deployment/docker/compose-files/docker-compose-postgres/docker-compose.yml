@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: myS3curepass
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
-      - /home/user/pinepods/pgdata:/var/lib/postgresql/data
+      - /home/user/pinepods/pgdata:/var/lib/postgresql
     ports:
       - "5432:5432"
     restart: always
