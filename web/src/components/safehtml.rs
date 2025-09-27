@@ -1,4 +1,5 @@
 use crate::components::context::{AppState, UIState};
+use i18nrs::yew::use_translation;
 use regex::Regex;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -61,6 +62,8 @@ fn process_timecodes(
     api_key: String,
     user_id: i32,
     current_ep: Option<i32>,
+    start_episode_first_msg: String,
+    start_episode_first_audio_msg: String,
 ) -> String {
     // If the content is empty, return early
     if html_content.is_empty() {
@@ -117,6 +120,8 @@ fn process_timecodes(
         api_key,
         user_id,
         current_ep,
+        start_episode_first_msg,
+        start_episode_first_audio_msg,
     );
 
     // Return the processed HTML
@@ -135,6 +140,8 @@ fn process_node(
     api_key: String,
     user_id: i32,
     currently_playing_id: Option<i32>,
+    start_episode_first_msg: String,
+    start_episode_first_audio_msg: String,
 ) {
     // Skip processing if node is a script, style, or already a link
     if let Some(element) = node.dyn_ref::<Element>() {
@@ -412,6 +419,8 @@ fn process_node(
                             .unwrap_or(true)
                         {
                             let dispatch_clone = dispatch.clone();
+                            let start_episode_first_msg_delegation = start_episode_first_msg.clone();
+                            let start_episode_first_audio_msg_delegation = start_episode_first_audio_msg.clone();
 
                             let delegation_handler = Closure::wrap(Box::new(
                                 move |e: web_sys::CustomEvent| {
@@ -485,18 +494,14 @@ fn process_node(
                                                 );
                                                 // Alert the user
                                                 if let Some(window) = web_sys::window() {
-                                                    let _ = window.alert_with_message(
-                                                        "Please start playing this episode before using timecodes."
-                                                    );
+                                                    let _ = window.alert_with_message(&start_episode_first_msg_delegation);
                                                 }
                                             } else {
                                                 web_sys::console::error_1(
                                                     &"No audio element available".into(),
                                                 );
                                                 if let Some(window) = web_sys::window() {
-                                                    let _ = window.alert_with_message(
-                                                        "Please start playing the episode first before using timecodes."
-                                                    );
+                                                    let _ = window.alert_with_message(&start_episode_first_audio_msg_delegation);
                                                 }
                                             }
                                         }
@@ -532,6 +537,7 @@ fn process_node(
 
                         // Create the standard click handler
                         let current_playing_id = currently_playing_id.clone(); // Clone for the closure
+                        let start_episode_first_msg_click = start_episode_first_msg.clone();
                         let click_handler = Closure::wrap(Box::new(move |e: web_sys::MouseEvent| {
                             web_sys::console::log_1(
                                 &"TIMECODE SPAN CLICKED - HANDLER STARTED".into(),
@@ -596,9 +602,7 @@ fn process_node(
 
                                 // Alert the user
                                 if let Some(window) = web_sys::window() {
-                                    let _ = window.alert_with_message(
-                                        "Please start playing this episode before using timecodes.",
-                                    );
+                                    let _ = window.alert_with_message(&start_episode_first_msg_click);
                                 }
                             }
 
@@ -743,6 +747,8 @@ fn process_node(
                 api_key.clone(),
                 user_id,
                 currently_playing_id,
+                start_episode_first_msg.clone(),
+                start_episode_first_audio_msg.clone(),
             );
         }
     }
@@ -751,6 +757,7 @@ fn process_node(
 // Also update the SafeHtml component to add logging
 #[function_component(SafeHtml)]
 pub fn safe_html(props: &Props) -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let (ui_state, _ui_dispatch) = use_store::<UIState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -767,6 +774,10 @@ pub fn safe_html(props: &Props) -> Html {
 
     let (_, audio_dispatch) = use_store::<UIState>();
 
+    // Pre-capture translation strings
+    let start_episode_first_msg = i18n.t("safehtml.start_episode_first");
+    let start_episode_first_audio_msg = i18n.t("safehtml.start_episode_first_audio");
+
     // Only get the audio_dispatch when timecode processing is enabled
     let processed_html = if props.process_timecodes && server_name.is_some() && api_key.is_some() && user_id.is_some() {
         process_timecodes(
@@ -777,6 +788,8 @@ pub fn safe_html(props: &Props) -> Html {
             api_key.unwrap().unwrap(),
             user_id.unwrap(),
             current_ep,
+            start_episode_first_msg,
+            start_episode_first_audio_msg,
         )
     } else {
         log_debug("Timecode processing disabled, returning original HTML");

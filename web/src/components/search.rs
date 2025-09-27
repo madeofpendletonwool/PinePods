@@ -6,6 +6,7 @@ use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
 use crate::components::episodes_layout::AppStateMsg;
+use i18nrs::yew::use_translation;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
 };
@@ -29,6 +30,7 @@ pub struct SearchProps {
 
 #[function_component(Search)]
 pub fn search(_props: &SearchProps) -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let search_dispatch = dispatch.clone();
     let active_modal = use_state(|| None::<i32>);
@@ -193,10 +195,14 @@ pub fn search(_props: &SearchProps) -> Html {
 
     // Placeholder text changes based on screen size
     let placeholder_text = if *is_mobile {
-        "Search podcasts..."
+        i18n.t("search.search_podcasts")
     } else {
-        "Search for a podcast, episode, or description"
+        i18n.t("search.search_for_podcast_episode_description")
     };
+    
+    // Pre-compute button text
+    let go_text = i18n.t("search.go");
+    let search_text = i18n.t("search.search");
 
     html! {
         <>
@@ -205,7 +211,7 @@ pub fn search(_props: &SearchProps) -> Html {
             <UseScrollToTop />
             <div class="search-container" ref={container_ref.clone()}>
                 <form class="search-page-input" onsubmit={on_submit} ref={form_ref.clone()}>
-                    <label for="search" class="mb-2 text-sm font-medium text-gray-900 sr-only dark:text-white">{ "Search" }</label>
+                    <label for="search" class="mb-2 text-sm font-medium text-gray-900 sr-only dark:text-white">{ &i18n.t("search.search") }</label>
                     <div class="relative">
                         <div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
                             <svg class="w-4 h-4 text-gray-500 dark:text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
@@ -224,7 +230,7 @@ pub fn search(_props: &SearchProps) -> Html {
                             class={if *is_mobile { "search-page-button mobile-search-button absolute end-2 bottom-2 focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-3 py-1.5" }
                                    else { "search-page-button absolute end-2.5 bottom-2.5 focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-4 py-2" }}
                         >
-                            { if *is_mobile { "Go" } else { "Search" } }
+                            { if *is_mobile { &go_text } else { &search_text } }
                         </button>
                     </div>
                 </form>
@@ -236,8 +242,8 @@ pub fn search(_props: &SearchProps) -> Html {
                     let episodes = int_search_eps.data;
                     if episodes.is_empty() {
                         empty_message(
-                            "No Search Results Found",
-                            "Perhaps try again, but search for something slightly different :/"
+                            &i18n.t("search.no_results_found"),
+                            &i18n.t("search.try_different_search")
                         )
                     } else {
                         // Wrap results in a container with proper styling for mobile

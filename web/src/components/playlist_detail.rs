@@ -1,6 +1,7 @@
 use crate::components::app_drawer::App_drawer;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
+use i18nrs::yew::use_translation;
 use crate::components::feed::VirtualList;
 use crate::components::gen_components::{Search_nav, UseScrollToTop};
 use crate::requests::pod_req;
@@ -14,6 +15,8 @@ pub struct Props {
 
 #[function_component(PlaylistDetail)]
 pub fn playlist_detail(props: &Props) -> Html {
+    let (i18n, _) = use_translation();
+    
     let (state, dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
@@ -96,7 +99,7 @@ pub fn playlist_detail(props: &Props) -> Html {
                                                 <p class="text-gray-600 dark:text-gray-400">{desc}</p>
                                             }
                                             <p class="text-sm item_container-text mt-1">
-                                                {format!("{} episodes", playlist_info.episode_count.unwrap_or(0))}
+                                                {format!("{} {}", playlist_info.episode_count.unwrap_or(0), &i18n.t("playlist_detail.episodes"))}
                                             </p>
                                         </div>
                                     </div>
@@ -107,17 +110,19 @@ pub fn playlist_detail(props: &Props) -> Html {
                                 if episodes.is_empty() {
                                     <div class="flex flex-col items-center justify-center p-8 mt-4 item-container rounded-lg shadow-md">
                                         <i class="ph ph-playlist-x text-6xl mb-4"></i>
-                                        <h3 class="text-xl font-semibold mb-2 item_container-text">{"No Episodes Found"}</h3>
+                                        <h3 class="text-xl font-semibold mb-2 item_container-text">{&i18n.t("playlist_detail.no_episodes_found")}</h3>
                                         <p class="text-center item_container-text text-sm max-w-md">
-                                            {match &state.current_playlist_info {
-                                                Some(playlist_info) => match playlist_info.name.as_str() {
-                                                    "Fresh Releases" => "No new episodes have been released in the last 24 hours. Check back later for fresh content!",
-                                                    "Currently Listening" => "Start listening to some episodes and they'll appear here for easy access.",
-                                                    "Almost Done" => "You don't have any episodes that are near completion. Keep listening!",
-                                                    _ => "No episodes match the current playlist criteria. Try adjusting the filters or add more podcasts."
-                                                },
-                                                None => "No episodes match the current playlist criteria. Try adjusting the filters or add more podcasts."
-                                            }}
+                                            {
+                                                match &state.current_playlist_info {
+                                                    Some(playlist_info) => match playlist_info.name.as_str() {
+                                                        "Fresh Releases" => i18n.t("playlist_detail.fresh_releases_empty"),
+                                                        "Currently Listening" => i18n.t("playlist_detail.currently_listening_empty"),
+                                                        "Almost Done" => i18n.t("playlist_detail.almost_done_empty"),
+                                                        _ => i18n.t("playlist_detail.no_episodes_match_criteria")
+                                                    },
+                                                    None => i18n.t("playlist_detail.no_episodes_match_criteria")
+                                                }
+                                            }
                                         </p>
                                     </div>
                                 } else {

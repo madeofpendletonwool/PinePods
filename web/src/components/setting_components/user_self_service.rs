@@ -6,14 +6,22 @@ use web_sys::console;
 use yew::platform::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[function_component(SelfServiceSettings)]
 pub fn self_service_settings() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let _user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let _error_message = state.error_message.clone();
+
+    // Capture i18n strings before they get moved
+    let i18n_user_self_service_settings = i18n.t("user_self_service.user_self_service_settings").to_string();
+    let i18n_self_service_description = i18n.t("user_self_service.self_service_description").to_string();
+    let i18n_enable_user_self_service = i18n.t("user_self_service.enable_user_self_service").to_string();
+
     let self_service_status = use_state(|| false);
 
     {
@@ -49,8 +57,8 @@ pub fn self_service_settings() -> Html {
 
     html! {
         <div class="p-4"> // You can adjust the padding as needed
-            <p class="item_container-text text-lg font-bold mb-4">{"User Self Service Settings:"}</p> // Styled paragraph
-            <p class="item_container-text text-md mb-4">{"You can enable or disable user self service setup here. That is as it sounds. Once enabled there's a button on the login screen that allows users to set themselves up. It's highly recommended that if you enable this option you disable server downloads and setup the email settings so users can do self service password resets. If you'd rather not enable this you can just set new users up manually using User Settings above."}</p> // Styled paragraph
+            <p class="item_container-text text-lg font-bold mb-4">{&i18n_user_self_service_settings}</p> // Styled paragraph
+            <p class="item_container-text text-md mb-4">{&i18n_self_service_description}</p> // Styled paragraph
 
             <label class="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" disabled={**loading.borrow()} checked={**self_service_status.borrow()} class="sr-only peer" onclick={Callback::from(move |_| {
@@ -79,7 +87,7 @@ pub fn self_service_settings() -> Html {
                     spawn_local(future);
                 })} />
                 <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                <span class="ms-3 text-sm font-medium item_container-text">{"Enable User Self Service"}</span>
+                <span class="ms-3 text-sm font-medium item_container-text">{&i18n_enable_user_self_service}</span>
             </label>
         </div>
     }

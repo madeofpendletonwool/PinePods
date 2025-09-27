@@ -12,13 +12,28 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[function_component(PodcastIndexMatching)]
 pub fn podcast_index_matching() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+
+    // Capture i18n strings before they get moved
+    let i18n_podcast_index_matching = i18n.t("podcast_index_matching.podcast_index_matching").to_string();
+    let i18n_unmatched_podcasts = i18n.t("podcast_index_matching.unmatched_podcasts").to_string();
+    let i18n_ignored_podcasts = i18n.t("podcast_index_matching.ignored_podcasts").to_string();
+    let i18n_show_ignored = i18n.t("podcast_index_matching.show_ignored").to_string();
+    let i18n_show_unmatched = i18n.t("podcast_index_matching.show_unmatched").to_string();
+    let i18n_no_unmatched_podcasts = i18n.t("podcast_index_matching.no_unmatched_podcasts").to_string();
+    let i18n_no_ignored_podcasts = i18n.t("podcast_index_matching.no_ignored_podcasts").to_string();
+    let i18n_search_results = i18n.t("podcast_index_matching.search_results").to_string();
+    let i18n_match = i18n.t("podcast_index_matching.match").to_string();
+    let i18n_ignore = i18n.t("podcast_index_matching.ignore").to_string();
+    let i18n_close = i18n.t("common.cancel").to_string();
 
     let unmatched_podcasts: UseStateHandle<Vec<UnmatchedPodcast>> = use_state(|| Vec::new());
     let ignored_podcasts: UseStateHandle<Vec<UnmatchedPodcast>> = use_state(|| Vec::new());
@@ -356,7 +371,7 @@ pub fn podcast_index_matching() -> Html {
 
     html! {
         <div class="settings_container" ref={dropdown_ref}>
-            <h2 class="text_color_main font-bold text-lg mb-4">{"Match Podcasts to Podcast Index"}</h2>
+            <h2 class="text_color_main font-bold text-lg mb-4">{&i18n_podcast_index_matching}</h2>
             <p class="text_color_main mb-4">
                 {"Podcasts imported from OPML files may not have Podcast Index IDs. Match them here to enable full functionality."}
             </p>

@@ -88,7 +88,7 @@ pub fn user_stats() -> Html {
         <>
         <div class="main-container">
             <Search_nav />
-            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"User Statistics"}</h1>
+            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{i18n.t("user_stats.user_statistics")}</h1>
             <div class="item-container mx-auto p-6 shadow-md rounded">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 

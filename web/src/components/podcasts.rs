@@ -335,6 +335,7 @@ pub fn podcasts() -> Html {
     let i18n_podcast_remove_failed = i18n.t("podcasts.podcast_remove_failed").to_string();
     let i18n_error_removing_content = i18n.t("podcasts.error_removing_content").to_string();
     let i18n_failed_to_add_podcast = i18n.t("podcasts.failed_to_add_podcast").to_string();
+    let i18n_feed_url_placeholder = i18n.t("podcasts.feed_url_placeholder").to_string();
 
     // filter selections
     let selected_category = use_state(|| None as Option<String>);
@@ -693,7 +694,7 @@ pub fn podcasts() -> Html {
                                 <label for="download_schedule" class="block mb-2 text-sm font-medium">{&i18n.t("podcasts.custom_podcast_instructions")}</label>
                                 <div class="justify-between space-x-4">
                                     <div>
-                                        <input id="feed_url" oninput={update_feed.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="https://bestpodcast.com/feed.xml" />
+                                        <input id="feed_url" oninput={update_feed.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n_feed_url_placeholder.clone()} />
                                     </div>
                                 </div>
                                 <div class="flex justify-between space-x-4">

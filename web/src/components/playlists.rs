@@ -4,6 +4,7 @@ use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{self, CreatePlaylistRequest, Playlist, Podcast};
+use i18nrs::yew::use_translation;
 use gloo_events::EventListener;
 use std::collections::HashSet;
 use wasm_bindgen::JsCast;
@@ -33,6 +34,7 @@ struct PlaylistCardProps {
 
 #[function_component(PlaylistCard)]
 fn playlist_card(props: &PlaylistCardProps) -> Html {
+    let (i18n, _) = use_translation();
     let on_checkbox_change = {
         let playlist_id = props.playlist.playlist_id;
         let on_toggle_select = props.on_toggle_select.clone();
@@ -73,13 +75,13 @@ fn playlist_card(props: &PlaylistCardProps) -> Html {
                             {&props.playlist.name}
                             {
                                 if props.playlist.is_system_playlist {
-                                    html! { <span class="text-xs ml-2 text-gray-400">{"(System)"}</span> }
+                                    html! { <span class="text-xs ml-2 text-gray-400">{&i18n.t("playlists.system")}</span> }
                                 } else {
                                     html! {}
                                 }
                             }
                         </h3>
-                        <span class="playlist-count">{format!("{} episodes", props.playlist.episode_count.unwrap_or(0))}</span>
+                        <span class="playlist-count">{format!("{} {}", props.playlist.episode_count.unwrap_or(0), &i18n.t("playlists.episodes"))}</span>
                         if let Some(description) = &props.playlist.description {
                             <p class="playlist-description">{description}</p>
                         }
@@ -441,6 +443,7 @@ pub struct PodcastSelectorProps {
 
 #[function_component(PodcastSelector)]
 pub fn podcast_selector(props: &PodcastSelectorProps) -> Html {
+    let (i18n, _) = use_translation();
     let is_open = use_state(|| false);
     let dropdown_ref = use_node_ref();
 
@@ -505,12 +508,13 @@ pub fn podcast_selector(props: &PodcastSelectorProps) -> Html {
             >
                 <div class="flex items-center flex-grow">
                     if props.selected_podcasts.is_empty() {
-                        <span class="flex-grow text-left">{"Filter by Podcasts (Optional)"}</span>
+                        <span class="flex-grow text-left">{&i18n.t("playlists.filter_by_podcasts_optional")}</span>
                     } else {
                         <span class="flex-grow text-left">
-                            {format!("{} Podcast{} Selected",
+                            {format!("{} {} {}",
                                 props.selected_podcasts.len(),
-                                if props.selected_podcasts.len() == 1 { "" } else { "s" }
+                                if props.selected_podcasts.len() == 1 { i18n.t("playlists.podcast") } else { i18n.t("playlists.podcasts") },
+                                i18n.t("playlists.selected")
                             )}
                         </span>
                     }
@@ -578,6 +582,7 @@ pub fn podcast_selector(props: &PodcastSelectorProps) -> Html {
 
 #[function_component(Playlists)]
 pub fn playlists() -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let (audio_state, _) = use_store::<UIState>();
     let modal_state = use_state(|| ModalState::Hidden);
@@ -604,6 +609,18 @@ pub fn playlists() -> Html {
 
     // Loading state
     let loading = use_state(|| false);
+
+    // Pre-capture translation strings for async blocks
+    let delete_success_msg = i18n.t("playlists.delete_success");
+    let delete_failed_msg = i18n.t("playlists.delete_failed");
+    let create_success_msg = i18n.t("playlists.create_success");
+    let create_failed_msg = i18n.t("playlists.create_failed");
+    let bulk_delete_failed_msg = i18n.t("playlists.bulk_delete_failed");
+    let deleted_successfully_msg = i18n.t("playlists.deleted_successfully");
+    let playlist_singular = i18n.t("playlists.playlist");
+    let playlists_plural = i18n.t("playlists.playlists");
+    let deleted_msg = i18n.t("playlists.deleted");
+    let failed_msg = i18n.t("playlists.failed");
 
     // Effect to load playlists
     {
@@ -765,6 +782,8 @@ pub fn playlists() -> Html {
         let selected_playlist_id = selected_playlist_id.clone();
         let modal_state = modal_state.clone();
         let dispatch = dispatch.clone();
+        let delete_success_msg = delete_success_msg.clone();
+        let delete_failed_msg = delete_failed_msg.clone();
 
         let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -779,6 +798,8 @@ pub fn playlists() -> Html {
             ) {
                 let dispatch = dispatch.clone();
                 let modal_state = modal_state.clone();
+                let delete_success_msg = delete_success_msg.clone();
+                let delete_failed_msg = delete_failed_msg.clone();
 
                 wasm_bindgen_futures::spawn_local(async move {
                     match pod_req::call_delete_playlist(
@@ -804,7 +825,7 @@ pub fn playlists() -> Html {
                             }
                             dispatch.reduce_mut(|state| {
                                 state.info_message =
-                                    Some("Playlist deleted successfully".to_string());
+                                    Some(delete_success_msg);
                             });
                             modal_state.set(ModalState::Hidden);
                         }
@@ -812,7 +833,7 @@ pub fn playlists() -> Html {
                             let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Failed to delete playlist: {}", formatted_error));
+                                    Some(format!("{}: {}", delete_failed_msg, formatted_error));
                             });
                         }
                     }
@@ -828,6 +849,12 @@ pub fn playlists() -> Html {
         let dispatch = dispatch.clone();
         let is_loading_delete = is_loading_delete.clone();
         let is_selection_mode = is_selection_mode.clone();
+        let bulk_delete_failed_msg = bulk_delete_failed_msg.clone();
+        let deleted_successfully_msg = deleted_successfully_msg.clone();
+        let playlist_singular = playlist_singular.clone();
+        let playlists_plural = playlists_plural.clone();
+        let deleted_msg = deleted_msg.clone();
+        let failed_msg = failed_msg.clone();
 
         let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -847,6 +874,12 @@ pub fn playlists() -> Html {
                 let modal_state = modal_state.clone();
                 let is_loading_delete = is_loading_delete.clone();
                 let is_selection_mode = is_selection_mode.clone();
+                let bulk_delete_failed_msg = bulk_delete_failed_msg.clone();
+                let deleted_successfully_msg = deleted_successfully_msg.clone();
+                let playlist_singular = playlist_singular.clone();
+                let playlists_plural = playlists_plural.clone();
+                let deleted_msg = deleted_msg.clone();
+                let failed_msg = failed_msg.clone();
                 is_loading_delete.set(true);
 
                 wasm_bindgen_futures::spawn_local(async move {
@@ -884,22 +917,25 @@ pub fn playlists() -> Html {
                     if error_count == 0 {
                         dispatch.reduce_mut(|state| {
                             state.info_message = Some(format!(
-                                "{} playlist{} deleted successfully",
+                                "{} {} {}",
                                 success_count,
-                                if success_count == 1 { "" } else { "s" }
+                                if success_count == 1 { playlist_singular.clone() } else { playlists_plural.clone() },
+                                deleted_successfully_msg
                             ));
                         });
                     } else if success_count == 0 {
                         dispatch.reduce_mut(|state| {
-                            state.error_message = Some("Failed to delete playlists".to_string());
+                            state.error_message = Some(bulk_delete_failed_msg);
                         });
                     } else {
                         dispatch.reduce_mut(|state| {
                             state.info_message = Some(format!(
-                                "{} playlist{} deleted, {} failed",
+                                "{} {} {}, {} {}",
                                 success_count,
-                                if success_count == 1 { "" } else { "s" },
-                                error_count
+                                if success_count == 1 { playlist_singular.clone() } else { playlists_plural.clone() },
+                                deleted_msg,
+                                error_count,
+                                failed_msg
                             ));
                         });
                     }
@@ -932,6 +968,8 @@ pub fn playlists() -> Html {
         let play_progress_max = play_progress_max.clone();
         let time_filter_hours = time_filter_hours.clone();
         let selected_pods_create = selected_podcasts.clone();
+        let create_success_msg = create_success_msg.clone();
+        let create_failed_msg = create_failed_msg.clone();
 
         let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -944,6 +982,8 @@ pub fn playlists() -> Html {
             let play_progress_max_call = play_progress_max.clone();
             let time_filter_call = time_filter_hours.clone();
             let loading_clone = loading.clone();
+            let create_success_msg = create_success_msg.clone();
+            let create_failed_msg = create_failed_msg.clone();
             if let (Some(api_key), Some(user_id), Some(server_name)) =
                 (api_key.clone(), user_id.clone(), server_name.clone())
             {
@@ -997,7 +1037,7 @@ pub fn playlists() -> Html {
                             }
                             dispatch.reduce_mut(|state| {
                                 state.info_message =
-                                    Some("Playlist created successfully".to_string());
+                                    Some(create_success_msg);
                             });
                             modal_state.set(ModalState::Hidden);
                         }
@@ -1005,7 +1045,7 @@ pub fn playlists() -> Html {
                             let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Failed to create playlist: {}", formatted_error));
+                                    Some(format!("{}: {}", create_failed_msg, formatted_error));
                             });
                         }
                     }
@@ -1027,19 +1067,19 @@ pub fn playlists() -> Html {
                 <div class="modal-container relative w-full max-w-md rounded-lg shadow" onclick={stop_propagation.clone()}>
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
-                            {"Create New Playlist"}
+                            {&i18n.t("playlists.create_new_playlist")}
                         </h3>
                         <button onclick={on_modal_close.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
-                            <span class="sr-only">{"Close modal"}</span>
+                            <span class="sr-only">{&i18n.t("playlists.close_modal")}</span>
                         </button>
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
                             <div>
-                                <label class="block mb-2 text-sm font-medium">{"Name"}</label>
+                                <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.name")}</label>
                                 <input
                                     type="text"
                                     class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
@@ -1052,7 +1092,7 @@ pub fn playlists() -> Html {
                             </div>
 
                             <div>
-                                <label class="block mb-2 text-sm font-medium">{"Description"}</label>
+                                <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.description")}</label>
                                 <textarea
                                     class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                                     value={(*description).clone()}
@@ -1064,7 +1104,7 @@ pub fn playlists() -> Html {
                             </div>
 
                             <div>
-                                <label class="block mb-2 text-sm font-medium">{"Icon"}</label>
+                                <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.icon")}</label>
                                 <IconSelector
                                     selected_icon={(*icon_name).clone()}
                                     on_select={let icon_name = icon_name.clone(); Callback::from(move |new_icon| {
@@ -1074,7 +1114,7 @@ pub fn playlists() -> Html {
                             </div>
 
                             <div>
-                                <label class="block mb-2 text-sm font-medium">{"Filter by Podcasts"}</label>
+                                <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.filter_by_podcasts")}</label>
                                 {
                                     if *loading_podcasts {
                                         html! {
@@ -1106,7 +1146,7 @@ pub fn playlists() -> Html {
                             // Episode Filters
                             // Fix the Episode Filters section
                             <div>
-                                <label class="block mb-2 text-sm font-medium">{"Episode Filters"}</label>
+                                <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.episode_filters")}</label>
                                 <div class="space-y-2">
                                     <div class="flex items-center">
                                         <input
@@ -1122,7 +1162,7 @@ pub fn playlists() -> Html {
                                                 e.stop_propagation(); // Explicitly stop propagation for this input
                                             })}
                                         />
-                                        <span>{"Include Unplayed"}</span>
+                                        <span>{&i18n.t("playlists.include_unplayed")}</span>
                                     </div>
                                     <div class="flex items-center">
                                         <input
@@ -1138,7 +1178,7 @@ pub fn playlists() -> Html {
                                                 e.stop_propagation(); // Explicitly stop propagation for this input
                                             })}
                                         />
-                                        <span>{"Include Partially Played"}</span>
+                                        <span>{&i18n.t("playlists.include_partially_played")}</span>
                                     </div>
                                     <div class="flex items-center">
                                         <input
@@ -1154,18 +1194,18 @@ pub fn playlists() -> Html {
                                                 e.stop_propagation(); // Explicitly stop propagation for this input
                                             })}
                                         />
-                                        <span>{"Include Played"}</span>
+                                        <span>{&i18n.t("playlists.include_played")}</span>
                                     </div>
                                 </div>
                             </div>
 
                             // Duration Range
                             <div>
-                                <label class="block mb-2 text-sm font-medium">{"Duration Range (minutes)"}</label>
+                                <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.duration_range_minutes")}</label>
                                 <div class="grid grid-cols-2 gap-4">
                                     <input
                                         type="number"
-                                        placeholder="Min"
+                                        placeholder={i18n.t("playlists.min")}
                                         class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                                         value={(*min_duration).clone()}
                                         oninput={let min_duration = min_duration.clone(); Callback::from(move |e: InputEvent| {
@@ -1175,7 +1215,7 @@ pub fn playlists() -> Html {
                                     />
                                     <input
                                         type="number"
-                                        placeholder="Max"
+                                        placeholder={i18n.t("playlists.max")}
                                         class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                                         value={(*max_duration).clone()}
                                         oninput={let max_duration = max_duration.clone(); Callback::from(move |e: InputEvent| {
@@ -1188,13 +1228,13 @@ pub fn playlists() -> Html {
 
 
                             <div>
-                                <label class="block mb-2 text-sm font-medium">{"Play Progress Range (%)"}</label>
+                                <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.play_progress_range_percent")}</label>
                                 <div class="grid grid-cols-2 gap-4">
                                     <input
                                         type="number"
                                         min="0"
                                         max="100"
-                                        placeholder="Min %"
+                                        placeholder={i18n.t("playlists.min_percent")}
                                         disabled={!*include_partially_played}
                                         class={classes!(
                                             "search-bar-input",
@@ -1218,7 +1258,7 @@ pub fn playlists() -> Html {
                                         type="number"
                                         min="0"
                                         max="100"
-                                        placeholder="Max %"
+                                        placeholder={i18n.t("playlists.max_percent")}
                                         disabled={!*include_partially_played}
                                         class={classes!(
                                             "search-bar-input",
@@ -1240,11 +1280,11 @@ pub fn playlists() -> Html {
                             </div>
 
                             <div>
-                                <label class="block mb-2 text-sm font-medium">{"Time Filter (hours)"}</label>
+                                <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.time_filter_hours")}</label>
                                 <input
                                     type="number"
                                     min="0"
-                                    placeholder="Hours"
+                                    placeholder={i18n.t("playlists.hours")}
                                     class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                                     value={(*time_filter_hours).clone()}
                                     oninput={let time_filter_hours = time_filter_hours.clone(); Callback::from(move |e: InputEvent| {
@@ -1256,7 +1296,7 @@ pub fn playlists() -> Html {
 
                             // Sort Order
                             <div>
-                                <label class="block mb-2 text-sm font-medium">{"Sort Order"}</label>
+                                <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.sort_order")}</label>
                                 <select
                                     class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                                     onchange={let sort_order = sort_order.clone(); Callback::from(move |e: Event| {
@@ -1264,16 +1304,16 @@ pub fn playlists() -> Html {
                                         sort_order.set(select.value());
                                     })}
                                 >
-                                    <option value="date_desc">{"Newest First"}</option>
-                                    <option value="date_asc">{"Oldest First"}</option>
-                                    <option value="duration_desc">{"Longest First"}</option>
-                                    <option value="duration_asc">{"Shortest First"}</option>
+                                    <option value="date_desc">{&i18n.t("playlists.newest_first")}</option>
+                                    <option value="date_asc">{&i18n.t("playlists.oldest_first")}</option>
+                                    <option value="duration_desc">{&i18n.t("playlists.longest_first")}</option>
+                                    <option value="duration_asc">{&i18n.t("playlists.shortest_first")}</option>
                                 </select>
                             </div>
 
                             // Max Episodes
                             <div>
-                                <label class="block mb-2 text-sm font-medium">{"Max Episodes"}</label>
+                                <label class="block mb-2 text-sm font-medium">{&i18n.t("playlists.max_episodes")}</label>
                                 <input
                                     type="number"
                                     class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
@@ -1299,7 +1339,7 @@ pub fn playlists() -> Html {
                                         e.stop_propagation(); // Explicitly stop propagation for this input
                                     })}
                                 />
-                                <span>{"Group by Podcast"}</span>
+                                <span>{&i18n.t("playlists.group_by_podcast")}</span>
                             </div>
 
                             <button
@@ -1313,11 +1353,11 @@ pub fn playlists() -> Html {
                                         html! {
                                             <div class="flex items-center justify-center">
                                                 <i class="ph ph-circle-notch animate-spin mr-2"></i>
-                                                {"Creating..."}
+                                                {&i18n.t("playlists.creating")}
                                             </div>
                                         }
                                     } else {
-                                        html! { "Create Playlist" }
+                                        html! { &i18n.t("playlists.create_playlist") }
                                     }
                                 }
                             </button>
@@ -1333,20 +1373,20 @@ pub fn playlists() -> Html {
         <div class="modal-background fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onclick={on_modal_background_click.clone()}>
             <div class="modal-container relative rounded-lg shadow-lg max-w-md w-full mx-4" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
                 <div class="item-container rounded-lg p-6">
-                    <h2 class="text-2xl font-bold mb-4 item_container-text">{"Delete Playlist"}</h2>
-                    <p class="item_container-text mb-6">{"Are you sure you want to delete this playlist?"}</p>
+                    <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n.t("playlists.delete_playlist")}</h2>
+                    <p class="item_container-text mb-6">{&i18n.t("playlists.delete_confirmation")}</p>
                     <div class="flex justify-end space-x-4">
                         <button
                             class="item-container-button py-2 px-4 rounded"
                             onclick={on_modal_close.clone()}
                         >
-                            {"Cancel"}
+                            {&i18n.t("playlists.cancel")}
                         </button>
                         <button
                             class="item-container-button py-2 px-4 rounded"
                             onclick={on_delete_confirm.clone()}
                         >
-                            {"Delete"}
+                            {&i18n.t("playlists.delete")}
                         </button>
                     </div>
                 </div>
@@ -1359,12 +1399,14 @@ pub fn playlists() -> Html {
             <div class="modal-container relative rounded-lg shadow-lg max-w-md w-full mx-4" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
                 <div class="item-container rounded-lg p-6">
                     <div class="flex flex-col space-y-4">
-                        <h2 class="text-2xl font-bold item_container-text">{"Delete Playlists"}</h2>
+                        <h2 class="text-2xl font-bold item_container-text">{&i18n.t("playlists.delete_playlists")}</h2>
 
                         <p class="item_container-text">
-                            {format!("Are you sure you want to delete {} selected playlist{}?",
+                            {format!("{} {} {} {}?",
+                                &i18n.t("playlists.are_you_sure_delete"),
                                 selected_playlists.len(),
-                                if selected_playlists.len() == 1 { "" } else { "s" }
+                                &i18n.t("playlists.selected"),
+                                if selected_playlists.len() == 1 { i18n.t("playlists.playlist") } else { i18n.t("playlists.playlists") }
                             )}
                         </p>
 
@@ -1374,7 +1416,7 @@ pub fn playlists() -> Html {
                                 onclick={on_modal_close.clone()}
                                 disabled={*is_loading_delete}
                             >
-                                {"Cancel"}
+                                {&i18n.t("playlists.cancel")}
                             </button>
                             <button
                                 class="item-container-button py-2 px-4 rounded"
@@ -1386,11 +1428,11 @@ pub fn playlists() -> Html {
                                         html! {
                                             <div class="flex items-center justify-center">
                                                 <i class="ph ph-circle-notch animate-spin mr-2"></i>
-                                                {"Deleting..."}
+                                                {&i18n.t("playlists.deleting")}
                                             </div>
                                         }
                                     } else {
-                                        html! { "Delete" }
+                                        html! { &i18n.t("playlists.delete") }
                                     }
                                 }
                             </button>
@@ -1412,7 +1454,7 @@ pub fn playlists() -> Html {
 
                 // Header with action buttons - responsive layout
                 <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
-                    <h1 class="text-2xl font-bold item_container-text">{"Smart Playlists"}</h1>
+                    <h1 class="text-2xl font-bold item_container-text">{&i18n.t("playlists.smart_playlists")}</h1>
                     <div class="flex flex-wrap gap-2">
                         {
                             if *is_selection_mode {
@@ -1423,7 +1465,7 @@ pub fn playlists() -> Html {
                                             onclick={toggle_selection_mode.clone()}
                                         >
                                             <i class="ph ph-x text-xl mr-2"></i>
-                                            {"Cancel"}
+                                            {&i18n.t("playlists.cancel")}
                                         </button>
                                         <button
                                             class="item-container-button py-2 px-4 rounded flex items-center"
@@ -1431,7 +1473,7 @@ pub fn playlists() -> Html {
                                             disabled={selected_playlists.is_empty()}
                                         >
                                             <i class="ph ph-trash text-xl mr-2"></i>
-                                            {format!("Delete ({})", selected_playlists.len())}
+                                            {format!("{} ({})", &i18n.t("playlists.delete"), selected_playlists.len())}
                                         </button>
                                     </>
                                 }
@@ -1443,14 +1485,14 @@ pub fn playlists() -> Html {
                                             onclick={toggle_selection_mode.clone()}
                                         >
                                             <i class="ph ph-selection-plus text-xl mr-2"></i>
-                                            {"Select"}
+                                            {&i18n.t("playlists.select")}
                                         </button>
                                         <button
                                             class="item-container-button py-2 px-4 rounded flex items-center"
                                             onclick={on_create_click}
                                         >
                                             <i class="ph ph-plus text-xl mr-2"></i>
-                                            {"Create Playlist"}
+                                            {&i18n.t("playlists.create_playlist")}
                                         </button>
                                     </>
                                 }
@@ -1465,7 +1507,7 @@ pub fn playlists() -> Html {
                         html! {
                             <div class="mb-4 p-3 bg-blue-100 text-blue-800 rounded-lg flex items-center">
                                 <i class="ph ph-info text-xl mr-2"></i>
-                                <span>{"System playlists cannot be deleted and are not selectable."}</span>
+                                <span>{&i18n.t("playlists.system_playlists_info")}</span>
                             </div>
                         }
                     } else {
@@ -1478,8 +1520,8 @@ pub fn playlists() -> Html {
                     if let Some(playlists) = &tog_state.playlists {
                         if playlists.is_empty() {
                             empty_message(
-                                "No Playlists",
-                                "Create a new playlist to get started"
+                                &i18n.t("playlists.no_playlists"),
+                                &i18n.t("playlists.create_new_playlist_to_start")
                             )
                         } else {
                             let playlists_snapshot = playlists.clone();

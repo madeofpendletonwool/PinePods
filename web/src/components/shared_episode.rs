@@ -8,6 +8,7 @@ use crate::components::gen_funcs::{
 use crate::components::notification_center::ToastNotification;
 use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req::call_get_episode_by_url_key;
+use i18nrs::yew::use_translation;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
@@ -31,6 +32,7 @@ pub struct SharedProps {
 
 #[function_component(SharedEpisode)]
 pub fn shared_episode(_props: &SharedProps) -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
 
     let error = use_state(|| None);
@@ -38,6 +40,14 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
     let (_post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true); // Initial loading state set to true
+
+    // Pre-capture translation strings for async block
+    let error_fetching_msg = i18n.t("shared_episode.error_fetching_shared_episode");
+    let no_url_key_msg = i18n.t("shared_episode.no_url_key_found");
+    let play_text = i18n.t("shared_episode.play");
+    let episode_transcript_text = i18n.t("shared_episode.episode_transcript");
+    let unable_to_display_msg = i18n.t("shared_episode.unable_to_display_episode");
+    let something_wrong_msg = i18n.t("shared_episode.something_went_wrong");
 
     {
         let audio_dispatch = audio_dispatch.clone();
@@ -75,9 +85,13 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
         let error = error.clone();
         let effect_dispatch = dispatch.clone();
         let loading_clone = loading.clone();
+        let error_fetching_msg_clone = error_fetching_msg.clone();
+        let no_url_key_msg_clone = no_url_key_msg.clone();
 
         use_effect_with((), move |_| {
             let error_clone = error.clone();
+            let error_fetching_msg = error_fetching_msg_clone.clone();
+            let no_url_key_msg = no_url_key_msg_clone.clone();
 
             // Fetch the server name from the current URL
             let window = web_sys::window().expect("no global window exists");
@@ -109,12 +123,12 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                             loading_clone.set(false);
                         }
                         Err(e) => {
-                            error_clone.set(Some(format!("Error fetching shared episode: {}", e)));
+                            error_clone.set(Some(format!("{}: {}", error_fetching_msg, e)));
                         }
                     }
                 });
             } else {
-                web_sys::console::log_1(&"No URL key found".into());
+                web_sys::console::log_1(&no_url_key_msg.into());
             }
 
             || ()
@@ -215,7 +229,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                             <button onclick={on_play_click} class="play-button">
                                             // <button class="play-button">
                                                 <i class="ph ph-play"></i>
-                                                {"Play"}
+                                                {play_text.clone()}
                                             </button>
                                         </div>
                                     </div>
@@ -261,7 +275,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                                                             title={"Transcript"}
                                                                             class="font-bold item-container-button"
                                                                         >
-                                                                            { "Episode Transcript" }
+                                                                            {episode_transcript_text.clone()}
                                                                         </button>
                                                                     </div>
                                                                 }
@@ -281,7 +295,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                     <button onclick={on_play_click} class="play-button">
                                     // <button class="play-button">
                                         <i class="ph ph-play"></i>
-                                        <span style="margin-left: 8px;">{"Play"}</span>
+                                        <span style="margin-left: 8px;">{play_text.clone()}</span>
                                     </button>
 
                                     </div>
@@ -300,8 +314,8 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                         layout
                     } else {
                         empty_message(
-                            "Unable to display episode",
-                            "Something seems to have gone wrong. A straightup server disconnect maybe? Did you browse here directly? That's not how this app works. It needs the context to browse around. I honestly don't have anything else for you as this shouldn't happen. This is embarrasing."
+                            &unable_to_display_msg,
+                            &something_wrong_msg
                         )
                     }
                 }

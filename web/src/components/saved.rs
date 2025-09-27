@@ -7,6 +7,7 @@ use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::episodes_layout::AppStateMsg;
+use i18nrs::yew::use_translation;
 use crate::components::gen_funcs::{
     format_datetime, match_date_format, parse_date, sanitize_html_with_blank_target,
     get_filter_preference, set_filter_preference, get_default_sort_direction,
@@ -36,6 +37,7 @@ pub enum SavedSortDirection {
 
 #[function_component(Saved)]
 pub fn saved() -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let history = BrowserHistory::new();
 
@@ -239,14 +241,14 @@ pub fn saved() -> Html {
                                     // Tab-style page indicator
                                     <div class="page-tab-indicator">
                                         <i class="ph ph-bookmark tab-icon"></i>
-                                        {"Saved"}
+                                        {&i18n.t("saved.saved")}
                                     </div>
                                     // Search input (left half)
                                     <div class="flex-1 relative">
                                         <input
                                             type="text"
                                             class="search-input"
-                                            placeholder="Search saved episodes..."
+                                            placeholder={i18n.t("saved.search_placeholder")}
                                             value={(*episode_search_term).clone()}
                                             oninput={let episode_search_term = episode_search_term.clone();
                                                 Callback::from(move |e: InputEvent| {
@@ -284,12 +286,12 @@ pub fn saved() -> Html {
                                                 })
                                             }
                                         >
-                                            <option value="newest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"}>{"Newest First"}</option>
-                                            <option value="oldest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"}>{"Oldest First"}</option>
-                                            <option value="shortest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"}>{"Shortest First"}</option>
-                                            <option value="longest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"}>{"Longest First"}</option>
-                                            <option value="title_az" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{"Title A-Z"}</option>
-                                            <option value="title_za" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{"Title Z-A"}</option>
+                                            <option value="newest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"}>{&i18n.t("saved.newest_first")}</option>
+                                            <option value="oldest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"}>{&i18n.t("saved.oldest_first")}</option>
+                                            <option value="shortest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"}>{&i18n.t("saved.shortest_first")}</option>
+                                            <option value="longest" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"}>{&i18n.t("saved.longest_first")}</option>
+                                            <option value="title_az" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{&i18n.t("saved.title_az")}</option>
+                                            <option value="title_za" selected={get_filter_preference("saved").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{&i18n.t("saved.title_za")}</option>
                                         </select>
                                         <i class="ph ph-caret-down dropdown-arrow"></i>
                                     </div>
@@ -312,7 +314,7 @@ pub fn saved() -> Html {
                                         class="filter-chip"
                                     >
                                         <i class="ph ph-broom text-lg"></i>
-                                        <span class="text-sm font-medium">{"Clear All"}</span>
+                                        <span class="text-sm font-medium">{&i18n.t("saved.clear_all")}</span>
                                     </button>
 
                                     // Completed filter chip
@@ -332,7 +334,7 @@ pub fn saved() -> Html {
                                         )}
                                     >
                                         <i class="ph ph-check-circle text-lg"></i>
-                                        <span class="text-sm font-medium">{"Completed"}</span>
+                                        <span class="text-sm font-medium">{&i18n.t("saved.completed")}</span>
                                     </button>
 
                                     // In progress filter chip
@@ -352,7 +354,7 @@ pub fn saved() -> Html {
                                         )}
                                     >
                                         <i class="ph ph-hourglass-medium text-lg"></i>
-                                        <span class="text-sm font-medium">{"In Progress"}</span>
+                                        <span class="text-sm font-medium">{&i18n.t("saved.in_progress")}</span>
                                     </button>
                                 </div>
                             </div>
@@ -361,8 +363,8 @@ pub fn saved() -> Html {
                                 if let Some(_saved_eps) = state.saved_episodes.clone() {
                                     if (*filtered_episodes).is_empty() {
                                         empty_message(
-                                            "No Saved Episodes Found",
-                                            "You can save episodes by clicking the context button on each episode and clicking 'Save Episode'. Doing this will save episodes here for easy access when you want to return to them."
+                                            &i18n.t("saved.no_saved_episodes"),
+                                            &i18n.t("saved.save_episodes_instructions")
                                         )
                                     } else {
                                         html! {
@@ -374,8 +376,8 @@ pub fn saved() -> Html {
                                     }
                                 } else {
                                     empty_message(
-                                        "No Saved Episodes Found",
-                                        "You can save episodes by clicking the context button on each episode and clicking 'Save Episode'. Doing this will save episodes here for easy access when you want to return to them."
+                                        &i18n.t("saved.no_saved_episodes"),
+                                        &i18n.t("saved.save_episodes_instructions")
                                     )
                                 }
                             }

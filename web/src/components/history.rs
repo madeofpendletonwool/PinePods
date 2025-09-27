@@ -20,6 +20,7 @@ use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 use wasm_bindgen::prelude::*;
 
@@ -35,6 +36,7 @@ pub enum HistorySortDirection {
 
 #[function_component(PodHistory)]
 pub fn history() -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let history = BrowserHistory::new();
 
@@ -43,6 +45,21 @@ pub fn history() -> Html {
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let dropdown_open = use_state(|| false);
     let loading = use_state(|| true);
+    
+    // Capture i18n strings before they get moved
+    let i18n_history = i18n.t("history.history").to_string();
+    let i18n_search_listening_history = i18n.t("history.search_listening_history").to_string();
+    let i18n_newest_first = i18n.t("common.newest_first").to_string();
+    let i18n_oldest_first = i18n.t("common.oldest_first").to_string();
+    let i18n_shortest_first = i18n.t("common.shortest_first").to_string();
+    let i18n_longest_first = i18n.t("common.longest_first").to_string();
+    let i18n_title_az = i18n.t("common.title_az").to_string();
+    let i18n_title_za = i18n.t("common.title_za").to_string();
+    let i18n_clear_all = i18n.t("downloads.clear_all").to_string();
+    let i18n_completed = i18n.t("downloads.completed").to_string();
+    let i18n_in_progress = i18n.t("downloads.in_progress").to_string();
+    let i18n_no_episode_history_found = i18n.t("history.no_episode_history_found").to_string();
+    let i18n_no_episode_history_description = i18n.t("history.no_episode_history_description").to_string();
 
     let episode_search_term = use_state(|| String::new());
     
@@ -214,14 +231,14 @@ pub fn history() -> Html {
                                     // Tab-style page indicator
                                     <div class="page-tab-indicator">
                                         <i class="ph ph-clock-clockwise tab-icon"></i>
-                                        {"History"}
+                                        {&i18n_history}
                                     </div>
                                     // Search input (left half)
                                     <div class="flex-1 relative">
                                         <input
                                             type="text"
                                             class="search-input"
-                                            placeholder="Search listening history..."
+                                            placeholder={i18n_search_listening_history.clone()}
                                             value={(*episode_search_term).clone()}
                                             oninput={let episode_search_term = episode_search_term.clone();
                                                 Callback::from(move |e: InputEvent| {
@@ -259,12 +276,12 @@ pub fn history() -> Html {
                                                 })
                                             }
                                         >
-                                            <option value="newest" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"}>{"Newest First"}</option>
-                                            <option value="oldest" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"}>{"Oldest First"}</option>
-                                            <option value="shortest" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"}>{"Shortest First"}</option>
-                                            <option value="longest" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"}>{"Longest First"}</option>
-                                            <option value="title_az" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{"Title A-Z"}</option>
-                                            <option value="title_za" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{"Title Z-A"}</option>
+                                            <option value="newest" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"}>{&i18n_newest_first}</option>
+                                            <option value="oldest" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"}>{&i18n_oldest_first}</option>
+                                            <option value="shortest" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"}>{&i18n_shortest_first}</option>
+                                            <option value="longest" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"}>{&i18n_longest_first}</option>
+                                            <option value="title_az" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{&i18n_title_az}</option>
+                                            <option value="title_za" selected={get_filter_preference("history").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{&i18n_title_za}</option>
                                         </select>
                                         <i class="ph ph-caret-down dropdown-arrow"></i>
                                     </div>
@@ -287,7 +304,7 @@ pub fn history() -> Html {
                                         class="filter-chip"
                                     >
                                         <i class="ph ph-broom text-lg"></i>
-                                        <span class="text-sm font-medium">{"Clear All"}</span>
+                                        <span class="text-sm font-medium">{&i18n_clear_all}</span>
                                     </button>
 
                                     // Completed filter chip
@@ -307,7 +324,7 @@ pub fn history() -> Html {
                                         )}
                                     >
                                         <i class="ph ph-check-circle text-lg"></i>
-                                        <span class="text-sm font-medium">{"Completed"}</span>
+                                        <span class="text-sm font-medium">{&i18n_completed}</span>
                                     </button>
 
                                     // In progress filter chip
@@ -327,7 +344,7 @@ pub fn history() -> Html {
                                         )}
                                     >
                                         <i class="ph ph-hourglass-medium text-lg"></i>
-                                        <span class="text-sm font-medium">{"In Progress"}</span>
+                                        <span class="text-sm font-medium">{&i18n_in_progress}</span>
                                     </button>
                                 </div>
                             </div>
@@ -336,8 +353,8 @@ pub fn history() -> Html {
                                 if let Some(_history_eps) = state.episode_history.clone() {
                                     if (*filtered_episodes).is_empty() {
                                         empty_message(
-                                            "No Episode History Found",
-                                            "This one is pretty straightforward. You should get listening! Podcasts you listen to will show up here!."
+                                            &i18n_no_episode_history_found,
+                                            &i18n_no_episode_history_description
                                         )
                                     } else {
                                         html! {
@@ -349,8 +366,8 @@ pub fn history() -> Html {
                                     }
                                 } else {
                                     empty_message(
-                                        "No Episode History Found",
-                                        "This one is pretty straightforward. You should get listening! Podcasts you listen to will show up here!."
+                                        &i18n_no_episode_history_found,
+                                        &i18n_no_episode_history_description
                                     )
                                 }
                             }

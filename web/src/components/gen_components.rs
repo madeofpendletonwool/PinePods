@@ -38,6 +38,7 @@ use yew::prelude::*;
 use yew::Callback;
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[derive(Properties, PartialEq, Clone)]
 pub struct FallbackImageProps {

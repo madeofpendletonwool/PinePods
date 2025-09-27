@@ -1,6 +1,9 @@
 use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
-use crate::requests::setting_reqs::{call_rss_feed_status, call_toggle_rss_feeds, call_get_rss_key};
+use crate::requests::setting_reqs::{
+    call_get_rss_key, call_rss_feed_status, call_toggle_rss_feeds,
+};
+use i18nrs::yew::use_translation;
 use std::borrow::Borrow;
 use web_sys::console;
 use yew::platform::spawn_local;
@@ -9,10 +12,12 @@ use yewdux::prelude::*;
 
 #[function_component(RSSFeedSettings)]
 pub fn rss_feed_settings() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
     let rss_feed_status = use_state(|| false);
     let loading = use_state(|| false);
     let rss_feed_url = use_state(|| String::new());
@@ -51,7 +56,12 @@ pub fn rss_feed_settings() -> Html {
     {
         let rss_feed_url = rss_feed_url.clone();
         use_effect_with(
-            (api_key.clone(), server_name.clone(), user_id.clone(), *rss_feed_status),
+            (
+                api_key.clone(),
+                server_name.clone(),
+                user_id.clone(),
+                *rss_feed_status,
+            ),
             move |(api_key, server_name, user_id, rss_enabled)| {
                 let rss_feed_url = rss_feed_url.clone();
                 let api_key = api_key.clone();
@@ -60,11 +70,17 @@ pub fn rss_feed_settings() -> Html {
                 let rss_enabled = *rss_enabled;
                 spawn_local(async move {
                     if rss_enabled {
-                        if let (Some(api_key), Some(server_name), Some(user_id)) = 
-                            (api_key, server_name, user_id) {
-                            match call_get_rss_key(server_name.clone(), api_key.unwrap(), user_id).await {
+                        if let (Some(api_key), Some(server_name), Some(user_id)) =
+                            (api_key, server_name, user_id)
+                        {
+                            match call_get_rss_key(server_name.clone(), api_key.unwrap(), user_id)
+                                .await
+                            {
                                 Ok(rss_key) => {
-                                    let url = format!("{}/rss/{}?api_key={}", server_name, user_id, rss_key);
+                                    let url = format!(
+                                        "{}/rss/{}?api_key={}",
+                                        server_name, user_id, rss_key
+                                    );
                                     rss_feed_url.set(url);
                                 }
                                 Err(e) => {

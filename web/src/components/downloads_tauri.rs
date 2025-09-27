@@ -26,6 +26,7 @@ use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec<EpisodeDownload>> {
     let mut grouped: HashMap<i32, Vec<EpisodeDownload>> = HashMap::new();
@@ -323,10 +324,28 @@ struct FileEntry {
 
 #[function_component(Downloads)]
 pub fn downloads() -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let (ui_state, ui_dispatch) = use_store::<UIState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let effect_dispatch = dispatch.clone();
+    
+    // Capture i18n strings before they get moved
+    let i18n_locally_downloaded_episodes = i18n.t("downloads_tauri.locally_downloaded_episodes").to_string();
+    let i18n_select_multiple = i18n.t("downloads_tauri.select_multiple").to_string();
+    let i18n_cancel = i18n.t("common.cancel").to_string();
+    let i18n_delete = i18n.t("common.delete").to_string();
+    let i18n_clear_all = i18n.t("downloads.clear_all").to_string();
+    let i18n_completed = i18n.t("downloads.completed").to_string();
+    let i18n_downloaded_episodes_count = i18n.t("downloads_tauri.downloaded_episodes_count").to_string();
+    let i18n_in_progress = i18n.t("downloads.in_progress").to_string();
+    let i18n_search_downloaded_episodes = i18n.t("downloads.search_downloaded_episodes").to_string();
+    let i18n_no_downloaded_episodes_found = i18n.t("downloads.no_downloaded_episodes_found").to_string();
+    let i18n_no_downloaded_episodes_tauri_description = i18n.t("downloads_tauri.no_downloaded_episodes_description").to_string();
+    let i18n_no_episode_downloads_found = i18n.t("downloads.no_episode_downloads_found").to_string();
+    let i18n_switch_to_online_mode = i18n.t("downloads_tauri.switch_to_online_mode").to_string();
+    let i18n_successfully_deleted_episodes = i18n.t("downloads_tauri.successfully_deleted_episodes").to_string();
+    let i18n_failed_to_delete_episodes = i18n.t("downloads_tauri.failed_to_delete_episodes").to_string();
     let history = BrowserHistory::new();
     let session_dispatch = effect_dispatch.clone();
     let session_state = state.clone();
@@ -477,15 +496,16 @@ pub fn downloads() -> Html {
                                     });
                                 }
                                 state.info_message = Some(format!(
-                                    "Successfully deleted {} episode(s)",
-                                    selected_episodes.len()
+                                    "{} {}",
+                                    selected_episodes.len(),
+                                    &i18n_successfully_deleted_episodes
                                 ));
                             });
                         }
                         Err(e) => {
                             web_sys::console::log_1(&format!("Error deleting episodes: {:?}", e).into());
                             dispatch_for_future.reduce_mut(|state| {
-                                state.error_message = Some("Failed to delete episodes".to_string());
+                                state.error_message = Some(i18n_failed_to_delete_episodes.clone());
                             });
                         }
                     }
@@ -524,11 +544,11 @@ pub fn downloads() -> Html {
     };
     let h1_top = if app_offline_mode.unwrap_or(false) {
         html! {
-            <h1 class="text-2xl item_container-text font-bold text-center mb-6 pt-6">{"Locally Downloaded Episodes"}</h1>
+            <h1 class="text-2xl item_container-text font-bold text-center mb-6 pt-6">{&i18n_locally_downloaded_episodes}</h1>
         }
     } else {
         html! {
-            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Locally Downloaded Episodes"}</h1>
+            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{&i18n_locally_downloaded_episodes}</h1>
         }
     };
 
@@ -548,7 +568,7 @@ pub fn downloads() -> Html {
                     class="download-button font-bold py-2 px-4 rounded inline-flex items-center w-full justify-center"
                 >
                     <i class="ph ph-cloud text-2xl"></i>
-                    <span>{"Switch to Online Mode (Sign In Required)"}</span>
+                    <span>{&i18n_switch_to_online_mode}</span>
                 </button>
             </div>
         }
@@ -645,7 +665,7 @@ pub fn downloads() -> Html {
                                                 <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
                                                     onclick={delete_mode_enable.clone()}>
                                                     <i class="ph ph-lasso text-2xl"></i>
-                                                    <span class="text-lg ml-2">{"Select Multiple"}</span>
+                                                    <span class="text-lg ml-2">{&i18n_select_multiple}</span>
                                                 </button>
                                             }
                                         } else {
@@ -654,12 +674,12 @@ pub fn downloads() -> Html {
                                                 <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
                                                     onclick={delete_mode_disable.clone()}>
                                                     <i class="ph ph-prohibit text-2xl"></i>
-                                                    <span class="text-lg ml-2">{"Cancel"}</span>
+                                                    <span class="text-lg ml-2">{&i18n_cancel}</span>
                                                 </button>
                                                 <button class="download-button font-bold py-2 px-4 rounded inline-flex items-center"
                                                     onclick={delete_selected_episodes.clone()}>
                                                     <i class="ph ph-trash text-2xl"></i>
-                                                    <span class="text-lg ml-2">{"Delete"}</span>
+                                                    <span class="text-lg ml-2">{&i18n_delete}</span>
                                                 </button>
                                                 </>
                                             }
@@ -675,7 +695,7 @@ pub fn downloads() -> Html {
                                             <input
                                                 type="text"
                                                 class="search-input"
-                                                placeholder="Search downloaded episodes..."
+                                                placeholder={&i18n_search_downloaded_episodes}
                                                 value={(*episode_search_term).clone()}
                                                 oninput={let episode_search_term = episode_search_term.clone();
                                                     Callback::from(move |e: InputEvent| {
@@ -706,7 +726,7 @@ pub fn downloads() -> Html {
                                             class="filter-chip"
                                         >
                                             <i class="ph ph-broom text-lg"></i>
-                                            <span class="text-sm font-medium">{"Clear All"}</span>
+                                            <span class="text-sm font-medium">{&i18n_clear_all}</span>
                                         </button>
 
                                         // Completed filter chip
@@ -730,7 +750,7 @@ pub fn downloads() -> Html {
                                             )}
                                         >
                                             <i class="ph ph-check-circle text-lg"></i>
-                                            <span class="text-sm font-medium">{"Completed"}</span>
+                                            <span class="text-sm font-medium">{&i18n_completed}</span>
                                         </button>
 
                                         // In progress filter chip
@@ -754,7 +774,7 @@ pub fn downloads() -> Html {
                                             )}
                                         >
                                             <i class="ph ph-hourglass-medium text-lg"></i>
-                                            <span class="text-sm font-medium">{"In Progress"}</span>
+                                            <span class="text-sm font-medium">{&i18n_in_progress}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -771,8 +791,8 @@ pub fn downloads() -> Html {
                             if int_download_eps.episodes.is_empty() {
                                 // Render "No Recent Episodes Found" if episodes list is empty
                                 empty_message(
-                                    "No Downloaded Episodes Found",
-                                    "This is where local episode downloads will appear. To download an episode you can open the context menu on an episode and select Local Download. It will then download to your device locally and show up here!"
+                                    &i18n_no_downloaded_episodes_found,
+                                    &i18n_no_downloaded_episodes_tauri_description
                                 )
                             } else {
                                 let grouped_episodes = group_episodes_by_podcast(int_download_eps.episodes);
@@ -855,6 +875,7 @@ pub fn downloads() -> Html {
                                                                     *show_modal,
                                                                     on_modal_open.clone(),
                                                                     on_modal_close.clone(),
+                                                                    &i18n_downloaded_episodes_count,
                                                                 ))
                                                             }
                                                         }) }
@@ -862,14 +883,14 @@ pub fn downloads() -> Html {
                                                 }
                                             } else {
                                                 empty_message(
-                                                    "No Downloaded Episodes Found",
-                                                    "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode."
+                                                    &i18n_no_downloaded_episodes_found,
+                                                    &i18n_no_downloaded_episodes_tauri_description
                                                 )
                                             }
                                         } else {
                                             empty_message(
-                                                "No Downloaded Episodes Found",
-                                                "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode."
+                                                &i18n_no_downloaded_episodes_found,
+                                                &i18n_no_downloaded_episodes_tauri_description
                                             )
                                         }
                                     }
@@ -881,8 +902,8 @@ pub fn downloads() -> Html {
 
                         } else {
                             empty_message(
-                                "No Episode Downloads Found",
-                                "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download to the server and show up here!"
+                                &i18n_no_episode_downloads_found,
+                                &i18n_no_downloaded_episodes_tauri_description
                             )
                         }
                     }
@@ -916,6 +937,7 @@ pub fn render_podcast_with_episodes(
     show_modal: bool,
     on_modal_open: Callback<MouseEvent>,
     on_modal_close: Callback<MouseEvent>,
+    i18n_downloaded_episodes_count: &str,
 ) -> Html {
     let history_clone = BrowserHistory::new();
 
@@ -978,7 +1000,7 @@ pub fn render_podcast_with_episodes(
                             { &podcast.podcastname }
                         </p>
                         <p class="podcast-dropdown-count item_container-text">
-                            { format!("{} Downloaded Episodes", episodes.len()) }
+                            { format!("{} {}", episodes.len(), &i18n_downloaded_episodes_count) }
                         </p>
                     </div>
 

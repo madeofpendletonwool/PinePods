@@ -5,6 +5,7 @@ use crate::requests::login_requests::{
     call_get_time_info, call_verify_key, use_check_authentication,
 };
 use crate::requests::setting_reqs::{call_get_theme, call_get_unmatched_podcasts};
+use i18nrs::yew::use_translation;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use web_sys::window;
@@ -19,6 +20,11 @@ pub struct NavigationHandlerProps {
 
 #[function_component(NavigationHandler)]
 pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
+    let (i18n, _) = use_translation();
+    
+    // Pre-capture translation strings for async blocks
+    let i18n_unmatched_podcasts_notification = i18n.t("navigation.unmatched_podcasts_notification").to_string();
+    
     let navigation_state = use_state(|| 0);
     let (state, dispatch) = use_store::<AppState>();
     let loading = use_state(|| true);
@@ -28,6 +34,7 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
         let dispatch = dispatch.clone();
         let state = state.clone();
         let effect_loading = loading.clone();
+        let i18n_unmatched_podcasts_notification = i18n_unmatched_podcasts_notification.clone();
 
         use_effect_with((), move |_| {
             if let Some(window) = web_sys::window() {
@@ -169,7 +176,7 @@ pub fn navigation_handler(props: &NavigationHandlerProps) -> Html {
                                                                     if !unmatched_response.podcasts.is_empty() {
                                                                         dispatch_unmatched.reduce_mut(|state| {
                                                                             state.info_message = Some(
-                                                                                format!("📻 You have {} podcast(s) that aren't matched to Podcast Index. Visit the Match Podcast Index settings to enable host and guest information.", unmatched_response.podcasts.len())
+                                                                                format!("{}", i18n_unmatched_podcasts_notification.replace("{count}", &unmatched_response.podcasts.len().to_string()))
                                                                             );
                                                                         });
                                                                     }

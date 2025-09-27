@@ -40,6 +40,7 @@ use yew::Properties;
 use yew::{function_component, html, use_effect_with, use_node_ref, Callback, Html, TargetCast};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 fn add_icon() -> Html {
     html! {
@@ -177,11 +178,49 @@ pub enum EpisodeSortDirection {
 
 #[function_component(EpisodeLayout)]
 pub fn episode_layout() -> Html {
+    let (i18n, _) = use_translation();
     let is_added = use_state(|| false);
     let (state, _dispatch) = use_store::<UIState>();
     let (search_state, _search_dispatch) = use_store::<AppState>();
     let podcast_feed_results = search_state.podcast_feed_results.clone();
     let clicked_podcast_info = search_state.clicked_podcast_info.clone();
+    
+    // Capture i18n strings before they get moved - this is a large component with many strings
+    let i18n_invalid_html_content = i18n.t("episodes_layout.invalid_html_content").to_string();
+    let i18n_unable_to_retrieve_url = i18n.t("episode.unable_to_retrieve_url").to_string();
+    let i18n_youtube_channel_successfully_removed = i18n.t("episodes_layout.youtube_channel_successfully_removed").to_string();
+    let i18n_podcast_successfully_removed = i18n.t("episodes_layout.podcast_successfully_removed").to_string();
+    let i18n_failed_to_remove_youtube_channel = i18n.t("episodes_layout.failed_to_remove_youtube_channel").to_string();
+    let i18n_failed_to_remove_podcast = i18n.t("episodes_layout.failed_to_remove_podcast").to_string();
+    let i18n_playback_speed_updated = i18n.t("episodes_layout.playback_speed_updated").to_string();
+    let i18n_error_updating_playback_speed = i18n.t("episodes_layout.error_updating_playback_speed").to_string();
+    let i18n_playback_speed_reset = i18n.t("episodes_layout.playback_speed_reset").to_string();
+    let i18n_error_resetting_playback_speed = i18n.t("episodes_layout.error_resetting_playback_speed").to_string();
+    let i18n_skip_times_adjusted = i18n.t("episodes_layout.skip_times_adjusted").to_string();
+    let i18n_error_adjusting_skip_times = i18n.t("episodes_layout.error_adjusting_skip_times").to_string();
+    let i18n_podcast_successfully_added = i18n.t("episodes_layout.podcast_successfully_added").to_string();
+    let i18n_failed_to_add_podcast = i18n.t("episodes_layout.failed_to_add_podcast").to_string();
+    let i18n_rss_feed_url = i18n.t("episodes_layout.rss_feed_url").to_string();
+    let i18n_close_modal = i18n.t("common.close_modal").to_string();
+    let i18n_copy = i18n.t("common.copy").to_string();
+    let i18n_podcast_options = i18n.t("episodes_layout.podcast_options").to_string();
+    let i18n_save = i18n.t("common.save").to_string();
+    let i18n_reset = i18n.t("common.reset").to_string();
+    let i18n_confirm = i18n.t("common.confirm").to_string();
+    let i18n_no_categories_available = i18n.t("episodes_layout.no_categories_available").to_string();
+    let i18n_new_category = i18n.t("episodes_layout.new_category").to_string();
+    let i18n_add = i18n.t("common.add").to_string();
+    let i18n_verify_downloads = i18n.t("episodes_layout.verify_downloads").to_string();
+    let i18n_delete_podcast = i18n.t("episodes_layout.delete_podcast").to_string();
+    let i18n_visit_external_website = i18n.t("episodes_layout.visit_external_website").to_string();
+    let i18n_get_rss_feed_url = i18n.t("episodes_layout.get_rss_feed_url").to_string();
+    let i18n_download_all_episodes = i18n.t("episodes_layout.download_all_episodes").to_string();
+    let i18n_add_remove_podcast = i18n.t("episodes_layout.add_remove_podcast").to_string();
+    let i18n_podcast_specific_settings = i18n.t("episodes_layout.podcast_specific_settings").to_string();
+    let i18n_explicit_yes = i18n.t("common.yes").to_string();
+    let i18n_explicit_no = i18n.t("common.no").to_string();
+    let i18n_match_it_here = i18n.t("episodes_layout.match_it_here").to_string();
+    let i18n_hosts = i18n.t("episodes_layout.hosts").to_string();
     let loading = use_state(|| true);
     let page_state = use_state(|| PageState::Hidden);
     let episode_search_term = use_state(|| String::new());

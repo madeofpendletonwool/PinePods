@@ -12,6 +12,7 @@ use crate::components::safehtml::SafeHtml;
 use crate::requests::search_pods::Episode;
 use crate::requests::people_req::PersonEpisode;
 use gloo::events::EventListener;
+use i18nrs::yew::use_translation;
 use std::rc::Rc;
 use wasm_bindgen::JsCast;
 use web_sys::{window, Element, HtmlElement, MouseEvent};
@@ -46,6 +47,7 @@ pub struct PodcastEpisodeVirtualListProps {
 
 #[function_component(PodcastEpisodeVirtualList)]
 pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> Html {
+    let (i18n, _) = use_translation();
     let scroll_pos = use_state(|| 0.0);
     let container_ref = use_node_ref();
     let container_height = use_state(|| 0.0);
@@ -53,6 +55,11 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
     let container_item_height = use_state(|| 221.0); // Actual container height, separate from spacing
     let force_update = use_state(|| 0);
     let selected_episode_index = use_state(|| None::<usize>);
+
+    // Pre-capture translation strings
+    let select_newer_title = i18n.t("virtual_list.select_newer_episodes");
+    let select_older_title = i18n.t("virtual_list.select_older_episodes");
+    let completed_text = i18n.t("virtual_list.completed");
 
     // Effect to set initial container height, item height, and listen for window resize
     {
@@ -271,7 +278,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                                                 <button
                                                     onclick={newer_callback}
                                                     class="episode-select-button mb-1"
-                                                    title="Select this episode and all newer episodes"
+                                                    title={select_newer_title.clone()}
                                                 >
                                                     {"↑"}
                                                 </button>
@@ -297,7 +304,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                                                 <button
                                                     onclick={older_callback}
                                                     class="episode-select-button mt-1"
-                                                    title="Select this episode and all older episodes"  
+                                                    title={select_older_title.clone()}
                                                 >
                                                     {"↓"}
                                                 </button>
@@ -363,7 +370,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                                     // In narrow viewports, just show "Completed"
                                     html! {
                                         <div class="flex items-center space-x-2">
-                                            <span class="item_container-text">{"Completed"}</span>
+                                            <span class="item_container-text">{completed_text.clone()}</span>
                                         </div>
                                     }
                                 } else {
@@ -371,7 +378,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                                     html! {
                                         <div class="flex items-center space-x-2">
                                             <span class="item_container-text">{ formatted_duration }</span>
-                                            <span class="item_container-text">{ "-  Completed" }</span>
+                                            <span class="item_container-text">{ format!("-  {}", completed_text.clone()) }</span>
                                         </div>
                                     }
                                 }

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct SetPlaybackSpeedRequest {
@@ -125,10 +126,26 @@ async fn call_get_user_playback_speed(
 
 #[function_component(PlaybackSettings)]
 pub fn playback_settings() -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID);
+
+    // Capture i18n strings before they get moved
+    let i18n_failed_to_fetch_playback_speed = i18n.t("playback_settings.failed_to_fetch_playback_speed").to_string();
+    let i18n_failed_to_fetch_auto_complete_seconds = i18n.t("playback_settings.failed_to_fetch_auto_complete_seconds").to_string();
+    let i18n_default_playback_speed_updated_successfully = i18n.t("playback_settings.default_playback_speed_updated_successfully").to_string();
+    let i18n_failed_to_update_playback_speed = i18n.t("playback_settings.failed_to_update_playback_speed").to_string();
+    let i18n_auto_complete_seconds_updated_successfully = i18n.t("playback_settings.auto_complete_seconds_updated_successfully").to_string();
+    let i18n_failed_to_update_auto_complete_seconds = i18n.t("playback_settings.failed_to_update_auto_complete_seconds").to_string();
+    let i18n_playback_preferences_description = i18n.t("playback_settings.playback_preferences_description").to_string();
+    let i18n_default_playback_speed = i18n.t("playback_settings.default_playback_speed").to_string();
+    let i18n_save = i18n.t("common.save").to_string();
+    let i18n_range = i18n.t("playback_settings.range").to_string();
+    let i18n_auto_complete_episode_threshold = i18n.t("playback_settings.auto_complete_episode_threshold").to_string();
+    let i18n_seconds = i18n.t("playback_settings.seconds").to_string();
+    let i18n_auto_complete_description = i18n.t("playback_settings.auto_complete_description").to_string();
 
     // State for playback speed
     let default_playback_speed = use_state(|| 1.0);
@@ -165,7 +182,8 @@ pub fn playback_settings() -> Html {
                                 let formatted_error = format_error_message(&e.to_string());
                                 dispatch.reduce_mut(|state| {
                                     state.error_message = Some(format!(
-                                        "Failed to fetch playback speed: {}",
+                                        "{}{}",
+                                        i18n_failed_to_fetch_playback_speed.clone(),
                                         formatted_error
                                     ));
                                 });
@@ -205,7 +223,8 @@ pub fn playback_settings() -> Html {
                                 let formatted_error = format_error_message(&e.to_string());
                                 dispatch.reduce_mut(|state| {
                                     state.error_message = Some(format!(
-                                        "Failed to fetch auto complete seconds: {}",
+                                        "{}{}",
+                                        i18n_failed_to_fetch_auto_complete_seconds.clone(),
                                         formatted_error
                                     ));
                                 });
@@ -241,8 +260,12 @@ pub fn playback_settings() -> Html {
         let dispatch = dispatch.clone();
         let api_key_call = api_key.clone();
         let server_name_call = server_name.clone();
+        let i18n_default_playback_speed_updated_successfully = i18n_default_playback_speed_updated_successfully.clone();
+        let i18n_failed_to_update_playback_speed = i18n_failed_to_update_playback_speed.clone();
 
         Callback::from(move |e: MouseEvent| {
+            let i18n_default_playback_speed_updated_successfully = i18n_default_playback_speed_updated_successfully.clone();
+            let i18n_failed_to_update_playback_speed = i18n_failed_to_update_playback_speed.clone();
             e.prevent_default();
 
             if let (Some(api_key), Some(server_name), Some(user_id)) =
@@ -261,7 +284,7 @@ pub fn playback_settings() -> Html {
                         Ok(_) => {
                             show_success.set(true);
                             success_message
-                                .set("Default playback speed updated successfully".to_string());
+                                .set(i18n_default_playback_speed_updated_successfully.clone());
 
                             // Auto-hide success message after 3 seconds
                             let show_success_clone = show_success.clone();
@@ -274,7 +297,8 @@ pub fn playback_settings() -> Html {
                             let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
                                 state.error_message = Some(format!(
-                                    "Failed to update playback speed: {}",
+                                    "{}{}",
+                                    i18n_failed_to_update_playback_speed,
                                     formatted_error
                                 ));
                             });
@@ -305,8 +329,12 @@ pub fn playback_settings() -> Html {
         let dispatch = dispatch.clone();
         let api_key = api_key.clone();
         let server_name = server_name.clone();
+        let i18n_auto_complete_seconds_updated_successfully = i18n_auto_complete_seconds_updated_successfully.clone();
+        let i18n_failed_to_update_auto_complete_seconds = i18n_failed_to_update_auto_complete_seconds.clone();
 
         Callback::from(move |e: MouseEvent| {
+            let i18n_auto_complete_seconds_updated_successfully = i18n_auto_complete_seconds_updated_successfully.clone();
+            let i18n_failed_to_update_auto_complete_seconds = i18n_failed_to_update_auto_complete_seconds.clone();
             e.prevent_default();
 
             if let (Some(api_key), Some(server_name), Some(user_id)) =
@@ -325,7 +353,7 @@ pub fn playback_settings() -> Html {
                         Ok(_) => {
                             show_success.set(true);
                             success_message
-                                .set("Auto complete seconds updated successfully".to_string());
+                                .set(i18n_auto_complete_seconds_updated_successfully.clone());
 
                             // Auto-hide success message after 3 seconds
                             let show_success_clone = show_success.clone();
@@ -338,7 +366,8 @@ pub fn playback_settings() -> Html {
                             let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
                                 state.error_message = Some(format!(
-                                    "Failed to update auto complete seconds: {}",
+                                    "{}{}",
+                                    i18n_failed_to_update_auto_complete_seconds,
                                     formatted_error
                                 ));
                             });
@@ -352,12 +381,12 @@ pub fn playback_settings() -> Html {
     html! {
         <div class="playback-settings-container">
             <div class="settings-description mb-4">
-                <p>{"Configure your playback preferences including default playback speed and auto-complete behavior."}</p>
+                <p>{&i18n_playback_preferences_description}</p>
             </div>
 
             <div class="playback-speed-control">
                 <div class="mt-4">
-                    <label for="default-playback-speed" class="block mb-2 text-sm font-medium">{"Default Playback Speed:"}</label>
+                    <label for="default-playback-speed" class="block mb-2 text-sm font-medium">{&i18n_default_playback_speed}</label>
                     <div class="flex items-center space-x-2">
                         <input
                             type="number"
@@ -377,16 +406,16 @@ pub fn playback_settings() -> Html {
                             disabled={*is_loading}
                         >
                             <i class="ph ph-floppy-disk mr-1"></i>
-                            {"Save"}
+{&i18n_save}
                         </button>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">{"Range: 0.5x - 3.0x"}</p>
+                    <p class="text-xs text-gray-500 mt-1">{&i18n_range}</p>
                 </div>
             </div>
 
             <div class="auto-complete-control mt-6">
                 <div class="mt-4">
-                    <label for="auto-complete-seconds" class="block mb-2 text-sm font-medium">{"Auto Complete Episode Threshold:"}</label>
+                    <label for="auto-complete-seconds" class="block mb-2 text-sm font-medium">{&i18n_auto_complete_episode_threshold}</label>
                     <div class="flex items-center space-x-2">
                         <input
                             type="number"
@@ -399,17 +428,17 @@ pub fn playback_settings() -> Html {
                             step="1"
                             disabled={*auto_complete_loading}
                         />
-                        <span class="text-sm">{"seconds"}</span>
+                        <span class="text-sm">{&i18n_seconds}</span>
                         <button
                             class="playback-submit-button ml-2"
                             onclick={on_save_auto_complete}
                             disabled={*auto_complete_loading}
                         >
                             <i class="ph ph-floppy-disk mr-1"></i>
-                            {"Save"}
+{&i18n_save}
                         </button>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">{"Episodes with this many seconds or less remaining will be automatically marked as complete. Set to 0 to disable."}</p>
+                    <p class="text-xs text-gray-500 mt-1">{&i18n_auto_complete_description}</p>
                 </div>
             </div>
 

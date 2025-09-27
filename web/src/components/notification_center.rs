@@ -2,6 +2,7 @@
 use crate::components::context::AppState;
 use crate::requests::pod_req::RefreshProgress;
 use crate::requests::task_reqs::init_task_monitoring;
+use i18nrs::yew::use_translation;
 use gloo_timers::callback::Interval;
 use gloo_timers::callback::Timeout;
 use serde::{Deserialize, Serialize};
@@ -67,6 +68,40 @@ impl TaskProgress {
 
 #[function_component(NotificationCenter)]
 pub fn notification_center() -> Html {
+    let (i18n, _) = use_translation();
+    
+    // Pre-capture translation strings
+    let i18n_notifications = i18n.t("notification_center.notifications").to_string();
+    let i18n_hide_completed = i18n.t("notification_center.hide_completed").to_string();
+    let i18n_show_completed = i18n.t("notification_center.show_completed").to_string();
+    let i18n_clear_all = i18n.t("notification_center.clear_all_notifications").to_string();
+    let i18n_dismiss_completed = i18n.t("notification_center.dismiss_completed").to_string();
+    let i18n_all_tasks = i18n.t("notification_center.all_tasks").to_string();
+    let i18n_active_tasks = i18n.t("notification_center.active_tasks").to_string();
+    let i18n_dismiss_all_completed = i18n.t("notification_center.dismiss_all_completed_tasks").to_string();
+    let i18n_dismiss_notification = i18n.t("notification_center.dismiss_notification").to_string();
+    let i18n_dismiss_error = i18n.t("notification_center.dismiss_error").to_string();
+    let i18n_dismiss_message = i18n.t("notification_center.dismiss_message").to_string();
+    let i18n_no_notifications = i18n.t("notification_center.no_notifications").to_string();
+    
+    // Status translations
+    let i18n_queued = i18n.t("notification_center.status_queued").to_string();
+    let i18n_in_progress = i18n.t("notification_center.status_in_progress").to_string();
+    let i18n_downloading = i18n.t("notification_center.status_downloading").to_string();
+    let i18n_processing = i18n.t("notification_center.status_processing").to_string();
+    let i18n_finalizing = i18n.t("notification_center.status_finalizing").to_string();
+    let i18n_completed = i18n.t("notification_center.status_completed").to_string();
+    let i18n_failed = i18n.t("notification_center.status_failed").to_string();
+    
+    // Task type translations
+    let i18n_download = i18n.t("notification_center.task_download").to_string();
+    let i18n_feed_refresh = i18n.t("notification_center.task_feed_refresh").to_string();
+    let i18n_playlist = i18n.t("notification_center.task_playlist").to_string();
+    let i18n_youtube_download = i18n.t("notification_center.task_youtube_download").to_string();
+    let i18n_episode = i18n.t("notification_center.item_episode").to_string();
+    let i18n_youtube_video = i18n.t("notification_center.item_youtube_video").to_string();
+    let i18n_item = i18n.t("notification_center.item_generic").to_string();
+    
     let (state, dispatch) = use_store::<AppState>();
     let dropdown_open = use_state(|| false);
     let notification_count = use_state(|| 0);
@@ -318,19 +353,19 @@ pub fn notification_center() -> Html {
                     html! {
                         <div class="notification-dropdown absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto z-50" onclick={Callback::from(|e: MouseEvent| e.stop_propagation())}>
                             <div class="notification-header flex justify-between items-center p-3 border-b border-color">
-                                <h3 class="text-lg font-semibold">{"Notifications"}</h3>
+                                <h3 class="text-lg font-semibold">{&i18n_notifications}</h3>
                                 <div class="flex space-x-2">
                                     <button
                                         class="text-sm px-2 py-1 rounded hover:bg-opacity-20"
                                         onclick={toggle_show_completed}
-                                        title={if *show_completed { "Hide completed" } else { "Show completed" }}
+                                        title={if *show_completed { i18n_hide_completed.clone() } else { i18n_show_completed.clone() }}
                                     >
                                         <i class={if *show_completed { "ph ph-eye-slash" } else { "ph ph-eye" }}></i>
                                     </button>
                                     <button
                                         class="text-sm px-2 py-1 rounded hover:bg-opacity-20"
                                         onclick={clear_all}
-                                        title="Clear all notifications"
+                                        title={i18n_clear_all.clone()}
                                     >
                                         <i class="ph ph-trash"></i>
                                     </button>
@@ -344,16 +379,16 @@ pub fn notification_center() -> Html {
                                         html! {
                                             <div class="mb-2">
                                                 <div class="flex justify-between items-center">
-                                                    <h4 class="text-sm font-medium px-2 py-1">{if *show_completed { "All Tasks" } else { "Active Tasks" }}</h4>
+                                                    <h4 class="text-sm font-medium px-2 py-1">{if *show_completed { &i18n_all_tasks } else { &i18n_active_tasks }}</h4>
                                                     {
                                                         if filtered_tasks.iter().any(|t| t.status == "SUCCESS" || t.status == "FAILED") {
                                                             html! {
                                                                 <button
                                                                     class="text-xs px-2 py-1 rounded hover:bg-opacity-20"
                                                                     onclick={dismiss_completed}
-                                                                    title="Dismiss all completed tasks"
+                                                                    title={i18n_dismiss_all_completed.clone()}
                                                                 >
-                                                                    {"Dismiss Completed"}
+                                                                    {&i18n_dismiss_completed}
                                                                 </button>
                                                             }
                                                         } else {
@@ -371,23 +406,23 @@ pub fn notification_center() -> Html {
                                                         // Determine status styling
                                                         let status_str = task.status.as_str();
                                                         let (status_class, status_text) = match status_str {
-                                                            "PENDING" => ("status-pending", "Queued"),
-                                                            "STARTED" => ("status-started", "In Progress"),
-                                                            "PROGRESS" => ("status-started", "In Progress"),
-                                                            "DOWNLOADING" => ("status-started", "Downloading"),
-                                                            "PROCESSING" => ("status-started", "Processing"),
-                                                            "FINALIZING" => ("status-started", "Finalizing"),
-                                                            "SUCCESS" => ("status-success", "Completed"),
-                                                            "FAILED" => ("status-failed", "Failed"),
+                                                            "PENDING" => ("status-pending", i18n_queued.as_str()),
+                                                            "STARTED" => ("status-started", i18n_in_progress.as_str()),
+                                                            "PROGRESS" => ("status-started", i18n_in_progress.as_str()),
+                                                            "DOWNLOADING" => ("status-started", i18n_downloading.as_str()),
+                                                            "PROCESSING" => ("status-started", i18n_processing.as_str()),
+                                                            "FINALIZING" => ("status-started", i18n_finalizing.as_str()),
+                                                            "SUCCESS" => ("status-success", i18n_completed.as_str()),
+                                                            "FAILED" => ("status-failed", i18n_failed.as_str()),
                                                             _ => ("status-started", status_str),
                                                         };
 
                                                         // Get task type display name
                                                         let task_type_display = match task.r#type.as_str() {
-                                                            "podcast_download" => "Download",
-                                                            "feed_refresh" => "Feed Refresh",
-                                                            "playlist_generation" => "Playlist",
-                                                            "youtube_download" => "YouTube Download",
+                                                            "podcast_download" => i18n_download.as_str(),
+                                                            "feed_refresh" => i18n_feed_refresh.as_str(),
+                                                            "playlist_generation" => i18n_playlist.as_str(),
+                                                            "youtube_download" => i18n_youtube_download.as_str(),
                                                             _ => &task.r#type
                                                         };
 
@@ -406,9 +441,9 @@ pub fn notification_center() -> Html {
                                                             })
                                                             .map(|s| s.as_str())
                                                             .unwrap_or(match task.r#type.as_str() {
-                                                                "podcast_download" => "Episode",
-                                                                "youtube_download" => "YouTube Video",
-                                                                _ => "Item"
+                                                                "podcast_download" => i18n_episode.as_str(),
+                                                                "youtube_download" => i18n_youtube_video.as_str(),
+                                                                _ => i18n_item.as_str()
                                                             });
 
                                                         // Calculate if we should show progress (any active download/processing status)
@@ -427,7 +462,7 @@ pub fn notification_center() -> Html {
                                                                     <button
                                                                         class="dismiss-button text-xs hover:opacity-70"
                                                                         onclick={on_dismiss}
-                                                                        title="Dismiss notification"
+                                                                        title={i18n_dismiss_notification.clone()}
                                                                     >
                                                                         <i class="ph ph-x"></i>
                                                                     </button>
@@ -489,7 +524,7 @@ pub fn notification_center() -> Html {
                                                     <button
                                                         class="dismiss-button text-xs hover:opacity-70 ml-2"
                                                         onclick={dismiss_error}
-                                                        title="Dismiss error"
+                                                        title={i18n_dismiss_error.clone()}
                                                     >
                                                         <i class="ph ph-x"></i>
                                                     </button>
@@ -521,7 +556,7 @@ pub fn notification_center() -> Html {
                                                     <button
                                                         class="dismiss-button text-xs hover:opacity-70 ml-2"
                                                         onclick={dismiss_info}
-                                                        title="Dismiss message"
+                                                        title={i18n_dismiss_message.clone()}
                                                     >
                                                         <i class="ph ph-x"></i>
                                                     </button>
@@ -538,7 +573,7 @@ pub fn notification_center() -> Html {
                                     if filtered_tasks.is_empty() && error_message.is_none() && info_message.is_none() {
                                         html! {
                                             <div class="p-3 text-center notification-empty">
-                                                <p class="text-sm">{"No notifications"}</p>
+                                                <p class="text-sm">{&i18n_no_notifications}</p>
                                             </div>
                                         }
                                     } else {

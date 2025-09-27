@@ -20,6 +20,7 @@ use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 use wasm_bindgen::prelude::*;
 
@@ -45,12 +46,17 @@ fn calculate_item_height(window_width: f64) -> f64 {
 
 #[function_component(Feed)]
 pub fn feed() -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
+    
+    // Capture i18n strings before they get moved
+    let i18n_no_recent_episodes_found = i18n.t("feed.no_recent_episodes_found").to_string();
+    let i18n_no_recent_episodes_description = i18n.t("feed.no_recent_episodes_description").to_string();
 
     // Fetch episodes on component mount
     let loading_ep = loading.clone();
@@ -168,8 +174,8 @@ pub fn feed() -> Html {
                             if episodes.is_empty() {
                                 // Render "No Recent Episodes Found" if episodes list is empty
                                 empty_message(
-                                    "No Recent Episodes Found",
-                                    "You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."
+                                    &i18n_no_recent_episodes_found,
+                                    &i18n_no_recent_episodes_description
                                 )
                             } else {
                                 html! {

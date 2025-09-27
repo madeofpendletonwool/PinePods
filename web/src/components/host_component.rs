@@ -19,6 +19,7 @@ use yew::Properties;
 use yew::{function_component, html, use_effect_with, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct Host {
@@ -69,6 +70,7 @@ pub struct HostItemProps {
 
 #[function_component(HostItem)]
 fn host_item(props: &HostItemProps) -> Html {
+    let (i18n, _) = use_translation();
     let HostItemProps {
         host,
         server_name,
@@ -78,6 +80,10 @@ fn host_item(props: &HostItemProps) -> Html {
         on_subscribe_toggle,
         on_host_click,
     } = props;
+    
+    // Capture i18n strings before they get moved
+    let i18n_subscribe = i18n.t("host_component.subscribe").to_string();
+    let i18n_unsubscribe = i18n.t("host_component.unsubscribe").to_string();
 
     let is_subscribed = subscribed_hosts
         .get(&host.name)
@@ -119,7 +125,7 @@ fn host_item(props: &HostItemProps) -> Html {
                     "mt-2 px-2 py-1 bg-green-500 text-white rounded"
                 }}
             >
-                { if is_subscribed { "Unsubscribe" } else { "Subscribe" } }
+                { if is_subscribed { &i18n_unsubscribe } else { &i18n_subscribe } }
             </button>
         </div>
     }
@@ -135,7 +141,13 @@ pub fn host_dropdown(
         podcast_index_id,
     }: &HostDropdownProps,
 ) -> Html {
+    let (i18n, _) = use_translation();
     let (search_state, _search_dispatch) = use_store::<AppState>();
+    
+    // Capture i18n strings before they get moved
+    let i18n_no_hosts_found = i18n.t("host_component.no_hosts_found").to_string();
+    let i18n_add_hosts_here = i18n.t("host_component.add_hosts_here").to_string();
+    let i18n_failed_to_fetch_person_info = i18n.t("host_component.failed_to_fetch_person_info").to_string();
     let subscribed_hosts = use_state(|| HashMap::<String, Vec<i32>>::new());
     let person_ids = use_state(|| HashMap::<String, i32>::new()); // Store person IDs separately
     let api_key = search_state
@@ -233,6 +245,7 @@ pub fn host_dropdown(
         let user_id = user_id.clone();
         let loading_modal_visible = loading_modal_visible.clone();
         let loading_name = loading_name.clone();
+        let i18n_failed_to_fetch_person_info = i18n_failed_to_fetch_person_info.clone();
         move |host: &Person| {
             let host_name = host.name.clone();
             let history_clone = history.clone();
@@ -248,6 +261,7 @@ pub fn host_dropdown(
                 let search_state_call = search_state.clone();
                 let loading_modal_visible = loading_modal_visible.clone();
                 let loading_name = loading_name.clone();
+                let i18n_failed_to_fetch_person_info = i18n_failed_to_fetch_person_info.clone();
 
                 Callback::from(move |_: MouseEvent| {
                     let hostname = host_name.clone();
@@ -260,6 +274,7 @@ pub fn host_dropdown(
                     let history = history.clone();
                     let loading_modal_visible = loading_modal_visible.clone();
                     let loading_name = loading_name.clone();
+                    let error_msg = i18n_failed_to_fetch_person_info.clone();
                     loading_name.set(hostname.clone());
                     loading_modal_visible.set(true);
 
@@ -435,7 +450,7 @@ pub fn host_dropdown(
                             // Handle error
                             dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some("Failed to fetch person info".to_string());
+                                    Some(error_msg.clone());
                                 state.is_loading = Some(false);
                             });
                         }
@@ -588,13 +603,13 @@ pub fn host_dropdown(
                 if has_no_known_hosts {
                     <div class="mt-2 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                         <p class="text-gray-700 dark:text-gray-300">
-                            {"No hosts found. "}
+                            {&i18n_no_hosts_found}
                             <a
                                 href={host_url}
                                 target="_blank"
                                 class="text-blue-500 hover:text-blue-600 hover:underline"
                             >
-                                {"Add hosts for this podcast here"}
+                                {&i18n_add_hosts_here}
                             </a>
                         </p>
                     </div>

@@ -9,6 +9,7 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::YouTubeChannel;
 use gloo::events::EventListener;
+use i18nrs::yew::use_translation;
 use std::collections::HashMap;
 use web_sys::MouseEvent;
 use yew::prelude::*;
@@ -21,11 +22,19 @@ pub struct YouTubeChannelItemProps {
 
 #[function_component(YouTubeLayout)]
 pub fn youtube_layout() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
 
     // Track window width to apply responsive columns
     let columns = use_state(|| 2); // Default to 2 columns
+
+    // Pre-capture translation strings
+    let youtube_channels_title = i18n.t("youtube_layout.youtube_channels");
+    let no_channels_found_msg = i18n.t("youtube_layout.no_channels_found");
+    let try_different_keywords_msg = i18n.t("youtube_layout.try_different_keywords");
+    let search_youtube_channels_msg = i18n.t("youtube_layout.search_youtube_channels");
+    let enter_channel_name_msg = i18n.t("youtube_layout.enter_channel_name");
 
     {
         let columns = columns.clone();
@@ -73,7 +82,7 @@ pub fn youtube_layout() -> Html {
             <div class="main-container">
                 <Search_nav />
                 <UseScrollToTop />
-                <h1 class="item_container-text text-2xl font-bold my-6 text-center">{ "YouTube Channels" }</h1>
+                <h1 class="item_container-text text-2xl font-bold my-6 text-center">{youtube_channels_title}</h1>
                 {
                     if let Some(results) = &state.youtube_search_results {
                         // Deduplicate channels based on channel_id
@@ -102,14 +111,14 @@ pub fn youtube_layout() -> Html {
                             }
                         } else {
                             empty_message(
-                                "No Channels Found",
-                                "Try searching with different keywords."
+                                &no_channels_found_msg,
+                                &try_different_keywords_msg
                             )
                         }
                     } else {
                         empty_message(
-                            "Search for YouTube Channels",
-                            "Enter a channel name in the search bar above."
+                            &search_youtube_channels_msg,
+                            &enter_channel_name_msg
                         )
                     }
                 }
@@ -128,11 +137,20 @@ pub fn youtube_layout() -> Html {
 
 #[function_component(YouTubeChannelItem)]
 fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let channel = &props.channel;
     let set_loading = use_state(|| false);
     let is_subscribed = use_state(|| false);
     let is_description_expanded = use_state(|| false);
+
+    // Pre-capture translation strings for async blocks
+    let successfully_subscribed_msg = i18n.t("youtube_layout.successfully_subscribed");
+    let failed_to_subscribe_msg = i18n.t("youtube_layout.failed_to_subscribe");
+    let successfully_unsubscribed_msg = i18n.t("youtube_layout.successfully_unsubscribed");
+    let failed_to_unsubscribe_msg = i18n.t("youtube_layout.failed_to_unsubscribe");
+    let show_less_text = i18n.t("youtube_layout.show_less");
+    let show_more_text = i18n.t("youtube_layout.show_more");
 
     let server_name = state
         .auth_details
@@ -186,6 +204,10 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
         let set_loading = set_loading.clone();
         let is_subscribed = is_subscribed.clone();
         let dispatch = dispatch.clone();
+        let successfully_subscribed_msg_clone = successfully_subscribed_msg.clone();
+        let failed_to_subscribe_msg_clone = failed_to_subscribe_msg.clone();
+        let successfully_unsubscribed_msg_clone = successfully_unsubscribed_msg.clone();
+        let failed_to_unsubscribe_msg_clone = failed_to_unsubscribe_msg.clone();
 
         Callback::from(move |_: MouseEvent| {
             let channel = channel.clone();
@@ -195,6 +217,10 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
             let server_name_wasm = server_name.clone();
             let api_key_wasm = api_key.clone();
             let user_id_wasm = user_id.clone();
+            let successfully_subscribed_msg = successfully_subscribed_msg_clone.clone();
+            let failed_to_subscribe_msg = failed_to_subscribe_msg_clone.clone();
+            let successfully_unsubscribed_msg = successfully_unsubscribed_msg_clone.clone();
+            let failed_to_unsubscribe_msg = failed_to_unsubscribe_msg_clone.clone();
 
             wasm_bindgen_futures::spawn_local(async move {
                 set_loading.set(true);
@@ -212,17 +238,15 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
                         Ok(_) => {
                             is_subscribed.set(true);
                             dispatch.reduce_mut(|state| {
-                                state.info_message = Some(
-                                    "Successfully subscribed to channel. Videos will be processed in background."
-                                        .to_string()
-                                );
+                                state.info_message = Some(successfully_subscribed_msg.clone());
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
                                 state.error_message = Some(format!(
-                                    "Failed to subscribe to channel: {}",
+                                    "{}: {}",
+                                    failed_to_subscribe_msg,
                                     formatted_error
                                 ));
                             });
@@ -249,15 +273,15 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
                         Ok(_) => {
                             is_subscribed.set(false);
                             dispatch.reduce_mut(|state| {
-                                state.info_message =
-                                    Some("Successfully unsubscribed from channel.".to_string());
+                                state.info_message = Some(successfully_unsubscribed_msg.clone());
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
                                 state.error_message = Some(format!(
-                                    "Failed to unsubscribe from channel: {}",
+                                    "{}: {}",
+                                    failed_to_unsubscribe_msg,
                                     formatted_error
                                 ));
                             });
@@ -339,7 +363,7 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
                                                 class="text-sm font-medium mb-3 text-left hover:underline item_container-text opacity-80"
                                                 onclick={toggle_description}
                                             >
-                                                {if *is_description_expanded { "Show less" } else { "Show more" }}
+                                                {if *is_description_expanded { show_less_text.clone() } else { show_more_text.clone() }}
                                             </button>
                                         }
                                     } else {

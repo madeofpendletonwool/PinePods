@@ -8,10 +8,43 @@ use crate::requests::setting_reqs::{
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[function_component(NotificationOptions)]
 pub fn notification_settings() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
+
+    // Capture i18n strings before they get moved
+    let i18n_failed_to_fetch_notification_settings = i18n.t("notifications.failed_to_fetch_notification_settings").to_string();
+    let i18n_successfully_updated_notification_settings = i18n.t("notifications.successfully_updated_notification_settings").to_string();
+    let i18n_failed_to_update_notification_settings = i18n.t("notifications.failed_to_update_notification_settings").to_string();
+    let i18n_test_notification_sent = i18n.t("notifications.test_notification_sent").to_string();
+    let i18n_failed_to_send_test_notification = i18n.t("notifications.failed_to_send_test_notification").to_string();
+    let i18n_notification_settings = i18n.t("notifications.notification_settings").to_string();
+    let i18n_ntfy_configuration = i18n.t("notifications.ntfy_configuration").to_string();
+    let i18n_gotify_configuration = i18n.t("notifications.gotify_configuration").to_string();
+    let i18n_status = i18n.t("notifications.status").to_string();
+    let i18n_topic = i18n.t("notifications.topic").to_string();
+    let i18n_server = i18n.t("notifications.server").to_string();
+    let i18n_not_set = i18n.t("notifications.not_set").to_string();
+    let i18n_not_configured = i18n.t("notifications.not_configured").to_string();
+    let i18n_active = i18n.t("notifications.active").to_string();
+    let i18n_inactive = i18n.t("notifications.inactive").to_string();
+    let i18n_notification_platform = i18n.t("notifications.notification_platform").to_string();
+    let i18n_enable_notifications = i18n.t("notifications.enable_notifications").to_string();
+    let i18n_ntfy_topic = i18n.t("notifications.ntfy_topic").to_string();
+    let i18n_ntfy_server_url = i18n.t("notifications.ntfy_server_url").to_string();
+    let i18n_authentication_optional = i18n.t("notifications.authentication_optional").to_string();
+    let i18n_username_password_or_token = i18n.t("notifications.username_password_or_token").to_string();
+    let i18n_username = i18n.t("notifications.username").to_string();
+    let i18n_password = i18n.t("notifications.password").to_string();
+    let i18n_access_token = i18n.t("notifications.access_token").to_string();
+    let i18n_gotify_server_url = i18n.t("notifications.gotify_server_url").to_string();
+    let i18n_gotify_app_token = i18n.t("notifications.gotify_app_token").to_string();
+    let i18n_save_settings = i18n.t("notifications.save_settings").to_string();
+    let i18n_send_test_notification = i18n.t("notifications.send_test_notification").to_string();
+
     // Form states
     let platform = use_state(|| "ntfy".to_string());
     let enabled = use_state(|| false);
@@ -134,7 +167,8 @@ pub fn notification_settings() -> Html {
                                 let formatted_error = format_error_message(&e.to_string());
                                 _dispatch.reduce_mut(|state| {
                                     state.error_message = Some(format!(
-                                        "Failed to fetch notification settings: {}",
+                                        "{}{}",
+                                        i18n_failed_to_fetch_notification_settings.clone(),
                                         formatted_error
                                     ));
                                 });
@@ -164,8 +198,12 @@ pub fn notification_settings() -> Html {
         let show_success = show_success.clone();
         let success_message = success_message.clone();
         let _dispatch = _dispatch.clone();
+        let i18n_successfully_updated_notification_settings = i18n_successfully_updated_notification_settings.clone();
+        let i18n_failed_to_update_notification_settings = i18n_failed_to_update_notification_settings.clone();
 
         Callback::from(move |e: SubmitEvent| {
+            let i18n_successfully_updated_notification_settings = i18n_successfully_updated_notification_settings.clone();
+            let i18n_failed_to_update_notification_settings = i18n_failed_to_update_notification_settings.clone();
             let update_trig = update_trigger.clone();
             let success_call = show_success.clone();
             let success_call_message = success_message.clone();
@@ -200,14 +238,15 @@ pub fn notification_settings() -> Html {
                     Ok(_) => {
                         success_call.set(true);
                         success_call_message
-                            .set("Successfully updated notification settings".to_string());
+                            .set(i18n_successfully_updated_notification_settings.clone());
                         update_trig.set(!*update_trig);
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
                         dispatch_call.reduce_mut(|state| {
                             state.error_message = Some(format!(
-                                "Failed to update notification settings: {}",
+                                "{}{}",
+                                i18n_failed_to_update_notification_settings,
                                 formatted_error
                             ));
                         });
@@ -220,8 +259,12 @@ pub fn notification_settings() -> Html {
     let on_test_notification = {
         let platform = platform.clone();
         let _dispatch = _dispatch.clone();
+        let i18n_test_notification_sent = i18n_test_notification_sent.clone();
+        let i18n_failed_to_send_test_notification = i18n_failed_to_send_test_notification.clone();
 
         Callback::from(move |_| {
+            let i18n_test_notification_sent = i18n_test_notification_sent.clone();
+            let i18n_failed_to_send_test_notification = i18n_failed_to_send_test_notification.clone();
             let dispatch = _dispatch.clone();
             let platform_value = (*platform).clone();
             let test_server = server_name.clone();
@@ -233,7 +276,7 @@ pub fn notification_settings() -> Html {
                 {
                     Ok(_) => {
                         dispatch.reduce_mut(|state| {
-                            state.info_message = Some("Test notification sent!".to_string())
+                            state.info_message = Some(i18n_test_notification_sent.clone())
                         });
                     }
                     Err(e) => {
@@ -241,7 +284,8 @@ pub fn notification_settings() -> Html {
                         let formatted_error = format_error_message(&e.to_string());
                         dispatch.reduce_mut(|state| {
                             state.error_message = Some(format!(
-                                "Failed to send test notification: {}",
+                                "{}{}",
+                                i18n_failed_to_send_test_notification,
                                 formatted_error
                             ))
                         });
@@ -256,7 +300,7 @@ pub fn notification_settings() -> Html {
             <div class="settings-header">
                 <div class="flex items-center gap-4">
                     <i class="ph ph-bell text-2xl"></i>
-                    <h2 class="text-xl font-semibold">{"Notification Settings"}</h2>
+                    <h2 class="text-xl font-semibold">{&i18n_notification_settings}</h2>
                 </div>
             </div>
 
@@ -265,35 +309,35 @@ pub fn notification_settings() -> Html {
                     <div class="grid grid-cols-2 gap-6">
                         // ntfy Settings
                         <div>
-                            <span class="text-sm opacity-80">{"ntfy Configuration:"}</span>
+                            <span class="text-sm opacity-80">{&i18n_ntfy_configuration}</span>
                             {
                                 if let Some(ntfy) = info.settings.iter().find(|s| s.platform == "ntfy") {
                                     html! {
                                         <div class="mt-2 space-y-2">
                                             <p>
-                                                <span class="text-sm opacity-80">{"Status: "}</span>
-                                                <span class="font-medium">{if ntfy.enabled { "Active" } else { "Inactive" }}</span>
+                                                <span class="text-sm opacity-80">{&i18n_status}</span>
+                                                <span class="font-medium">{if ntfy.enabled { &i18n_active } else { &i18n_inactive }}</span>
                                             </p>
                                             <p>
-                                                <span class="text-sm opacity-80">{"Topic: "}</span>
-                                                <span class="font-medium">{&ntfy.ntfy_topic.clone().unwrap_or_else(|| "Not Set".to_string())}</span>
+                                                <span class="text-sm opacity-80">{&i18n_topic}</span>
+                                                <span class="font-medium">{&ntfy.ntfy_topic.clone().unwrap_or_else(|| i18n_not_set.clone())}</span>
                                             </p>
                                             <p>
-                                                <span class="text-sm opacity-80">{"Server: "}</span>
-                                                <span class="font-medium">{&ntfy.ntfy_server_url.clone().unwrap_or_else(|| "Not Set".to_string())}</span>
+                                                <span class="text-sm opacity-80">{&i18n_server}</span>
+                                                <span class="font-medium">{&ntfy.ntfy_server_url.clone().unwrap_or_else(|| i18n_not_set.clone())}</span>
                                             </p>
                                         </div>
                                     }
                                 } else {
                                     html! {
-                                        <p class="mt-2 text-sm opacity-80">{"Not Configured"}</p>
+                                        <p class="mt-2 text-sm opacity-80">{&i18n_not_configured}</p>
                                     }
                                 }
                             }
                         </div>
                         // Gotify Settings
                         <div>
-                            <span class="text-sm opacity-80">{"Gotify Configuration:"}</span>
+                            <span class="text-sm opacity-80">{&i18n_gotify_configuration}</span>
                             {
                                 if let Some(gotify) = info.settings.iter().find(|s| s.platform == "gotify") {
                                     html! {
@@ -310,7 +354,7 @@ pub fn notification_settings() -> Html {
                                     }
                                 } else {
                                     html! {
-                                        <p class="mt-2 text-sm opacity-80">{"Not Configured"}</p>
+                                        <p class="mt-2 text-sm opacity-80">{&i18n_not_configured}</p>
                                     }
                                 }
                             }
@@ -321,7 +365,7 @@ pub fn notification_settings() -> Html {
 
             <form onsubmit={on_submit} class="space-y-4">
                 <div class="form-group">
-                    <label class="form-label">{"Notification Platform"}</label>
+                    <label class="form-label">{&i18n_notification_platform}</label>
                     <select
                         class="form-input"
                         value="ntfy"
@@ -336,7 +380,7 @@ pub fn notification_settings() -> Html {
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label">{"Enable Notifications"}</label>
+                    <label class="form-label">{&i18n_enable_notifications}</label>
                     <input
                         type="checkbox"
                         checked={*enabled}
@@ -352,7 +396,7 @@ pub fn notification_settings() -> Html {
                         html! {
                             <>
                                 <div class="form-group">
-                                    <label for="ntfy_topic" class="form-label">{"ntfy Topic"}</label>
+                                    <label for="ntfy_topic" class="form-label">{&i18n_ntfy_topic}</label>
                                     <input
                                         type="text"
                                         id="ntfy_topic"
@@ -366,7 +410,7 @@ pub fn notification_settings() -> Html {
                                     />
                                 </div>
                                 <div class="form-group">
-                                    <label for="ntfy_server" class="form-label">{"ntfy Server URL"}</label>
+                                    <label for="ntfy_server" class="form-label">{&i18n_ntfy_server_url}</label>
                                     <input
                                         type="text"
                                         id="ntfy_server"
@@ -381,12 +425,12 @@ pub fn notification_settings() -> Html {
                                 </div>
                                 
                                 <div class="form-group">
-                                    <label class="form-label">{"Authentication (Optional)"}</label>
-                                    <p class="text-sm opacity-80 mb-2">{"Choose either username/password OR access token, not both"}</p>
+                                    <label class="form-label">{&i18n_authentication_optional}</label>
+                                    <p class="text-sm opacity-80 mb-2">{&i18n_username_password_or_token}</p>
                                 </div>
                                 
                                 <div class="form-group">
-                                    <label for="ntfy_username" class="form-label">{"Username"}</label>
+                                    <label for="ntfy_username" class="form-label">{&i18n_username}</label>
                                     <input
                                         type="text"
                                         id="ntfy_username"
@@ -406,7 +450,7 @@ pub fn notification_settings() -> Html {
                                 </div>
                                 
                                 <div class="form-group">
-                                    <label for="ntfy_password" class="form-label">{"Password"}</label>
+                                    <label for="ntfy_password" class="form-label">{&i18n_password}</label>
                                     <input
                                         type="password"
                                         id="ntfy_password"
@@ -426,7 +470,7 @@ pub fn notification_settings() -> Html {
                                 </div>
                                 
                                 <div class="form-group">
-                                    <label for="ntfy_access_token" class="form-label">{"Access Token"}</label>
+                                    <label for="ntfy_access_token" class="form-label">{&i18n_access_token}</label>
                                     <input
                                         type="password"
                                         id="ntfy_access_token"
@@ -451,7 +495,7 @@ pub fn notification_settings() -> Html {
                         html! {
                             <>
                                 <div class="form-group">
-                                    <label for="gotify_url" class="form-label">{"Gotify Server URL"}</label>
+                                    <label for="gotify_url" class="form-label">{&i18n_gotify_server_url}</label>
                                     <input
                                         type="text"
                                         id="gotify_url"
@@ -465,7 +509,7 @@ pub fn notification_settings() -> Html {
                                     />
                                 </div>
                                 <div class="form-group">
-                                    <label for="gotify_token" class="form-label">{"Gotify App Token"}</label>
+                                    <label for="gotify_token" class="form-label">{&i18n_gotify_app_token}</label>
                                     <input
                                         type="text"
                                         id="gotify_token"
@@ -491,7 +535,7 @@ pub fn notification_settings() -> Html {
 
                 <button type="submit" class="submit-button">
                     <i class="ph ph-floppy-disk"></i>
-                    {"Save Settings"}
+{&i18n_save_settings}
                 </button>
             </form>
 
@@ -503,7 +547,7 @@ pub fn notification_settings() -> Html {
                     class="submit-button mt-4"
                 >
                     <i class="ph ph-bell-ringing"></i>
-                    {"Send Test Notification"}
+{&i18n_send_test_notification}
                 </button>
             }
         </div>

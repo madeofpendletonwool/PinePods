@@ -1,6 +1,7 @@
 use super::app_drawer::App_drawer;
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
+use i18nrs::yew::use_translation;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::ExpandedDescriptions;
 use crate::components::context::{AppState, UIState};
@@ -64,6 +65,14 @@ pub struct PersonProps {
 
 #[function_component(Person)]
 pub fn person(PersonProps { name }: &PersonProps) -> Html {
+    let (i18n, _) = use_translation();
+    
+    // Pre-capture translation strings for async blocks
+    let i18n_podcast_removed = i18n.t("person.podcast_successfully_removed").to_string();
+    let i18n_error_removing_podcast = i18n.t("person.error_removing_podcast").to_string();
+    let i18n_podcast_added = i18n.t("person.podcast_successfully_added").to_string();
+    let i18n_error_adding_podcast = i18n.t("person.error_adding_podcast").to_string();
+    
     let (state, dispatch) = use_store::<AppState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let person_ids = use_state(|| HashMap::<String, i32>::new());
@@ -201,6 +210,10 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
             let user_id_callback = user_id.clone();
             let added_podcasts_callback = added_podcasts.clone();
             let dispatch_callback = dispatch.clone();
+            let i18n_podcast_removed = i18n_podcast_removed.clone();
+            let i18n_error_removing_podcast = i18n_error_removing_podcast.clone();
+            let i18n_podcast_added = i18n_podcast_added.clone();
+            let i18n_error_adding_podcast = i18n_error_adding_podcast.clone();
             // Extract the necessary data before the async block
             // let is_added = added_podcasts.contains(&podcast_id);
             // Extract the podcast ID from the event's dataset
@@ -244,7 +257,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 added_podcasts_callback.set(new_set);
                                 dispatch_callback.reduce_mut(|state| {
                                     state.info_message =
-                                        Some("Podcast successfully removed".to_string());
+                                        Some(i18n_podcast_removed.clone());
                                     state.is_loading = Some(false);
                                 });
                             }
@@ -252,7 +265,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 dispatch_callback.reduce_mut(|state| {
                                     let formatted_error = format_error_message(&e.to_string());
                                     state.error_message = Some(format!(
-                                        "Error removing podcast: {:?}",
+                                        "{}: {:?}",
+                                        i18n_error_removing_podcast.clone(),
                                         formatted_error
                                     ));
                                     state.is_loading = Some(false);
@@ -312,7 +326,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         }
                                     }
                                     state.info_message =
-                                        Some("Podcast successfully added".to_string());
+                                        Some(i18n_podcast_added.clone());
                                     state.is_loading = Some(false);
                                 });
                                 let mut new_set = (*added_podcasts_callback).clone();
@@ -324,7 +338,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 dispatch_callback.reduce_mut(|state| {
                                     let formatted_error = format_error_message(&e.to_string());
                                     state.error_message = Some(format!(
-                                        "Error adding podcast: {:?}",
+                                        "{}: {:?}",
+                                        i18n_error_adding_podcast.clone(),
                                         formatted_error
                                     ));
                                     state.is_loading = Some(false);
@@ -470,6 +485,11 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                 {
                     if let Some(person) = person_data {
                         web_sys::console::log_1(&format!("Image URL: {:?}", &person).into());
+                        
+                        let subscribe_text = i18n.t("person.subscribe");
+                        let unsubscribe_text = i18n.t("person.unsubscribe");
+                        let profile_alt = i18n.t("person.profile_alt");
+                        
                         html! {
                             <div class="person-header bg-custom-light p-6 rounded-lg shadow-md mb-6">
                                 <div class="flex items-center gap-6">
@@ -483,7 +503,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                 html! {
                                                     <img
                                                         src={proxied_url}
-                                                        alt={format!("{}'s profile", person.name)}
+                                                        alt={format!("{} {}", person.name, &profile_alt)}
                                                         class="w-full h-full object-cover"
                                                     />
                                                 }
@@ -512,7 +532,13 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                     "px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
                                                 }}
                                             >
-                                                { if *is_subscribed { "Unsubscribe" } else { "Subscribe" } }
+                                                {
+                                                    if *is_subscribed { 
+                                                        &unsubscribe_text
+                                                    } else { 
+                                                        &subscribe_text
+                                                    }
+                                                }
                                             </button>
                                         </div>
 
@@ -580,7 +606,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                     <div class="flex justify-between items-center mb-4 cursor-pointer"
                          onclick={let is_expanded = is_expanded.clone();
                                  Callback::from(move |_| is_expanded.set(!*is_expanded))}>
-                        <h2 class="item_container-text text-xl font-semibold">{"Podcasts this person appears in"}</h2>
+                        <h2 class="item_container-text text-xl font-semibold">{&i18n.t("person.podcasts_this_person_appears_in")}</h2>
                         <i class={classes!(
                             "ph",
                             "ph-caret-up",
@@ -609,8 +635,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                         html! {
                                     <div class="empty-episodes-container">
                                         <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                        <h1 class="page-subtitles">{ "No Podcasts Found" }</h1>
-                                        <p class="page-paragraphs">{"This person doesn't seem to appear in any podcasts. Are you sure you got the right person?"}</p>
+                                        <h1 class="page-subtitles">{&i18n.t("person.no_podcasts_found")}</h1>
+                                        <p class="page-paragraphs">{&i18n.t("person.no_podcasts_message")}</p>
                                     </div>
                                         }
                                     } else {
@@ -646,13 +672,13 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             podcast.podcastindexid.clone().unwrap(),
                                             podcast.podcastname.clone(),
                                             podcast.feedurl.clone(),
-                                            podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
-                                            podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
+                                            podcast.description.clone().unwrap_or_else(|| i18n.t("person.no_description_provided").to_string()),
+                                            podcast.author.clone().unwrap_or_else(|| i18n.t("person.unknown_author").to_string()),
                                             podcast.artworkurl.clone().unwrap_or_else(|| String::from("default_artwork_url.png")),
                                             podcast.explicit.clone(),
                                             podcast.episodecount.clone().unwrap_or_else(|| 0),
                                             podcast.categories.as_ref().map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", ")),
-                                            podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
+                                            podcast.websiteurl.clone().unwrap_or_else(|| i18n.t("person.no_website_provided").to_string()),
 
                                             user_id.unwrap(),
                                             false,
@@ -700,7 +726,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                         <FallbackImage
                                                             src={podcast.artworkurl.clone().unwrap()}
                                                             onclick={on_title_click.clone()}
-                                                            alt={format!("Cover for {}", podcast.podcastname.clone())}
+                                                            alt={format!("{} {}", &i18n.t("person.cover_for"), podcast.podcastname.clone())}
                                                             class="episode-image"
                                                         />
                                                     </div>
@@ -723,7 +749,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                             }
                                                         }
 
-                                                        <p class="item_container-text">{ format!("Episode Count: {}", &podcast.episodecount.unwrap_or_else(|| 0)) }</p>
+                                                        <p class="item_container-text">{ format!("{}: {}", &i18n.t("person.episode_count"), &podcast.episodecount.unwrap_or_else(|| 0)) }</p>
                                                     </div>
                                                     <button class={"item-container-button selector-button font-bold py-2 px-4 rounded-full self-center mr-8"} style="width: 60px; height: 60px;">
                                                         <i class={classes!(
@@ -743,8 +769,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                     html! {
                                         <div class="empty-episodes-container">
                                             <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                            <h1 class="page-subtitles">{ "No Podcasts Found" }</h1>
-                                            <p class="page-paragraphs">{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
+                                            <h1 class="page-subtitles">{&i18n.t("person.no_podcasts_found")}</h1>
+                                            <p class="page-paragraphs">{&i18n.t("person.add_podcasts_message")}</p>
                                         </div>
                                     }
                                 }
@@ -752,8 +778,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 html! {
                                     <div class="empty-episodes-container">
                                         <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                        <h1 class="page-subtitles">{ "No Podcasts Found" }</h1>
-                                        <p class="page-paragraphs">{"You can add new podcasts by using the search bar above. Search for your favorite podcast and click the plus button to add it."}</p>
+                                        <h1 class="page-subtitles">{&i18n.t("person.no_podcasts_found")}</h1>
+                                        <p class="page-paragraphs">{&i18n.t("person.add_podcasts_message")}</p>
                                     </div>
                                 }
                             }
@@ -763,7 +789,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                     <div class="flex justify-between items-center mb-4 cursor-pointer"
                          onclick={let episodes_expanded = episodes_expanded.clone();
                                  Callback::from(move |_| episodes_expanded.set(!*episodes_expanded))}>
-                        <h2 class="item_container-text text-xl font-semibold">{"Episodes this person appears in"}</h2>
+                        <h2 class="item_container-text text-xl font-semibold">{&i18n.t("person.episodes_this_person_appears_in")}</h2>
                         <i class={classes!(
                             "ph",
                             "ph-caret-up",
@@ -890,7 +916,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             <div class="item-container flex items-center mb-4 shadow-md rounded-lg">
                                                 <img
                                                     src={episode.feedImage.clone().unwrap_or_default()}
-                                                    alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())}
+                                                    alt={format!("{} {}", &i18n.t("person.cover_for"), &episode.title.clone().unwrap_or_default())}
                                                     class="episode-image"/>
                                                 <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
                                                     <p class="item_container-text episode-title font-semibold"
@@ -957,8 +983,8 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                             html! {
                                 <div class="empty-episodes-container" id="episode-container">
                                     <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                    <h1 class="page-subtitles">{ "No Episodes Found" }</h1>
-                                    <p class="page-paragraphs">{"This podcast strangely doesn't have any episodes. Try a more mainstream one maybe?"}</p>
+                                    <h1 class="page-subtitles">{&i18n.t("person.no_episodes_found")}</h1>
+                                    <p class="page-paragraphs">{&i18n.t("person.no_episodes_message")}</p>
                                 </div>
                             }
                         }
