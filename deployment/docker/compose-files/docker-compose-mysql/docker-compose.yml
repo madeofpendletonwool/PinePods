@@ -1,6 +1,7 @@
 services:
   db:
-    image: mariadb:latest
+    container_name: db
+    image: mysql:9
     command: --wait_timeout=1800
     environment:
       MYSQL_TCP_PORT: 3306
@@ -11,27 +12,20 @@ services:
       MYSQL_INIT_CONNECT: "SET @@GLOBAL.max_allowed_packet=64*1024*1024;"
     volumes:
       - /home/user/pinepods/sql:/var/lib/mysql
-    ports:
-      - "3306:3306"
     restart: always
+
   valkey:
     image: valkey/valkey:8-alpine
-    ports:
-      - "6379:6379"
+
   pinepods:
     image: madeofpendletonwool/pinepods:latest
     ports:
-      # Pinepods Main Port
       - "8040:8040"
     environment:
       # Basic Server Info
       SEARCH_API_URL: "https://search.pinepods.online/api/search"
       PEOPLE_API_URL: "https://people.pinepods.online"
-      # Default Admin User Information
-      USERNAME: myadminuser01
-      PASSWORD: myS3curepass
-      FULLNAME: Pinepods Admin
-      EMAIL: user@pinepods.online
+      HOSTNAME: "http://localhost:8040"
       # Database Vars
       DB_TYPE: mariadb
       DB_HOST: db
@@ -43,17 +37,19 @@ services:
       VALKEY_HOST: valkey
       VALKEY_PORT: 6379
       # Enable or Disable Debug Mode for additional Printing
-      DEBUG_MODE: False
+      DEBUG_MODE: false
       PUID: ${UID:-911}
       PGID: ${GID:-911}
       # Add timezone configuration
       TZ: "America/New_York"
-    volumes:
-      # Mount the download and the backup location on the server if you want to. You could mount a nas to the downloads folder or something like that.
-      # The backups directory is used if backups are made on the web version on pinepods. When taking backups on the client version it downloads them locally.
 
+    volumes:
+      # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
+      # Timezone volumes, HIGHLY optional. Read the timezone notes below
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     depends_on:
       - db
       - valkey
