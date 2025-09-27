@@ -69,7 +69,12 @@ You can also choose to use MySQL/MariaDB or Postgres as your database. Examples 
 
 ### Docker Compose
 
-> **⚠️ WARNING:** An issue was recently pointed out to me related to postgres version 18. If you run into an error that looks like this: `Failed to deploy a stack: compose up operation failed: Error response from daemon: failed to create task for container: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: error mounting "<POSTGRESQL_PATH>" to rootfs at "/var/lib/postgresql/data": change mount propagation through procfd: open o_path procfd: open /<DOCKER ROOT>/overlay2/17561d31d0730b3fd3071752d82cf8fe60b2ea0ed84521c6ee8b06427ca8f064/merged/var/lib/postgresql/data: no such file or directory: unknown` - Please change your postgres tag in your compose to '17'. See [this issue](https://github.com/docker-library/postgres/issues/1363) for more details.
+> **⚠️ WARNING:** An issue was recently pointed out to me related to postgres version 18. If you run into an error that looks like this on startup when using postgres:
+
+```
+Failed to deploy a stack: compose up operation failed: Error response from daemon: failed to create task for container: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: error mounting "<POSTGRESQL_PATH>" to rootfs at "/var/lib/postgresql/data": change mount propagation through procfd: open o_path procfd: open /<DOCKER ROOT>/overlay2/17561d31d0730b3fd3071752d82cf8fe60b2ea0ed84521c6ee8b06427ca8f064/merged/var/lib/postgresql/data: no such file or directory: unknown`
+```
+Please change your postgres tag in your compose to '17'. See [this issue](https://github.com/docker-library/postgres/issues/1363) for more details.
 
 #### User Permissions
 Pinepods can run with specific user permissions to ensure downloaded files are accessible on the host system. This is controlled through two environment variables:
