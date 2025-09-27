@@ -1,19 +1,21 @@
 services:
   db:
     container_name: db
-    image: postgres:17
+    image: mariadb:12
+    command: --wait_timeout=1800
     environment:
-      POSTGRES_DB: pinepods_database
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: myS3curepass
-      PGDATA: /var/lib/postgresql/data/pgdata
+      MYSQL_TCP_PORT: 3306
+      MYSQL_ROOT_PASSWORD: myS3curepass
+      MYSQL_DATABASE: pinepods_database
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_INIT_CONNECT: "SET @@GLOBAL.max_allowed_packet=64*1024*1024;"
     volumes:
-      - /home/user/pinepods/pgdata:/var/lib/postgresql/data
+      - /home/user/pinepods/sql:/var/lib/mysql
     restart: always
 
   valkey:
     image: valkey/valkey:8-alpine
-    restart: always
 
   pinepods:
     image: madeofpendletonwool/pinepods:latest
@@ -25,10 +27,10 @@ services:
       PEOPLE_API_URL: "https://people.pinepods.online"
       HOSTNAME: "http://localhost:8040"
       # Database Vars
-      DB_TYPE: postgresql
+      DB_TYPE: mariadb
       DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: postgres
+      DB_PORT: 3306
+      DB_USER: root
       DB_PASSWORD: myS3curepass
       DB_NAME: pinepods_database
       # Valkey Settings
@@ -40,6 +42,7 @@ services:
       PGID: ${GID:-911}
       # Add timezone configuration
       TZ: "America/New_York"
+
     volumes:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
@@ -47,7 +50,6 @@ services:
       # Timezone volumes, HIGHLY optional. Read the timezone notes below
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
-    restart: always
     depends_on:
       - db
       - valkey
