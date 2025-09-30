@@ -69,6 +69,13 @@ You can also choose to use MySQL/MariaDB or Postgres as your database. Examples 
 
 ### Docker Compose
 
+> **⚠️ WARNING:** An issue was recently pointed out to me related to postgres version 18. If you run into an error that looks like this on startup when using postgres:
+
+```
+Failed to deploy a stack: compose up operation failed: Error response from daemon: failed to create task for container: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: error mounting "<POSTGRESQL_PATH>" to rootfs at "/var/lib/postgresql/data": change mount propagation through procfd: open o_path procfd: open /<DOCKER ROOT>/overlay2/17561d31d0730b3fd3071752d82cf8fe60b2ea0ed84521c6ee8b06427ca8f064/merged/var/lib/postgresql/data: no such file or directory: unknown`
+```
+> Please change your postgres tag in your compose to '17'. See [this issue](https://github.com/docker-library/postgres/issues/1363) for more details.
+
 #### User Permissions
 Pinepods can run with specific user permissions to ensure downloaded files are accessible on the host system. This is controlled through two environment variables:
 - `PUID`: Process User ID (defaults to 1000 if not set)
@@ -85,7 +92,7 @@ id -g   # Your GID
 services:
   db:
     container_name: db
-    image: postgres:latest
+    image: postgres:17
     environment:
       POSTGRES_DB: pinepods_database
       POSTGRES_USER: postgres
@@ -93,14 +100,11 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - /home/user/pinepods/pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     restart: always
 
   valkey:
     image: valkey/valkey:8-alpine
-    ports:
-      - "6379:6379"
+    restart: always
 
   pinepods:
     image: madeofpendletonwool/pinepods:latest
@@ -134,6 +138,7 @@ services:
       # Timezone volumes, HIGHLY optional. Read the timezone notes below
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
+    restart: always
     depends_on:
       - db
       - valkey
@@ -144,7 +149,7 @@ services:
 services:
   db:
     container_name: db
-    image: mariadb:latest
+    image: mariadb:12
     command: --wait_timeout=1800
     environment:
       MYSQL_TCP_PORT: 3306
@@ -155,14 +160,10 @@ services:
       MYSQL_INIT_CONNECT: 'SET @@GLOBAL.max_allowed_packet=64*1024*1024;'
     volumes:
       - /home/user/pinepods/sql:/var/lib/mysql
-    ports:
-      - "3306:3306"
     restart: always
 
   valkey:
     image: valkey/valkey:8-alpine
-    ports:
-      - "6379:6379"
 
   pinepods:
     image: madeofpendletonwool/pinepods:latest

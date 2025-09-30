@@ -1,20 +1,20 @@
 services:
   db:
-    image: postgres:latest
+    container_name: db
+    image: postgres:17
     environment:
-      POSTGRES_DB: pypods_database
+      POSTGRES_DB: pinepods_database
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: myS3curepass
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - /home/user/pinepods/pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     restart: always
+
   valkey:
     image: valkey/valkey:8-alpine
-    ports:
-      - "6379:6379"
+    restart: always
+
   pinepods:
     image: madeofpendletonwool/pinepods:latest
     ports:
@@ -23,11 +23,7 @@ services:
       # Basic Server Info
       SEARCH_API_URL: "https://search.pinepods.online/api/search"
       PEOPLE_API_URL: "https://people.pinepods.online"
-      # Default Admin User Information
-      USERNAME: myadminuser01
-      PASSWORD: myS3curepass
-      FULLNAME: Pinepods Admin
-      EMAIL: user@pinepods.online
+      HOSTNAME: "http://localhost:8040"
       # Database Vars
       DB_TYPE: postgresql
       DB_HOST: db
@@ -36,10 +32,10 @@ services:
       DB_PASSWORD: myS3curepass
       DB_NAME: pinepods_database
       # Valkey Settings
-      VALKEY_HOST: post-valkey
+      VALKEY_HOST: valkey
       VALKEY_PORT: 6379
       # Enable or Disable Debug Mode for additional Printing
-      DEBUG_MODE: False
+      DEBUG_MODE: false
       PUID: ${UID:-911}
       PGID: ${GID:-911}
       # Add timezone configuration
@@ -47,9 +43,13 @@ services:
       # Language Configuration
       DEFAULT_LANGUAGE: "en"
     volumes:
-      # Mount the download location on the server if you want to. You could mount a NAS to this folder or something similar
+      # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads
       - /home/user/pinepods/backups:/opt/pinepods/backups
+      # Timezone volumes, HIGHLY optional. Read the timezone notes below
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    restart: always
     depends_on:
       - db
       - valkey
