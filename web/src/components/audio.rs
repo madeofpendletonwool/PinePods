@@ -27,13 +27,13 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{
-    window, HtmlAudioElement, HtmlElement, HtmlInputElement, MediaPositionState,
-    MediaSessionPlaybackState, Navigator, TouchEvent,
+    window, HtmlAudioElement, HtmlElement, HtmlInputElement, Navigator, TouchEvent,
 };
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[derive(Properties, PartialEq, Debug, Clone)]
 pub struct AudioPlayerProps {
@@ -163,10 +163,19 @@ pub fn volume_control(props: &VolumeControlProps) -> Html {
 
 #[function_component(AudioPlayer)]
 pub fn audio_player(props: &AudioPlayerProps) -> Html {
+    let (i18n, _) = use_translation();
     let audio_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let show_modal = use_state(|| false);
+    
+    // Capture i18n strings before they get moved
+    let i18n_chapters = i18n.t("audio.chapters").to_string();
+    let i18n_close_modal = i18n.t("common.close_modal").to_string();
+    let i18n_no_audio_playing = i18n.t("audio.no_audio_playing").to_string();
+    let i18n_no_chapters_available = i18n.t("audio.no_chapters_available").to_string();
+    let i18n_shownotes = i18n.t("audio.shownotes").to_string();
+    let i18n_shownotes_unavailable = i18n.t("audio.shownotes_unavailable").to_string();
     let on_modal_close = {
         let show_modal = show_modal.clone();
         Callback::from(move |_: MouseEvent| show_modal.set(false))
@@ -893,6 +902,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 let navigator: Navigator = window.navigator();
 
                 // Try to get media session
+                // Commented out due to MediaSession API compatibility issues
+                /*
                 if let Ok(media_session) =
                     js_sys::Reflect::get(&navigator, &JsValue::from_str("mediaSession"))
                 {
@@ -1039,6 +1050,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         seek_forward_callback.forget();
                     }
                 }
+                */
             }
 
             || ()
@@ -1251,13 +1263,13 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 <div class="modal-container relative rounded-lg shadow">
                     // Header remains the same
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                        <h3 class="text-xl font-semibold">{"Chapters"}</h3>
+                        <h3 class="text-xl font-semibold">{&i18n_chapters}</h3>
                         <button onclick={on_close_modal.clone()}
                             class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
-                            <span class="sr-only">{"Close modal"}</span>
+                            <span class="sr-only">{&i18n_close_modal}</span>
                         </button>
                     </div>
 
@@ -1348,10 +1360,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     }
                                 }).collect::<Html>()
                             } else {
-                                html! { <div class="text-center p-4">{"No audio playing"}</div> }
+                                html! { <div class="text-center p-4">{&i18n_no_audio_playing}</div> }
                             }
                         } else {
-                            html! { <div class="text-center p-4">{"No chapters available"}</div> }
+                            html! { <div class="text-center p-4">{&i18n_no_chapters_available}</div> }
                         }}
                     </div>
                 </div>
@@ -1488,7 +1500,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     on_shownotes_click.emit(e.clone());
                                     // title_click_emit.emit(e);
                                 })} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
-                                    { "Shownotes" }
+                                    { &i18n_shownotes }
                                 </button>
                                 {
                                     if let Some(chapters) = &audio_state.episode_chapters {
@@ -1497,7 +1509,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                                 <button onclick={Callback::from(move |_: MouseEvent| {
                                                     on_chapter_select.emit(());
                                                 })} class="audio-top-button audio-full-button border-solid border selector-button font-bold py-2 px-4 mt-3 rounded-full flex items-center justify-center">
-                                                    { "Chapters" }
+                                                    { &i18n_chapters }
                                                 </button>
                                             }
                                         } else {
@@ -1512,7 +1524,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         } else {
                             html! {
                                 <button disabled=true class="item-container-button audio-full-button border-solid border selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center opacity-50 cursor-not-allowed">
-                                    { "Shownotes (Unavailable)" }
+                                    { &i18n_shownotes_unavailable }
                                 </button>
                             }
                         }

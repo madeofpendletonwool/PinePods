@@ -22,6 +22,9 @@ import (
 // Maximum number of subscriptions per user
 const MAX_SUBSCRIPTIONS = 5000
 
+// Limits for subscription sync to prevent overwhelming responses
+const MAX_SUBSCRIPTION_CHANGES = 5000 // Reasonable limit for subscription changes per sync
+
 // sanitizeURL cleans and validates a URL
 func sanitizeURL(rawURL string) (string, error) {
 	// Trim leading/trailing whitespace
@@ -63,13 +66,16 @@ func sanitizeURL(rawURL string) (string, error) {
 // getSubscriptions handles GET /api/2/subscriptions/{username}/{deviceid}
 func getSubscriptions(database *db.Database) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		log.Printf("[DEBUG] getSubscriptions: Starting request processing - %s %s", c.Request.Method, c.Request.URL.Path)
 
 		// Get user ID from middleware
 		userID, exists := c.Get("userID")
 		if !exists {
+			log.Printf("[ERROR] getSubscriptions: userID not found in context")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
+		log.Printf("[DEBUG] getSubscriptions: userID found: %v", userID)
 
 		// Get device ID from URL - with fix for .json suffix
 		deviceName := c.Param("deviceid")
@@ -184,8 +190,8 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 				}
 				defer rows.Close()
 
-				// Build subscription list
-				var podcasts []string
+				// Build subscription list - ensure never nil
+				podcasts := make([]string, 0)
 				for rows.Next() {
 					var url string
 					if err := rows.Scan(&url); err != nil {
@@ -237,45 +243,35 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 			}
 
 			// Process actual changes since the timestamp
-			// Query subscriptions added since the given timestamp
+			// Query subscriptions added since the given timestamp - simplified for performance
 			var addRows *sql.Rows
 
 			if database.IsPostgreSQLDB() {
 				query = `
-                    SELECT DISTINCT s.PodcastURL
-                    FROM "GpodderSyncSubscriptions" s
-                    WHERE s.UserID = $1
-                    AND s.DeviceID != $2
-                    AND s.Timestamp > $3
-                    AND s.Action = 'add'
-                    AND NOT EXISTS (
-                        SELECT 1 FROM "GpodderSyncSubscriptions" s2
-                        WHERE s2.UserID = s.UserID
-                        AND s2.PodcastURL = s.PodcastURL
-                        AND s2.DeviceID = $2
-                        AND s2.Timestamp > s.Timestamp
-                        AND s2.Action = 'add'
-                    )
+					SELECT DISTINCT s.PodcastURL
+					FROM "GpodderSyncSubscriptions" s
+					WHERE s.UserID = $1
+					AND s.DeviceID != $2
+					AND s.Timestamp > $3
+					AND s.Action = 'add'
+					ORDER BY s.Timestamp DESC
+					LIMIT $4
                 `
-				addRows, err = database.Query(query, userID, deviceID, since)
+				log.Printf("[DEBUG] getSubscriptions: Executing add query with limit %d", MAX_SUBSCRIPTION_CHANGES)
+				addRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)
 			} else {
 				query = `
-                    SELECT DISTINCT s.PodcastURL
-                    FROM GpodderSyncSubscriptions s
-                    WHERE s.UserID = ?
-                    AND s.DeviceID != ?
-                    AND s.Timestamp > ?
-                    AND s.Action = 'add'
-                    AND NOT EXISTS (
-                        SELECT 1 FROM GpodderSyncSubscriptions s2
-                        WHERE s2.UserID = s.UserID
-                        AND s2.PodcastURL = s.PodcastURL
-                        AND s2.DeviceID = ?
-                        AND s2.Timestamp > s.Timestamp
-                        AND s2.Action = 'add'
-                    )
+					SELECT DISTINCT s.PodcastURL
+					FROM GpodderSyncSubscriptions s
+					WHERE s.UserID = ?
+					AND s.DeviceID != ?
+					AND s.Timestamp > ?
+					AND s.Action = 'add'
+					ORDER BY s.Timestamp DESC
+					LIMIT ?
                 `
-				addRows, err = database.Query(query, userID, deviceID, since, deviceID)
+				log.Printf("[DEBUG] getSubscriptions: Executing add query with limit %d", MAX_SUBSCRIPTION_CHANGES)
+				addRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)
 			}
 
 			if err != nil {
@@ -285,7 +281,8 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 			}
 			defer addRows.Close()
 
-			addList := []string{}
+			// Ensure addList is never nil
+			addList := make([]string, 0)
 			for addRows.Next() {
 				var url string
 				if err := addRows.Scan(&url); err != nil {
@@ -295,45 +292,33 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 				addList = append(addList, url)
 			}
 
-			// Query subscriptions removed since the given timestamp
+			// Query subscriptions removed since the given timestamp - simplified for performance
 			var removeRows *sql.Rows
 
 			if database.IsPostgreSQLDB() {
 				query = `
-                    SELECT DISTINCT s.PodcastURL
-                    FROM "GpodderSyncSubscriptions" s
-                    WHERE s.UserID = $1
-                    AND s.DeviceID != $2
-                    AND s.Timestamp > $3
-                    AND s.Action = 'remove'
-                    AND NOT EXISTS (
-                        SELECT 1 FROM "GpodderSyncSubscriptions" s2
-                        WHERE s2.UserID = s.UserID
-                        AND s2.PodcastURL = s.PodcastURL
-                        AND s2.DeviceID = $2
-                        AND s2.Timestamp > s.Timestamp
-                        AND s2.Action = 'add'
-                    )
+					SELECT DISTINCT s.PodcastURL
+					FROM "GpodderSyncSubscriptions" s
+					WHERE s.UserID = $1
+					AND s.DeviceID != $2
+					AND s.Timestamp > $3
+					AND s.Action = 'remove'
+					ORDER BY s.Timestamp DESC
+					LIMIT $4
                 `
-				removeRows, err = database.Query(query, userID, deviceID, since)
+				removeRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)
 			} else {
 				query = `
-                    SELECT DISTINCT s.PodcastURL
-                    FROM GpodderSyncSubscriptions s
-                    WHERE s.UserID = ?
-                    AND s.DeviceID != ?
-                    AND s.Timestamp > ?
-                    AND s.Action = 'remove'
-                    AND NOT EXISTS (
-                        SELECT 1 FROM GpodderSyncSubscriptions s2
-                        WHERE s2.UserID = s.UserID
-                        AND s2.PodcastURL = s.PodcastURL
-                        AND s2.DeviceID = ?
-                        AND s2.Timestamp > s.Timestamp
-                        AND s2.Action = 'add'
-                    )
+					SELECT DISTINCT s.PodcastURL
+					FROM GpodderSyncSubscriptions s
+					WHERE s.UserID = ?
+					AND s.DeviceID != ?
+					AND s.Timestamp > ?
+					AND s.Action = 'remove'
+					ORDER BY s.Timestamp DESC
+					LIMIT ?
                 `
-				removeRows, err = database.Query(query, userID, deviceID, since, deviceID)
+				removeRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)
 			}
 
 			if err != nil {
@@ -343,7 +328,8 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 			}
 			defer removeRows.Close()
 
-			removeList := []string{}
+			// Ensure removeList is never nil
+			removeList := make([]string, 0)
 			for removeRows.Next() {
 				var url string
 				if err := removeRows.Scan(&url); err != nil {
@@ -481,8 +467,8 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 		}
 		defer rows.Close()
 
-		// Build response - ONLY ITERATE ONCE
-		var urls []string
+		// Build response - ensure never nil
+		urls := make([]string, 0)
 		for rows.Next() {
 			var url string
 			if err := rows.Scan(&url); err != nil {
@@ -1000,7 +986,7 @@ func uploadSubscriptionChanges(database *db.Database) gin.HandlerFunc {
 
 		// Process subscriptions to add
 		timestamp := time.Now().Unix()
-		updateURLs := make([][]string, 0)
+		updateURLs := make([][]string, 0) // Ensure never nil
 
 		for _, url := range changes.Add {
 			// Clean URL
@@ -1298,8 +1284,8 @@ func getAllSubscriptions(database *db.Database) gin.HandlerFunc {
 		}
 		defer rows.Close()
 
-		// Build response
-		var urls []string
+		// Build response - ensure never nil
+		urls := make([]string, 0)
 		for rows.Next() {
 			var url string
 			if err := rows.Scan(&url); err != nil {
@@ -1424,8 +1410,8 @@ func getSubscriptionsSimple(database *db.Database) gin.HandlerFunc {
 		}
 		defer rows.Close()
 
-		// Build response
-		var urls []string
+		// Build response - ensure never nil
+		urls := make([]string, 0)
 		for rows.Next() {
 			var url string
 			if err := rows.Scan(&url); err != nil {

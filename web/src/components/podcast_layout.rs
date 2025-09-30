@@ -10,6 +10,7 @@ use crate::requests::pod_req::{
 };
 use crate::requests::search_pods::{call_parse_podcast_url, UnifiedPodcast};
 use gloo::events::EventListener;
+use i18nrs::yew::use_translation;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use web_sys::MouseEvent;
@@ -56,6 +57,7 @@ impl ClickedFeedURL {
 
 #[function_component(PodLayout)]
 pub fn pod_layout() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let search_results = state.search_results.clone();
@@ -109,7 +111,7 @@ pub fn pod_layout() -> Html {
             <div class="main-container">
                 <Search_nav />
                 <UseScrollToTop />
-                <h1 class="item_container-text text-2xl font-bold my-6 text-center">{ "Podcast Search Results" }</h1>
+                <h1 class="item_container-text text-2xl font-bold my-6 text-center">{ &i18n.t("podcast_layout.search_results") }</h1>
 
                 {
                     if let Some(results) = search_results {
@@ -133,20 +135,20 @@ pub fn pod_layout() -> Html {
                                 }
                             } else {
                                 empty_message(
-                                    "No Podcast Search Results Found",
-                                    "Try searching again with a different set of keywords."
+                                    &i18n.t("podcast_layout.no_results_found"),
+                                    &i18n.t("podcast_layout.try_different_keywords")
                                 )
                             }
                         } else {
                             empty_message(
-                                "No Podcast Search Results Found",
-                                "Try searching again with a different set of keywords."
+                                &i18n.t("podcast_layout.no_results_found"),
+                                &i18n.t("podcast_layout.try_different_keywords")
                             )
                         }
                     } else {
                         empty_message(
-                            "No Podcast Search Results Found",
-                            "Try searching again with a different set of keywords."
+                            &i18n.t("podcast_layout.no_results_found"),
+                            &i18n.t("podcast_layout.try_different_keywords")
                         )
                     }
                 }
@@ -170,6 +172,7 @@ pub struct PodcastProps {
 
 #[function_component(PodcastItem)]
 pub fn podcast_item(props: &PodcastProps) -> Html {
+    let (i18n, _) = use_translation();
     let podcast = props.podcast.clone();
     let podcast_url = podcast.url.clone();
     let podcast_title = podcast.title.clone();
@@ -185,6 +188,16 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
     // State to track loading and description expansion
     let is_loading = use_state(|| false);
     let is_description_expanded = use_state(|| false);
+
+    // Pre-capture translation strings for async blocks
+    let podcast_removed_msg = i18n.t("podcast_layout.podcast_removed");
+    let remove_error_msg = i18n.t("podcast_layout.remove_error");
+    let podcast_added_msg = i18n.t("podcast_layout.podcast_added");
+    let add_error_msg = i18n.t("podcast_layout.add_error");
+    
+    // Pre-capture UI strings
+    let show_less_text = i18n.t("podcast_layout.show_less");
+    let show_more_text = i18n.t("podcast_layout.show_more");
 
     // Check if podcast is already added
     let eff_server_name = server_name.clone();
@@ -233,6 +246,10 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
         let podcast_dispatch = podcast_dispatch.clone();
         let dispatch = dispatch.clone();
         let pod_state = podcast_state.clone();
+        let podcast_removed_msg = podcast_removed_msg.clone();
+        let remove_error_msg = remove_error_msg.clone();
+        let podcast_added_msg = podcast_added_msg.clone();
+        let add_error_msg = add_error_msg.clone();
 
         Callback::from(move |_: MouseEvent| {
             let podcast = podcast_clone.clone();
@@ -240,6 +257,10 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
             let is_loading = is_loading.clone();
             let podcast_dispatch = podcast_dispatch.clone();
             let dispatch = dispatch.clone();
+            let podcast_removed_msg = podcast_removed_msg.clone();
+            let remove_error_msg = remove_error_msg.clone();
+            let podcast_added_msg = podcast_added_msg.clone();
+            let add_error_msg = add_error_msg.clone();
 
             // Get all necessary values for API calls
             let api_key = tog_api_key.clone();
@@ -270,14 +291,14 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             });
                             dispatch.reduce_mut(|state| {
                                 state.info_message =
-                                    Some("Podcast successfully removed".to_string());
+                                    Some(podcast_removed_msg);
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Error removing podcast: {:?}", formatted_error));
+                                    Some(format!("{}: {:?}", remove_error_msg, formatted_error));
                             });
                         }
                     }
@@ -316,14 +337,14 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                                 state.added_podcast_urls = new_set;
                             });
                             dispatch.reduce_mut(|state| {
-                                state.info_message = Some("Podcast successfully added".to_string());
+                                state.info_message = Some(podcast_added_msg);
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Error adding podcast: {:?}", formatted_error));
+                                    Some(format!("{}: {:?}", add_error_msg, formatted_error));
                             });
                         }
                     }
@@ -460,7 +481,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                 {
                     if !podcast.author.is_empty() {
                         html! {
-                            <p class="item_container-text text-sm mb-2 opacity-80">{"By "}{&podcast.author}</p>
+                            <p class="item_container-text text-sm mb-2 opacity-80">{&i18n.t("podcast_layout.by")} {&podcast.author}</p>
                         }
                     } else {
                         html! {}
@@ -481,7 +502,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                                 class="text-sm font-medium mb-3 text-left hover:underline item_container-text opacity-80"
                                 onclick={toggle_description}
                             >
-                                {if *is_description_expanded { "Show less" } else { "Show more" }}
+                                {if *is_description_expanded { &show_less_text } else { &show_more_text }}
                             </button>
                         }
                     } else {
@@ -493,7 +514,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                     <div class="flex items-center">
                         <i class="ph ph-microphone text-lg mr-2 item_container-text"></i>
                         <span class="item_container-text text-sm">
-                            {format!("{} episode{}", podcast.episodeCount, if podcast.episodeCount == 1 { "" } else { "s" })}
+                            {format!("{} {}", podcast.episodeCount, if podcast.episodeCount == 1 { i18n.t("podcast_layout.episode") } else { i18n.t("podcast_layout.episodes") })}
                         </span>
                     </div>
 
@@ -502,7 +523,7 @@ pub fn podcast_item(props: &PodcastProps) -> Html {
                             html! {
                                 <div class="flex items-center mt-1">
                                     <span class="bg-red-600 text-white text-xs px-1.5 py-0.5 rounded">{"E"}</span>
-                                    <span class="item_container-text text-sm ml-2">{"Explicit"}</span>
+                                    <span class="item_container-text text-sm ml-2">{&i18n.t("podcast_layout.explicit")}</span>
                                 </div>
                             }
                         } else {

@@ -217,6 +217,29 @@ pub struct UserStats {
     pub downloaded_episodes: i32,
 }
 
+// Language models
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AvailableLanguage {
+    pub code: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LanguageUpdateRequest {
+    pub user_id: i32,
+    pub language: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UserLanguageResponse {
+    pub language: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AvailableLanguagesResponse {
+    pub languages: Vec<AvailableLanguage>,
+}
+
 // API-specific podcast models to match Python responses
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PodcastResponse {

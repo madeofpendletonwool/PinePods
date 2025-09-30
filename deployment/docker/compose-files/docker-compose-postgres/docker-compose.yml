@@ -40,6 +40,8 @@ services:
       PGID: ${GID:-911}
       # Add timezone configuration
       TZ: "America/New_York"
+      # Language Configuration
+      DEFAULT_LANGUAGE: "en"
     volumes:
       # Mount the download and backup locations on the server
       - /home/user/pinepods/downloads:/opt/pinepods/downloads

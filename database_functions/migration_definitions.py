@@ -2563,6 +2563,59 @@ def migration_029_fix_people_episodes_table_schema(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("030", "add_user_language_preference", "Add Language column to Users table for user-specific language preferences", requires=["001"])
+def migration_030_add_user_language_preference(conn, db_type: str):
+    """Add Language column to Users table for user-specific language preferences"""
+    cursor = conn.cursor()
+    
+    try:
+        # Get the default language from environment variable, fallback to 'en'
+        default_language = os.environ.get("DEFAULT_LANGUAGE", "en")
+        
+        # Validate language code (basic validation)
+        if not default_language or len(default_language) > 10:
+            default_language = "en"
+            
+        logger.info(f"Adding Language column to Users table with default '{default_language}'")
+        
+        if db_type == 'postgresql':
+            # Add Language column with default from environment variable
+            safe_execute_sql(cursor, f'''
+                ALTER TABLE "Users" 
+                ADD COLUMN IF NOT EXISTS Language VARCHAR(10) DEFAULT '{default_language}'
+            ''', conn=conn)
+            
+            # Add comment to document the column
+            safe_execute_sql(cursor, '''
+                COMMENT ON COLUMN "Users".Language IS 'ISO 639-1 language code for user interface language preference'
+            ''', conn=conn)
+            
+        else:  # mysql/mariadb
+            # Check if column exists first
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'Users' 
+                AND COLUMN_NAME = 'Language'
+            """)
+            
+            if cursor.fetchone()[0] == 0:
+                safe_execute_sql(cursor, f'''
+                    ALTER TABLE Users 
+                    ADD COLUMN Language VARCHAR(10) DEFAULT '{default_language}' 
+                    COMMENT 'ISO 639-1 language code for user interface language preference'
+                ''', conn=conn)
+        
+        logger.info(f"Successfully added Language column to Users table with default '{default_language}'")
+
+    except Exception as e:
+        logger.error(f"Error in migration 030: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 # ============================================================================
 # GPODDER SYNC MIGRATIONS
 # These migrations match the gpodder-api service migrations from Go code
@@ -3043,9 +3096,72 @@ def migration_105_optimize_episode_actions_performance(conn, db_type: str):
             ''', conn=conn)
         
         logger.info("Successfully added episode actions performance indexes")
-        
+
     except Exception as e:
         logger.error(f"Error in gpodder migration 105: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("106", "optimize_subscription_sync_performance", "Add missing indexes for subscription sync queries", requires=["103"])
+def migration_106_optimize_subscription_sync_performance(conn, db_type: str):
+    """Add critical indexes for subscription sync performance to prevent AntennaPod timeouts"""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Adding performance indexes for subscription sync...")
+
+        if db_type == 'postgresql':
+            # Critical indexes for subscription sync performance
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_sync_subs_user_device_timestamp
+                ON "GpodderSyncSubscriptions"(UserID, DeviceID, Timestamp DESC)
+            ''', conn=conn)
+
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_sync_subs_user_action_timestamp
+                ON "GpodderSyncSubscriptions"(UserID, Action, Timestamp DESC)
+            ''', conn=conn)
+
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_sync_subs_podcast_url_user
+                ON "GpodderSyncSubscriptions"(UserID, PodcastURL, Timestamp DESC)
+            ''', conn=conn)
+
+            # Optimize subscription change queries with compound index
+            safe_execute_sql(cursor, '''
+                CREATE INDEX IF NOT EXISTS idx_gpodder_sync_subs_complex_query
+                ON "GpodderSyncSubscriptions"(UserID, DeviceID, Action, Timestamp DESC, PodcastURL)
+            ''', conn=conn)
+
+        else:  # mysql/mariadb
+            # Critical indexes for subscription sync performance
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_sync_subs_user_device_timestamp
+                ON GpodderSyncSubscriptions(UserID, DeviceID, Timestamp DESC)
+            ''', conn=conn)
+
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_sync_subs_user_action_timestamp
+                ON GpodderSyncSubscriptions(UserID, Action, Timestamp DESC)
+            ''', conn=conn)
+
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_sync_subs_podcast_url_user
+                ON GpodderSyncSubscriptions(UserID, PodcastURL(255), Timestamp DESC)
+            ''', conn=conn)
+
+            # Optimize subscription change queries with compound index
+            safe_execute_sql(cursor, '''
+                CREATE INDEX idx_gpodder_sync_subs_complex_query
+                ON GpodderSyncSubscriptions(UserID, DeviceID, Action, Timestamp DESC, PodcastURL(255))
+            ''', conn=conn)
+
+        logger.info("Successfully added subscription sync performance indexes")
+
+    except Exception as e:
+        logger.error(f"Error in gpodder migration 106: {e}")
         raise
     finally:
         cursor.close()

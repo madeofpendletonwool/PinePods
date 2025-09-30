@@ -8578,7 +8578,7 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 let row = sqlx::query(
-                    r#"SELECT userid, fullname, username, email, CASE WHEN isadmin THEN 1 ELSE 0 END AS isadmin FROM "Users" WHERE userid = $1"#
+                    r#"SELECT userid, fullname, username, email, CASE WHEN isadmin THEN 1 ELSE 0 END AS isadmin, timezone, timeformat, dateformat, language FROM "Users" WHERE userid = $1"#
                 )
                 .bind(user_id)
                 .fetch_optional(pool)
@@ -8591,6 +8591,10 @@ impl DatabasePool {
                         "username": row.try_get::<String, _>("username")?,
                         "email": row.try_get::<String, _>("email")?,
                         "isadmin": row.try_get::<i32, _>("isadmin")?,
+                        "timezone": row.try_get::<String, _>("timezone")?,
+                        "timeformat": row.try_get::<i32, _>("timeformat")?,
+                        "dateformat": row.try_get::<String, _>("dateformat")?,
+                        "language": row.try_get::<String, _>("language")?,
                     })))
                 } else {
                     Ok(None)
@@ -8598,7 +8602,7 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let row = sqlx::query(
-                    "SELECT UserID as userid, Fullname as fullname, Username as username, Email as email, IsAdmin as isadmin FROM Users WHERE UserID = ?"
+                    "SELECT UserID as userid, Fullname as fullname, Username as username, Email as email, IsAdmin as isadmin, TimeZone as timezone, TimeFormat as timeformat, DateFormat as dateformat, Language as language FROM Users WHERE UserID = ?"
                 )
                 .bind(user_id)
                 .fetch_optional(pool)
@@ -8611,6 +8615,10 @@ impl DatabasePool {
                         "username": row.try_get::<String, _>("username")?,
                         "email": row.try_get::<String, _>("email")?,
                         "isadmin": row.try_get::<i32, _>("isadmin")?,
+                        "timezone": row.try_get::<String, _>("timezone")?,
+                        "timeformat": row.try_get::<i32, _>("timeformat")?,
+                        "dateformat": row.try_get::<String, _>("dateformat")?,
+                        "language": row.try_get::<String, _>("language")?,
                     })))
                 } else {
                     Ok(None)
@@ -22249,6 +22257,60 @@ impl DatabasePool {
                     .await?;
 
                 Ok(())
+            }
+        }
+    }
+
+    // Get user's language preference
+    pub async fn get_user_language(&self, user_id: i32) -> AppResult<String> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT language FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.get::<Option<String>, _>("language").unwrap_or_else(|| "en".to_string()))
+                } else {
+                    Ok("en".to_string())
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT Language FROM Users WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    Ok(row.get::<Option<String>, _>("Language").unwrap_or_else(|| "en".to_string()))
+                } else {
+                    Ok("en".to_string())
+                }
+            }
+        }
+    }
+
+    // Update user's language preference
+    pub async fn update_user_language(&self, user_id: i32, language: &str) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"UPDATE "Users" SET language = $1 WHERE userid = $2"#)
+                    .bind(language)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("UPDATE Users SET Language = ? WHERE UserID = ?")
+                    .bind(language)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                
+                Ok(result.rows_affected() > 0)
             }
         }
     }

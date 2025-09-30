@@ -3,6 +3,7 @@ use super::gen_components::{
     empty_message, on_shownotes_click, person_episode_item, Search_nav, UseScrollToTop,
 };
 use super::virtual_list::PersonEpisodeVirtualList;
+use i18nrs::yew::use_translation;
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
@@ -30,6 +31,8 @@ struct PersonWithEpisodes {
 
 #[function_component(SubscribedPeople)]
 pub fn subscribed_people() -> Html {
+    let (i18n, _) = use_translation();
+    
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let active_modal = use_state(|| None::<i32>);
     let show_modal = use_state(|| false);
@@ -194,12 +197,18 @@ pub fn subscribed_people() -> Html {
     let render_people = {
         let people = people.clone();
         let active_clonedal = active_clonedal.clone();
+        let no_people_found = i18n.t("people_subs.no_subscribed_people_found").to_string();
+        let subscribe_message = i18n.t("people_subs.subscribe_to_hosts_message").to_string();
+        let episode_count_text = i18n.t("people_subs.episode_count").to_string();
+        let shows_text = i18n.t("people_subs.shows").to_string();
+        let avatar_alt_text = i18n.t("people_subs.avatar_alt").to_string();
+        
         move || {
             if people.is_empty() {
                 html! {
                     { empty_message(
-                        "No Subscribed People Found",
-                        "Subscribe to podcast hosts and guests to see their latest episodes here!"
+                        &no_people_found,
+                        &subscribe_message
                     )}
                 }
             } else {
@@ -226,6 +235,9 @@ pub fn subscribed_people() -> Html {
                                         on_modal_open.clone(),
                                         on_modal_close.clone(),
                                         active_modal,
+                                        &episode_count_text,
+                                        &shows_text,
+                                        &avatar_alt_text,
                                     )}
                                 </div>
                             }
@@ -257,7 +269,7 @@ pub fn subscribed_people() -> Html {
                 } else {
                     html! {
                         <div>
-                            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{"Subscribed People"}</h1>
+                            <h1 class="text-2xl item_container-text font-bold text-center mb-6">{&i18n.t("people_subs.subscribed_people")}</h1>
                             { render_people() }
                         </div>
                     }
@@ -316,8 +328,11 @@ fn render_host_with_episodes(
     on_modal_open: Callback<i32>,
     on_modal_close: Callback<MouseEvent>,
     active_modal: UseStateHandle<Option<i32>>,
+    episode_count_text: &str,
+    shows_text: &str,
+    avatar_alt_text: &str,
 ) -> Html {
-    let episode_count = episodes.len();
+    let _episode_count = episodes.len();
     let history_clone = BrowserHistory::new();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -339,7 +354,7 @@ fn render_host_with_episodes(
                 <div class="flex flex-col w-auto object-cover pl-4">
                     <img
                         src={format!("{}", proxied_url)}
-                        alt={format!("Avatar for {}", person.name)}
+                        alt={format!("{} {}", avatar_alt_text, person.name)}
                         class="person-avatar"
                     />
                 </div>
@@ -348,8 +363,8 @@ fn render_host_with_episodes(
                         { &person.name }
                     </p>
                     <hr class="my-2 border-t hidden md:block"/>
-                    <p class="item_container-text">{ format!("Episode Count: {}", person.episode_count) }</p>
-                    <p class="item_container-text text-sm">{ format!("Shows: {}", person.associatedpodcasts) }</p>
+                    <p class="item_container-text">{ format!("{}: {}", episode_count_text, person.episode_count) }</p>
+                    <p class="item_container-text text-sm">{ format!("{}: {}", shows_text, person.associatedpodcasts) }</p>
                 </div>
             </div>
             { if is_expanded {

@@ -13,6 +13,7 @@ use crate::requests::pod_req;
 use crate::requests::pod_req::{QueuedEpisode, QueuedEpisodesResponse};
 use gloo_events::EventListener;
 use gloo_utils::document;
+use i18nrs::yew::use_translation;
 use wasm_bindgen::JsCast;
 use web_sys::Element;
 use web_sys::{window, DragEvent, HtmlElement, TouchEvent};
@@ -69,6 +70,7 @@ fn stop_auto_scroll(interval_id: i32) {
 
 #[function_component(Queue)]
 pub fn queue() -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let history = BrowserHistory::new();
 
@@ -200,7 +202,7 @@ pub fn queue() -> Html {
                                 // Tab-style page indicator
                                 <div class="page-tab-indicator">
                                     <i class="ph ph-queue tab-icon"></i>
-                                    {"Queue"}
+                                    {&i18n.t("queue.queue")}
                                 </div>
                             </div>
                         }
@@ -211,8 +213,8 @@ pub fn queue() -> Html {
                             if queued_eps.episodes.is_empty() {
                                 // Render "No Queued Episodes Found" if episodes list is empty
                                 empty_message(
-                                    "No Queued Episodes Found",
-                                    "You can queue episodes by clicking the context button on each episode and clicking 'Queue Episode'. Doing this will play episodes in order of the queue after the currently playing episode is complete."
+                                    &i18n.t("queue.no_queued_episodes_found"),
+                                    &i18n.t("queue.queue_episodes_instructions")
                                 )
                             } else {
                                 html! {
@@ -223,8 +225,8 @@ pub fn queue() -> Html {
                             }
                         } else {
                             empty_message(
-                                "No Queued Episodes Found - State is None",
-                                "You can queue episodes by clicking the context button on each episode and clicking 'Queue Episode'. Doing this will play episodes in order of the queue after the currently playing episode is complete."
+                                &i18n.t("queue.no_queued_episodes_found_state_none"),
+                                &i18n.t("queue.queue_episodes_instructions")
                             )
                         }
                 }

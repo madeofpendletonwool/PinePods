@@ -4,9 +4,11 @@ use crate::requests::setting_reqs::call_add_custom_feed;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[function_component(CustomFeed)]
 pub fn custom_feed() -> Html {
+    let (i18n, _) = use_translation();
     let feed_url = use_state(|| "".to_string());
     let (_state, dispatch) = use_store::<AppState>();
     let pod_user = use_state(|| "".to_string());
@@ -51,8 +53,13 @@ pub fn custom_feed() -> Html {
         let feed_url = (*feed_url).clone();
         let dispatch = dispatch.clone();
         let is_loading_call = custom_loading.clone();
+        // Capture translated messages before move
+        let success_msg = i18n.t("custom_feed.podcast_successfully_added").to_string();
+        let error_prefix = i18n.t("custom_feed.failed_to_add_podcast").to_string();
 
         Callback::from(move |_| {
+            let success_msg = success_msg.clone();
+            let error_prefix = error_prefix.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();
             let feed_url = feed_url.clone();
@@ -61,7 +68,6 @@ pub fn custom_feed() -> Html {
             let is_loading_wasm = is_loading_call.clone();
             let unstate_pod_user = (*pod_user).clone();
             let unstate_pod_pass = (*pod_pass).clone();
-
             wasm_bindgen_futures::spawn_local(async move {
                 match call_add_custom_feed(
                     &server_name,
@@ -76,7 +82,7 @@ pub fn custom_feed() -> Html {
                     Ok(_) => {
                         // Update global state with success message
                         dispatch.reduce_mut(|state| {
-                            state.info_message = Some("Podcast Successfully Added".to_string());
+                            state.info_message = Some(success_msg.clone());
                         });
                     }
                     Err(e) => {
@@ -86,7 +92,7 @@ pub fn custom_feed() -> Html {
                         // Update global state with error message
                         dispatch.reduce_mut(|state| {
                             state.error_message =
-                                Some(format!("Failed to add podcast: {}", formatted_error));
+                                Some(format!("{}{}", error_prefix.clone(), formatted_error));
                         });
                     }
                 }
@@ -97,23 +103,23 @@ pub fn custom_feed() -> Html {
 
     html! {
         <div class="p-4">
-            <p class="item_container-text text-lg font-bold mb-4">{"Add Feed:"}</p>
-            <p class="item_container-text text-md mb-4">{"Use this to add a custom feed to your podcasts. Simply enter the feed url and click the button below. This is great in case you subscibe to premium podcasts and they aren't availble in The Pocast Index or other indexing services. After adding here, podcasts will show up and be available just like any others."}</p>
+            <p class="item_container-text text-lg font-bold mb-4">{i18n.t("custom_feed.add_feed_title")}</p>
+            <p class="item_container-text text-md mb-4">{i18n.t("custom_feed.add_feed_description")}</p>
 
             <br/>
             <div>
                 <div>
-                    <input id="feed_url" oninput={update_feed.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder="https://bestpodcast.com/feed.xml" />
+                    <input id="feed_url" oninput={update_feed.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("custom_feed.feed_url_placeholder")} />
                 </div>
                 <div>
-                    <input id="username" oninput={update_pod_user.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder="Username (optional)" />
+                    <input id="username" oninput={update_pod_user.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder={i18n.t("custom_feed.username_optional")} />
                 </div>
                 <div>
-                    <input id="password" type="password" oninput={update_pod_pass.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder="Password (optional)" />
+                    <input id="password" type="password" oninput={update_pod_pass.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5 mt-2" placeholder={i18n.t("custom_feed.password_optional")} />
                 </div>
             </div>
             <button onclick={add_custom_feed} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" disabled={*is_loading}>
-            {"Add Feed"}
+            {i18n.t("custom_feed.add_feed")}
             if *is_loading {
                 <span class="ml-2 spinner-border animate-spin inline-block w-4 h-4 border-2 rounded-full"></span>
             }

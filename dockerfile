@@ -117,6 +117,8 @@ ENV TZ=UTC
 COPY --from=python-builder /build/dist/pinepods-db-setup /usr/local/bin/
 # Copy built files from the builder stage to the Nginx serving directory
 COPY --from=builder /app/dist /var/www/html/
+# Copy translation files for the Rust API to access
+COPY ./web/src/translations /var/www/html/static/translations
 # Copy Go API binary from the go-builder stage
 COPY --from=go-builder /gpodder-api/gpodder-api /usr/local/bin/
 # Copy Rust API binary from the rust-api-builder stage

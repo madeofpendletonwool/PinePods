@@ -7,6 +7,7 @@ use web_sys::window;
 use yew::prelude::*;
 use yew_router::prelude::Link;
 use yewdux::use_store;
+use i18nrs::yew::use_translation;
 
 #[function_component(BackButton)]
 pub fn back_button() -> Html {
@@ -30,8 +31,26 @@ pub fn back_button() -> Html {
 #[allow(non_camel_case_types)]
 #[function_component(App_drawer)]
 pub fn app_drawer() -> Html {
+    let (i18n, _) = use_translation();
     // let selection = use_state(|| "".to_string());
     // let (state, _dispatch) = use_store::<AppState>();
+
+    // Capture i18n strings before they get moved
+    let i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
+    let i18n_pinepods = i18n.t("app_drawer.pinepods").to_string();
+    let i18n_home = i18n.t("navigation.home").to_string();
+    let i18n_feed = i18n.t("app_drawer.feed").to_string();
+    let i18n_search_podcasts = i18n.t("app_drawer.search_podcasts").to_string();
+    let i18n_queue = i18n.t("navigation.queue").to_string();
+    let i18n_saved = i18n.t("navigation.saved").to_string();
+    let i18n_playlists = i18n.t("navigation.playlists").to_string();
+    let i18n_history = i18n.t("navigation.history").to_string();
+    let i18n_server_downloads = i18n.t("app_drawer.server_downloads").to_string();
+    let i18n_subscribed_people = i18n.t("app_drawer.subscribed_people").to_string();
+    let i18n_podcasts = i18n.t("navigation.podcasts").to_string();
+    let i18n_settings = i18n.t("app_drawer.settings").to_string();
+    let i18n_sign_out = i18n.t("app_drawer.sign_out").to_string();
+    let i18n_loading = i18n.t("common.loading").to_string();
 
     let is_drawer_open = use_state(|| false);
     let drawer_rotation = if *is_drawer_open {
@@ -154,7 +173,7 @@ pub fn app_drawer() -> Html {
                 <Link<Route> to={Route::LocalDownloads}>
                     <div class="flex items-center">
                         <i class="ph ph-folder-open text-2xl mr-3"></i>
-                        <span class="text-lg">{"Local Downloads"}</span>
+                        <span class="text-lg">{&i18n_local_downloads}</span>
                     </div>
                 </Link<Route>>
             </div>
@@ -175,7 +194,7 @@ pub fn app_drawer() -> Html {
                                 alt="Pinepods Logo"
                                 class="w-6 h-6"
                             />
-                            <h2 class="drawer-text text-lg font-semibold">{"Pinepods"}</h2>
+                            <h2 class="drawer-text text-lg font-semibold">{&i18n_pinepods}</h2>
                         </div>
                         <hr class="my-4 drawer-hr" />
                         <div class="space-y-4">
@@ -202,7 +221,7 @@ pub fn app_drawer() -> Html {
                                     <Link<Route> to={Route::Home}>
                                         <div class="flex items-center">
                                             <i class="ph ph-house text-2xl mr-3"></i>
-                                            <span class="text-lg">{"Home"}</span>
+                                            <span class="text-lg">{&i18n_home}</span>
                                         </div>
                                     </Link<Route>>
                                 </div>
@@ -212,7 +231,7 @@ pub fn app_drawer() -> Html {
                                     <Link<Route> to={Route::Feed}>
                                         <div class="flex items-center">
                                             <i class="ph ph-bell-ringing text-2xl mr-3"></i>
-                                            <span class="text-lg">{"Feed"}</span>
+                                            <span class="text-lg">{&i18n_feed}</span>
                                         </div>
                                     </Link<Route>>
                                 </div>
@@ -222,7 +241,7 @@ pub fn app_drawer() -> Html {
                                     <Link<Route> to={Route::Search}>
                                         <div class="flex items-center">
                                             <i class="ph ph-magnifying-glass text-2xl mr-3"></i>
-                                            <span class="text-lg">{"Search Podcasts"}</span>
+                                            <span class="text-lg">{&i18n_search_podcasts}</span>
                                         </div>
                                     </Link<Route>>
                                 </div>
@@ -232,7 +251,7 @@ pub fn app_drawer() -> Html {
                                     <Link<Route> to={Route::Queue}>
                                         <div class="flex items-center">
                                             <i class="ph ph-queue icon-space text-2xl mr-3"></i>
-                                            <span class="text-lg">{"Queue"}</span>
+                                            <span class="text-lg">{&i18n_queue}</span>
                                         </div>
                                     </Link<Route>>
                                 </div>
@@ -242,7 +261,7 @@ pub fn app_drawer() -> Html {
                                     <Link<Route> to={Route::Saved}>
                                         <div class="flex items-center">
                                             <i class="ph ph-star text-2xl mr-3"></i>
-                                            <span class="text-lg">{"Saved"}</span>
+                                            <span class="text-lg">{&i18n_saved}</span>
                                         </div>
                                     </Link<Route>>
                                 </div>
@@ -252,7 +271,7 @@ pub fn app_drawer() -> Html {
                                     <Link<Route> to={Route::Playlists}>
                                         <div class="flex items-center">
                                             <i class="ph ph-list-checks text-2xl mr-3"></i>
-                                            <span class="text-lg">{"Playlists"}</span>
+                                            <span class="text-lg">{&i18n_playlists}</span>
                                         </div>
                                     </Link<Route>>
                                 </div>
@@ -262,7 +281,7 @@ pub fn app_drawer() -> Html {
                                     <Link<Route> to={Route::PodHistory}>
                                         <div class="flex items-center">
                                             <i class="ph ph-clock-counter-clockwise text-2xl mr-3"></i>
-                                            <span class="text-lg">{"History"}</span>
+                                            <span class="text-lg">{&i18n_history}</span>
                                         </div>
                                     </Link<Route>>
                                 </div>
@@ -272,7 +291,7 @@ pub fn app_drawer() -> Html {
                                 <Link<Route> to={Route::Downloads}>
                                     <div class="flex items-center">
                                         <i class="ph ph-download-simple text-2xl mr-3"></i>
-                                        <span class="text-lg">{"Server Downloads"}</span>
+                                        <span class="text-lg">{&i18n_server_downloads}</span>
                                     </div>
                                 </Link<Route>>
                             </div>
@@ -287,7 +306,7 @@ pub fn app_drawer() -> Html {
                                     <Link<Route> to={Route::SubscribedPeople}>
                                         <div class="flex items-center">
                                             <i class="ph ph-user text-2xl mr-3"></i>
-                                            <span class="text-lg">{"Subscribed People"}</span>
+                                            <span class="text-lg">{&i18n_subscribed_people}</span>
                                         </div>
                                     </Link<Route>>
                                 </div>
@@ -297,7 +316,7 @@ pub fn app_drawer() -> Html {
                                     <Link<Route> to={Route::Podcasts}>
                                         <div class="flex items-center">
                                             <i class="ph ph-microphone-stage text-2xl mr-3"></i>
-                                            <span class="text-lg">{"Podcasts"}</span>
+                                            <span class="text-lg">{&i18n_podcasts}</span>
                                         </div>
                                     </Link<Route>>
                                 </div>
@@ -307,7 +326,7 @@ pub fn app_drawer() -> Html {
                                     <Link<Route> to={Route::Settings}>
                                         <div class="flex items-center">
                                             <i class="ph ph-gear text-2xl mr-3"></i>
-                                            <span class="text-lg">{"Settings"}</span>
+                                            <span class="text-lg">{&i18n_settings}</span>
                                         </div>
                                     </Link<Route>>
                                 </div>
@@ -320,7 +339,7 @@ pub fn app_drawer() -> Html {
                         <Link<Route> to={Route::LogOut}>
                             <div class="flex items-center">
                                 <i class="ph ph-sign-out text-2xl mr-3"></i>
-                                <span class="text-lg">{"Sign Out"}</span>
+                                <span class="text-lg">{&i18n_sign_out}</span>
                             </div>
                         </Link<Route>>
                     </div>
@@ -391,7 +410,7 @@ pub fn app_drawer() -> Html {
                                     <path d="M100 50.5908C100 78.2051 77.6142 100.591 50 100.591C22.3858 100.591 0 78.2051 0 50.5908C0 22.9766 22.3858 0.59082 50 0.59082C77.6142 0.59082 100 22.9766 100 50.5908ZM9.08144 50.5908C9.08144 73.1895 27.4013 91.5094 50 91.5094C72.5987 91.5094 90.9186 73.1895 90.9186 50.5908C90.9186 27.9921 72.5987 9.67226 50 9.67226C27.4013 9.67226 9.08144 27.9921 9.08144 50.5908Z" fill="currentColor"/>
                                     <path d="M93.9676 39.0409C96.393 38.4038 97.8624 35.9116 97.0079 33.5539C95.2932 28.8227 92.871 24.3692 89.8167 20.348C85.8452 15.1192 80.8826 10.7238 75.2124 7.41289C69.5422 4.10194 63.2754 1.94025 56.7698 1.05124C51.7666 0.367541 46.6976 0.446843 41.7345 1.27873C39.2613 1.69328 37.813 4.19778 38.4501 6.62326C39.0873 9.04874 41.5694 10.4717 44.0505 10.1071C47.8511 9.54855 51.7191 9.52689 55.5402 10.0491C60.8642 10.7766 65.9928 12.5457 70.6331 15.2552C75.2735 17.9648 79.3347 21.5619 82.5849 25.841C84.9175 28.9121 86.7997 32.2913 88.1811 35.8758C89.083 38.2158 91.5421 39.6781 93.9676 39.0409Z" fill="currentFill"/>
                                 </svg>
-                                <span class="sr-only">{"Loading..."}</span>
+                                <span class="sr-only">{&i18n_loading}</span>
                             </div>
                         },
                         _ => html! {}, // Covers both Some(false) and None

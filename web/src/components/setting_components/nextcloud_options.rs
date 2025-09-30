@@ -4,13 +4,13 @@ use crate::requests::pod_req::connect_to_episode_websocket;
 use crate::requests::setting_reqs::{
     call_add_gpodder_server, call_add_nextcloud_server, call_check_nextcloud_server,
     call_create_gpodder_device, call_force_full_sync, call_get_default_gpodder_device,
-    call_get_gpodder_api_status, call_get_gpodder_devices, call_get_nextcloud_server,
-    call_remove_podcast_sync, call_set_default_gpodder_device, call_sync_with_gpodder,
-    call_test_gpodder_connection, call_toggle_gpodder_api, call_verify_gpodder_auth,
-    call_get_gpodder_statistics, initiate_nextcloud_login, 
-    CreateDeviceRequest, GpodderAuthRequest, GpodderCheckRequest,
-    GpodderDevice, GpodderStatistics, NextcloudAuthRequest,
+    call_get_gpodder_api_status, call_get_gpodder_devices, call_get_gpodder_statistics,
+    call_get_nextcloud_server, call_remove_podcast_sync, call_set_default_gpodder_device,
+    call_sync_with_gpodder, call_test_gpodder_connection, call_toggle_gpodder_api,
+    call_verify_gpodder_auth, initiate_nextcloud_login, CreateDeviceRequest, GpodderAuthRequest,
+    GpodderCheckRequest, GpodderDevice, GpodderStatistics, NextcloudAuthRequest,
 };
+use i18nrs::yew::use_translation;
 use serde::Deserialize;
 use serde::Serialize;
 use wasm_bindgen::JsValue;
@@ -22,10 +22,32 @@ use yewdux::use_store;
 
 #[function_component(GpodderAdvancedOptions)]
 pub fn gpodder_advanced_options() -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+    // Capture i18n strings before they get moved
+    let i18n_failed_to_load_default_gpodder_device = i18n
+        .t("nextcloud_options.failed_to_load_default_gpodder_device")
+        .to_string();
+    let i18n_failed_to_load_gpodder_devices = i18n
+        .t("nextcloud_options.failed_to_load_gpodder_devices")
+        .to_string();
+    let i18n_gpodder_advanced_settings = i18n
+        .t("nextcloud_options.gpodder_advanced_settings")
+        .to_string();
+    let i18n_gpodder_sync_description = i18n
+        .t("nextcloud_options.gpodder_sync_description")
+        .to_string();
+    let i18n_your_gpodder_devices = i18n.t("nextcloud_options.your_gpodder_devices").to_string();
+    let i18n_loading_devices = i18n.t("nextcloud_options.loading_devices").to_string();
+    let i18n_no_devices_found = i18n.t("nextcloud_options.no_devices_found").to_string();
+    let i18n_select_device_for_operations = i18n
+        .t("nextcloud_options.select_device_for_operations")
+        .to_string();
+    let i18n_select_a_device = i18n.t("nextcloud_options.select_a_device").to_string();
 
     // State for the devices list
     let devices = use_state(|| Vec::<GpodderDevice>::new());
@@ -74,8 +96,11 @@ pub fn gpodder_advanced_options() -> Html {
                             if e.to_string().contains("404") {
                                 default_device.set(None);
                             } else {
-                                let error_msg =
-                                    format!("Failed to load default GPodder device: {}", e);
+                                let error_msg = format!(
+                                    "{}{}",
+                                    i18n_failed_to_load_default_gpodder_device.clone(),
+                                    e
+                                );
                                 dispatch.reduce_mut(|state| {
                                     state.error_message = Some(error_msg);
                                 });
@@ -143,7 +168,8 @@ pub fn gpodder_advanced_options() -> Html {
                             devices.set(fetched_devices);
                         }
                         Err(e) => {
-                            let error_msg = format!("Failed to load GPodder devices: {}", e);
+                            let error_msg =
+                                format!("{}{}", i18n_failed_to_load_gpodder_devices.clone(), e);
                             dispatch.reduce_mut(|state| {
                                 state.error_message = Some(error_msg);
                             });
@@ -283,7 +309,9 @@ pub fn gpodder_advanced_options() -> Html {
                                 &format!("Successfully set device as default").into(),
                             );
                             // Find the device in our list and set it as default
-                            if let Some(device) = devices_clone.iter().find(|d| d.id == device_id_clone) {
+                            if let Some(device) =
+                                devices_clone.iter().find(|d| d.id == device_id_clone)
+                            {
                                 let mut device_clone = device.clone();
                                 device_clone.is_default = Some(true);
                                 default_device_clone.set(Some(device_clone));
@@ -557,7 +585,9 @@ pub fn gpodder_advanced_options() -> Html {
 
     // Determine if the currently selected device is the default
     let is_selected_device_default = {
-        if let (Some(device_id), Some(default)) = (selected_device_id.as_ref(), default_device.as_ref()) {
+        if let (Some(device_id), Some(default)) =
+            (selected_device_id.as_ref(), default_device.as_ref())
+        {
             *device_id == default.id
         } else {
             false
@@ -567,34 +597,34 @@ pub fn gpodder_advanced_options() -> Html {
     // Render the component
     html! {
         <div class="p-4">
-            <h2 class="item_container-text text-lg font-bold mb-4">{"GPodder Advanced Settings"}</h2>
+            <h2 class="item_container-text text-lg font-bold mb-4">{&i18n_gpodder_advanced_settings}</h2>
 
             <div class="mb-6">
                 <p class="item_container-text text-md mb-4">
-                    {"GPodder synchronization allows you to manage your podcast subscriptions across multiple devices. Here you can manage devices registered with your GPodder account and control synchronization."}
+                    {&i18n_gpodder_sync_description}
                 </p>
             </div>
 
             // Devices section
             <div class="mb-8 p-4 border rounded-lg">
-                <h3 class="item_container-text text-md font-bold mb-4">{"Your GPodder Devices"}</h3>
+                <h3 class="item_container-text text-md font-bold mb-4">{&i18n_your_gpodder_devices}</h3>
 
                 {
                     if *is_loading_devices {
-                        html! { <div class="flex items-center mb-4"><i class="ph ph-spinner animate-spin mr-2"></i><span>{"Loading devices..."}</span></div> }
+                        html! { <div class="flex items-center mb-4"><i class="ph ph-spinner animate-spin mr-2"></i><span>{&i18n_loading_devices}</span></div> }
                     } else if devices.is_empty() {
-                        html! { <p class="text-md mb-4">{"No devices found. Create your first device below."}</p> }
+                        html! { <p class="text-md mb-4">{&i18n_no_devices_found}</p> }
                     } else {
                         html! {
                             <>
                                 <div class="mb-4">
-                                    <label for="device-select" class="block text-sm font-medium mb-2">{"Select device for operations:"}</label>
+                                    <label for="device-select" class="block text-sm font-medium mb-2">{&i18n_select_device_for_operations}</label>
                                     <select
                                         id="device-select"
                                         class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
                                         onchange={on_device_select_change}
                                     >
-                                        <option value="">{"-- Select a device --"}</option>
+                                        <option value="">{&i18n_select_a_device}</option>
                                         {
                                             devices.iter().map(|device| {
                                                 let caption = match &device.caption {
@@ -942,11 +972,13 @@ pub fn sync_options() -> Html {
                     match call_get_gpodder_api_status(&server_name, &api_key.unwrap()).await {
                         Ok(status) => {
                             // Internal GPodder is only enabled if sync_type is "gpodder" or "both", not "external"
-                            is_internal_gpodder_enabled.set(status.sync_type == "gpodder" || status.sync_type == "both");
+                            is_internal_gpodder_enabled
+                                .set(status.sync_type == "gpodder" || status.sync_type == "both");
                             // Set the sync type from the API response
                             sync_type.set(status.sync_type.clone());
                             // Set sync configured if any sync type is active
-                            is_sync_configured.set(status.gpodder_enabled || status.sync_type != "None");
+                            is_sync_configured
+                                .set(status.gpodder_enabled || status.sync_type != "None");
                         }
                         Err(e) => {
                             let error_msg = format!("Error fetching gpodder API status: {}", e);
@@ -1102,9 +1134,17 @@ pub fn sync_options() -> Html {
                             if status.sync_type != "None" {
                                 // There's some sync active, just not internal GPodder
                                 if status.sync_type == "nextcloud" {
-                                    next_url.set(status.external_url.unwrap_or("Nextcloud server".to_string()));
+                                    next_url.set(
+                                        status
+                                            .external_url
+                                            .unwrap_or("Nextcloud server".to_string()),
+                                    );
                                 } else {
-                                    next_url.set(status.external_url.unwrap_or("External sync server".to_string()));
+                                    next_url.set(
+                                        status
+                                            .external_url
+                                            .unwrap_or("External sync server".to_string()),
+                                    );
                                 }
                                 sync_config.set(true);
                             } else {
@@ -1467,8 +1507,12 @@ pub fn sync_options() -> Html {
                         gpodder_username: server_user_check_deref,
                         gpodder_password: server_pass_check_deref,
                     };
-                    match call_verify_gpodder_auth(&server_name.clone().unwrap(), &api_key.clone().unwrap().unwrap(), check_request)
-                        .await
+                    match call_verify_gpodder_auth(
+                        &server_name.clone().unwrap(),
+                        &api_key.clone().unwrap().unwrap(),
+                        check_request,
+                    )
+                    .await
                     {
                         Ok(auth_response) => {
                             if auth_response.status == "success" {
@@ -1591,7 +1635,7 @@ pub fn sync_options() -> Html {
             "internal_gpodder"
         } else if *sync_type == "nextcloud" && *is_sync_configured {
             // Nextcloud sync is configured
-            "nextcloud" 
+            "nextcloud"
         } else if (*sync_type == "external" || *sync_type == "gpodder") && *is_sync_configured {
             // External gpodder server sync is configured
             "external_gpodder"
@@ -1947,7 +1991,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
     let (state, dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    
+
     // State for dropdown visibility and statistics
     let show_statistics = use_state(|| false);
     let statistics = use_state(|| None::<GpodderStatistics>);
@@ -1965,7 +2009,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
         Callback::from(move |_| {
             let current_show = *show_statistics;
             show_statistics.set(!current_show);
-            
+
             // Load statistics when opening dropdown
             if !current_show && statistics.is_none() {
                 if let (Some(server_name), Some(api_key)) = (server_name.clone(), api_key.clone()) {
@@ -1973,7 +2017,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                     let statistics_clone = statistics.clone();
                     let is_loading_clone = is_loading_stats.clone();
                     let dispatch_clone = dispatch.clone();
-                    
+
                     spawn_local(async move {
                         match call_get_gpodder_statistics(&server_name, &api_key.unwrap()).await {
                             Ok(stats) => {
@@ -2007,7 +2051,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                 let statistics_clone = statistics.clone();
                 let is_loading_clone = is_loading_stats.clone();
                 let dispatch_clone = dispatch.clone();
-                
+
                 spawn_local(async move {
                     match call_get_gpodder_statistics(&server_name, &api_key.unwrap()).await {
                         Ok(stats) => {
@@ -2070,7 +2114,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                     </button>
                 </div>
             </div>
-            
+
             {
                 if *show_statistics {
                     html! {
@@ -2095,19 +2139,19 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                                         <i class="ph ph-globe text-green-500 text-xl mr-3"></i>
                                                         <div>
                                                             <p class="text-sm text-gray-600 dark:text-gray-400">{"Connection"}</p>
-                                                            <p class={format!("font-semibold {}", 
-                                                                if stats.connection_status == "All endpoints working" { 
-                                                                    "text-green-600 dark:text-green-400" 
-                                                                } else if stats.connection_status == "Partial connectivity" { 
-                                                                    "text-yellow-600 dark:text-yellow-400" 
-                                                                } else { 
-                                                                    "text-red-600 dark:text-red-400" 
+                                                            <p class={format!("font-semibold {}",
+                                                                if stats.connection_status == "All endpoints working" {
+                                                                    "text-green-600 dark:text-green-400"
+                                                                } else if stats.connection_status == "Partial connectivity" {
+                                                                    "text-yellow-600 dark:text-yellow-400"
+                                                                } else {
+                                                                    "text-red-600 dark:text-red-400"
                                                                 }
                                                             )}>{&stats.connection_status}</p>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
                                                     <div class="flex items-center">
                                                         <i class="ph ph-devices text-blue-500 text-xl mr-3"></i>
@@ -2117,7 +2161,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div class="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
                                                     <div class="flex items-center">
                                                         <i class="ph ph-podcast text-purple-500 text-xl mr-3"></i>
@@ -2174,7 +2218,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                                                         } else {
                                                                             "text-red-600 dark:text-red-400"
                                                                         };
-                                                                        
+
                                                                         html! {
                                                                             <div class="flex items-center justify-between py-1">
                                                                                 <span class="text-sm font-mono text-gray-700 dark:text-gray-300">{&endpoint.endpoint}</span>
@@ -2226,7 +2270,7 @@ pub fn gpodder_statistics_dropdown() -> Html {
                                                                             "download" => "ph-download",
                                                                             _ => "ph-circle"
                                                                         };
-                                                                        
+
                                                                         html! {
                                                                             <div class="flex items-center space-x-3 py-1">
                                                                                 <i class={format!("ph {} text-gray-500", action_icon)}></i>

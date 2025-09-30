@@ -15,12 +15,13 @@ use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use yew_router::prelude::Link;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[derive(Properties, PartialEq, Clone)]
 struct QuickLinkProps {
     route: Route,
     icon: &'static str,
-    label: &'static str,
+    label: String,
 }
 
 #[function_component(QuickLink)]
@@ -28,7 +29,7 @@ fn quick_link(props: &QuickLinkProps) -> Html {
     html! {
         <Link<Route> to={props.route.clone()} classes="quick-link-card rounded-lg">
             <i class={classes!("ph", props.icon)}></i>
-            <span>{ props.label }</span>
+            <span>{ props.label.clone() }</span>
         </Link<Route>>
     }
 }
@@ -63,6 +64,7 @@ fn playlist_card(props: &PlaylistCardProps) -> Html {
 
 #[function_component(Home)]
 pub fn home() -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
@@ -70,6 +72,29 @@ pub fn home() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+    
+    // Capture i18n strings before they get moved
+    let i18n_quick_links = i18n.t("home.quick_links").to_string();
+    let i18n_saved = i18n.t("app_drawer.saved").to_string();
+    let i18n_downloads = i18n.t("app_drawer.downloads").to_string();
+    let i18n_queue = i18n.t("app_drawer.queue").to_string();
+    let i18n_history = i18n.t("app_drawer.history").to_string();
+    let i18n_feed = i18n.t("app_drawer.feed").to_string();
+    let i18n_podcasts = i18n.t("app_drawer.podcasts").to_string();
+    let i18n_continue_listening = i18n.t("home.continue_listening").to_string();
+    let i18n_top_podcasts = i18n.t("home.top_podcasts").to_string();
+    let i18n_smart_playlists = i18n.t("home.smart_playlists").to_string();
+    let i18n_no_playlists_available = i18n.t("home.no_playlists_available").to_string();
+    let i18n_recent_episodes = i18n.t("home.recent_episodes").to_string();
+    let i18n_no_recent_episodes = i18n.t("home.no_recent_episodes").to_string();
+    let i18n_welcome_to_pinepods = i18n.t("home.welcome_to_pinepods").to_string();
+    let i18n_welcome_description = i18n.t("home.welcome_description").to_string();
+    let i18n_no_description_provided = i18n.t("home.no_description_provided").to_string();
+    let i18n_unknown_author = i18n.t("home.unknown_author").to_string();
+    let i18n_no_categories_found = i18n.t("home.no_categories_found").to_string();
+    let i18n_no_website_provided = i18n.t("home.no_website_provided").to_string();
+    let i18n_completed = i18n.t("downloads.completed").to_string();
+    let i18n_episodes = i18n.t("home.episodes").to_string();
 
     // Fetch home overview data
     let effect_dispatch = dispatch.clone();
@@ -203,14 +228,14 @@ pub fn home() -> Html {
                     <div class="space-y-8">
                         // Quick Links Section
                         <div class="section-container">
-                            <h2 class="text-2xl font-bold mb-4 item_container-text">{"Quick Links"}</h2>
+                            <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n_quick_links}</h2>
                             <div class="grid grid-cols-3 gap-2 md:gap-4">
-                                <QuickLink route={Route::Saved} icon="ph-star" label="Saved" />
-                                <QuickLink route={Route::Downloads} icon="ph-download-simple" label="Downloads" />
-                                <QuickLink route={Route::Queue} icon="ph-queue" label="Queue" />
-                                <QuickLink route={Route::PodHistory} icon="ph-clock-counter-clockwise" label="History" />
-                                <QuickLink route={Route::Feed} icon="ph-bell-ringing" label="Feed" />
-                                <QuickLink route={Route::Podcasts} icon="ph-microphone-stage" label="Podcasts" />
+                                <QuickLink route={Route::Saved} icon="ph-star" label={i18n_saved.clone()} />
+                                <QuickLink route={Route::Downloads} icon="ph-download-simple" label={i18n_downloads.clone()} />
+                                <QuickLink route={Route::Queue} icon="ph-queue" label={i18n_queue.clone()} />
+                                <QuickLink route={Route::PodHistory} icon="ph-clock-counter-clockwise" label={i18n_history.clone()} />
+                                <QuickLink route={Route::Feed} icon="ph-bell-ringing" label={i18n_feed.clone()} />
+                                <QuickLink route={Route::Podcasts} icon="ph-microphone-stage" label={i18n_podcasts.clone()} />
                             </div>
                         </div>
 
@@ -218,7 +243,7 @@ pub fn home() -> Html {
                             if !home_data.in_progress_episodes.is_empty() {
                                 html! {
                                     <div class="section-container">
-                                        <h2 class="text-2xl font-bold mb-4 item_container-text">{"Continue Listening"}</h2>
+                                        <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n_continue_listening}</h2>
                                         <div class="space-y-4">
                                             { for home_data.in_progress_episodes.iter().take(3).map(|episode| {
                                                 html! {
@@ -238,7 +263,7 @@ pub fn home() -> Html {
 
                         // Top Podcasts Section
                         // In your top podcasts section, replace the existing podcast grid items with:
-                        <h2 class="text-2xl font-bold mb-4 item_container-text">{"Top Podcasts"}</h2>
+                        <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n_top_podcasts}</h2>
                         <div class="podcast-grid">
                             { for home_data.top_podcasts.iter().map(|podcast| {
                                 let api_key_clone = api_key.clone();
@@ -254,13 +279,13 @@ pub fn home() -> Html {
                                     podcast.podcastindexid.unwrap_or_default(),
                                     podcast.podcastname.clone(),
                                     podcast.feedurl.clone().unwrap_or_default(),
-                                    podcast.description.clone().unwrap_or_else(|| String::from("No Description Provided")),
-                                    podcast.author.clone().unwrap_or_else(|| String::from("Unknown Author")),
+                                    podcast.description.clone().unwrap_or_else(|| i18n_no_description_provided.clone()),
+                                    podcast.author.clone().unwrap_or_else(|| i18n_unknown_author.clone()),
                                     podcast.artworkurl.clone().unwrap_or_default(),
                                     podcast.explicit.unwrap_or(false),
                                     podcast.episodecount.unwrap_or(0),
-                                    podcast.categories.as_ref().map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", ")).or_else(|| Some("No Categories Found".to_string())),
-                                    podcast.websiteurl.clone().unwrap_or_else(|| String::from("No Website Provided")),
+                                    podcast.categories.as_ref().map(|cats| cats.values().cloned().collect::<Vec<_>>().join(", ")).or_else(|| Some(i18n_no_categories_found.clone())),
+                                    podcast.websiteurl.clone().unwrap_or_else(|| i18n_no_website_provided.clone()),
                                     user_id.unwrap(),
                                     podcast.is_youtube,
                                 );
@@ -283,7 +308,7 @@ pub fn home() -> Html {
                         </div>
 
                         <div class="section-container">
-                            <h2 class="text-2xl font-bold mb-4 item_container-text">{"Smart Playlists"}</h2>
+                            <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n_smart_playlists}</h2>
                             if let Some(playlists) = &state.playlists {
                                 <div class="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                     {
@@ -304,15 +329,15 @@ pub fn home() -> Html {
                                     }
                                 </div>
                             } else {
-                                <p class="item_container-text">{"No playlists available"}</p>
+                                <p class="item_container-text">{&i18n_no_playlists_available}</p>
                             }
                         </div>
 
                         // Recent Episodes Section
                         <div class="section-container">
-                            <h2 class="text-2xl font-bold mb-4 item_container-text">{"Recent Episodes"}</h2>
+                            <h2 class="text-2xl font-bold mb-4 item_container-text">{&i18n_recent_episodes}</h2>
                             if home_data.recent_episodes.is_empty() {
-                                <p class="item_container-text">{"No recent episodes"}</p>
+                                <p class="item_container-text">{&i18n_no_recent_episodes}</p>
                             } else {
                                 <div class="space-y-4">
                                     { for home_data.recent_episodes.iter().take(5).map(|episode| {
@@ -330,8 +355,8 @@ pub fn home() -> Html {
                     </div>
                 } else {
                     { empty_message(
-                        "Welcome to Pinepods",
-                        "Start by adding some podcasts using the search bar above."
+                        &i18n_welcome_to_pinepods,
+                        &i18n_welcome_description
                     )}
                 }
             }

@@ -9,9 +9,11 @@ use wasm_bindgen::JsCast;
 use yew::platform::spawn_local;
 use yew::prelude::*;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[function_component(MFAOptions)]
 pub fn mfa_options() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -20,12 +22,29 @@ pub fn mfa_options() -> Html {
     let mfa_status = use_state(|| false);
     let code = use_state(|| "".to_string());
 
+    // Capture i18n strings before they get moved
+    let i18n_error_getting_mfa_status = i18n.t("mfa_settings.error_getting_mfa_status").to_string();
+    let i18n_mfa_code_verification_failed = i18n.t("mfa_settings.mfa_code_verification_failed").to_string();
+    let i18n_failed_to_verify_mfa_code = i18n.t("mfa_settings.failed_to_verify_mfa_code").to_string();
+    let i18n_error_disabling_mfa = i18n.t("mfa_settings.error_disabling_mfa").to_string();
+    let i18n_failed_to_generate_totp_secret = i18n.t("mfa_settings.failed_to_generate_totp_secret").to_string();
+    let i18n_close_modal = i18n.t("common.close_modal").to_string();
+    let i18n_setup_mfa = i18n.t("mfa_settings.setup_mfa").to_string();
+    let i18n_scan_qr_or_enter_code = i18n.t("mfa_settings.scan_qr_or_enter_code").to_string();
+    let i18n_verify_code = i18n.t("mfa_settings.verify_code").to_string();
+    let i18n_verify = i18n.t("mfa_settings.verify").to_string();
+    let i18n_close = i18n.t("common.cancel").to_string();
+    let i18n_mfa_options = i18n.t("mfa_settings.mfa_options").to_string();
+    let i18n_mfa_description = i18n.t("mfa_settings.mfa_description").to_string();
+    let i18n_enable_mfa = i18n.t("mfa_settings.enable_mfa").to_string();
+
     let effect_user_id = user_id.clone();
     let effect_api_key = api_key.clone();
     let effect_server_name = server_name.clone();
     let dispatch_effect = _dispatch.clone();
     {
         let mfa_status = mfa_status.clone();
+        let i18n_error_getting_mfa_status_clone1 = i18n_error_getting_mfa_status.clone();
         use_effect_with(
             (effect_api_key.clone(), effect_server_name.clone()),
             move |(_api_key, _server_name)| {
@@ -33,6 +52,7 @@ pub fn mfa_options() -> Html {
                 let api_key = effect_api_key.clone();
                 let server_name = effect_server_name.clone();
                 let user_id = effect_user_id.clone();
+                let i18n_error_getting_mfa_status = i18n_error_getting_mfa_status_clone1.clone();
                 let future = async move {
                     if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
                         let response =
@@ -46,7 +66,8 @@ pub fn mfa_options() -> Html {
                                 let formatted_error = format_error_message(&e.to_string());
                                 dispatch_effect.reduce_mut(|audio_state| {
                                     audio_state.error_message = Option::from(format!(
-                                        "Error getting MFA status: {}",
+                                        "{}{}",
+                                        i18n_error_getting_mfa_status.clone(),
                                         formatted_error
                                     ))
                                 });
@@ -67,6 +88,7 @@ pub fn mfa_options() -> Html {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let user_id = user_id.clone();
+        let i18n_error_getting_mfa_status_clone2 = i18n_error_getting_mfa_status.clone();
 
         use_effect_with(mfa_status.clone(), move |_| {
             let mfa_status = mfa_status.clone();
@@ -74,6 +96,7 @@ pub fn mfa_options() -> Html {
             let server_name = server_name.clone();
             let user_id = user_id.clone();
 
+            let i18n_error_getting_mfa_status = i18n_error_getting_mfa_status_clone2.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(api_key), Some(server_name)) = (api_key, server_name) {
                     match call_mfa_settings(server_name, api_key.unwrap(), user_id.unwrap()).await {
@@ -84,7 +107,8 @@ pub fn mfa_options() -> Html {
                             let formatted_error = format_error_message(&e.to_string());
                             dispatch_refresh.reduce_mut(|audio_state| {
                                 audio_state.error_message = Option::from(format!(
-                                    "Error getting MFA status: {}",
+                                    "{}{}",
+                                    i18n_error_getting_mfa_status.clone(),
                                     formatted_error
                                 ))
                             });
@@ -142,8 +166,12 @@ pub fn mfa_options() -> Html {
         let api_key = api_key.clone(); // Replace with actual API key
         let user_id = user_id.clone(); // Replace with actual user ID
         let mfa_status = mfa_status.clone();
+        let i18n_error_disabling_mfa = i18n_error_disabling_mfa.clone();
+        let i18n_failed_to_generate_totp_secret = i18n_failed_to_generate_totp_secret.clone();
 
         Callback::from(move |_| {
+            let i18n_error_disabling_mfa = i18n_error_disabling_mfa.clone();
+            let i18n_failed_to_generate_totp_secret = i18n_failed_to_generate_totp_secret.clone();
             let mfa_code = mfa_code.clone();
             let page_state = page_state.clone();
             let mfa_secret = mfa_secret.clone();
@@ -178,7 +206,7 @@ pub fn mfa_options() -> Html {
                                 }
                                 Err(e) => {
                                     // Handle error
-                                    eprintln!("Error disabling MFA: {:?}", e);
+                                    log::error!("{}{:?}", i18n_error_disabling_mfa, e);
                                 }
                             }
                         } else {
@@ -188,7 +216,7 @@ pub fn mfa_options() -> Html {
                         }
                     }
                     Err(e) => {
-                        log::error!("Failed to generate TOTP secret: {}", e);
+                        log::error!("{}{}", i18n_failed_to_generate_totp_secret, e);
                         // Handle error appropriately
                     }
                 }
@@ -204,8 +232,12 @@ pub fn mfa_options() -> Html {
         let server_name = server_name.clone();
         let code = code.clone();
         let mfa_status_clone = mfa_status.clone();
+        let i18n_mfa_code_verification_failed = i18n_mfa_code_verification_failed.clone();
+        let i18n_failed_to_verify_mfa_code = i18n_failed_to_verify_mfa_code.clone();
 
         Callback::from(move |_| {
+            let i18n_mfa_code_verification_failed = i18n_mfa_code_verification_failed.clone();
+            let i18n_failed_to_verify_mfa_code = i18n_failed_to_verify_mfa_code.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone();
             let server_name = server_name.clone();
@@ -232,7 +264,7 @@ pub fn mfa_options() -> Html {
                         } else {
                             _dispatch.reduce_mut(|audio_state| {
                                 audio_state.error_message =
-                                    Option::from("MFA code verification failed".to_string())
+                                    Option::from(i18n_mfa_code_verification_failed.clone())
                             });
                             // Handle failed verification, e.g., showing an error message
                         }
@@ -241,7 +273,8 @@ pub fn mfa_options() -> Html {
                         let formatted_error = format_error_message(&e.to_string());
                         _dispatch.reduce_mut(|audio_state| {
                             audio_state.error_message = Option::from(format!(
-                                "Failed to verify MFA code: {}",
+                                "{}{}",
+                                i18n_failed_to_verify_mfa_code,
                                 formatted_error
                             ))
                         });
@@ -272,13 +305,13 @@ pub fn mfa_options() -> Html {
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
-                            <span class="sr-only">{"Close modal"}</span>
+                            <span class="sr-only">{&i18n_close_modal}</span>
                         </button>
                         <h3 class="text-xl font-semibold">
-                            {"Setup MFA"}
+                            {&i18n_setup_mfa}
                         </h3>
                         <p class="item_container-text text-m font-semibold">
-                            {"Either scan the QR code with your authenticator app or enter the code manually. Then enter the code from your authenticator app to verify."}
+                            {&i18n_scan_qr_or_enter_code}
                         </p>
                         <div class="mt-4 self-center bg-white rounded-lg overflow-hidden p-4 shadow-lg">
                             <SafeHtml html={qr_code_svg} />
@@ -289,15 +322,15 @@ pub fn mfa_options() -> Html {
                             {(*mfa_secret).clone()}
                         </div>
                         <div>
-                            <label for="fullname" class="block mb-2 mt-2 text-sm font-semibold font-medium">{"Verify Code:"}</label>
+                            <label for="fullname" class="block mb-2 mt-2 text-sm font-semibold font-medium">{&i18n_verify_code}</label>
                             <input oninput={on_code_change} type="text" id="fullname" name="fullname" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:placeholder-gray-400 dark:text-white" required=true />
                         </div>
                         <div class="flex justify-between space-x-4">
                             <button onclick={verify_code.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                                {"Verify"}
+                                {&i18n_verify}
                             </button>
                             <button onclick={close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                                {"Close"}
+                                {&i18n_close}
                             </button>
                         </div>
                     </div>
@@ -315,13 +348,13 @@ pub fn mfa_options() -> Html {
             }
         }
         <div class="p-4"> // You can adjust the padding as needed
-            <p class="item_container-text text-lg font-bold mb-4">{"MFA Options:"}</p>
-            <p class="item_container-text text-md mb-4">{"You can setup edit, or remove MFA for your account here. MFA will only be prompted when new authentication is needed."}</p> // Styled paragraph
+            <p class="item_container-text text-lg font-bold mb-4">{&i18n_mfa_options}</p>
+            <p class="item_container-text text-md mb-4">{&i18n_mfa_description}</p> // Styled paragraph
 
             <label class="relative inline-flex items-center cursor-pointer">
             <input type="checkbox" disabled={**loading.borrow()} checked={**mfa_status.borrow()} class="sr-only peer" onclick={open_setup_modal.clone()} />
                 <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
-                <span class="ms-3 text-sm font-medium item_container-text">{"Enable MFA"}</span>
+                <span class="ms-3 text-sm font-medium item_container-text">{&i18n_enable_mfa}</span>
             </label>
         </div>
         </>

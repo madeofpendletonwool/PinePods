@@ -1,6 +1,7 @@
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_funcs::format_error_message;
 use crate::components::notification_center::ToastNotification;
+use i18nrs::yew::use_translation;
 use crate::requests::login_requests::{self, call_check_mfa_enabled};
 use crate::requests::login_requests::{
     call_first_login_done, call_get_time_info, call_self_service_login_status,
@@ -29,6 +30,54 @@ fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
 
 #[function_component(Login)]
 pub fn login() -> Html {
+    let (i18n, _) = use_translation();
+    
+    // Pre-capture translation strings for use in closures and async blocks
+    let i18n_error_checking_status = i18n.t("login.error_checking_status").to_string();
+    let i18n_error_fetching_oidc = i18n.t("login.error_fetching_oidc_providers").to_string();
+    let i18n_error_fetching_languages = i18n.t("login.error_fetching_languages").to_string();
+    let i18n_account_created_success = i18n.t("login.account_created_successfully").to_string();
+    let i18n_error_creating_account = i18n.t("login.error_creating_account").to_string();
+    let i18n_error_checking_mfa = i18n.t("login.error_checking_mfa_status").to_string();
+    let i18n_error_checking_first_login = i18n.t("login.error_checking_first_login_status").to_string();
+    let i18n_credentials_incorrect = i18n.t("login.credentials_incorrect").to_string();
+    let i18n_error_setting_up_timezone = i18n.t("login.error_setting_up_timezone").to_string();
+    let i18n_first_time_welcome = i18n.t("login.first_time_welcome").to_string();
+    let i18n_mfa_welcome = i18n.t("login.mfa_welcome").to_string();
+    let i18n_forgot_password = i18n.t("login.forgot_password").to_string();
+    let i18n_reset_instructions = i18n.t("login.reset_password_instructions").to_string();
+    let i18n_fill_password_fields = i18n.t("login.fill_password_fields").to_string();
+    let i18n_passwords_no_match = i18n.t("login.passwords_no_match").to_string();
+    let i18n_enter_reset_code = i18n.t("login.enter_reset_code").to_string();
+    let i18n_password_reset_success = i18n.t("login.password_reset_success").to_string();
+    let i18n_invalid_reset_code = i18n.t("login.invalid_reset_code").to_string();
+    let i18n_password_reset_title = i18n.t("login.password_reset_title").to_string();
+    let i18n_reset_code_sent = i18n.t("login.reset_code_sent").to_string();
+    let i18n_reset_code_label = i18n.t("login.reset_code_label").to_string();
+    let i18n_new_password_label = i18n.t("login.new_password_label").to_string();
+    let i18n_confirm_password_label = i18n.t("login.confirm_password_label").to_string();
+    let i18n_initial_setup = i18n.t("login.initial_setup").to_string();
+    let i18n_hour_format = i18n.t("login.hour_format").to_string(); 
+    let i18n_time_zone = i18n.t("login.time_zone").to_string();
+    let i18n_date_format = i18n.t("login.date_format").to_string();
+    let i18n_save_preferences = i18n.t("login.save_preferences").to_string();
+    let i18n_mfa_login = i18n.t("login.mfa_login").to_string();
+    let i18n_or_continue_with = i18n.t("login.or_continue_with").to_string();
+    let i18n_connect_different_server = i18n.t("login.connect_different_server").to_string();
+    let i18n_connect_local_server = i18n.t("login.connect_local_server").to_string();
+    let i18n_admin_created_success = i18n.t("login.admin_created_success").to_string();
+    let i18n_error_parsing_time = i18n.t("login.error_parsing_time").to_string();
+    let i18n_language_updated = i18n.t("login.language_updated").to_string();
+    let i18n_error_setup_timezone = i18n.t("login.error_setup_timezone").to_string();
+    let i18n_error_validating_mfa = i18n.t("login.error_validating_mfa").to_string();
+    let i18n_error_checking_mfa_status = i18n.t("login.error_checking_mfa_status").to_string();
+    let i18n_error_setting_timezone = i18n.t("login.error_setting_timezone").to_string();
+    let i18n_error_setting_timezone_details = i18n.t("login.error_setting_timezone_details").to_string();
+    let i18n_language = i18n.t("common.language").to_string();
+    let i18n_login = i18n.t("auth.login").to_string();
+    let i18n_pinepods = i18n.t("common.pinepods").to_string();
+    let i18n_password_reset_successfully = i18n.t("login.password_reset_successfully").to_string();
+    
     let history = BrowserHistory::new();
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
@@ -318,7 +367,11 @@ pub fn login() -> Html {
     let submit_post_state = dispatch.clone();
     let on_submit = {
         let submit_dispatch = dispatch.clone();
+        let i18n_error_checking_first_login = i18n_error_checking_first_login.clone();
+        let i18n_credentials_incorrect = i18n_credentials_incorrect.clone();
         Callback::from(move |_| {
+            let i18n_error_checking_first_login = i18n_error_checking_first_login.clone();
+            let i18n_credentials_incorrect = i18n_credentials_incorrect.clone();
             let history = history_clone.clone();
             let username = username.clone();
             let password = password.clone();
@@ -441,7 +494,7 @@ pub fn login() -> Html {
                                         Err(_) => {
                                             post_state.reduce_mut(|state| {
                                                 state.error_message = Option::from(
-                                                    "Error Checking MFA Status".to_string(),
+                                                    i18n_error_checking_mfa_status.clone(),
                                                 )
                                             });
                                         }
@@ -453,7 +506,7 @@ pub fn login() -> Html {
                             Err(_) => {
                                 post_state.reduce_mut(|state| {
                                     state.error_message = Option::from(
-                                        "Error checking first login status".to_string(),
+                                        i18n_error_checking_first_login.clone(),
                                     )
                                 });
                             }
@@ -463,7 +516,7 @@ pub fn login() -> Html {
                         // console::log_1(&format!("Error logging into server: {}", server_name).into());
                         post_state.reduce_mut(|state| {
                             state.error_message =
-                                Option::from("Your credentials appear to be incorrect".to_string())
+                                Option::from(i18n_credentials_incorrect.clone())
                         });
                         // Handle error
                     }
@@ -536,6 +589,7 @@ pub fn login() -> Html {
     let time_state_error = dispatch.clone();
     let on_time_pref_change = {
         let time_pref = time_pref.clone();
+        let i18n_error_parsing_time = i18n_error_parsing_time.clone();
         Callback::from(move |e: InputEvent| {
             let select_element = e.target_unchecked_into::<web_sys::HtmlSelectElement>();
             let value_str = select_element.value();
@@ -543,7 +597,7 @@ pub fn login() -> Html {
                 time_pref.set(value_int);
             } else {
                 time_state_error.reduce_mut(|state| {
-                    state.error_message = Option::from("Error parsing time preference".to_string())
+                    state.error_message = Option::from(i18n_error_parsing_time.clone())
                 });
             }
         })
@@ -607,14 +661,14 @@ pub fn login() -> Html {
                                 Err(_) => {
                                     post_state.reduce_mut(|state| {
                                         state.error_message =
-                                            Option::from("Error Checking MFA Status".to_string())
+                                            Option::from(i18n_error_checking_mfa_status.clone())
                                     });
                                 }
                             }
                         } else {
                             post_state.reduce_mut(|state| {
                                 state.error_message =
-                                    Option::from("Error Setting up Time Zone".to_string())
+                                    Option::from(i18n_error_setting_timezone.clone())
                             });
                             page_state.set(PageState::Default);
                         }
@@ -647,35 +701,35 @@ pub fn login() -> Html {
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
                         <h3 class="text-xl font-semibold">
-                            {"Time Zone Setup"}
+{&i18n.t("login.time_zone_setup")}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
-                            <span class="sr-only">{"Close modal"}</span>
+                            <span class="sr-only">{&i18n.t("common.close_modal")}</span>
                         </button>
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
                             <p class="text-m font-semibold">
-                            {"Welcome to Pinepods! This appears to be your first time logging in. To start, let's get some basic information about your time and time zone preferences. This will determine how times appear throughout the app."}
+{&i18n.t("login.first_time_setup_welcome")}
                             </p>
                             <div>
-                                <label for="hour_format" style="margin-right: 10px;">{"Hour Format:"}</label>
+                                <label for="hour_format" style="margin-right: 10px;">{&i18n.t("login.hour_format")}{":"}</label>
                                 <select id="hour_format" name="hour_format" class="email-select border p-2 rounded" oninput={on_time_pref_change}>
-                                    <option value="12">{"12 Hour"}</option>
-                                    <option value="24">{"24 Hour"}</option>
+                                    <option value="12">{&i18n.t("settings.12_hour")}</option>
+                                    <option value="24">{&i18n.t("settings.24_hour")}</option>
                                 </select>
                             </div>
                             <div>
-                                <label for="time_zone" style="margin-right: 10px;">{"Time Zone:"}</label>
+                                <label for="time_zone" style="margin-right: 10px;">{&i18n.t("login.time_zone")}{":"}</label>
                                 <select id="time_zone" name="time_zone" class="email-select border p-2 rounded" oninput={on_tz_change}>
                                     { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
                                 </select>
                             </div>
                             <div>
-                            <label for="date_format" style="margin-right: 10px;">{"Date Format:"}</label>
+                            <label for="date_format" style="margin-right: 10px;">{&i18n.t("login.date_format")}{":"}</label>
                             <select id="date_format" name="date_format" class="email-select border p-2 rounded" oninput={on_df_change}>
                                 <option value="MDY">{"MDY (MM-DD-YYYY)"}</option>
                                 <option value="DMY">{"DMY (DD-MM-YYYY)"}</option>
@@ -687,7 +741,7 @@ pub fn login() -> Html {
                                 <option value="JIS">{"JIS (YYYY-MM-DD)"}</option>
                             </select>
                         </div>
-                            <button type="submit" onclick={on_time_zone_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
+                            <button type="submit" onclick={on_time_zone_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{&i18n.t("common.submit")}</button>
                         </form>
                     </div>
                 </div>
@@ -791,7 +845,7 @@ pub fn login() -> Html {
                             page_state.set(PageState::Default);
                             post_state.reduce_mut(|state| {
                                 state.error_message =
-                                    Option::from(format!("Error validating MFA Code"))
+                                    Option::from(i18n_error_validating_mfa.clone())
                             });
                         }
                     }
@@ -800,7 +854,8 @@ pub fn login() -> Html {
                         let formatted_error = format_error_message(&e.to_string());
                         post_state.reduce_mut(|state| {
                             state.error_message = Option::from(format!(
-                                "Error setting up time zone: {:?}",
+                                "{}: {:?}",
+                                i18n_error_setting_timezone_details.clone(),
                                 formatted_error
                             ))
                         });
@@ -816,22 +871,22 @@ pub fn login() -> Html {
                 <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
                         <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
-                            {"MFA Login"}
+                            {&i18n.t("login.mfa_login")}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
-                            <span class="sr-only">{"Close modal"}</span>
+                            <span class="sr-only">{&i18n.t("common.close_modal")}</span>
                         </button>
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
                             <p class="text-m font-semibold text-gray-900 dark:text-white">
-                            {"Welcome to Pinepods! Please enter your MFA Code Below."}
+                            {&i18n.t("login.enter_mfa_code")}
                             </p>
-                            <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder="Enter MFA Code" />
-                            <button type="submit" onclick={on_mfa_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{"Submit"}</button>
+                            <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder={i18n.t("auth.enter_mfa_code")} />
+                            <button type="submit" onclick={on_mfa_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{&i18n.t("common.submit")}</button>
                         </form>
                     </div>
                 </div>
@@ -852,36 +907,36 @@ pub fn login() -> Html {
         <div class="flex justify-center items-center h-screen">
             <div class="modal-container flex flex-col space-y-4 w-full max-w-xs p-8 border rounded-lg shadow-lg">
                 <div class="flex justify-center items-center">
-                    <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
+                    <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt={i18n.t("common.pinepods_logo")} />
                 </div>
-                <h1 class="item_container-text text-xl font-bold mb-2 text-center">{"Pinepods"}</h1>
-                <p class="item_container-text text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
+                <h1 class="item_container-text text-xl font-bold mb-2 text-center">{&i18n_pinepods}</h1>
+                <p class="item_container-text text-center">{&i18n.t("login.tagline")}</p>
                 <input
                     type="text"
-                    placeholder="Server Name"
+                    placeholder={i18n.t("auth.server_name")}
                     class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                     oninput={on_server_name_change}
                     onkeypress={handle_key_press.clone()}
                 />
                 <input
                     type="text"
-                    placeholder="Username"
+                    placeholder={i18n.t("auth.username")}
                     class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                     oninput={on_username_change}
                     onkeypress={handle_key_press.clone()}
                 />
                 <input
                     type="password"
-                    placeholder="Password"
+                    placeholder={i18n.t("auth.password")}
                     class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
                     oninput={on_password_change}
                     onkeypress={handle_key_press.clone()}
                 />
                 <button onclick={on_submit_click} class="p-2 download-button rounded">
-                    {"Login"}
+                    {&i18n.t("auth.login")}
                 </button>
                 <button onclick={on_offline_mode} class="p-2 download-button rounded">
-                    {"Offline Mode"}
+                    {&i18n.t("login.offline_mode")}
                 </button>
             </div>
             <ToastNotification />

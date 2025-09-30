@@ -5,9 +5,11 @@ use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlSelectElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[function_component(StartPageOptions)]
 pub fn startpage() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     // Use state to manage the selected start page
     let selected_startpage = use_state(|| "".to_string());
@@ -59,7 +61,12 @@ pub fn startpage() -> Html {
         let selected_startpage = selected_startpage.clone();
         let state = state.clone();
 
+        // Capture translated messages before move
+        let success_msg = i18n.t("start_page_options.start_page_updated_successfully").to_string();
+        let error_prefix = i18n.t("start_page_options.failed_to_update_start_page").to_string();
         Callback::from(move |_| {
+            let success_msg = success_msg.clone();
+            let error_prefix = error_prefix.clone();
             let dispatch = _dispatch.clone();
             let startpage = (*selected_startpage).clone();
 
@@ -87,17 +94,13 @@ pub fn startpage() -> Html {
                     {
                         Ok(_) => {
                             dispatch.reduce_mut(|state| {
-                                state.info_message =
-                                    Some("Start page updated successfully!".to_string());
+                                state.info_message = Some(success_msg.clone());
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
                             dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!(
-                                    "Failed to update start page: {}",
-                                    formatted_error
-                                ));
+                                state.error_message = Some(format!("{}{}", error_prefix.clone(), formatted_error));
                             });
                         }
                     }
@@ -121,12 +124,12 @@ pub fn startpage() -> Html {
         <div class="p-6 space-y-4">
             <div class="flex items-center gap-3 mb-6">
                 <i class="ph ph-house text-2xl"></i>
-                <h2 class="text-xl font-semibold item_container-text">{"Start Page Settings"}</h2>
+                <h2 class="text-xl font-semibold item_container-text">{i18n.t("start_page_options.start_page_settings")}</h2>
             </div>
 
             <div class="mb-6">
                 <p class="item_container-text mb-2">
-                    {"Choose your preferred start page. This is the page you'll see first when opening Pinepods."}
+                    {i18n.t("start_page_options.start_page_description")}
                 </p>
             </div>
 
@@ -141,7 +144,7 @@ pub fn startpage() -> Html {
                             class="theme-select-dropdown w-full p-3 pr-10 rounded-lg border appearance-none cursor-pointer"
                             value={(*selected_startpage).clone()}
                         >
-                            <option value="" disabled=true>{"Select a start page"}</option>
+                            <option value="" disabled=true>{i18n.t("start_page_options.select_start_page")}</option>
                             {startpage_options.into_iter().map(|(display_name, route)| {
                                 let current_page = (*selected_startpage).clone();
                                 html! {
@@ -161,7 +164,7 @@ pub fn startpage() -> Html {
                     class="theme-submit-button mt-4 w-full p-3 rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
                 >
                     <i class="ph ph-thumbs-up text-2xl"></i>
-                    {"Apply Start Page"}
+                    {i18n.t("start_page_options.apply_start_page")}
                 </button>
             }
         </div>

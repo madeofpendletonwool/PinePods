@@ -10,6 +10,7 @@ use web_sys::HtmlElement;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[derive(Clone, PartialEq)]
 enum PageState {
@@ -369,10 +370,44 @@ fn detect_provider(auth_url: &str, token_url: &str, user_info_url: &str) -> Prov
 
 #[function_component(OIDCSettings)]
 pub fn oidc_settings() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let page_state = use_state(|| PageState::Hidden);
     let providers = use_state(|| Vec::<OIDCProvider>::new());
     let update_trigger = use_state(|| false);
+
+    // Capture i18n strings before they get moved
+    let i18n_failed_to_fetch_oidc_providers = i18n.t("oidc.failed_to_fetch_oidc_providers").to_string();
+    let i18n_provider_successfully_removed = i18n.t("oidc.provider_successfully_removed").to_string();
+    let i18n_failed_to_remove_provider = i18n.t("oidc.failed_to_remove_provider").to_string();
+    let i18n_oidc_provider_successfully_added = i18n.t("oidc.oidc_provider_successfully_added").to_string();
+    let i18n_failed_to_add_provider = i18n.t("oidc.failed_to_add_provider").to_string();
+    let i18n_add_oidc_provider = i18n.t("oidc.add_oidc_provider").to_string();
+    let i18n_close_modal = i18n.t("common.close_modal").to_string();
+    let i18n_oidc_redirect_url = i18n.t("oidc.oidc_redirect_url").to_string();
+    let i18n_use_this_url_when_configuring = i18n.t("oidc.use_this_url_when_configuring").to_string();
+    let i18n_provider_name = i18n.t("oidc.provider_name").to_string();
+    let i18n_client_id = i18n.t("oidc.client_id").to_string();
+    let i18n_client_secret = i18n.t("oidc.client_secret").to_string();
+    let i18n_authorization_url = i18n.t("oidc.authorization_url").to_string();
+    let i18n_token_url = i18n.t("oidc.token_url").to_string();
+    let i18n_user_info_url = i18n.t("oidc.user_info_url").to_string();
+    let i18n_scopes = i18n.t("oidc.scopes").to_string();
+    let i18n_button_text = i18n.t("oidc.button_text").to_string();
+    let i18n_button_color = i18n.t("oidc.button_color").to_string();
+    let i18n_button_text_color = i18n.t("oidc.button_text_color").to_string();
+    let i18n_icon_svg_optional = i18n.t("oidc.icon_svg_optional").to_string();
+    let i18n_name_claim = i18n.t("oidc.name_claim").to_string();
+    let i18n_email_claim = i18n.t("oidc.email_claim").to_string();
+    let i18n_username_claim = i18n.t("oidc.username_claim").to_string();
+    let i18n_roles_claim = i18n.t("oidc.roles_claim").to_string();
+    let i18n_user_role = i18n.t("oidc.user_role").to_string();
+    let i18n_admin_role = i18n.t("oidc.admin_role").to_string();
+    let i18n_submit = i18n.t("common.submit").to_string();
+    let i18n_oidc_provider_management = i18n.t("oidc.oidc_provider_management").to_string();
+    let i18n_add_provider = i18n.t("oidc.add_provider").to_string();
+    let i18n_no_oidc_providers_configured = i18n.t("oidc.no_oidc_providers_configured").to_string();
+    let i18n_remove = i18n.t("common.remove").to_string();
 
     // Form states for the add provider modal
     let provider_name = use_state(|| String::new());
@@ -429,7 +464,8 @@ pub fn oidc_settings() -> Html {
                             let formatted_error = format_error_message(&e.to_string());
                             _dispatch.reduce_mut(|state| {
                                 state.error_message = Some(format!(
-                                    "Failed to fetch OIDC providers: {}",
+                                    "{}{}",
+                                    i18n_failed_to_fetch_oidc_providers.clone(),
                                     formatted_error
                                 ));
                             });
@@ -474,8 +510,12 @@ pub fn oidc_settings() -> Html {
     let on_remove_provider = {
         let update_trigger = update_trigger.clone();
         let _dispatch = _dispatch.clone();
+        let i18n_provider_successfully_removed = i18n_provider_successfully_removed.clone();
+        let i18n_failed_to_remove_provider = i18n_failed_to_remove_provider.clone();
 
         Callback::from(move |provider_id: i32| {
+            let i18n_provider_successfully_removed = i18n_provider_successfully_removed.clone();
+            let i18n_failed_to_remove_provider = i18n_failed_to_remove_provider.clone();
             let server_name = remove_state
                 .auth_details
                 .as_ref()
@@ -494,14 +534,14 @@ pub fn oidc_settings() -> Html {
                             update_trigger.set(!*update_trigger);
                             _dispatch.reduce_mut(|state| {
                                 state.info_message =
-                                    Some("Provider successfully removed".to_string());
+                                    Some(i18n_provider_successfully_removed.clone());
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
                             _dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Failed to remove provider: {}", formatted_error));
+                                    Some(format!("{}{}", i18n_failed_to_remove_provider, formatted_error));
                             });
                         }
                     }
@@ -662,8 +702,12 @@ pub fn oidc_settings() -> Html {
         let update_trigger = update_trigger.clone();
         let _dispatch = _dispatch.clone();
         let selected_scopes = selected_scopes.clone();
+        let i18n_oidc_provider_successfully_added = i18n_oidc_provider_successfully_added.clone();
+        let i18n_failed_to_add_provider = i18n_failed_to_add_provider.clone();
 
         Callback::from(move |e: SubmitEvent| {
+            let i18n_oidc_provider_successfully_added = i18n_oidc_provider_successfully_added.clone();
+            let i18n_failed_to_add_provider = i18n_failed_to_add_provider.clone();
             let call_trigger = update_trigger.clone();
             let call_page_state = page_state.clone();
             let call_dispatch = _dispatch.clone();
@@ -713,14 +757,14 @@ pub fn oidc_settings() -> Html {
                             call_page_state.set(PageState::Hidden);
                             call_dispatch.reduce_mut(|state| {
                                 state.info_message =
-                                    Some("OIDC Provider successfully added".to_string());
+                                    Some(i18n_oidc_provider_successfully_added.clone());
                             });
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
                             call_dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Some(format!("Failed to add provider: {}", formatted_error));
+                                    Some(format!("{}{}", i18n_failed_to_add_provider, formatted_error));
                             });
                         }
                     }
@@ -754,21 +798,21 @@ pub fn oidc_settings() -> Html {
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
-                            {"Add OIDC Provider"}
+{&i18n_add_oidc_provider}
                         </h3>
                         <button onclick={on_close_modal.clone()}
                             class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
-                            <span class="sr-only">{"Close modal"}</span>
+                            <span class="sr-only">{&i18n_close_modal}</span>
                         </button>
                     </div>
                     <div class="p-4 md:p-5">
                         <div class="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg p-4 mb-6">
                             <div class="flex items-center gap-2 mb-2">
                                 <i class="ph ph-info text-indigo-600 dark:text-indigo-400"></i>
-                                <h3 class="font-medium text-indigo-900 dark:text-indigo-100">{"OIDC Redirect URL"}</h3>
+                                <h3 class="font-medium text-indigo-900 dark:text-indigo-100">{&i18n_oidc_redirect_url}</h3>
                             </div>
                             <div class="flex items-center gap-2 bg-white dark:bg-gray-800 rounded p-2">
                                 <code class="text-sm text-gray-800 dark:text-gray-200 flex-grow">
@@ -783,13 +827,13 @@ pub fn oidc_settings() -> Html {
                                 </button>
                             </div>
                             <p class="text-sm text-indigo-700 dark:text-indigo-300 mt-2">
-                                {"Use this URL when configuring your OIDC provider's callback/redirect settings."}
+{&i18n_use_this_url_when_configuring}
                             </p>
                         </div>
                         <form class="space-y-4" action="#" onsubmit={on_submit}>
                             <div class="grid grid-cols-2 gap-4">
                                 <div class="form-group">
-                                    <label class="form-label">{"Provider Name"}</label>
+                                    <label class="form-label">{&i18n_provider_name}</label>
                                     <input
                                         type="text"
                                         class="form-input"
@@ -800,7 +844,7 @@ pub fn oidc_settings() -> Html {
                                     />
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">{"Client ID"}</label>
+                                    <label class="form-label">{&i18n_client_id}</label>
                                     <input
                                         type="text"
                                         class="form-input"
@@ -810,7 +854,7 @@ pub fn oidc_settings() -> Html {
                                     />
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">{"Client Secret"}</label>
+                                    <label class="form-label">{&i18n_client_secret}</label>
                                     <input
                                         type="password"
                                         class="form-input"
@@ -820,7 +864,7 @@ pub fn oidc_settings() -> Html {
                                     />
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">{"Authorization URL"}</label>
+                                    <label class="form-label">{&i18n_authorization_url}</label>
                                     <input
                                         type="url"
                                         class="form-input"
@@ -831,7 +875,7 @@ pub fn oidc_settings() -> Html {
                                     />
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">{"Token URL"}</label>
+                                    <label class="form-label">{&i18n_token_url}</label>
                                     <input
                                         type="url"
                                         class="form-input"
@@ -842,7 +886,7 @@ pub fn oidc_settings() -> Html {
                                     />
                                 </div>
                                 <div class="form-group">
-                                    <label class="form-label">{"User Info URL"}</label>
+                                    <label class="form-label">{&i18n_user_info_url}</label>
                                     <input
                                         type="url"
                                         class="form-input"
@@ -957,7 +1001,7 @@ pub fn oidc_settings() -> Html {
                             </div>
                             <div class="flex justify-end mt-4">
                                 <button type="submit" class="download-button focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">
-                                    {"Submit"}
+{&i18n_submit}
                                 </button>
                             </div>
                         </form>
@@ -995,20 +1039,20 @@ pub fn oidc_settings() -> Html {
             <div class="settings-header">
                 <div class="flex items-center gap-4">
                     <i class="ph ph-key text-2xl"></i>
-                    <h2 class="text-xl font-semibold">{"OIDC Provider Management"}</h2>
+                    <h2 class="text-xl font-semibold">{&i18n_oidc_provider_management}</h2>
                 </div>
             </div>
 
             <div class="mb-6">
                 <button onclick={on_add_provider} class="settings-button">
                     <i class="ph ph-plus"></i>
-                    {" Add Provider"}
+{&i18n_add_provider}
                 </button>
             </div>
 
             if (*providers).is_empty() {
                 <div class="oidc-empty-state">
-                    <p>{"No OIDC providers configured yet. Add one to enable single sign-on."}</p>
+                    <p>{&i18n_no_oidc_providers_configured}</p>
                 </div>
             } else {
                 {
@@ -1030,20 +1074,20 @@ pub fn oidc_settings() -> Html {
                                     </div>
                                     <button onclick={on_remove} class="oidc-remove-button">
                                         <i class="ph ph-trash"></i>
-                                        {" Remove"}
+{&i18n_remove}
                                     </button>
                                 </div>
                                 <div class="oidc-provider-info">
                                     <div class="oidc-info-group">
-                                        <div class="oidc-info-label">{"Authorization URL"}</div>
+                                        <div class="oidc-info-label">{&i18n_authorization_url}</div>
                                         <div class="oidc-info-value">{&provider.authorization_url}</div>
                                     </div>
                                     <div class="oidc-info-group">
-                                        <div class="oidc-info-label">{"Token URL"}</div>
+                                        <div class="oidc-info-label">{&i18n_token_url}</div>
                                         <div class="oidc-info-value">{&provider.token_url}</div>
                                     </div>
                                     <div class="oidc-info-group">
-                                        <div class="oidc-info-label">{"User Info URL"}</div>
+                                        <div class="oidc-info-label">{&i18n_user_info_url}</div>
                                         <div class="oidc-info-value">{&provider.user_info_url}</div>
                                     </div>
                                 </div>

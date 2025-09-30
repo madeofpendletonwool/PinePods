@@ -6,6 +6,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{FileReader, HtmlInputElement};
 use yew::prelude::*;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 // use wasm_bindgen::JsValue;
 use crate::requests::setting_reqs::{call_podcast_opml_import, fetch_import_progress};
 use std::cell::RefCell;
@@ -21,6 +22,7 @@ struct PodcastToImport {
 
 #[function_component(ImportOptions)]
 pub fn import_options() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -30,6 +32,16 @@ pub fn import_options() -> Html {
     let import_progress = use_state(|| 0);
     let total_podcasts = use_state(|| 0);
     let current_podcast = use_state(String::default);
+
+    // Capture all i18n strings at function start to avoid borrow checker issues
+    let i18n_import_options = i18n.t("import_options.import_options").to_string();
+    let i18n_import_description = i18n.t("import_options.import_description").to_string();
+    let i18n_import_tip = i18n.t("import_options.import_tip").to_string();
+    let i18n_choose_file = i18n.t("import_options.choose_file").to_string();
+    let i18n_import_verification_text = i18n.t("import_options.import_verification_text").to_string();
+    let i18n_add_them = i18n.t("import_options.add_them").to_string();
+    let i18n_import_progress = i18n.t("import_options.import_progress").to_string();
+    let i18n_currently_importing = i18n.t("import_options.currently_importing").to_string();
 
     let onclick = {
         let import_pods = import_pods.clone();
@@ -89,6 +101,9 @@ pub fn import_options() -> Html {
 
             total_podcasts.set(selected_podcasts.len());
 
+            // Use pre-captured translated messages
+            let success_msg = i18n.t("import_options.opml_import_completed").to_string();
+            let error_msg = i18n.t("import_options.failed_to_import_opml").to_string();
             wasm_bindgen_futures::spawn_local({
                 let server_name = server_name.clone();
                 let api_key = api_key.clone();
@@ -114,6 +129,7 @@ pub fn import_options() -> Html {
                                     Rc::new(RefCell::new(None));
                                 let interval_clone = interval.clone();
 
+                                let success_msg_clone = success_msg.clone();
                                 let callback = Closure::wrap(Box::new(move || {
                                     let dispatch_wasm = dispatch_wasm_call.clone();
                                     let server_name = server_name.clone();
@@ -123,6 +139,7 @@ pub fn import_options() -> Html {
                                     let current_podcast = current_podcast.clone();
                                     let total_podcasts = total_podcasts.clone();
                                     let interval = interval_clone.clone();
+                                    let success_msg_callback = success_msg_clone.clone();
                                     wasm_bindgen_futures::spawn_local(async move {
                                         match fetch_import_progress(&server_name, &api_key, user_id)
                                             .await
@@ -142,9 +159,7 @@ pub fn import_options() -> Html {
                                                         state.is_loading = Some(false)
                                                     });
                                                     dispatch_wasm.reduce_mut(|audio_state| {
-                                                        audio_state.info_message = Option::from(
-                                                            "OPML Import Completed! After importing head over the Match Podcast Index area to match podcasts with their index counterpart. This allows for host and guest integration throughout PinePods.".to_string(),
-                                                        )
+                                                        audio_state.info_message = Option::from(success_msg_callback)
                                                     });
                                                 }
                                             }
@@ -176,8 +191,7 @@ pub fn import_options() -> Html {
                                 log::error!("Failed to import OPML: {:?}", e);
                                 dispatch_wasm_call.reduce_mut(|state| {
                                     state.is_loading = Some(false);
-                                    state.info_message =
-                                        Option::from("Failed to import OPML".to_string());
+                                    state.info_message = Option::from(error_msg);
                                     state.clone()
                                 });
                             }
@@ -190,15 +204,15 @@ pub fn import_options() -> Html {
 
     html! {
         <div class="p-4">
-            <p class="item_container-text text-lg font-bold mb-4">{"Import Options:"}</p>
-            <p class="item_container-text text-md mb-4">{"You can Import an OPML of podcasts here. If you're migrating from a different podcast app this is probably the solution you want. Most podcast apps allow you to export a backup of your saved podcasts to an OPML file and this option can easily import them into Pinepods. Note that this process can take awhile and you don't have to stay on this page while it imports. If you think it might be stuck, it's probably not."}</p>
+            <p class="item_container-text text-lg font-bold mb-4">{&i18n_import_options}</p>
+            <p class="item_container-text text-md mb-4">{&i18n_import_description}</p>
             <div class="import-box mb-4">
                 <p class="item_container-text text-sm">
-                    {"💡 After importing, head over to the Match Podcast Index area to match podcasts with their index counterpart. This allows for host and guest integration throughout PinePods."}
+                    {&i18n_import_tip}
                 </p>
             </div>
             // <input class="settings-button" type="file" accept=".opml" onchange={onclick} />
-            <label class="input-button-label" for="fileInput">{ "Choose File" }</label>
+            <label class="input-button-label" for="fileInput">{&i18n_choose_file}</label>
             <input id="fileInput" class="input-button" type="file" accept=".opml" onchange={onclick} />
             // Optionally display the content of the OPML file for debugging
             {
@@ -207,18 +221,18 @@ pub fn import_options() -> Html {
                         <div class="import-box space-y-6">
                             <div class="space-y-4">
                                 <p class="item_container-text">
-                                    {"The following podcasts were found. Please unselect any podcasts you don't want to add, and then click the button below. A large amount of podcasts will take a little while to parse all the feeds and add them. The loading animation will disappear once all complete. Be patient!"}
+                                    {&i18n_import_verification_text}
                                 </p>
                                 <button class="settings-button flex items-center gap-2" onclick={on_confirm}>
                                     <i class="ph ph-download-simple text-xl"></i>
-                                    {"Add them!"}
+                                    {&i18n_add_them}
                                 </button>
                             </div>
 
                             // Progress section with improved styling
                             <div class="bg-opacity-10 bg-white p-4 rounded-lg border border-opacity-20 space-y-3">
                                 <div class="flex justify-between items-center">
-                                    <span class="item_container-text text-sm">{"Import Progress"}</span>
+                                    <span class="item_container-text text-sm">{&i18n_import_progress}</span>
                                     <span class="item_container-text text-lg font-semibold">
                                         {format!("{}/{}", *import_progress, *total_podcasts)}
                                     </span>
@@ -234,7 +248,7 @@ pub fn import_options() -> Html {
                                 <div class="flex items-center gap-2">
                                     <i class="ph ph-sync text-lg animate-spin"></i>
                                     <span class="item_container-text text-sm opacity-80">
-                                        {format!("Currently importing: {}", *current_podcast)}
+                                        {format!("{}{}", &i18n_currently_importing, *current_podcast)}
                                     </span>
                                 </div>
                             </div>

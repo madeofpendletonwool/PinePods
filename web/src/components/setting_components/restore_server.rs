@@ -8,9 +8,27 @@ use web_sys::{Event, File, FormData, HtmlInputElement};
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 #[function_component(RestoreServer)]
 pub fn restore_server() -> Html {
+    let (i18n, _) = use_translation();
+
+    // Capture i18n strings before they get moved
+    let i18n_failed_to_load_backup_files = i18n.t("restore_server.failed_to_load_backup_files").to_string();
+    let i18n_file_size_too_large = i18n.t("restore_server.file_size_too_large").to_string();
+    let i18n_database_password_required = i18n.t("restore_server.database_password_required").to_string();
+    let i18n_restoration_success = i18n.t("restore_server.restoration_success").to_string();
+    let i18n_failed_to_restore_server = i18n.t("restore_server.failed_to_restore_server").to_string();
+    let i18n_restore_server = i18n.t("restore_server.restore_server").to_string();
+    let i18n_server_restore = i18n.t("restore_server.server_restore").to_string();
+    let i18n_restore_mode = i18n.t("restore_server.restore_mode").to_string();
+    let i18n_upload_backup_file = i18n.t("restore_server.upload_backup_file").to_string();
+    let i18n_select_existing_backup = i18n.t("restore_server.select_existing_backup").to_string();
+    let i18n_choose_backup_file = i18n.t("restore_server.choose_backup_file").to_string();
+    let i18n_database_password = i18n.t("restore_server.database_password").to_string();
+    let i18n_restoring = i18n.t("restore_server.restoring").to_string();
+
     let database_password = use_state(|| "".to_string());
     let selected_file = use_state(|| None::<File>);
     let is_loading = use_state(|| false);
@@ -62,7 +80,8 @@ pub fn restore_server() -> Html {
                                 Err(e) => {
                                     dispatch.reduce_mut(|state| {
                                         state.error_message = Some(format!(
-                                            "Failed to load backup files: {}",
+                                            "{}{}",
+                                            i18n_failed_to_load_backup_files.clone(),
                                             format_error_message(&e.to_string())
                                         ));
                                     });
@@ -88,7 +107,7 @@ pub fn restore_server() -> Html {
                     if file.size() > 100.0 * 1024.0 * 1024.0 {
                         dispatch.reduce_mut(|state| {
                             state.error_message =
-                                Some("File size too large. Maximum size is 100MB.".to_string());
+                                Some(i18n_file_size_too_large.clone());
                         });
                         return;
                     }

@@ -26,13 +26,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          persist-credentials: false # This prevents the default token from being persisted in the local git config
-
-      - name: Setup Git for push
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git remote set-url origin https://x-access-token:${{ secrets.PUSH_PAT }}@github.com/${{ github.repository }}.git
+          token: ${{ secrets.PUSH_PAT }}
+          persist-credentials: true
 
       - name: Setup Helm
         uses: Azure/setup-helm@v4.2.0
@@ -84,4 +79,3 @@ jobs:
           committer_email: actions@github.com
           message: "Update Helm chart for release ${{ github.event.release.tag_name }}"
           add: "docs"
-          push: "origin main"

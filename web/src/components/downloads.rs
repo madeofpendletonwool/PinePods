@@ -22,6 +22,7 @@ use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
+use i18nrs::yew::use_translation;
 
 fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec<EpisodeDownload>> {
     let mut grouped: HashMap<i32, Vec<EpisodeDownload>> = HashMap::new();
@@ -36,11 +37,25 @@ fn group_episodes_by_podcast(episodes: Vec<EpisodeDownload>) -> HashMap<i32, Vec
 
 #[function_component(Downloads)]
 pub fn downloads() -> Html {
+    let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
 
     let expanded_state = use_state(HashMap::new);
     let show_modal = use_state(|| false);
+    
+    // Capture i18n strings before they get moved
+    let i18n_select = i18n.t("downloads.select").to_string();
+    let i18n_cancel = i18n.t("common.cancel").to_string();
+    let i18n_delete = i18n.t("common.delete").to_string();
+    let i18n_clear_all = i18n.t("downloads.clear_all").to_string();
+    let i18n_completed = i18n.t("downloads.completed").to_string();
+    let i18n_in_progress = i18n.t("downloads.in_progress").to_string();
+    let i18n_search_downloaded_episodes = i18n.t("downloads.search_downloaded_episodes").to_string();
+    let i18n_no_downloaded_episodes_found = i18n.t("downloads.no_downloaded_episodes_found").to_string();
+    let i18n_no_downloaded_episodes_description = i18n.t("downloads.no_downloaded_episodes_description").to_string();
+    let i18n_no_episode_downloads_found = i18n.t("downloads.no_episode_downloads_found").to_string();
+    let i18n_downloaded_episodes_count = i18n.t("downloads.downloaded_episodes_count").to_string();
 
     // Filter state for episodes
     let episode_search_term = use_state(|| String::new());
@@ -301,7 +316,7 @@ pub fn downloads() -> Html {
                                                     <button class="filter-chip"
                                                         onclick={delete_mode_enable.clone()}>
                                                         <i class="ph ph-lasso text-lg"></i>
-                                                        <span class="text-sm font-medium">{"Select"}</span>
+                                                        <span class="text-sm font-medium">{&i18n_select}</span>
                                                     </button>
                                                 }
                                             } else {
@@ -310,12 +325,12 @@ pub fn downloads() -> Html {
                                                         <button class="filter-chip"
                                                             onclick={delete_mode_disable.clone()}>
                                                             <i class="ph ph-prohibit text-lg"></i>
-                                                            <span class="text-sm font-medium">{"Cancel"}</span>
+                                                            <span class="text-sm font-medium">{&i18n_cancel}</span>
                                                         </button>
                                                         <button class="filter-chip filter-chip-alert"
                                                             onclick={delete_selected_episodes.clone()}>
                                                             <i class="ph ph-trash text-lg"></i>
-                                                            <span class="text-sm font-medium">{"Delete"}</span>
+                                                            <span class="text-sm font-medium">{&i18n_delete}</span>
                                                         </button>
                                                     </>
                                                 }
@@ -332,7 +347,7 @@ pub fn downloads() -> Html {
                                             <input
                                                 type="text"
                                                 class="downloads-search-input"
-                                                placeholder="Search downloaded episodes..."
+                                                placeholder={i18n_search_downloaded_episodes.clone()}
                                                 value={(*episode_search_term).clone()}
                                                 oninput={let episode_search_term = episode_search_term.clone();
                                                     Callback::from(move |e: InputEvent| {
@@ -363,7 +378,7 @@ pub fn downloads() -> Html {
                                             class="filter-chip"
                                         >
                                             <i class="ph ph-broom text-lg"></i>
-                                            <span class="text-sm font-medium">{"Clear All"}</span>
+                                            <span class="text-sm font-medium">{&i18n_clear_all}</span>
                                         </button>
 
                                         // Completed filter chip
@@ -383,7 +398,7 @@ pub fn downloads() -> Html {
                                             )}
                                         >
                                             <i class="ph ph-check-circle text-lg"></i>
-                                            <span class="text-sm font-medium">{"Completed"}</span>
+                                            <span class="text-sm font-medium">{&i18n_completed}</span>
                                         </button>
 
                                         // In progress filter chip
@@ -403,7 +418,7 @@ pub fn downloads() -> Html {
                                             )}
                                         >
                                             <i class="ph ph-hourglass-medium text-lg"></i>
-                                            <span class="text-sm font-medium">{"In Progress"}</span>
+                                            <span class="text-sm font-medium">{&i18n_in_progress}</span>
                                         </button>
                                     </div>
                                 </div>
@@ -420,8 +435,8 @@ pub fn downloads() -> Html {
                             if int_download_eps.episodes.is_empty() {
                                 // Render "No Recent Episodes Found" if episodes list is empty
                                 empty_message(
-                                    "No Downloaded Episodes Found",
-                                    "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download to the server and show up here!"
+                                    &i18n_no_downloaded_episodes_found,
+                                    &i18n_no_downloaded_episodes_description
                                 )
                             } else {
                                 let grouped_episodes = group_episodes_by_podcast(int_download_eps.episodes);
@@ -512,8 +527,8 @@ pub fn downloads() -> Html {
 
                         } else {
                             empty_message(
-                                "No Episode Downloads Found",
-                                "This is where episode downloads will appear. To download an episode you can open the context menu on an episode and select Download Episode. It will then download to the server and show up here!"
+                                &i18n_no_episode_downloads_found,
+                                &i18n_no_downloaded_episodes_description
                             )
                         }
                     }

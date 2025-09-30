@@ -4,6 +4,7 @@ use crate::requests::login_requests::{
     call_get_user_id, call_setup_timezone_info, call_verify_key, LoginServerRequest, TimeZoneInfo,
 };
 use crate::requests::setting_reqs::call_get_theme;
+use i18nrs::yew::use_translation;
 use chrono_tz::{Tz, TZ_VARIANTS};
 use gloo::utils::window;
 use wasm_bindgen_futures::spawn_local;
@@ -33,6 +34,25 @@ pub fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
 
 #[function_component(OAuthCallback)]
 pub fn oauth_callback() -> Html {
+    let (i18n, _) = use_translation();
+    
+    // Pre-capture translation strings for async blocks
+    let i18n_failed_set_timezone = i18n.t("oauth_callback.failed_to_set_timezone").to_string();
+    let i18n_error_setting_timezone = i18n.t("oauth_callback.error_setting_timezone").to_string();
+    let i18n_could_not_get_user_id = i18n.t("oauth_callback.could_not_get_user_id").to_string();
+    let i18n_failed_get_user_id = i18n.t("oauth_callback.failed_to_get_user_id").to_string();
+    let i18n_api_key_not_found = i18n.t("oauth_callback.api_key_not_found").to_string();
+    let i18n_error_checking_first_login = i18n.t("oauth_callback.error_checking_first_login_status").to_string();
+    let i18n_failed_get_server_config = i18n.t("oauth_callback.failed_to_get_server_configuration").to_string();
+    let i18n_failed_get_user_details = i18n.t("oauth_callback.failed_to_get_user_details").to_string();
+    let i18n_invalid_api_key = i18n.t("oauth_callback.invalid_api_key").to_string();
+    let i18n_username_conflict = i18n.t("oauth_callback.username_conflict").to_string();
+    let i18n_authentication_failed = i18n.t("oauth_callback.authentication_failed").to_string();
+    let i18n_invalid_provider = i18n.t("oauth_callback.invalid_provider").to_string();
+    let i18n_no_access = i18n.t("oauth_callback.no_access").to_string();
+    let i18n_unexpected_error = i18n.t("oauth_callback.unexpected_error").to_string();
+    let i18n_no_auth_info = i18n.t("oauth_callback.no_authentication_information").to_string();
+    
     let history = BrowserHistory::new();
     let (_, dispatch) = use_store::<AppState>();
     let page_state = use_state(|| PageState::Loading);
@@ -80,6 +100,11 @@ pub fn oauth_callback() -> Html {
         let date_format = date_format.clone();
         let history = history.clone();
         let dispatch = dispatch.clone();
+        let i18n_failed_set_timezone_callback = i18n_failed_set_timezone.clone();
+        let i18n_error_setting_timezone_callback = i18n_error_setting_timezone.clone();
+        let i18n_could_not_get_user_id_callback = i18n_could_not_get_user_id.clone();
+        let i18n_failed_get_user_id_callback = i18n_failed_get_user_id.clone();
+        let i18n_api_key_not_found_callback = i18n_api_key_not_found.clone();
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
@@ -87,6 +112,11 @@ pub fn oauth_callback() -> Html {
             let call_dispatch = dispatch.clone();
             let call_history = history.clone();
             let call_page_state = page_state.clone();
+            let i18n_failed_set_timezone = i18n_failed_set_timezone_callback.clone();
+            let i18n_error_setting_timezone = i18n_error_setting_timezone_callback.clone();
+            let i18n_could_not_get_user_id = i18n_could_not_get_user_id_callback.clone();
+            let i18n_failed_get_user_id = i18n_failed_get_user_id_callback.clone();
+            let i18n_api_key_not_found = i18n_api_key_not_found_callback.clone();
             let window = window();
             let location = window.location();
             let server_name = location.origin().expect("should have origin");
@@ -136,27 +166,27 @@ pub fn oauth_callback() -> Html {
                                             call_history.push("/home");
                                         } else {
                                             call_page_state.set(PageState::Error(
-                                                "Failed to set timezone".into(),
+                                                i18n_failed_set_timezone.clone(),
                                             ));
                                         }
                                     }
                                     Err(_) => {
                                         call_page_state
-                                            .set(PageState::Error("Error setting timezone".into()));
+                                            .set(PageState::Error(i18n_error_setting_timezone.clone()));
                                     }
                                 }
                             } else {
                                 call_page_state
-                                    .set(PageState::Error("Could not get user ID".into()));
+                                    .set(PageState::Error(i18n_could_not_get_user_id.clone()));
                             }
                         }
                         Err(_) => {
-                            call_page_state.set(PageState::Error("Failed to get user ID".into()));
+                            call_page_state.set(PageState::Error(i18n_failed_get_user_id.clone()));
                         }
                     }
                 });
             } else {
-                call_page_state.set(PageState::Error("API key not found".into()));
+                call_page_state.set(PageState::Error(i18n_api_key_not_found.clone()));
             }
         })
     };
@@ -166,8 +196,31 @@ pub fn oauth_callback() -> Html {
         let page_state = page_state.clone();
         let dispatch = dispatch.clone();
         let history = history.clone();
+        let i18n_error_checking_first_login_effect = i18n_error_checking_first_login.clone();
+        let i18n_failed_get_server_config_effect = i18n_failed_get_server_config.clone();
+        let i18n_failed_get_user_details_effect = i18n_failed_get_user_details.clone();
+        let i18n_failed_get_user_id_effect = i18n_failed_get_user_id.clone();
+        let i18n_invalid_api_key_effect = i18n_invalid_api_key.clone();
+        let i18n_username_conflict_effect = i18n_username_conflict.clone();
+        let i18n_authentication_failed_effect = i18n_authentication_failed.clone();
+        let i18n_invalid_provider_effect = i18n_invalid_provider.clone();
+        let i18n_no_access_effect = i18n_no_access.clone();
+        let i18n_unexpected_error_effect = i18n_unexpected_error.clone();
+        let i18n_no_auth_info_effect = i18n_no_auth_info.clone();
 
         use_effect_with((), move |_| {
+            let i18n_error_checking_first_login = i18n_error_checking_first_login_effect.clone();
+            let i18n_failed_get_server_config = i18n_failed_get_server_config_effect.clone();
+            let i18n_failed_get_user_details = i18n_failed_get_user_details_effect.clone();
+            let i18n_failed_get_user_id = i18n_failed_get_user_id_effect.clone();
+            let i18n_invalid_api_key = i18n_invalid_api_key_effect.clone();
+            let i18n_username_conflict = i18n_username_conflict_effect.clone();
+            let i18n_authentication_failed = i18n_authentication_failed_effect.clone();
+            let i18n_invalid_provider = i18n_invalid_provider_effect.clone();
+            let i18n_no_access = i18n_no_access_effect.clone();
+            let i18n_unexpected_error = i18n_unexpected_error_effect.clone();
+            let i18n_no_auth_info = i18n_no_auth_info_effect.clone();
+            
             spawn_local(async move {
                 let window = window();
                 let search = window.location().search().unwrap_or_default();
@@ -289,16 +342,14 @@ pub fn oauth_callback() -> Html {
                                                             }
                                                             Err(_) => {
                                                                 page_state.set(PageState::Error(
-                                                                    "Error checking first login status"
-                                                                        .into(),
+                                                                    i18n_error_checking_first_login.clone(),
                                                                 ));
                                                             }
                                                         }
                                                     }
                                                     Err(_) => {
                                                         page_state.set(PageState::Error(
-                                                            "Failed to get server configuration"
-                                                                .into(),
+                                                            i18n_failed_get_server_config.clone(),
                                                         ));
                                                         return;
                                                     }
@@ -306,7 +357,7 @@ pub fn oauth_callback() -> Html {
                                             }
                                             Err(_) => {
                                                 page_state.set(PageState::Error(
-                                                    "Failed to get user details".into(),
+                                                    i18n_failed_get_user_details.clone(),
                                                 ));
                                             }
                                         }
@@ -314,26 +365,26 @@ pub fn oauth_callback() -> Html {
                                 }
                                 Err(_) => {
                                     page_state
-                                        .set(PageState::Error("Failed to get user ID".into()));
+                                        .set(PageState::Error(i18n_failed_get_user_id.clone()));
                                 }
                             }
                         }
                         Err(_) => {
-                            page_state.set(PageState::Error("Invalid API key".into()));
+                            page_state.set(PageState::Error(i18n_invalid_api_key.clone()));
                         }
                     }
                 } else if let Some(err) = params.get("error") {
                     let error_message = match err.as_str() {
-                        "username_conflict" => "Unable to create account - username already exists",
-                        "authentication_failed" => "Authentication failed. Please try again.",
-                        "invalid_provider" => "Invalid authentication provider.",
-                        "no_access" => "Access denied.",
-                        _ => "An unexpected error occurred during login.",
+                        "username_conflict" => i18n_username_conflict.clone(),
+                        "authentication_failed" => i18n_authentication_failed.clone(),
+                        "invalid_provider" => i18n_invalid_provider.clone(),
+                        "no_access" => i18n_no_access.clone(),
+                        _ => i18n_unexpected_error.clone(),
                     };
-                    page_state.set(PageState::Error(error_message.into()));
+                    page_state.set(PageState::Error(error_message));
                 } else {
                     page_state.set(PageState::Error(
-                        "No authentication information received.".into(),
+                        i18n_no_auth_info.clone(),
                     ));
                 }
             });
@@ -351,7 +402,7 @@ pub fn oauth_callback() -> Html {
         PageState::Loading => html! {
             <div class="loading-container">
                 <div class="loading-spinner"></div>
-                <p>{"Processing login..."}</p>
+                <p>{&i18n.t("oauth_callback.processing_login")}</p>
             </div>
         },
         PageState::Error(msg) => html! {
@@ -362,7 +413,7 @@ pub fn oauth_callback() -> Html {
                 <div class="item_container-text modal-content">
                     <div class="item_container-text modal-header">
                         <i class="ph ph-clock text-xl"></i>
-                        <h3 class="text-lg">{"Time Zone Setup"}</h3>
+                        <h3 class="text-lg">{&i18n.t("oauth_callback.time_zone_setup")}</h3>
                     </div>
 
                     <div class="modal-body">
@@ -370,14 +421,14 @@ pub fn oauth_callback() -> Html {
                             <div class="modal-welcome">
                                 <i class="ph ph-hand-waving text-xl"></i>
                                 <p>
-                                    {"Welcome to Pinepods! This appears to be your first time logging in. To start, let's get some basic information about your time and time zone preferences. This will determine how times appear throughout the app."}
+                                    {&i18n.t("oauth_callback.first_time_welcome")}
                                 </p>
                             </div>
 
                             <div class="modal-form-group">
                                 <label class="modal-label">
                                     <i class="ph ph-clock-clockwise"></i>
-                                    <span>{"Hour Format"}</span>
+                                    <span>{&i18n.t("oauth_callback.hour_format")}</span>
                                 </label>
                                 <select
                                     id="hour_format"
@@ -385,15 +436,15 @@ pub fn oauth_callback() -> Html {
                                     class="modal-select"
                                     oninput={on_time_pref_change}
                                 >
-                                    <option value="12">{"12 Hour"}</option>
-                                    <option value="24">{"24 Hour"}</option>
+                                    <option value="12">{&i18n.t("settings.12_hour")}</option>
+                                    <option value="24">{&i18n.t("settings.24_hour")}</option>
                                 </select>
                             </div>
 
                             <div class="modal-form-group">
                                 <label class="modal-label">
                                     <i class="ph ph-globe"></i>
-                                    <span>{"Time Zone"}</span>
+                                    <span>{&i18n.t("oauth_callback.time_zone")}</span>
                                 </label>
                                 <select
                                     id="time_zone"
@@ -408,7 +459,7 @@ pub fn oauth_callback() -> Html {
                             <div class="modal-form-group">
                                 <label class="modal-label">
                                     <i class="ph ph-calendar"></i>
-                                    <span>{"Date Format"}</span>
+                                    <span>{&i18n.t("oauth_callback.date_format")}</span>
                                 </label>
                                 <select
                                     id="date_format"
@@ -433,7 +484,7 @@ pub fn oauth_callback() -> Html {
                                 class="modal-button"
                             >
                                 <i class="ph ph-check"></i>
-                                <span>{"Save Preferences"}</span>
+                                <span>{&i18n.t("oauth_callback.save_preferences")}</span>
                             </button>
                         </form>
                     </div>
@@ -443,7 +494,7 @@ pub fn oauth_callback() -> Html {
         PageState::Success => html! {
             <div class="loading-container">
                 <div class="loading-spinner"></div>
-                <p>{"Redirecting..."}</p>
+                <p>{&i18n.t("oauth_callback.redirecting")}</p>
             </div>
         },
     }
@@ -456,6 +507,8 @@ struct ErrorDisplayProps {
 
 #[function_component(ErrorDisplay)]
 fn error_display(props: &ErrorDisplayProps) -> Html {
+    let (i18n, _) = use_translation();
+    
     html! {
         <div class="auth-error-container">
             <div class="auth-error-message">
@@ -463,7 +516,7 @@ fn error_display(props: &ErrorDisplayProps) -> Html {
                 <p>{&props.message}</p>
             </div>
             <a href="/" class="auth-error-button">
-                {"Back to Login"}
+                {&i18n.t("oauth_callback.back_to_login")}
             </a>
         </div>
     }

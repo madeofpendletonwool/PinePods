@@ -7,9 +7,11 @@ use yew::prelude::*;
 use yewdux::prelude::*;
 // use crate::gen_components::_ErrorMessageProps::error_message;
 use wasm_bindgen::JsCast;
+use i18nrs::yew::use_translation;
 
 #[function_component(APIKeys)]
 pub fn api_keys() -> Html {
+    let (i18n, _) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
@@ -21,6 +23,27 @@ pub fn api_keys() -> Html {
     let _info_message = state.info_message.clone();
     let dispatch_effect = _dispatch.clone();
     let dispatch_call = _dispatch.clone();
+
+    // Capture all i18n strings at function start to avoid borrow checker issues
+    let i18n_error_getting_api_info = i18n.t("api_keys.error_getting_api_info").to_string();
+    let i18n_error_getting_api_info_2 = i18n.t("api_keys.error_getting_api_info").to_string();
+    let i18n_api_key_deleted_successfully = i18n.t("api_keys.api_key_deleted_successfully").to_string();
+    let i18n_error_deleting_api_key = i18n.t("api_keys.error_deleting_api_key").to_string();
+    let i18n_close_modal = i18n.t("api_keys.close_modal").to_string();
+    let i18n_delete_api_key = i18n.t("api_keys.delete_api_key").to_string();
+    let i18n_delete_api_key_confirmation = i18n.t("api_keys.delete_api_key_confirmation").to_string();
+    let i18n_delete = i18n.t("api_keys.delete").to_string();
+    let i18n_cancel = i18n.t("api_keys.cancel").to_string();
+    let i18n_new_api_key_created = i18n.t("api_keys.new_api_key_created").to_string();
+    let i18n_api_key_save_instructions = i18n.t("api_keys.api_key_save_instructions").to_string();
+    let i18n_ok = i18n.t("api_keys.ok").to_string();
+    let i18n_api_keys_title = i18n.t("api_keys.api_keys_title").to_string();
+    let i18n_api_keys_description = i18n.t("api_keys.api_keys_description").to_string();
+    let i18n_request_api_key = i18n.t("api_keys.request_api_key").to_string();
+    let i18n_api_id = i18n.t("api_keys.api_id").to_string();
+    let i18n_last_4_digits = i18n.t("api_keys.last_4_digits").to_string();
+    let i18n_date_created = i18n.t("api_keys.date_created").to_string();
+    let i18n_user = i18n.t("api_keys.user").to_string();
     // Define the type of user in the Vec
     // let users: UseStateHandle<Vec<SettingsUser>> = use_state(|| Vec::new());
 
@@ -38,6 +61,7 @@ pub fn api_keys() -> Html {
                 let api_key_cloned = api_key.clone();
                 let server_name_cloned = server_name.clone();
 
+                let error_prefix = i18n_error_getting_api_info;
                 wasm_bindgen_futures::spawn_local(async move {
                     if let Some(api_key) = api_key_cloned {
                         if let Some(server_name) = server_name_cloned {
@@ -49,11 +73,9 @@ pub fn api_keys() -> Html {
                                 }
                                 Err(e) => {
                                     let formatted_error = format_error_message(&e.to_string());
+                                    let error_msg = format!("{}{}", error_prefix, formatted_error);
                                     dispatch_effect.reduce_mut(|audio_state| {
-                                        audio_state.error_message = Option::from(format!(
-                                            "Error getting API Info: {}",
-                                            formatted_error
-                                        ))
+                                        audio_state.error_message = Option::from(error_msg)
                                     });
                                 }
                             }
@@ -80,6 +102,7 @@ pub fn api_keys() -> Html {
             let api_infos = api_infos.clone();
             let api_key_cloned = api_key.clone();
             let server_name_cloned = server_name.clone();
+            let error_prefix = i18n_error_getting_api_info_2;
 
             wasm_bindgen_futures::spawn_local(async move {
                 if !new_api_key.is_empty() {
@@ -93,11 +116,9 @@ pub fn api_keys() -> Html {
                                 }
                                 Err(e) => {
                                     let formatted_error = format_error_message(&e.to_string());
+                                    let error_msg = format!("{}{}", error_prefix, formatted_error);
                                     dispatch_refresh.reduce_mut(|audio_state| {
-                                        audio_state.error_message = Option::from(format!(
-                                            "Error getting API Info: {}",
-                                            formatted_error
-                                        ))
+                                        audio_state.error_message = Option::from(error_msg)
                                     });
                                 }
                             }
@@ -203,6 +224,9 @@ pub fn api_keys() -> Html {
                 user_id: user_id.to_string(),
                 api_id: api_id.unwrap().to_string(),
             };
+            // Capture translated messages before async block
+            let success_msg = i18n_api_key_deleted_successfully.clone();
+            let error_prefix = i18n_error_deleting_api_key.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 match call_delete_api_key(
                     &server_name.unwrap(),
@@ -213,16 +237,15 @@ pub fn api_keys() -> Html {
                 {
                     Ok(_) => {
                         dispatch.reduce_mut(|audio_state| {
-                            audio_state.info_message =
-                                Option::from(format!("API key deleted successfully"))
+                            audio_state.info_message = Option::from(success_msg)
                         });
                         // Update UI accordingly, e.g., remove the deleted API key from the list
                     }
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
+                        let error_msg = format!("{}{}", error_prefix, formatted_error);
                         dispatch.reduce_mut(|audio_state| {
-                            audio_state.error_message =
-                                Option::from(format!("Error Deleting API Key: {}", formatted_error))
+                            audio_state.error_message = Option::from(error_msg)
                         });
                     }
                 }
@@ -252,20 +275,20 @@ pub fn api_keys() -> Html {
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
-                            <span class="sr-only">{"Close modal"}</span>
+                            <span class="sr-only">{&i18n_close_modal}</span>
                         </button>
                         <h3 class="text-xl font-semibold item_container-text">
-                            {"Delete Api Key"}
+                            {&i18n_delete_api_key}
                         </h3>
                         <p class="text-m font-semibold">
-                        {"Are you sure you want to delete this API Key? This action cannot be undone."}
+                        {&i18n_delete_api_key_confirmation}
                         </p>
                         <div class="flex justify-between space-x-4">
                             <button onclick={delete_api_key} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                                {"Delete"}
+                                {&i18n_delete}
                             </button>
                             <button onclick={close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                                {"Cancel"}
+                                {&i18n_cancel}
                             </button>
                         </div>
                     </div>
@@ -285,16 +308,16 @@ pub fn api_keys() -> Html {
                         <span class="sr-only">{"Close modal"}</span>
                     </button>
                     <h3 class="item_container-text text-xl font-semibold">
-                        {"New Api Key Created"}
+                        {&i18n_new_api_key_created}
                     </h3>
                     <p class="text-m font-semibold item_container-text">
-                    {"Copy the API Key Listed Below. Be sure to save it in a safe place. You will only ever be able to view it once. You can always just create a new one if you lose it."}
+                    {&i18n_api_key_save_instructions}
                     </p>
                     <div class="mfa-code-box mt-4 p-4 rounded-md overflow-x-auto whitespace-nowrap max-w-full">
                         {api_key_display}
                     </div>
                     <button onclick={close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                        {"OK"}
+                        {&i18n_ok}
                     </button>
                 </div>
             </div>
@@ -311,20 +334,20 @@ pub fn api_keys() -> Html {
             }
         }
             <div class="p-4">
-                <p class="item_container-text text-lg font-bold mb-4">{"API Keys:"}</p>
-                <p class="item_container-text text-md mb-4">{"You can request a Pinepods API Key here. These keys can then be used in conjunction with other Pinepods apps (like Pinepods Firewood) to connect them to the Pinepods server. In addition, you can also use an API Key to authenticate to this server from any other Pinepods server. Sort of like using a different server as a client for this one."}</p>
+                <p class="item_container-text text-lg font-bold mb-4">{&i18n_api_keys_title}</p>
+                <p class="item_container-text text-md mb-4">{&i18n_api_keys_description}</p>
                 <button onclick={request_api_key} class="mt-4 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                    {"Request API Key"}
+                    {&i18n_request_api_key}
                 </button>
             </div>
             <div class="relative overflow-x-auto">
                 <table class="w-full text-sm text-left rtl:text-right">
                     <thead class="text-xs uppercase table-header">
                         <tr>
-                            <th scope="col" class="px-6 py-3">{"API ID"}</th>
-                            <th scope="col" class="px-6 py-3">{"Last 4 Digits"}</th>
-                            <th scope="col" class="px-6 py-3">{"Date Created"}</th>
-                            <th scope="col" class="px-6 py-3">{"User"}</th>
+                            <th scope="col" class="px-6 py-3">{&i18n_api_id}</th>
+                            <th scope="col" class="px-6 py-3">{&i18n_last_4_digits}</th>
+                            <th scope="col" class="px-6 py-3">{&i18n_date_created}</th>
+                            <th scope="col" class="px-6 py-3">{&i18n_user}</th>
                         </tr>
                     </thead>
                     <tbody>
