@@ -784,8 +784,6 @@
     "error_updating_playback_speed": "Error updating playback speed",
     "playback_speed_reset": "Playback speed reset to default",
     "error_resetting_playback_speed": "Error resetting playback speed",
-    "skip_times_adjusted": "Skip times adjusted",
-    "error_adjusting_skip_times": "Error adjusting skip times",
     "podcast_successfully_added": "Podcast successfully added",
     "failed_to_add_podcast": "Failed to add podcast",
     "rss_feed_url": "RSS Feed URL",

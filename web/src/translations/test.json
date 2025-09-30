@@ -693,8 +693,6 @@
     "error_updating_playback_speed": "ZZTEST-ERROR-UPDATING-PLAYBACK-SPEED-ZZTEST",
     "playback_speed_reset": "ZZTEST-PLAYBACK-SPEED-RESET-ZZTEST",
     "error_resetting_playback_speed": "ZZTEST-ERROR-RESETTING-PLAYBACK-SPEED-ZZTEST",
-    "skip_times_adjusted": "ZZTEST-SKIP-TIMES-ADJUSTED-ZZTEST",
-    "error_adjusting_skip_times": "ZZTEST-ERROR-ADJUSTING-SKIP-TIMES-ZZTEST",
     "podcast_successfully_added": "ZZTEST-PODCAST-SUCCESSFULLY-ADDED-ZZTEST",
     "failed_to_add_podcast": "ZZTEST-FAILED-TO-ADD-PODCAST-ZZTEST",
     "rss_feed_url": "ZZTEST-RSS-FEED-URL-ZZTEST",
