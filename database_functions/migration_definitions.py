@@ -2569,13 +2569,20 @@ def migration_030_add_user_language_preference(conn, db_type: str):
     cursor = conn.cursor()
     
     try:
-        logger.info("Adding Language column to Users table")
+        # Get the default language from environment variable, fallback to 'en'
+        default_language = os.environ.get("DEFAULT_LANGUAGE", "en")
+        
+        # Validate language code (basic validation)
+        if not default_language or len(default_language) > 10:
+            default_language = "en"
+            
+        logger.info(f"Adding Language column to Users table with default '{default_language}'")
         
         if db_type == 'postgresql':
-            # Add Language column with default 'en' (English)
-            safe_execute_sql(cursor, '''
+            # Add Language column with default from environment variable
+            safe_execute_sql(cursor, f'''
                 ALTER TABLE "Users" 
-                ADD COLUMN IF NOT EXISTS Language VARCHAR(10) DEFAULT 'en'
+                ADD COLUMN IF NOT EXISTS Language VARCHAR(10) DEFAULT '{default_language}'
             ''', conn=conn)
             
             # Add comment to document the column
@@ -2594,13 +2601,13 @@ def migration_030_add_user_language_preference(conn, db_type: str):
             """)
             
             if cursor.fetchone()[0] == 0:
-                safe_execute_sql(cursor, '''
+                safe_execute_sql(cursor, f'''
                     ALTER TABLE Users 
-                    ADD COLUMN Language VARCHAR(10) DEFAULT 'en' 
+                    ADD COLUMN Language VARCHAR(10) DEFAULT '{default_language}' 
                     COMMENT 'ISO 639-1 language code for user interface language preference'
                 ''', conn=conn)
         
-        logger.info("Successfully added Language column to Users table")
+        logger.info(f"Successfully added Language column to Users table with default '{default_language}'")
 
     except Exception as e:
         logger.error(f"Error in migration 030: {e}")

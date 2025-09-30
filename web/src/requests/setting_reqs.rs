@@ -127,6 +127,10 @@ pub struct MyUserInfo {
     pub username: String,
     pub email: String,
     pub isadmin: i32,
+    pub timezone: String,
+    pub timeformat: i32,
+    pub dateformat: String,
+    pub language: String,
 }
 
 pub async fn call_get_my_user_info(
@@ -2944,6 +2948,12 @@ pub struct UserLanguageResponse {
 }
 
 #[derive(Deserialize, Debug)]
+pub struct UpdateUserLanguageResponse {
+    pub language: String,
+    pub success: bool,
+}
+
+#[derive(Deserialize, Debug)]
 pub struct AvailableLanguage {
     pub code: String,
     pub name: String,
@@ -3002,7 +3012,7 @@ pub async fn call_update_user_language(
         .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
 
     if response.ok() {
-        let response_data: UpdateSettingResponse = response.json().await?;
+        let response_data: UpdateUserLanguageResponse = response.json().await?;
         Ok(response_data.success)
     } else {
         Err(Error::msg(format!(
@@ -3029,6 +3039,32 @@ pub async fn call_get_available_languages(
     } else {
         Err(Error::msg(format!(
             "Error getting available languages: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ServerDefaultLanguageResponse {
+    pub default_language: String,
+}
+
+pub async fn call_get_server_default_language(
+    server_name: String,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/get_server_default_language", server_name);
+
+    let response = Request::get(&url)
+        .header("Content-Type", "application/json")
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_data: ServerDefaultLanguageResponse = response.json().await?;
+        Ok(response_data.default_language)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting server default language: {}",
             response.status_text()
         )))
     }

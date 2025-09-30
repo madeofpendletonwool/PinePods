@@ -60,6 +60,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
     let select_newer_title = i18n.t("virtual_list.select_newer_episodes");
     let select_older_title = i18n.t("virtual_list.select_older_episodes");
     let completed_text = i18n.t("virtual_list.completed");
+    let cover_for_text = i18n.t("virtual_list.cover_for");
 
     // Effect to set initial container height, item height, and listen for window resize
     {
@@ -322,7 +323,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                     <div class="flex flex-col w-auto object-cover pl-4">
                         <FallbackImage
                             src={episode.artwork.clone().unwrap_or_default()}
-                            alt={format!("Cover for {}", &episode.title.clone().unwrap_or_default())}
+                            alt={format!("{} {}", cover_for_text, &episode.title.clone().unwrap_or_default())}
                             class="episode-image"
                         />
                     </div>

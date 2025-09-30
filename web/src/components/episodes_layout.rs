@@ -221,6 +221,66 @@ pub fn episode_layout() -> Html {
     let i18n_explicit_no = i18n.t("common.no").to_string();
     let i18n_match_it_here = i18n.t("episodes_layout.match_it_here").to_string();
     let i18n_hosts = i18n.t("episodes_layout.hosts").to_string();
+    
+    // Additional i18n strings used throughout the component
+    let i18n_category_name_cannot_be_empty = i18n.t("episodes_layout.category_name_cannot_be_empty").to_string();
+    let i18n_loading_rss_key = i18n.t("episodes_layout.loading_rss_key").to_string();
+    let i18n_rss_feed_url = i18n.t("episodes_layout.rss_feed_url").to_string();
+    let i18n_rss_feed_note = i18n.t("episodes_layout.rss_feed_note").to_string();
+    let i18n_rss_feed_instruction = i18n.t("episodes_layout.rss_feed_instruction").to_string();
+    let i18n_rss_feed_warning = i18n.t("episodes_layout.rss_feed_warning").to_string();
+    let i18n_download_future_episodes = i18n.t("episodes_layout.download_future_episodes").to_string();
+    let i18n_get_notifications_new_episodes = i18n.t("episodes_layout.get_notifications_new_episodes").to_string();
+    let i18n_default_playback_speed = i18n.t("episodes_layout.default_playback_speed").to_string();
+    let i18n_playback_speed_description = i18n.t("episodes_layout.playback_speed_description").to_string();
+    let i18n_auto_skip_intros_outros = i18n.t("episodes_layout.auto_skip_intros_outros").to_string();
+    let i18n_start_skip_seconds = i18n.t("episodes_layout.start_skip_seconds").to_string();
+    let i18n_end_skip_seconds = i18n.t("episodes_layout.end_skip_seconds").to_string();
+    let i18n_youtube_download_limit = i18n.t("episodes_layout.youtube_download_limit").to_string();
+    let i18n_youtube_limit_description = i18n.t("episodes_layout.youtube_limit_description").to_string();
+    let i18n_adjust_podcast_categories = i18n.t("episodes_layout.adjust_podcast_categories").to_string();
+    let i18n_loading = i18n.t("episodes_layout.loading").to_string();
+    let i18n_new_category_placeholder = i18n.t("episodes_layout.new_category_placeholder").to_string();
+    let i18n_download_all_confirmation = i18n.t("episodes_layout.download_all_confirmation").to_string();
+    let i18n_yes_download_all = i18n.t("episodes_layout.yes_download_all").to_string();
+    let i18n_no_take_me_back = i18n.t("episodes_layout.no_take_me_back").to_string();
+    let i18n_delete_podcast_confirmation = i18n.t("episodes_layout.delete_podcast_confirmation").to_string();
+    let i18n_yes_delete_podcast = i18n.t("episodes_layout.yes_delete_podcast").to_string();
+    let i18n_show_only = i18n.t("episodes_layout.show_only").to_string();
+    let i18n_showing_only_completed = i18n.t("episodes_layout.showing_only_completed").to_string();
+    let i18n_hide = i18n.t("episodes_layout.hide").to_string();
+    let i18n_hiding_completed = i18n.t("episodes_layout.hiding_completed").to_string();
+    let i18n_all = i18n.t("episodes_layout.all").to_string();
+    let i18n_showing_all_episodes = i18n.t("episodes_layout.showing_all_episodes").to_string();
+    let i18n_episode_count = i18n.t("episodes_layout.episode_count").to_string();
+    let i18n_authors = i18n.t("episodes_layout.authors").to_string();
+    let i18n_explicit = i18n.t("episodes_layout.explicit").to_string();
+    let i18n_yes = i18n.t("episodes_layout.yes").to_string();
+    let i18n_no = i18n.t("episodes_layout.no").to_string();
+    let i18n_search_episodes_placeholder = i18n.t("episodes_layout.search_episodes_placeholder").to_string();
+    let i18n_newest_first = i18n.t("episodes_layout.newest_first").to_string();
+    let i18n_oldest_first = i18n.t("episodes_layout.oldest_first").to_string();
+    let i18n_shortest_first = i18n.t("episodes_layout.shortest_first").to_string();
+    let i18n_longest_first = i18n.t("episodes_layout.longest_first").to_string();
+    let i18n_title_az = i18n.t("episodes_layout.title_az").to_string();
+    let i18n_title_za = i18n.t("episodes_layout.title_za").to_string();
+    let i18n_clear_all = i18n.t("episodes_layout.clear_all").to_string();
+    let i18n_in_progress = i18n.t("episodes_layout.in_progress").to_string();
+    let i18n_exit_select = i18n.t("episodes_layout.exit_select").to_string();
+    let i18n_select = i18n.t("episodes_layout.select").to_string();
+    let i18n_deselect_all = i18n.t("episodes_layout.deselect_all").to_string();
+    let i18n_select_all = i18n.t("episodes_layout.select_all").to_string();
+    let i18n_select_unplayed = i18n.t("episodes_layout.select_unplayed").to_string();
+    let i18n_mark_complete = i18n.t("episodes_layout.mark_complete").to_string();
+    let i18n_queue_episodes = i18n.t("episodes_layout.queue_episodes").to_string();
+    let i18n_download_episodes = i18n.t("episodes_layout.download_episodes").to_string();
+    let i18n_no_episodes_found = i18n.t("episodes_layout.no_episodes_found").to_string();
+    let i18n_no_episodes_description = i18n.t("episodes_layout.no_episodes_description").to_string();
+    let i18n_youtube_episode_limit_updated = i18n.t("episodes_layout.youtube_episode_limit_updated").to_string();
+    let i18n_skip_times_adjusted = i18n.t("episodes_layout.skip_times_adjusted").to_string();
+    let i18n_error_adjusting_skip_times = i18n.t("episodes_layout.error_adjusting_skip_times").to_string();
+    let i18n_playback_speed_reset_default = i18n.t("episodes_layout.playback_speed_reset_default").to_string();
+    let i18n_error_resetting_playback_speed = i18n.t("episodes_layout.error_resetting_playback_speed").to_string();
     let loading = use_state(|| true);
     let page_state = use_state(|| PageState::Hidden);
     let episode_search_term = use_state(|| String::new());
@@ -790,9 +850,17 @@ pub fn episode_layout() -> Html {
         let app_dispatch = _search_dispatch.clone();
         let call_is_added = is_added.clone();
         let page_state = page_state.clone();
+        let i18n_youtube_channel_successfully_removed = i18n_youtube_channel_successfully_removed.clone();
+        let i18n_podcast_successfully_removed = i18n_podcast_successfully_removed.clone();
+        let i18n_failed_to_remove_youtube_channel = i18n_failed_to_remove_youtube_channel.clone();
+        let i18n_failed_to_remove_podcast = i18n_failed_to_remove_podcast.clone();
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
+            let i18n_youtube_channel_successfully_removed = i18n_youtube_channel_successfully_removed.clone();
+            let i18n_podcast_successfully_removed = i18n_podcast_successfully_removed.clone();
+            let i18n_failed_to_remove_youtube_channel = i18n_failed_to_remove_youtube_channel.clone();
+            let i18n_failed_to_remove_podcast = i18n_failed_to_remove_podcast.clone();
             let hist = delete_history.clone();
             let page_state = page_state.clone();
             let pod_title_og = pod_values.clone().unwrap().podcastname.clone();
@@ -847,9 +915,9 @@ pub fn episode_layout() -> Html {
                             dispatch_wasm.reduce_mut(|state| {
                                 state.info_message = Some(
                                     if pod_feed_url_check.starts_with("https://www.youtube.com") {
-                                        "YouTube channel successfully removed".to_string()
+                                        i18n_youtube_channel_successfully_removed
                                     } else {
-                                        "Podcast successfully removed".to_string()
+                                        i18n_podcast_successfully_removed
                                     },
                                 )
                             });
@@ -865,9 +933,9 @@ pub fn episode_layout() -> Html {
                         } else {
                             dispatch_wasm.reduce_mut(|state| {
                                 state.error_message = Some(if is_youtube {
-                                    "Failed to remove YouTube channel".to_string()
+                                    i18n_failed_to_remove_youtube_channel
                                 } else {
-                                    "Failed to remove podcast".to_string()
+                                    i18n_failed_to_remove_podcast
                                 })
                             });
                             app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
@@ -1096,9 +1164,13 @@ pub fn episode_layout() -> Html {
         let server_name = server_name.clone();
         let podcast_id = podcast_id.clone();
         let dispatch = _search_dispatch.clone();
+        let i18n_playback_speed_updated = i18n_playback_speed_updated.clone();
+        let i18n_error_updating_playback_speed = i18n_error_updating_playback_speed.clone();
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
+            let i18n_playback_speed_updated = i18n_playback_speed_updated.clone();
+            let i18n_error_updating_playback_speed = i18n_error_updating_playback_speed.clone();
             let call_dispatch = dispatch.clone();
             let speed = *playback_speed;
             let api_key = api_key.clone();
@@ -1119,7 +1191,7 @@ pub fn episode_layout() -> Html {
                         Ok(_) => {
                             call_dispatch.reduce_mut(|state| {
                                 state.info_message =
-                                    Option::from("Playback speed updated".to_string())
+                                    Option::from(i18n_playback_speed_updated)
                             });
                         }
                         Err(e) => {
@@ -1128,7 +1200,7 @@ pub fn episode_layout() -> Html {
                             );
                             call_dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Option::from("Error updating playback speed".to_string())
+                                    Option::from(i18n_error_updating_playback_speed)
                             });
                         }
                     }
@@ -1146,6 +1218,8 @@ pub fn episode_layout() -> Html {
         let dispatch = _search_dispatch.clone();
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
+            let i18n_playback_speed_reset_default = i18n_playback_speed_reset_default.clone();
+            let i18n_error_resetting_playback_speed = i18n_error_resetting_playback_speed.clone();
             let call_dispatch = dispatch.clone();
             let api_key = api_key.clone();
             let user_id = user_id.clone().unwrap();
@@ -1162,7 +1236,7 @@ pub fn episode_layout() -> Html {
                         Ok(_) => {
                             call_dispatch.reduce_mut(|state| {
                                 state.info_message =
-                                    Option::from("Playback speed reset to default".to_string())
+                                    Option::from(i18n_playback_speed_reset_default)
                             });
                         }
                         Err(e) => {
@@ -1171,7 +1245,7 @@ pub fn episode_layout() -> Html {
                             );
                             call_dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Option::from("Error resetting playback speed".to_string())
+                                    Option::from(i18n_error_resetting_playback_speed)
                             });
                         }
                     }
@@ -1203,6 +1277,7 @@ pub fn episode_layout() -> Html {
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
+            let i18n_youtube_episode_limit_updated = i18n_youtube_episode_limit_updated.clone();
             let dispatch_wasm = dispatch_vid.clone();
 
             // Extract the values directly without creating intermediate variables
@@ -1233,7 +1308,7 @@ pub fn episode_layout() -> Html {
                             feed_cutoff_days.set(days);
                             dispatch_wasm.reduce_mut(|state| {
                                 state.info_message =
-                                    Option::from("Youtube Episode Limit Updated!".to_string())
+                                    Option::from(i18n_youtube_episode_limit_updated)
                             });
                             // No need to update a ClickedFeedURL or PodcastInfo struct
                             // Just update the state
@@ -1313,6 +1388,8 @@ pub fn episode_layout() -> Html {
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
+            let i18n_skip_times_adjusted = i18n_skip_times_adjusted.clone();
+            let i18n_error_adjusting_skip_times = i18n_error_adjusting_skip_times.clone();
             let skip_call_dispatch = skip_dispatch.clone();
             let start_skip = *start_skip;
             let end_skip = *end_skip;
@@ -1334,7 +1411,7 @@ pub fn episode_layout() -> Html {
                     match call_adjust_skip_times(&server_name, &api_key, &request).await {
                         Ok(_) => {
                             skip_call_dispatch.reduce_mut(|state| {
-                                state.info_message = Option::from("Skip times Adjusted".to_string())
+                                state.info_message = Option::from(i18n_skip_times_adjusted)
                             });
                         }
                         Err(e) => {
@@ -1343,7 +1420,7 @@ pub fn episode_layout() -> Html {
                             );
                             skip_call_dispatch.reduce_mut(|state| {
                                 state.error_message =
-                                    Option::from("Error Adjusting Skip Times".to_string())
+                                    Option::from(i18n_error_adjusting_skip_times)
                             });
                         }
                     }
@@ -1366,7 +1443,7 @@ pub fn episode_layout() -> Html {
             event.prevent_default(); // Prevent the default form submit or page reload behavior
             let app_dispatch = app_dispatch_add.clone();
             if new_category.is_empty() {
-                web_sys::console::log_1(&"Category name cannot be empty".into());
+                web_sys::console::log_1(&i18n_category_name_cannot_be_empty.clone().into());
                 return;
             }
 
@@ -1527,7 +1604,7 @@ pub fn episode_layout() -> Html {
                 rss_key,
                 *podcast_id
             ),
-            None => "Loading RSS key...".to_string(),
+            None => i18n_loading_rss_key.clone(),
         };
 
         let copy_onclick = {
@@ -1545,19 +1622,19 @@ pub fn episode_layout() -> Html {
                     <div class="modal-container relative rounded-lg shadow">
                         <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                             <h3 class="text-xl font-semibold">
-                                {"RSS Feed URL"}
+                                {&i18n_rss_feed_url}
                             </h3>
                             <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                                 <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                     <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                                 </svg>
-                                <span class="sr-only">{"Close modal"}</span>
+                                <span class="sr-only">{&i18n.t("episodes_layout.close_modal")}</span>
                             </button>
                         </div>
                         <div class="p-4 md:p-5">
                             <div>
-                                <label for="rss_link" class="block mb-2 text-sm font-medium">{"NOTE: You must have RSS feeds enabled in your settings for the link below to work"}</label>
-                                <label for="rss_link" class="block mb-2 text-sm font-medium">{"Use this RSS feed URL in your favorite podcast app to subscribe to this podcast:"}</label>
+                                <label for="rss_link" class="block mb-2 text-sm font-medium">{&i18n_rss_feed_note}</label>
+                                <label for="rss_link" class="block mb-2 text-sm font-medium">{&i18n_rss_feed_instruction}</label>
                                 <div class="relative">
                                     <input
                                         type="text"
@@ -1570,10 +1647,10 @@ pub fn episode_layout() -> Html {
                                         onclick={copy_onclick}
                                         class="absolute right-2 top-1/2 transform -translate-y-1/2 px-4 py-1 text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                                     >
-                                        {"Copy"}
+                                        {&i18n.t("episodes_layout.copy")}
                                     </button>
                                 </div>
-                                <p class="mt-2 text-sm text-gray-500">{"This URL includes your API key, so keep it private. This is going to change very shortly in a future release to a temporary key so that you can share these links."}</p>
+                                <p class="mt-2 text-sm text-gray-500">{&i18n_rss_feed_warning}</p>
                             </div>
                         </div>
                     </div>
@@ -1590,26 +1667,26 @@ pub fn episode_layout() -> Html {
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
-                            {"Podcast Options"}
+                            {&i18n.t("episodes_layout.podcast_options")}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
-                            <span class="sr-only">{"Close modal"}</span>
+                            <span class="sr-only">{&i18n.t("episodes_layout.close_modal")}</span>
                         </button>
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
                             <div>
-                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{"Download Future Episodes Automatically:"}</label>
+                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{&i18n_download_future_episodes}</label>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input type="checkbox" checked={*download_status} class="sr-only peer" onclick={toggle_download} />
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                 </label>
                             </div>
                             <div>
-                                <label for="notification_settings" class="block mb-2 text-sm font-medium">{"Get Notifications For New Episodes:"}</label>
+                                <label for="notification_settings" class="block mb-2 text-sm font-medium">{&i18n_get_notifications_new_episodes}</label>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input
                                         type="checkbox"
@@ -1622,7 +1699,7 @@ pub fn episode_layout() -> Html {
                             </div>
 
                             <div class="mt-4">
-                                <label for="playback-speed" class="block mb-2 text-sm font-medium">{"Default Playback Speed:"}</label>
+                                <label for="playback-speed" class="block mb-2 text-sm font-medium">{&i18n_default_playback_speed}</label>
                                 <div class="flex items-center space-x-2">
                                     <input
                                         type="number"
@@ -1639,23 +1716,23 @@ pub fn episode_layout() -> Html {
                                         class="save-button font-bold py-2 px-4 rounded"
                                         onclick={save_playback_speed}
                                     >
-                                        {"Save"}
+                                        {&i18n.t("episodes_layout.save")}
                                     </button>
                                     <button
                                         class="clear-button bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
                                         onclick={clear_playback_speed}
                                     >
-                                        {"Reset"}
+                                        {&i18n.t("episodes_layout.reset")}
                                     </button>
                                 </div>
-                                <p class="text-xs text-gray-500 mt-1">{"Sets the default playback speed for this podcast. Range: 0.5x - 2.0x. Reset to use your global default."}</p>
+                                <p class="text-xs text-gray-500 mt-1">{&i18n_playback_speed_description}</p>
                             </div>
 
                             <div class="mt-4">
-                                <label for="auto-skip" class="block mb-2 text-sm font-medium">{"Auto Skip Intros and Outros:"}</label>
+                                <label for="auto-skip" class="block mb-2 text-sm font-medium">{&i18n_auto_skip_intros_outros}</label>
                                 <div class="flex items-center space-x-2">
                                     <div class="flex items-center space-x-2">
-                                        <label for="start-skip" class="block text-sm font-medium">{"Start Skip (seconds):"}</label>
+                                        <label for="start-skip" class="block text-sm font-medium">{&i18n_start_skip_seconds}</label>
                                         <input
                                             type="number"
                                             id="start-skip"
@@ -1670,7 +1747,7 @@ pub fn episode_layout() -> Html {
                                         />
                                     </div>
                                     <div class="flex items-center space-x-2">
-                                        <label for="end-skip" class="block text-sm font-medium">{"End Skip (seconds):"}</label>
+                                        <label for="end-skip" class="block text-sm font-medium">{&i18n_end_skip_seconds}</label>
                                         <input
                                             type="number"
                                             id="end-skip"
@@ -1688,7 +1765,7 @@ pub fn episode_layout() -> Html {
                                         class="download-button font-bold py-2 px-4 rounded"
                                         onclick={save_skip_times}
                                     >
-                                        {"Confirm"}
+                                        {&i18n.t("episodes_layout.confirm")}
                                     </button>
                                 </div>
                             </div>
@@ -1698,7 +1775,7 @@ pub fn episode_layout() -> Html {
                                     if info.is_youtube.unwrap_or(false) {
                                         html! {
                                             <div class="mt-4">
-                                                <label for="feed-cutoff" class="block mb-2 text-sm font-medium">{"Youtube Download Episode Limit (days):"}</label>
+                                                <label for="feed-cutoff" class="block mb-2 text-sm font-medium">{&i18n_youtube_download_limit}</label>
                                                 <div class="flex items-center space-x-2">
                                                     <input
                                                         type="number"
@@ -1713,10 +1790,10 @@ pub fn episode_layout() -> Html {
                                                         class="download-button font-bold py-2 px-4 rounded"
                                                         onclick={save_feed_cutoff_days}
                                                     >
-                                                        {"Save"}
+                                                        {&i18n.t("episodes_layout.save")}
                                                     </button>
                                                 </div>
-                                                <p class="text-xs text-gray-500 mt-1">{"Adjusts how long Youtube Feed audio is retained when downloaded to be streamed via the server. Youtube episodes will be removed after to free up space."}</p>
+                                                <p class="text-xs text-gray-500 mt-1">{&i18n_youtube_limit_description}</p>
                                             </div>
                                         }
                                     } else {
@@ -1729,7 +1806,7 @@ pub fn episode_layout() -> Html {
                             // Categories section of the modal
                             <div>
                                 <label for="category_adjust" class="block mb-2 text-sm font-medium">
-                                    {"Adjust Podcast Categories:"}
+                                    {&i18n_adjust_podcast_categories}
                                 </label>
                                 <div class="flex flex-wrap gap-2">
                                 {
@@ -1768,10 +1845,10 @@ pub fn episode_layout() -> Html {
                                                 </>
                                             }
                                         } else {
-                                            html! { <p class="text-sm text-muted">{ "No categories available" }</p> }
+                                            html! { <p class="text-sm text-muted">{ &i18n_no_categories_available }</p> }
                                         }
                                     } else {
-                                        html! { <p class="text-sm text-muted">{ "Loading..." }</p> }
+                                        html! { <p class="text-sm text-muted">{ &i18n_loading }</p> }
                                     }
                                 }
                                 </div>
@@ -1781,7 +1858,7 @@ pub fn episode_layout() -> Html {
                                         type="text"
                                         id="new_category"
                                         class="category-input w-full px-4 py-3 pr-24 rounded-lg border"
-                                        placeholder="New category"
+                                        placeholder={i18n_new_category_placeholder.clone()}
                                         value={(*new_category).clone()}
                                         oninput={new_category_input}
                                     />
@@ -1790,7 +1867,7 @@ pub fn episode_layout() -> Html {
                                         onclick={onclick_add}
                                     >
                                         <i class="ph ph-plus text-lg" />
-                                        <span class="hidden md:inline">{"Add"}</span>
+                                        <span class="hidden md:inline">{&i18n.t("episodes_layout.add")}</span>
                                     </button>
                                 </div>
                             </div>
@@ -1808,25 +1885,25 @@ pub fn episode_layout() -> Html {
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
-                            {"Verify Downloads"}
+                            {&i18n.t("episodes_layout.verify_downloads")}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
-                            <span class="sr-only">{"Close modal"}</span>
+                            <span class="sr-only">{&i18n.t("episodes_layout.close_modal")}</span>
                         </button>
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
                             <div>
-                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{"Are you sure you want to download all episodes from the current podcast to the server? If the podcast has a lot of episodes this might take awhile."}</label>
+                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{&i18n_download_all_confirmation}</label>
                                 <div class="flex justify-between space-x-4">
                                     <button onclick={download_all_click} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                                        {"Yes, Download All"}
+                                        {&i18n_yes_download_all}
                                     </button>
                                     <button onclick={on_close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                                        {"No, take me back"}
+                                        {&i18n_no_take_me_back}
                                     </button>
                                 </div>
                             </div>
@@ -1844,25 +1921,25 @@ pub fn episode_layout() -> Html {
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
-                            {"Delete Podcast"}
+                            {&i18n.t("episodes_layout.delete_podcast")}
                         </h3>
                         <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                             <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                 <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                             </svg>
-                            <span class="sr-only">{"Close modal"}</span>
+                            <span class="sr-only">{&i18n.t("episodes_layout.close_modal")}</span>
                         </button>
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
                             <div>
-                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{"Are you sure you want to delete the podcast from the database? This will remove it from every aspect of the app. Meaning this will remove any saved, downloaded, or queued episodes for this podcast. It will also remove any history that includes it."}</label>
+                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{&i18n_delete_podcast_confirmation}</label>
                                 <div class="flex justify-between space-x-4">
                                     <button onclick={delete_all_click} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                                        {"Yes, Delete Podcast"}
+                                        {&i18n_yes_delete_podcast}
                                     </button>
                                     <button onclick={on_close_modal.clone()} class="mt-4 download-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                                        {"No, take me back"}
+                                        {&i18n_no_take_me_back}
                                     </button>
                                 </div>
                             </div>
@@ -1913,6 +1990,8 @@ pub fn episode_layout() -> Html {
         } else {
             Callback::from(move |_: MouseEvent| {
                 // Ensure this is triggered only by a MouseEvent
+                let i18n_podcast_successfully_added = i18n_podcast_successfully_added.clone();
+                let i18n_failed_to_add_podcast = i18n_failed_to_add_podcast.clone();
                 let callback_podcast_id = added_id.clone();
                 let podcast_id_og = Some(pod_values.clone().unwrap().podcastid.clone());
                 let pod_title_og = pod_values.clone().unwrap().podcastname.clone();
@@ -1977,7 +2056,7 @@ pub fn episode_layout() -> Html {
                             if response_body.success {
                                 dispatch_wasm.reduce_mut(|state| {
                                     state.info_message =
-                                        Option::from("Podcast successfully added".to_string())
+                                        Option::from(i18n_podcast_successfully_added)
                                 });
                                 app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                                 is_added_inner.set(true);
@@ -2023,7 +2102,7 @@ pub fn episode_layout() -> Html {
                             } else {
                                 dispatch_wasm.reduce_mut(|state| {
                                     state.error_message =
-                                        Option::from("Failed to add podcast".to_string())
+                                        Option::from(i18n_failed_to_add_podcast)
                                 });
                                 app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             }
@@ -2124,11 +2203,11 @@ pub fn episode_layout() -> Html {
     let (completed_icon, completed_text, completed_title) = match *completed_filter_state {
         CompletedFilter::ShowOnly => (
             "ph-check-circle",
-            "Show Only",
-            "Showing only completed episodes",
+            &i18n_show_only,
+            &i18n_showing_only_completed,
         ),
-        CompletedFilter::Hide => ("ph-x-circle", "Hide", "Hiding completed episodes"),
-        CompletedFilter::ShowAll => ("ph-circle", "All", "Showing all episodes"),
+        CompletedFilter::Hide => ("ph-x-circle", &i18n_hide, &i18n_hiding_completed),
+        CompletedFilter::ShowAll => ("ph-circle", &i18n_all, &i18n_showing_all_episodes),
     };
 
     html! {
@@ -2285,9 +2364,9 @@ pub fn episode_layout() -> Html {
                                                     { sanitized_description }
                                                     <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
                                                 </div>
-                                                <p class="header-info">{ format!("Episode Count: {}", &podcast_info.episodecount) }</p>
-                                                <p class="header-info">{ format!("Authors: {}", &podcast_info.author) }</p>
-                                                <p class="header-info">{ format!("Explicit: {}", if podcast_info.explicit { "Yes" } else { "No" }) }</p>
+                                                <p class="header-info">{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</p>
+                                                <p class="header-info">{ format!("{}{}", i18n_authors, &podcast_info.author) }</p>
+                                                <p class="header-info">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</p>
                                                 {
                                                     if !podcast_info.is_youtube.unwrap_or(false) {  // Only show if not a YouTube channel
                                                         if podcast_info.podcastindexid == 0 {
@@ -2296,7 +2375,7 @@ pub fn episode_layout() -> Html {
                                                                     <p class="item_container-text text-sm">
                                                                         {"⚠️ This podcast isn't matched to Podcast Index. "}
                                                                         <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
-                                                                            {"Match it here"}
+                                                                            {&i18n.t("episodes_layout.match_it_here")}
                                                                         </a>
                                                                         {" to enable host and guest information."}
                                                                     </p>
@@ -2447,9 +2526,9 @@ pub fn episode_layout() -> Html {
                                                     }
                                                     <div class="item-header-info">
 
-                                                        <p class="header-text">{ format!("Episode Count: {}", &podcast_info.episodecount) }</p>
-                                                        <p class="header-text">{ format!("Authors: {}", &podcast_info.author) }</p>
-                                                        <p class="header-text">{ format!("Explicit: {}", if podcast_info.explicit { "Yes" } else { "No" }) }</p>
+                                                        <p class="header-text">{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</p>
+                                                        <p class="header-text">{ format!("{}{}", i18n_authors, &podcast_info.author) }</p>
+                                                        <p class="header-text">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</p>
                                                     {
                                                         if podcast_info.podcastindexid == 0 {
                                                             html! {
@@ -2457,7 +2536,7 @@ pub fn episode_layout() -> Html {
                                                                     <p class="item_container-text text-sm">
                                                                         {"⚠️ This podcast isn't matched to Podcast Index. "}
                                                                         <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
-                                                                            {"Match it here"}
+                                                                            {&i18n.t("episodes_layout.match_it_here")}
                                                                         </a>
                                                                         {" to enable host and guest information."}
                                                                     </p>
@@ -2521,7 +2600,7 @@ pub fn episode_layout() -> Html {
                                                 <input
                                                     type="text"
                                                     class="search-input"
-                                                    placeholder="Search podcast episodes..."
+                                                    placeholder={i18n_search_episodes_placeholder.clone()}
                                                     value={(*episode_search_term).clone()}
                                                     oninput={
                                                         let episode_search_term = episode_search_term.clone();
@@ -2560,12 +2639,12 @@ pub fn episode_layout() -> Html {
                                                         })
                                                     }
                                                 >
-                                                    <option value="newest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"}>{"Newest First"}</option>
-                                                    <option value="oldest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"}>{"Oldest First"}</option>
-                                                    <option value="shortest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"}>{"Shortest First"}</option>
-                                                    <option value="longest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"}>{"Longest First"}</option>
-                                                    <option value="title_az" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{"Title A-Z"}</option>
-                                                    <option value="title_za" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{"Title Z-A"}</option>
+                                                    <option value="newest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"}>{&i18n_newest_first}</option>
+                                                    <option value="oldest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"}>{&i18n_oldest_first}</option>
+                                                    <option value="shortest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"}>{&i18n_shortest_first}</option>
+                                                    <option value="longest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"}>{&i18n_longest_first}</option>
+                                                    <option value="title_az" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{&i18n_title_az}</option>
+                                                    <option value="title_za" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{&i18n_title_za}</option>
                                                 </select>
                                                 <i class="ph ph-caret-down dropdown-arrow"></i>
                                             </div>
@@ -2588,7 +2667,7 @@ pub fn episode_layout() -> Html {
                                                 class="filter-chip"
                                             >
                                                 <i class="ph ph-broom text-lg"></i>
-                                                <span class="text-sm font-medium">{"Clear All"}</span>
+                                                <span class="text-sm font-medium">{&i18n_clear_all}</span>
                                             </button>
 
                                             // Completed filter chip (3-state)
@@ -2603,7 +2682,7 @@ pub fn episode_layout() -> Html {
                                                         });
                                                     })
                                                 }
-                                                title={completed_title}
+                                                title={completed_title.clone()}
                                                 class={classes!(
                                                     "filter-chip",
                                                     match *completed_filter_state {
@@ -2631,7 +2710,7 @@ pub fn episode_layout() -> Html {
                                                 )}
                                             >
                                                 <i class="ph ph-hourglass-medium text-lg"></i>
-                                                <span class="text-sm font-medium">{"In Progress"}</span>
+                                                <span class="text-sm font-medium">{&i18n_in_progress}</span>
                                             </button>
                                             
                                             // Selection mode toggle
@@ -2654,7 +2733,7 @@ pub fn episode_layout() -> Html {
                                             >
                                                 <i class="ph ph-check-square text-lg"></i>
                                                 <span class="text-sm font-medium">
-                                                    {if *is_selecting { "Exit Select" } else { "Select" }}
+                                                    {if *is_selecting { &i18n_exit_select } else { &i18n_select }}
                                                 </span>
                                             </button>
                                         </div>
@@ -2697,9 +2776,9 @@ pub fn episode_layout() -> Html {
                 .collect();
             let current = (*selected_episodes_clone).clone();
             if current.len() == all_ids.len() && all_ids.iter().all(|id| current.contains(id)) {
-                "Deselect All"
+                &i18n_deselect_all
             } else {
-                "Select All"
+                &i18n_select_all
             }
         }
     }
@@ -2721,7 +2800,7 @@ pub fn episode_layout() -> Html {
                                                             }
                                                             class="bulk-filter-button"
                                                         >
-                                                            {"Select Unplayed"}
+                                                            {&i18n_select_unplayed}
                                                         </button>
                                                     </div>
                                                 }
@@ -2791,7 +2870,7 @@ pub fn episode_layout() -> Html {
                                                         }
                                                         class="bulk-action-success"
                                                     >
-                                                        {"Mark Complete"}
+                                                        {&i18n_mark_complete}
                                                     </button>
                                                     
                                                     // Save button
@@ -2836,7 +2915,7 @@ pub fn episode_layout() -> Html {
                                                         }
                                                         class="bulk-action-primary"
                                                     >
-                                                        {"Save"}
+                                                        {&i18n.t("episodes_layout.save")}
                                                     </button>
                                                     
                                                     // Queue button
@@ -2881,7 +2960,7 @@ pub fn episode_layout() -> Html {
                                                         }
                                                         class="px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-md"
                                                     >
-                                                        {"Queue"}
+                                                        {&i18n_queue_episodes}
                                                     </button>
                                                     
                                                     // Download button
@@ -2926,7 +3005,7 @@ pub fn episode_layout() -> Html {
                                                         }
                                                         class="px-3 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded-md"
                                                     >
-                                                        {"Download"}
+                                                        {&i18n_download_episodes}
                                                     </button>
                                                 </div>
                                             </div>
@@ -3023,8 +3102,8 @@ pub fn episode_layout() -> Html {
                                     html! {
                                         <div class="empty-episodes-container" id="episode-container">
                                             <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                            <h1 class="page-subtitles">{ "No Episodes Found" }</h1>
-                                            <p class="page-paragraphs">{"This podcast strangely doesn't have any episodes. Try a more mainstream one maybe?"}</p>
+                                            <h1 class="page-subtitles">{ &i18n_no_episodes_found }</h1>
+                                            <p class="page-paragraphs">{&i18n_no_episodes_description}</p>
                                         </div>
                                     }
                                 }

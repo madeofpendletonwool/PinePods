@@ -44,6 +44,8 @@ services:
       PGID: ${GID:-911}
       # Add timezone configuration
       TZ: "America/New_York"
+      # Language Configuration
+      DEFAULT_LANGUAGE: "en"
     volumes:
       # Mount the download location on the server if you want to. You could mount a NAS to this folder or something similar
       - /home/user/pinepods/downloads:/opt/pinepods/downloads

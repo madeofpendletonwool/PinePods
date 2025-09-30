@@ -151,6 +151,7 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
     let failed_to_unsubscribe_msg = i18n.t("youtube_layout.failed_to_unsubscribe");
     let show_less_text = i18n.t("youtube_layout.show_less");
     let show_more_text = i18n.t("youtube_layout.show_more");
+    let channel_thumbnail_text = i18n.t("youtube_layout.channel_thumbnail");
 
     let server_name = state
         .auth_details
@@ -323,7 +324,7 @@ fn youtube_channel_item(props: &YouTubeChannelItemProps) -> Html {
             <div class="relative w-full search-podcast-image-container" style="aspect-ratio: 1/1; padding-bottom: 100%;">
                 <FallbackImage
                     src={thumbnail}
-                    alt={format!("{} channel thumbnail", channel.name)}
+                    alt={format!("{} {}", channel.name, channel_thumbnail_text)}
                     class="absolute inset-0 w-full h-full object-cover transition-transform duration-200 hover:scale-105 cursor-pointer"
                 />
             </div>

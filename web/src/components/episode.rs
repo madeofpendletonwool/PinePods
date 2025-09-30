@@ -214,6 +214,9 @@ pub fn transcript_modal(props: &TranscriptModalProps) -> Html {
     let transcript_content = use_state(|| None::<String>);
     let loading = use_state(|| true);
     let error = use_state(|| None::<String>);
+    
+    let (i18n, _) = use_translation();
+    let i18n_episode_transcript = i18n.t("episode.episode_transcript").to_string();
 
     // Load transcript content when component mounts
     {
@@ -378,7 +381,7 @@ pub fn transcript_modal(props: &TranscriptModalProps) -> Html {
                     <i class="ph ph-x text-2xl ml-2"></i>
                 </button>
 
-                <h2 class="text-2xl font-bold mb-4 pr-12 item_container-text">{"Episode Transcript"}</h2>
+                <h2 class="text-2xl font-bold mb-4 pr-12 item_container-text">{&i18n_episode_transcript}</h2>
 
                 <div class="overflow-y-auto max-h-[calc(80vh-8rem)]">
                     if *loading {
@@ -427,7 +430,6 @@ pub fn epsiode() -> Html {
     let shared_url = use_state(|| Option::<String>::None);
     
     // Capture i18n strings before they get moved
-    let i18n_episode_transcript = i18n.t("episode.episode_transcript").to_string();
     let i18n_copy_shared_link = i18n.t("episode.copy_shared_link").to_string();
     let i18n_close_modal = i18n.t("common.close_modal").to_string();
     let i18n_copy = i18n.t("common.copy").to_string();
@@ -443,6 +445,20 @@ pub fn epsiode() -> Html {
     let i18n_failed_to_parse_duration = i18n.t("episode.failed_to_parse_duration").to_string();
     let i18n_no_episode_data_received = i18n.t("episode.no_episode_data_received").to_string();
     let i18n_unable_to_retrieve_url = i18n.t("episode.unable_to_retrieve_url").to_string();
+    let i18n_download = i18n.t("episode.download").to_string();
+    let i18n_remove_download = i18n.t("episode.remove_download").to_string();
+    let i18n_mark_complete = i18n.t("episode.mark_complete").to_string();
+    let i18n_mark_incomplete = i18n.t("episode.mark_incomplete").to_string();
+    let i18n_mark_episode_complete = i18n.t("episode.mark_episode_complete").to_string();
+    let i18n_mark_episode_incomplete = i18n.t("episode.mark_episode_incomplete").to_string();
+    let i18n_share_episode = i18n.t("episode.share_episode").to_string();
+    let i18n_share_link_description = i18n.t("episode.share_link_description").to_string();
+    let i18n_current_page_link_description = i18n.t("episode.current_page_link_description").to_string();
+    let i18n_add_podcast_to_enable_actions = i18n.t("episode.add_podcast_to_enable_actions").to_string();
+    let i18n_this_item_contains_no_media = i18n.t("episode.this_item_contains_no_media").to_string();
+    let i18n_unable_to_display_episode = i18n.t("episode.unable_to_display_episode").to_string();
+    let i18n_something_went_wrong_description = i18n.t("episode.something_went_wrong_description").to_string();
+    let i18n_cover_alt_text = i18n.t("episode.cover_alt_text").to_string();
 
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
@@ -1210,18 +1226,18 @@ pub fn epsiode() -> Html {
                     <div class="modal-container relative rounded-lg shadow">
                         <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                             <h3 class="text-xl font-semibold">
-                                {"Copy Shared Link"}
+                                {&i18n_copy_shared_link}
                             </h3>
                             <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
                                 <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
                                     <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
                                 </svg>
-                                <span class="sr-only">{"Close modal"}</span>
+                                <span class="sr-only">{&i18n_close_modal}</span>
                             </button>
                         </div>
                         <div class="p-4 md:p-5">
                             <div>
-                                <label for="share_link" class="block mb-2 text-sm font-medium">{"Share this link with anyone you'd like to be able to listen to this episode. They don't even need an account on the server to use this!"}</label>
+                                <label for="share_link" class="block mb-2 text-sm font-medium">{&i18n_share_link_description}</label>
                                 <div class="relative">
                                     <input
                                         type="text"
@@ -1239,7 +1255,7 @@ pub fn epsiode() -> Html {
                                 </div>
                             </div>
                             <div class="mt-4">
-                                <label for="current_link" class="block mb-2 text-sm font-medium">{"If they do have an account you can just send the user the current link on this web page:"}</label>
+                                <label for="current_link" class="block mb-2 text-sm font-medium">{&i18n_current_page_link_description}</label>
                                 <div class="relative">
                                     <input
                                         type="text"
@@ -1778,7 +1794,7 @@ pub fn epsiode() -> Html {
                                             <FallbackImage
                                                 src={episode.episode.episodeartwork.clone()}
                                                 // onclick={on_title_click.clone()}
-                                                alt={format!("Cover for {}", episode.episode.episodeartwork.clone())}
+                                                alt={format!("{}{}", i18n_cover_alt_text, episode.episode.episodeartwork.clone())}
                                                 class="episode-artwork rounded-corners"
                                             />
                                         </div>
@@ -1930,7 +1946,7 @@ pub fn epsiode() -> Html {
                                                             } else {
                                                                 html! {
                                                                     <p class="no-media-warning item_container-text">
-                                                                        {"Add podcast to enable more actions"}
+                                                                        {&i18n_add_podcast_to_enable_actions}
                                                                     </p>
                                                                 }
                                                             }
@@ -1948,7 +1964,7 @@ pub fn epsiode() -> Html {
                                                                         } else {
                                                                             html! { <i class="ph ph-download text-2xl"></i> }
                                                                         }}
-                                                                        { if *download_status { "Remove Download" } else { "Download" } }
+                                                                        { if *download_status { &i18n_remove_download } else { &i18n_download } }
                                                                     </button>
                                                                     <button onclick={toggle_completion} class="download-button-ep flex items-center justify-center gap-2 mt-2">
                                                                         { if *completion_status {
@@ -1956,7 +1972,7 @@ pub fn epsiode() -> Html {
                                                                         } else {
                                                                             html! { <i class="ph ph-check-fat text-2xl"></i> }
                                                                         }}
-                                                                        { if *completion_status { "Mark Incomplete" } else { "Mark Complete" } }
+                                                                        { if *completion_status { &i18n_mark_incomplete } else { &i18n_mark_complete } }
                                                                     </button>
                                                                 </div>
                                                             }
@@ -1969,7 +1985,7 @@ pub fn epsiode() -> Html {
                                         } else {
                                             html! {
                                                 <p class="no-media-warning item_container-text play-button">
-                                                    {"This item contains no media file"}
+                                                    {&i18n_this_item_contains_no_media}
                                                 </p>
                                             }
                                         }
@@ -2001,7 +2017,7 @@ pub fn epsiode() -> Html {
                                     <div class="episode-top-info">
                                     <FallbackImage
                                         src={episode.episode.episodeartwork.clone()}
-                                        alt={format!("Cover for {}", episode.episode.episodeartwork.clone())}
+                                        alt={format!("{}{}", i18n_cover_alt_text, episode.episode.episodeartwork.clone())}
                                         class="episode-artwork rounded-corners"
                                         style="max-width: 375px; width: 25%; height: auto;"
                                     />
@@ -2103,7 +2119,7 @@ pub fn epsiode() -> Html {
                                                 class="share-button font-bold py-2 px-4 rounded"
                                                 onclick={create_share_link.clone()}
                                             >
-                                                {"Share Episode"}
+                                                {&i18n_share_episode}
                                             </button>
                                         </div>
                                     </div>
@@ -2118,7 +2134,7 @@ pub fn epsiode() -> Html {
                                                     } else {
                                                         html! { <i class="ph ph-play text-2xl"></i> }
                                                     }}
-                                                    { if is_playing { "Pause" } else { "Play" } }
+                                                    { if is_playing { &i18n_pause } else { &i18n_play } }
                                                 </button>
                                                 {
                                                     if *ep_in_db {
@@ -2130,7 +2146,7 @@ pub fn epsiode() -> Html {
                                                                 } else {
                                                                     html! { <i class="ph ph-queue text-2xl"></i> }
                                                                 }}
-                                                                { if *queue_status { "Remove from Queue" } else { "Add to Queue" } }
+                                                                { if *queue_status { &i18n_remove_from_queue } else { &i18n_add_to_queue } }
                                                             </button>
                                                             <button onclick={toggle_save} class="save-button flex items-center justify-center gap-2">
                                                                 { if *save_status {
@@ -2138,7 +2154,7 @@ pub fn epsiode() -> Html {
                                                                 } else {
                                                                     html! { <i class="ph ph-heart text-2xl"></i> }
                                                                 }}
-                                                                { if *save_status { "Unsave" } else { "Save" } }
+                                                                { if *save_status { &i18n_unsave } else { &i18n_save } }
                                                             </button>
                                                             <button onclick={toggle_download} class="download-button-ep flex items-center justify-center gap-2">
                                                                 { if *download_status {
@@ -2146,7 +2162,7 @@ pub fn epsiode() -> Html {
                                                                 } else {
                                                                     html! { <i class="ph ph-download text-2xl"></i> }
                                                                 }}
-                                                                { if *download_status { "Remove Download" } else { "Download" } }
+                                                                { if *download_status { &i18n_remove_download } else { &i18n_download } }
                                                             </button>
                                                             <button onclick={toggle_completion} class="download-button-ep flex items-center justify-center gap-2">
                                                                 { if *completion_status {
@@ -2154,14 +2170,14 @@ pub fn epsiode() -> Html {
                                                                 } else {
                                                                     html! { <i class="ph ph-check-fat text-2xl"></i> }
                                                                 }}
-                                                                { if *completion_status { "Mark Episode Incomplete" } else { "Mark Episode Complete" } }
+                                                                { if *completion_status { &i18n_mark_episode_incomplete } else { &i18n_mark_episode_complete } }
                                                             </button>
                                                             </>
                                                         }
                                                     } else {
                                                         html! {
                                                             <p class="no-media-warning item_container-text play-button">
-                                                                {"Add podcast to enable more actions"}
+                                                                {&i18n_add_podcast_to_enable_actions}
                                                             </p>
                                                         }
                                                     }
@@ -2171,7 +2187,7 @@ pub fn epsiode() -> Html {
                                         } else {
                                             html! {
                                                 <p class="no-media-warning item_container-text play-button">
-                                                    {"This item contains no media file"}
+                                                    {&i18n_this_item_contains_no_media}
                                                 </p>
                                             }
                                         }
@@ -2203,8 +2219,8 @@ pub fn epsiode() -> Html {
                         layout
                     } else {
                         empty_message(
-                            "Unable to display episode",
-                            "Something seems to have gone wrong. A straightup server disconnect maybe? Did you browse here directly? That's not how this app works. It needs the context to browse around. I honestly don't have anything else for you as this shouldn't happen. This is embarrasing."
+                            &i18n_unable_to_display_episode,
+                            &i18n_something_went_wrong_description
                         )
                     }
                 }

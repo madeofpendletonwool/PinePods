@@ -45,10 +45,16 @@ use {
 };
 
 // Yew Imports
+use components::context::AppState;
+use i18nrs::yew::use_translation;
+use i18nrs::yew::{I18nProvider, I18nProviderConfig};
+use requests::setting_reqs::call_get_server_default_language;
+use std::collections::HashMap;
+use wasm_bindgen_futures::spawn_local;
+use web_sys;
 use yew::prelude::*;
 use yew_router::prelude::*;
-use i18nrs::yew::{I18nProvider, I18nProviderConfig};
-use std::collections::HashMap;
+use yewdux::prelude::*;
 
 #[function_component(NotFound)]
 pub fn not_found() -> Html {
@@ -134,27 +140,120 @@ fn switch(route: Route) -> Html {
     }
 }
 
-#[function_component(Main)]
-fn main_component() -> Html {
-    // Set up translations according to i18nrs documentation
+#[function_component(LanguageHandler)]
+fn language_handler() -> Html {
+    let (state, _) = use_store::<AppState>();
+
+    // Set up translations with all available language files
     let translations = HashMap::from([
         ("en", include_str!("translations/en.json")),
+        ("es", include_str!("translations/es.json")),
+        ("fr", include_str!("translations/fr.json")),
+        ("de", include_str!("translations/de.json")),
+        ("it", include_str!("translations/it.json")),
+        ("pt", include_str!("translations/pt.json")),
+        ("ru", include_str!("translations/ru.json")),
+        ("ja", include_str!("translations/ja.json")),
+        ("ko", include_str!("translations/ko.json")),
+        ("zh", include_str!("translations/zh.json")),
+        ("test", include_str!("translations/test.json")),
     ]);
 
     let config = I18nProviderConfig {
         translations: translations,
-        default_language: "en".to_string(),
+        default_language: "en".to_string(), // Always default to English
         ..Default::default()
     };
 
     html! {
         <I18nProvider ..config>
-            <BrowserRouter>
-                <NavigationHandler>
-                    <Switch<Route> render={switch} />
-                </NavigationHandler>
-            </BrowserRouter>
+            <LanguageManager />
         </I18nProvider>
+    }
+}
+
+#[function_component(LanguageManager)]
+fn language_manager() -> Html {
+    let (state, _) = use_store::<AppState>();
+    let (i18n, set_language) = use_translation();
+
+    // Load appropriate language based on auth state
+    {
+        let set_language = set_language.clone();
+        let state = state.clone();
+
+        use_effect_with(state.clone(), move |state| {
+            let set_language = set_language.clone();
+            let state = state.clone();
+
+            spawn_local(async move {
+                let server_name = web_sys::window()
+                    .and_then(|w| w.location().origin().ok())
+                    .unwrap_or_else(|| "".to_string());
+
+                // Check if user is authenticated
+                if let (Some(auth_details), Some(user_details)) =
+                    (&state.auth_details, &state.user_details)
+                {
+                    // User is logged in, get their language preference
+                    if let Some(api_key) = &auth_details.api_key {
+                        match crate::requests::setting_reqs::call_get_user_language(
+                            server_name,
+                            api_key.clone(),
+                            user_details.UserID,
+                        )
+                        .await
+                        {
+                            Ok(user_lang) => {
+                                set_language.emit(user_lang);
+                            }
+                            Err(_) => {
+                                // Fall back to server default
+                                if let Ok(server_lang) = call_get_server_default_language(
+                                    auth_details.server_name.clone(),
+                                )
+                                .await
+                                {
+                                    set_language.emit(server_lang);
+                                } else {
+                                    set_language.emit("en".to_string());
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // User not logged in, use server default
+                    if !server_name.is_empty() {
+                        match call_get_server_default_language(server_name).await {
+                            Ok(server_lang) => {
+                                set_language.emit(server_lang);
+                            }
+                            Err(_) => {
+                                set_language.emit("en".to_string());
+                            }
+                        }
+                    } else {
+                        set_language.emit("en".to_string());
+                    }
+                }
+            });
+            || {}
+        });
+    }
+
+    html! {
+        <BrowserRouter>
+            <NavigationHandler>
+                <Switch<Route> render={switch} />
+            </NavigationHandler>
+        </BrowserRouter>
+    }
+}
+
+#[function_component(Main)]
+fn main_component() -> Html {
+    html! {
+        <LanguageHandler />
     }
 }
 

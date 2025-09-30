@@ -346,6 +346,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/get_user_language", get(handlers::settings::get_user_language))
         .route("/update_user_language", put(handlers::settings::update_user_language))
         .route("/get_available_languages", get(handlers::settings::get_available_languages))
+        .route("/get_server_default_language", get(handlers::settings::get_server_default_language))
         // Add more data routes as needed
 }
 

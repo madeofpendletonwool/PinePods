@@ -30,6 +30,7 @@ export PROXY_PROTOCOL=$PROXY_PROTOCOL
 export DEBUG_MODE=${DEBUG_MODE:-'False'}
 export VALKEY_HOST=${VALKEY_HOST:-'valkey'}
 export VALKEY_PORT=${VALKEY_PORT:-'6379'}
+export DEFAULT_LANGUAGE=${DEFAULT_LANGUAGE:-'en'}
 
 # Print admin info if default admin is used
 if [[ $FULLNAME == 'Pinepods Admin' ]]; then

@@ -3749,3 +3749,20 @@ pub async fn get_available_languages() -> Result<Json<AvailableLanguagesResponse
     Ok(Json(AvailableLanguagesResponse { languages }))
 }
 
+// Get server default language (no authentication required)
+pub async fn get_server_default_language() -> Result<Json<serde_json::Value>, AppError> {
+    // Get default language from environment variable, fallback to 'en'
+    let default_language = std::env::var("DEFAULT_LANGUAGE").unwrap_or_else(|_| "en".to_string());
+    
+    // Validate language code (basic validation)
+    let default_language = if default_language.len() > 10 || default_language.is_empty() {
+        "en"
+    } else {
+        &default_language
+    };
+    
+    Ok(Json(serde_json::json!({
+        "default_language": default_language
+    })))
+}
+

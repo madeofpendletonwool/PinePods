@@ -16,7 +16,7 @@ use i18nrs::yew::use_translation;
 
 #[function_component(UserSelfSettings)]
 pub fn user_self_settings() -> Html {
-    let (i18n, _) = use_translation();
+    let (i18n, set_language) = use_translation();
     let (state, _dispatch) = use_store::<AppState>();
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
@@ -68,6 +68,9 @@ pub fn user_self_settings() -> Html {
             {
                 let user_language = user_language.clone();
                 let available_languages = available_languages.clone();
+                let timezone = timezone.clone();
+                let time_format = time_format.clone();
+                let date_format = date_format.clone();
                 move |(api_key, server_name, _)| {
                 if let (Some(api_key), Some(server_name), Some(user_id)) =
                     (api_key.clone(), server_name.clone(), user_id)
@@ -78,6 +81,11 @@ pub fn user_self_settings() -> Html {
                     wasm_bindgen_futures::spawn_local(async move {
                         match call_get_my_user_info(&server_name, api_key.clone(), user_id).await {
                             Ok(info) => {
+                                // Set all the preference fields from the user info
+                                timezone.set(info.timezone.clone());
+                                time_format.set(info.timeformat.to_string());
+                                date_format.set(info.dateformat.clone());
+                                user_language.set(info.language.clone());
                                 user_info.set(Some(info));
                             }
                             Err(e) => {
@@ -88,18 +96,6 @@ pub fn user_self_settings() -> Html {
                                         formatted_error
                                     ));
                                 });
-                            }
-                        }
-                        
-                        // Load user language preference
-                        let user_language_clone = user_language.clone();
-                        match call_get_user_language(server_name.clone(), api_key.clone(), user_id).await {
-                            Ok(language) => {
-                                user_language_clone.set(language);
-                            }
-                            Err(e) => {
-                                web_sys::console::log_1(&format!("Failed to fetch user language: {}", e).into());
-                                // Don't show error to user, just use default
                             }
                         }
                         
@@ -195,9 +191,9 @@ pub fn user_self_settings() -> Html {
     };
 
     // Helper function to render timezone options
-    fn render_time_zone_option(tz: Tz) -> Html {
+    fn render_time_zone_option(tz: Tz, selected_timezone: &str) -> Html {
         html! {
-            <option value={tz.name()}>{tz.name()}</option>
+            <option value={tz.name()} selected={tz.name() == selected_timezone}>{tz.name()}</option>
         }
     }
 
@@ -547,7 +543,7 @@ pub fn user_self_settings() -> Html {
             }
 
             // Update user language if changed
-            if !user_language.is_empty() && *user_language != "en" {
+            if !user_language.is_empty() {
                 let server_name = server_name.clone();
                 let api_key = api_key.clone();
                 let show_success = show_success.clone();
@@ -556,8 +552,9 @@ pub fn user_self_settings() -> Html {
                 let updated_user = updated_fields_call.clone();
                 let updated_trigger_call = update_trigger.clone();
                 let language_clone = (*user_language).clone();
+                let set_language_clone = set_language.clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_update_user_language(server_name, api_key, user_id, language_clone).await {
+                    match call_update_user_language(server_name, api_key, user_id, language_clone.clone()).await {
                         Ok(_) => {
                             let mut fields = (*updated_user).clone();
                             fields.push("language");
@@ -565,6 +562,8 @@ pub fn user_self_settings() -> Html {
                             show_success.set(true);
                             updated_trigger_call.set(!*updated_trigger_call);
                             success_message.set(success_msg_8);
+                            // Immediately update the UI language
+                            set_language_clone.emit(language_clone);
                         }
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
@@ -702,7 +701,7 @@ pub fn user_self_settings() -> Html {
                         >
                             { for available_languages_clone.iter().map(|lang| {
                                 html! {
-                                    <option value={lang.code.clone()}>{&lang.name}</option>
+                                    <option value={lang.code.clone()} selected={*user_language == lang.code}>{&lang.name}</option>
                                 }
                             })}
                         </select>
@@ -719,8 +718,8 @@ pub fn user_self_settings() -> Html {
                             onchange={on_timezone_change}
                             value={(*timezone).clone()}
                         >
-                            <option value="">{"Select timezone..."}</option>
-                            { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
+                            <option value="" selected={timezone.is_empty()}>{"Select timezone..."}</option>
+                            { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz, &timezone)) }
                         </select>
                     </div>
 
@@ -735,15 +734,15 @@ pub fn user_self_settings() -> Html {
                             onchange={on_date_format_change}
                             value={(*date_format).clone()}
                         >
-                            <option value="">{"Select date format..."}</option>
-                            <option value="MDY">{"MM-DD-YYYY"}</option>
-                            <option value="DMY">{"DD-MM-YYYY"}</option>
-                            <option value="YMD">{"YYYY-MM-DD"}</option>
-                            <option value="JUL">{"YY/DDD (Julian)"}</option>
-                            <option value="ISO">{"ISO 8601"}</option>
-                            <option value="USA">{"MM/DD/YYYY"}</option>
-                            <option value="EUR">{"DD.MM.YYYY"}</option>
-                            <option value="JIS">{"YYYY-MM-DD"}</option>
+                            <option value="" selected={date_format.is_empty()}>{"Select date format..."}</option>
+                            <option value="MDY" selected={*date_format == "MDY"}>{"MM-DD-YYYY"}</option>
+                            <option value="DMY" selected={*date_format == "DMY"}>{"DD-MM-YYYY"}</option>
+                            <option value="YMD" selected={*date_format == "YMD"}>{"YYYY-MM-DD"}</option>
+                            <option value="JUL" selected={*date_format == "JUL"}>{"YY/DDD (Julian)"}</option>
+                            <option value="ISO" selected={*date_format == "ISO"}>{"ISO 8601"}</option>
+                            <option value="USA" selected={*date_format == "USA"}>{"MM/DD/YYYY"}</option>
+                            <option value="EUR" selected={*date_format == "EUR"}>{"DD.MM.YYYY"}</option>
+                            <option value="JIS" selected={*date_format == "JIS"}>{"YYYY-MM-DD"}</option>
                         </select>
                     </div>
 
@@ -758,8 +757,8 @@ pub fn user_self_settings() -> Html {
                             onchange={on_time_format_change}
                             value={time_format.to_string()}
                         >
-                            <option value="12">{"12 Hour"}</option>
-                            <option value="24">{"24 Hour"}</option>
+                            <option value="12" selected={*time_format == "12"}>{"12 Hour"}</option>
+                            <option value="24" selected={*time_format == "24"}>{"24 Hour"}</option>
                         </select>
                     </div>
                 </div>

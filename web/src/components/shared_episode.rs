@@ -272,7 +272,7 @@ pub fn shared_episode(_props: &SharedProps) -> Html {
                                                                     <div class="header-info pb-2 pt-2">
                                                                         <button
                                                                             onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
-                                                                            title={"Transcript"}
+                                                                            title={episode_transcript_text.clone()}
                                                                             class="font-bold item-container-button"
                                                                         >
                                                                             {episode_transcript_text.clone()}
