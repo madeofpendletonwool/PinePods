@@ -677,3 +677,7 @@ Portions of the mobile app retain the original BSD license and attribution as re
 #### 💬 Acknowledgment
 
 Huge thanks to Ben Hills for open-sourcing the Anytime Podcast Player. It served as a solid foundation and greatly accelerated development of PinePods.
+
+#### 🌐 Translation
+
+Translations are managed through [Weblate](https://hosted.weblate.org), a web-based translation tool that makes it easy for the community to contribute translations. If you'd like to help translate PinePods into your language, please visit our Weblate project and join the translation effort!
