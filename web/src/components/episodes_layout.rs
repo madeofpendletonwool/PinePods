@@ -285,19 +285,8 @@ pub fn episode_layout() -> Html {
     let page_state = use_state(|| PageState::Hidden);
     let episode_search_term = use_state(|| String::new());
     
-    // Initialize sort direction from local storage or default to newest first
-    let episode_sort_direction = use_state(|| {
-        let saved_preference = get_filter_preference("episodes");
-        match saved_preference.as_deref() {
-            Some("newest") => Some(EpisodeSortDirection::NewestFirst),
-            Some("oldest") => Some(EpisodeSortDirection::OldestFirst),
-            Some("shortest") => Some(EpisodeSortDirection::ShortestFirst),
-            Some("longest") => Some(EpisodeSortDirection::LongestFirst),
-            Some("title_az") => Some(EpisodeSortDirection::TitleAZ),
-            Some("title_za") => Some(EpisodeSortDirection::TitleZA),
-            _ => Some(EpisodeSortDirection::NewestFirst), // Default to newest first
-        }
-    });
+    // Initialize sort direction - will be updated when podcast_id changes
+    let episode_sort_direction = use_state(|| Some(EpisodeSortDirection::NewestFirst));
     
     let completed_filter_state = use_state(|| CompletedFilter::ShowAll);
     let show_in_progress = use_state(|| false);
@@ -588,6 +577,29 @@ pub fn episode_layout() -> Html {
     let podcast_id = use_state(|| 0);
     let start_skip = use_state(|| 0);
     let end_skip = use_state(|| 0);
+
+    // Update sort direction when podcast_id changes to load per-podcast preferences
+    {
+        let episode_sort_direction = episode_sort_direction.clone();
+        let podcast_id_clone = podcast_id.clone();
+        use_effect_with(podcast_id_clone, move |podcast_id| {
+            if **podcast_id > 0 {
+                let preference_key = format!("podcast_{}", **podcast_id);
+                let saved_preference = get_filter_preference(&preference_key);
+                let new_direction = match saved_preference.as_deref() {
+                    Some("newest") => Some(EpisodeSortDirection::NewestFirst),
+                    Some("oldest") => Some(EpisodeSortDirection::OldestFirst),
+                    Some("shortest") => Some(EpisodeSortDirection::ShortestFirst),
+                    Some("longest") => Some(EpisodeSortDirection::LongestFirst),
+                    Some("title_az") => Some(EpisodeSortDirection::TitleAZ),
+                    Some("title_za") => Some(EpisodeSortDirection::TitleZA),
+                    _ => Some(EpisodeSortDirection::NewestFirst), // Default to newest first
+                };
+                episode_sort_direction.set(new_direction);
+            }
+            || ()
+        });
+    }
 
     {
         let api_key = api_key.clone();
@@ -2620,12 +2632,16 @@ pub fn episode_layout() -> Html {
                                                     class="sort-dropdown"
                                                     onchange={
                                                         let episode_sort_direction = episode_sort_direction.clone();
+                                                        let podcast_id_clone = podcast_id.clone();
                                                         Callback::from(move |e: Event| {
                                                             let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
                                                             let value = target.value();
                                                             
-                                                            // Save preference to local storage
-                                                            set_filter_preference("episodes", &value);
+                                                            // Save preference to per-podcast local storage
+                                                            if *podcast_id_clone > 0 {
+                                                                let preference_key = format!("podcast_{}", *podcast_id_clone);
+                                                                set_filter_preference(&preference_key, &value);
+                                                            }
                                                             
                                                             match value.as_str() {
                                                                 "newest" => episode_sort_direction.set(Some(EpisodeSortDirection::NewestFirst)),
@@ -2639,12 +2655,54 @@ pub fn episode_layout() -> Html {
                                                         })
                                                     }
                                                 >
-                                                    <option value="newest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"}>{&i18n_newest_first}</option>
-                                                    <option value="oldest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"}>{&i18n_oldest_first}</option>
-                                                    <option value="shortest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"}>{&i18n_shortest_first}</option>
-                                                    <option value="longest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"}>{&i18n_longest_first}</option>
-                                                    <option value="title_az" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{&i18n_title_az}</option>
-                                                    <option value="title_za" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{&i18n_title_za}</option>
+                                                    <option value="newest" selected={
+                                                        let preference_key = if *podcast_id > 0 {
+                                                            format!("podcast_{}", *podcast_id)
+                                                        } else {
+                                                            "episodes".to_string()
+                                                        };
+                                                        get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"
+                                                    }>{&i18n_newest_first}</option>
+                                                    <option value="oldest" selected={
+                                                        let preference_key = if *podcast_id > 0 {
+                                                            format!("podcast_{}", *podcast_id)
+                                                        } else {
+                                                            "episodes".to_string()
+                                                        };
+                                                        get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"
+                                                    }>{&i18n_oldest_first}</option>
+                                                    <option value="shortest" selected={
+                                                        let preference_key = if *podcast_id > 0 {
+                                                            format!("podcast_{}", *podcast_id)
+                                                        } else {
+                                                            "episodes".to_string()
+                                                        };
+                                                        get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"
+                                                    }>{&i18n_shortest_first}</option>
+                                                    <option value="longest" selected={
+                                                        let preference_key = if *podcast_id > 0 {
+                                                            format!("podcast_{}", *podcast_id)
+                                                        } else {
+                                                            "episodes".to_string()
+                                                        };
+                                                        get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"
+                                                    }>{&i18n_longest_first}</option>
+                                                    <option value="title_az" selected={
+                                                        let preference_key = if *podcast_id > 0 {
+                                                            format!("podcast_{}", *podcast_id)
+                                                        } else {
+                                                            "episodes".to_string()
+                                                        };
+                                                        get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"
+                                                    }>{&i18n_title_az}</option>
+                                                    <option value="title_za" selected={
+                                                        let preference_key = if *podcast_id > 0 {
+                                                            format!("podcast_{}", *podcast_id)
+                                                        } else {
+                                                            "episodes".to_string()
+                                                        };
+                                                        get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"
+                                                    }>{&i18n_title_za}</option>
                                                 </select>
                                                 <i class="ph ph-caret-down dropdown-arrow"></i>
                                             </div>

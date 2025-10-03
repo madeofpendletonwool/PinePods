@@ -2616,6 +2616,51 @@ def migration_030_add_user_language_preference(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("031", "add_oidc_env_initialized_column", "Add InitializedFromEnv column to OIDCProviders table to track env-initialized providers", requires=["001"])
+def migration_031_add_oidc_env_initialized_column(conn, db_type: str):
+    """Add InitializedFromEnv column to OIDCProviders table to track providers created from environment variables"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Adding InitializedFromEnv column to OIDCProviders table")
+        
+        if db_type == 'postgresql':
+            # Add InitializedFromEnv column (defaults to false for existing providers)
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "OIDCProviders" 
+                ADD COLUMN IF NOT EXISTS InitializedFromEnv BOOLEAN DEFAULT false
+            ''', conn=conn)
+            
+            # Add comment to document the column
+            safe_execute_sql(cursor, '''
+                COMMENT ON COLUMN "OIDCProviders".InitializedFromEnv IS 'Indicates if this provider was created from environment variables and should not be removable via UI'
+            ''', conn=conn)
+            
+        else:  # mysql/mariadb
+            # Check if column exists first
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'OIDCProviders' 
+                AND COLUMN_NAME = 'InitializedFromEnv'
+            """)
+            
+            if cursor.fetchone()[0] == 0:
+                safe_execute_sql(cursor, '''
+                    ALTER TABLE OIDCProviders 
+                    ADD COLUMN InitializedFromEnv TINYINT(1) DEFAULT 0 
+                    COMMENT 'Indicates if this provider was created from environment variables and should not be removable via UI'
+                ''', conn=conn)
+        
+        logger.info("Successfully added InitializedFromEnv column to OIDCProviders table")
+    except Exception as e:
+        logger.error(f"Error in migration 031: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 # ============================================================================
 # GPODDER SYNC MIGRATIONS
 # These migrations match the gpodder-api service migrations from Go code

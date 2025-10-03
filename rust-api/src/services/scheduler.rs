@@ -136,6 +136,11 @@ impl BackgroundScheduler {
     pub async fn run_startup_tasks(state: Arc<AppState>) -> AppResult<()> {
         info!("🚀 Running initial startup tasks...");
         
+        // Initialize OIDC provider from environment variables if configured
+        if let Err(e) = state.db_pool.init_oidc_from_env(&state.config.oidc).await {
+            warn!("⚠️ OIDC initialization failed: {}", e);
+        }
+        
         // Run an immediate refresh to ensure data is current on startup
         if let Err(e) = Self::run_refresh_pods(state.clone()).await {
             warn!("⚠️ Initial startup refresh failed: {}", e);

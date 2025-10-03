@@ -2599,9 +2599,56 @@ pub async fn add_oidc_provider(
         request.username_claim.as_deref().unwrap_or("username"),
         request.roles_claim.as_deref().unwrap_or(""),
         request.user_role.as_deref().unwrap_or(""),
-        request.admin_role.as_deref().unwrap_or("")
+        request.admin_role.as_deref().unwrap_or(""),
+        false // initialized_from_env = false (added via UI)
     ).await?;
     Ok(Json(serde_json::json!({ "provider_id": provider_id })))
+}
+
+// Update OIDC provider - updates an existing provider
+pub async fn update_oidc_provider(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(provider_id): Path<i32>,
+    Json(request): Json<OidcProviderRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin - OIDC provider management requires admin access
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(user_id).await?;
+
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required to update OIDC providers"));
+    }
+
+    let success = state.db_pool.update_oidc_provider(
+        provider_id,
+        &request.provider_name,
+        &request.client_id,
+        &request.client_secret,
+        &request.authorization_url,
+        &request.token_url,
+        &request.user_info_url,
+        &request.button_text,
+        &request.scope,
+        &request.button_color,
+        &request.button_text_color,
+        request.icon_svg.as_deref().unwrap_or(""),
+        request.name_claim.as_deref().unwrap_or("name"),
+        request.email_claim.as_deref().unwrap_or("email"),
+        request.username_claim.as_deref().unwrap_or("username"),
+        request.roles_claim.as_deref().unwrap_or(""),
+        request.user_role.as_deref().unwrap_or(""),
+        request.admin_role.as_deref().unwrap_or("")
+    ).await?;
+
+    if success {
+        Ok(Json(serde_json::json!({ "message": "OIDC provider updated successfully" })))
+    } else {
+        Err(AppError::not_found("OIDC provider not found"))
+    }
 }
 
 // List OIDC providers - matches Python list_oidc_providers function exactly
@@ -2614,6 +2661,38 @@ pub async fn list_oidc_providers(
 
     let providers = state.db_pool.list_oidc_providers().await?;
     Ok(Json(serde_json::json!({ "providers": providers })))
+}
+
+// Remove OIDC provider - matches Python remove_oidc_provider function exactly
+pub async fn remove_oidc_provider(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(provider_id): Json<i32>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin - OIDC provider management requires admin access
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(user_id).await?;
+
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required to remove OIDC providers"));
+    }
+
+    // Check if provider was initialized from environment variables
+    let is_env_initialized = state.db_pool.is_oidc_provider_env_initialized(provider_id).await?;
+    if is_env_initialized {
+        return Err(AppError::forbidden("Cannot remove OIDC provider that was initialized from environment variables. Providers created from docker-compose environment variables are protected from removal to prevent login issues."));
+    }
+
+    let success = state.db_pool.remove_oidc_provider(provider_id).await?;
+    
+    if success {
+        Ok(Json(serde_json::json!({ "message": "OIDC provider removed successfully" })))
+    } else {
+        Err(AppError::not_found("OIDC provider not found"))
+    }
 }
 
 // Get startpage - matches Python startpage GET function exactly

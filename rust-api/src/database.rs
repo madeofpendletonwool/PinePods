@@ -1,6 +1,6 @@
 use sqlx::{MySql, Pool, Postgres, Row};
 use std::time::Duration;
-use crate::{config::Config, error::{AppError, AppResult}};
+use crate::{config::{Config, OIDCConfig}, error::{AppError, AppResult}};
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use std::collections::HashMap;
@@ -13380,7 +13380,7 @@ impl DatabasePool {
     }
     
     // Add OIDC provider - matches Python add_oidc_provider function exactly
-    pub async fn add_oidc_provider(&self, provider_name: &str, client_id: &str, client_secret: &str, authorization_url: &str, token_url: &str, user_info_url: &str, button_text: &str, scope: &str, button_color: &str, button_text_color: &str, icon_svg: &str, name_claim: &str, email_claim: &str, username_claim: &str, roles_claim: &str, user_role: &str, admin_role: &str) -> AppResult<i32> {
+    pub async fn add_oidc_provider(&self, provider_name: &str, client_id: &str, client_secret: &str, authorization_url: &str, token_url: &str, user_info_url: &str, button_text: &str, scope: &str, button_color: &str, button_text_color: &str, icon_svg: &str, name_claim: &str, email_claim: &str, username_claim: &str, roles_claim: &str, user_role: &str, admin_role: &str, initialized_from_env: bool) -> AppResult<i32> {
         println!("Adding OIDC provider: {}", provider_name);
         
         let provider_id = match self {
@@ -13390,8 +13390,8 @@ impl DatabasePool {
                         providername, clientid, clientsecret, authorizationurl,
                         tokenurl, userinfourl, buttontext, scope,
                         buttoncolor, buttontextcolor, iconsvg, nameclaim, emailclaim,
-                        usernameclaim, rolesclaim, userrole, adminrole
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                        usernameclaim, rolesclaim, userrole, adminrole, initializedFromEnv
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
                     RETURNING providerid
                 "#)
                     .bind(provider_name)
@@ -13411,6 +13411,7 @@ impl DatabasePool {
                     .bind(roles_claim)
                     .bind(user_role)
                     .bind(admin_role)
+                    .bind(initialized_from_env)
                     .fetch_one(pool)
                     .await?;
                 
@@ -13422,8 +13423,8 @@ impl DatabasePool {
                         ProviderName, ClientID, ClientSecret, AuthorizationURL,
                         TokenURL, UserInfoURL, ButtonText, Scope,
                         ButtonColor, ButtonTextColor, IconSVG, NameClaim, EmailClaim,
-                        UsernameClaim, RolesClaim, UserRole, AdminRole
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        UsernameClaim, RolesClaim, UserRole, AdminRole, InitializedFromEnv
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ")
                     .bind(provider_name)
                     .bind(client_id)
@@ -13442,6 +13443,7 @@ impl DatabasePool {
                     .bind(roles_claim)
                     .bind(user_role)
                     .bind(admin_role)
+                    .bind(initialized_from_env)
                     .execute(pool)
                     .await?;
                 
@@ -13463,7 +13465,7 @@ impl DatabasePool {
                     SELECT providerid, providername, clientid, authorizationurl,
                            tokenurl, userinfourl, buttontext, scope, buttoncolor,
                            buttontextcolor, iconsvg, nameclaim, emailclaim, usernameclaim,
-                           rolesclaim, userrole, adminrole, enabled, created, modified
+                           rolesclaim, userrole, adminrole, enabled, created, modified, initializedfromenv
                     FROM "OIDCProviders" 
                     ORDER BY providername
                 "#)
@@ -13492,7 +13494,8 @@ impl DatabasePool {
                         "admin_role": row.try_get::<Option<String>, _>("adminrole")?,
                         "enabled": row.try_get::<bool, _>("enabled")?,
                         "created": row.try_get::<Option<chrono::NaiveDateTime>, _>("created")?,
-                        "modified": row.try_get::<Option<chrono::NaiveDateTime>, _>("modified")?
+                        "modified": row.try_get::<Option<chrono::NaiveDateTime>, _>("modified")?,
+                        "initialized_from_env": row.try_get::<bool, _>("initializedfromenv").unwrap_or(false)
                     });
                     providers.push(provider);
                 }
@@ -13503,7 +13506,7 @@ impl DatabasePool {
                     SELECT ProviderID, ProviderName, ClientID, AuthorizationURL,
                            TokenURL, UserInfoURL, ButtonText, Scope, ButtonColor,
                            ButtonTextColor, IconSVG, NameClaim, EmailClaim, UsernameClaim,
-                           RolesClaim, UserRole, AdminRole, Enabled, Created, Modified
+                           RolesClaim, UserRole, AdminRole, Enabled, Created, Modified, InitializedFromEnv
                     FROM OIDCProviders 
                     ORDER BY ProviderName
                 ")
@@ -13532,7 +13535,8 @@ impl DatabasePool {
                         "admin_role": row.try_get::<Option<String>, _>("AdminRole")?,
                         "enabled": row.try_get::<bool, _>("Enabled")?,
                         "created": row.try_get::<Option<chrono::NaiveDateTime>, _>("Created")?,
-                        "modified": row.try_get::<Option<chrono::NaiveDateTime>, _>("Modified")?
+                        "modified": row.try_get::<Option<chrono::NaiveDateTime>, _>("Modified")?,
+                        "initialized_from_env": row.try_get::<bool, _>("InitializedFromEnv").unwrap_or(false)
                     });
                     providers.push(provider);
                 }
@@ -13542,6 +13546,193 @@ impl DatabasePool {
         
         println!("Found {} OIDC providers", providers.len());
         Ok(providers)
+    }
+    
+    // Remove OIDC provider - matches Python remove_oidc_provider function exactly
+    pub async fn remove_oidc_provider(&self, provider_id: i32) -> AppResult<bool> {
+        println!("Removing OIDC provider with ID: {}", provider_id);
+        
+        let rows_affected = match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"DELETE FROM "OIDCProviders" WHERE ProviderID = $1"#)
+                    .bind(provider_id)
+                    .execute(pool)
+                    .await?;
+                
+                result.rows_affected()
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("DELETE FROM OIDCProviders WHERE ProviderID = ?")
+                    .bind(provider_id)
+                    .execute(pool)
+                    .await?;
+                
+                result.rows_affected()
+            }
+        };
+        
+        let success = rows_affected > 0;
+        if success {
+            println!("Successfully removed OIDC provider with ID: {}", provider_id);
+        } else {
+            println!("No OIDC provider found with ID: {}", provider_id);
+        }
+        Ok(success)
+    }
+
+    // Initialize OIDC provider from environment variables on container startup
+    pub async fn init_oidc_from_env(&self, oidc_config: &OIDCConfig) -> AppResult<()> {
+        if !oidc_config.is_configured() {
+            println!("OIDC environment variables not configured, skipping initialization");
+            return Ok(());
+        }
+
+        let provider_name = oidc_config.provider_name.as_ref().unwrap();
+        let client_id = oidc_config.client_id.as_ref().unwrap();
+        
+        // Check if provider already exists
+        let existing = self.get_oidc_provider_by_client_id(client_id).await?;
+        if existing.is_some() {
+            println!("OIDC provider with client_id '{}' already exists, skipping initialization", client_id);
+            return Ok(());
+        }
+
+        println!("Initializing OIDC provider '{}' from environment variables", provider_name);
+
+        // Create the provider with all the configuration
+        let provider_id = self.add_oidc_provider(
+            provider_name,
+            client_id,
+            oidc_config.client_secret.as_ref().unwrap(),
+            oidc_config.authorization_url.as_ref().unwrap(),
+            oidc_config.token_url.as_ref().unwrap(),
+            oidc_config.user_info_url.as_ref().unwrap(),
+            oidc_config.button_text.as_ref().unwrap(),
+            oidc_config.scope.as_deref().unwrap_or("openid email profile"),
+            oidc_config.button_color.as_deref().unwrap_or("#000000"),
+            oidc_config.button_text_color.as_deref().unwrap_or("#FFFFFF"),
+            oidc_config.icon_svg.as_deref().unwrap_or(""),
+            oidc_config.name_claim.as_deref().unwrap_or("name"),
+            oidc_config.email_claim.as_deref().unwrap_or("email"),
+            oidc_config.username_claim.as_deref().unwrap_or("preferred_username"),
+            oidc_config.roles_claim.as_deref().unwrap_or("roles"),
+            oidc_config.user_role.as_deref().unwrap_or("user"),
+            oidc_config.admin_role.as_deref().unwrap_or("admin"),
+            true, // initialized_from_env = true
+        ).await?;
+
+        println!("Successfully initialized OIDC provider '{}' with ID: {}", provider_name, provider_id);
+        Ok(())
+    }
+
+    // Check if OIDC provider was initialized from environment variables
+    pub async fn is_oidc_provider_env_initialized(&self, provider_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"
+                    SELECT initializedfromenv FROM "OIDCProviders" WHERE providerid = $1
+                "#)
+                    .bind(provider_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                Ok(result.map(|row| row.try_get::<bool, _>("initializedfromenv").unwrap_or(false)).unwrap_or(false))
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(r#"
+                    SELECT InitializedFromEnv FROM OIDCProviders WHERE ProviderID = ?
+                "#)
+                    .bind(provider_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                Ok(result.map(|row| row.try_get::<bool, _>("InitializedFromEnv").unwrap_or(false)).unwrap_or(false))
+            }
+        }
+    }
+
+    // Update OIDC provider - updates an existing provider with new values
+    pub async fn update_oidc_provider(&self, provider_id: i32, provider_name: &str, client_id: &str, client_secret: &str, authorization_url: &str, token_url: &str, user_info_url: &str, button_text: &str, scope: &str, button_color: &str, button_text_color: &str, icon_svg: &str, name_claim: &str, email_claim: &str, username_claim: &str, roles_claim: &str, user_role: &str, admin_role: &str) -> AppResult<bool> {
+        println!("Updating OIDC provider with ID: {}", provider_id);
+        
+        let rows_affected = match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"
+                    UPDATE "OIDCProviders" SET
+                        providername = $2, clientid = $3, clientsecret = $4, 
+                        authorizationurl = $5, tokenurl = $6, userinfourl = $7,
+                        buttontext = $8, scope = $9, buttoncolor = $10,
+                        buttontextcolor = $11, iconsvg = $12, nameclaim = $13,
+                        emailclaim = $14, usernameclaim = $15, rolesclaim = $16,
+                        userrole = $17, adminrole = $18, modified = CURRENT_TIMESTAMP
+                    WHERE providerid = $1
+                "#)
+                    .bind(provider_id)
+                    .bind(provider_name)
+                    .bind(client_id)
+                    .bind(client_secret)
+                    .bind(authorization_url)
+                    .bind(token_url)
+                    .bind(user_info_url)
+                    .bind(button_text)
+                    .bind(scope)
+                    .bind(button_color)
+                    .bind(button_text_color)
+                    .bind(icon_svg)
+                    .bind(name_claim)
+                    .bind(email_claim)
+                    .bind(username_claim)
+                    .bind(roles_claim)
+                    .bind(user_role)
+                    .bind(admin_role)
+                    .execute(pool)
+                    .await?;
+                
+                result.rows_affected()
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("
+                    UPDATE OIDCProviders SET
+                        ProviderName = ?, ClientID = ?, ClientSecret = ?,
+                        AuthorizationURL = ?, TokenURL = ?, UserInfoURL = ?,
+                        ButtonText = ?, Scope = ?, ButtonColor = ?,
+                        ButtonTextColor = ?, IconSVG = ?, NameClaim = ?,
+                        EmailClaim = ?, UsernameClaim = ?, RolesClaim = ?,
+                        UserRole = ?, AdminRole = ?, Modified = CURRENT_TIMESTAMP
+                    WHERE ProviderID = ?
+                ")
+                    .bind(provider_name)
+                    .bind(client_id)
+                    .bind(client_secret)
+                    .bind(authorization_url)
+                    .bind(token_url)
+                    .bind(user_info_url)
+                    .bind(button_text)
+                    .bind(scope)
+                    .bind(button_color)
+                    .bind(button_text_color)
+                    .bind(icon_svg)
+                    .bind(name_claim)
+                    .bind(email_claim)
+                    .bind(username_claim)
+                    .bind(roles_claim)
+                    .bind(user_role)
+                    .bind(admin_role)
+                    .bind(provider_id)
+                    .execute(pool)
+                    .await?;
+                
+                result.rows_affected()
+            }
+        };
+        
+        let success = rows_affected > 0;
+        if success {
+            println!("Successfully updated OIDC provider with ID: {}", provider_id);
+        } else {
+            println!("No OIDC provider found with ID: {}", provider_id);
+        }
+        Ok(success)
     }
     
     // Get user start page - matches Python get_user_startpage function exactly

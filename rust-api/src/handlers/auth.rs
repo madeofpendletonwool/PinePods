@@ -204,6 +204,11 @@ pub async fn get_key(
     headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<LoginResponse>, AppError> {
+    // Check if standard login is disabled in favor of OIDC-only authentication
+    if state.config.oidc.disable_standard_login {
+        return Err(AppError::forbidden("Standard username/password login is disabled. Please use OIDC authentication."));
+    }
+
     let (username, password) = extract_basic_auth(&headers)?;
     
     // Verify password
@@ -1710,6 +1715,10 @@ pub async fn reset_password_create_code(
     State(state): State<AppState>,
     Json(request): Json<ResetCodeRequest>,
 ) -> Result<Json<ResetCodeResponse>, AppError> {
+    // Check if standard login is disabled in favor of OIDC-only authentication
+    if state.config.oidc.disable_standard_login {
+        return Err(AppError::forbidden("Password reset is disabled when using OIDC-only authentication. Please use your OIDC provider for password management."));
+    }
     // Get email settings to check if they're configured
     let email_settings = state.db_pool.get_email_settings().await?;
     if let Some(settings) = email_settings {
@@ -1751,6 +1760,10 @@ pub async fn verify_and_reset_password(
     State(state): State<AppState>,
     Json(request): Json<VerifyAndResetPasswordRequest>,
 ) -> Result<Json<VerifyAndResetPasswordResponse>, AppError> {
+    // Check if standard login is disabled in favor of OIDC-only authentication
+    if state.config.oidc.disable_standard_login {
+        return Err(AppError::forbidden("Password reset is disabled when using OIDC-only authentication. Please use your OIDC provider for password management."));
+    }
     // Verify the reset code
     let code_valid = state.db_pool.verify_reset_code(&request.email, &request.reset_code).await?;
     

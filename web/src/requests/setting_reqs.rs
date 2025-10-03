@@ -2130,6 +2130,7 @@ pub struct OIDCProvider {
     pub provider_id: i32,
     pub provider_name: String,
     pub client_id: String,
+    pub client_secret: String,
     pub authorization_url: String,
     pub token_url: String,
     pub user_info_url: String,
@@ -2145,6 +2146,7 @@ pub struct OIDCProvider {
     pub user_role: Option<String>,
     pub admin_role: Option<String>,
     pub enabled: bool,
+    pub initialized_from_env: bool,
 }
 
 pub async fn call_add_oidc_provider(
@@ -2168,6 +2170,29 @@ pub async fn call_add_oidc_provider(
     } else {
         Err(Error::msg(format!(
             "Failed to add OIDC provider: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_update_oidc_provider(
+    server_name: String,
+    api_key: String,
+    provider_id: i32,
+    provider: AddOIDCProviderRequest,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/update_oidc_provider/{}", server_name, provider_id);
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .json(&provider)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(Error::msg(format!(
+            "Failed to update OIDC provider: {}",
             response.status_text()
         )))
     }

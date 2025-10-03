@@ -13,6 +13,17 @@ Major Version:
 - [ ] Fix episode spacing on queue page. The context button still shows even on smallest screens
 - [ ] Check youtube download Issues when changing the download time
 
+0.8.2
+
+- [] translations
+- [] Account Settings now updates dropdowns with pre-populated values
+- [] episode-layout (podcast page) will now set sort settings based on pod id
+- [] Added endpoint to delete OIDC settings
+- [] Manually search or enter podcast index id for matching to podcast index
+- [] OIDC Setup on start
+- [] Better errors if needed vars are missing
+- [] Redis/Valkey Authentication
+
 0.7.9
 
 - [x] Finish implementing long finger press - fix on iOS (close, it doesn't auto close when clicking away currently)

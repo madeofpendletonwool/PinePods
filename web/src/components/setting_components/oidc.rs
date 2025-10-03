@@ -1,7 +1,7 @@
 use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
-    call_add_oidc_provider, call_list_oidc_providers, call_remove_oidc_provider,
+    call_add_oidc_provider, call_list_oidc_providers, call_remove_oidc_provider, call_update_oidc_provider,
     AddOIDCProviderRequest, OIDCProvider,
 };
 use gloo_events::EventListener;
@@ -16,6 +16,7 @@ use i18nrs::yew::use_translation;
 enum PageState {
     Hidden,
     AddProvider,
+    EditProvider(i32), // provider_id
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -382,7 +383,10 @@ pub fn oidc_settings() -> Html {
     let i18n_failed_to_remove_provider = i18n.t("oidc.failed_to_remove_provider").to_string();
     let i18n_oidc_provider_successfully_added = i18n.t("oidc.oidc_provider_successfully_added").to_string();
     let i18n_failed_to_add_provider = i18n.t("oidc.failed_to_add_provider").to_string();
+    let i18n_oidc_provider_successfully_updated = i18n.t("oidc.oidc_provider_successfully_updated").to_string();
+    let i18n_failed_to_update_provider = i18n.t("oidc.failed_to_update_provider").to_string();
     let i18n_add_oidc_provider = i18n.t("oidc.add_oidc_provider").to_string();
+    let i18n_edit_oidc_provider = i18n.t("oidc.edit_oidc_provider").to_string();
     let i18n_close_modal = i18n.t("common.close_modal").to_string();
     let i18n_oidc_redirect_url = i18n.t("oidc.oidc_redirect_url").to_string();
     let i18n_use_this_url_when_configuring = i18n.t("oidc.use_this_url_when_configuring").to_string();
@@ -404,12 +408,14 @@ pub fn oidc_settings() -> Html {
     let i18n_user_role = i18n.t("oidc.user_role").to_string();
     let i18n_admin_role = i18n.t("oidc.admin_role").to_string();
     let i18n_submit = i18n.t("common.submit").to_string();
+    let i18n_add = i18n.t("common.add").to_string();
+    let i18n_update = i18n.t("common.update").to_string();
     let i18n_oidc_provider_management = i18n.t("oidc.oidc_provider_management").to_string();
     let i18n_add_provider = i18n.t("oidc.add_provider").to_string();
     let i18n_no_oidc_providers_configured = i18n.t("oidc.no_oidc_providers_configured").to_string();
     let i18n_remove = i18n.t("common.remove").to_string();
 
-    // Form states for the add provider modal
+    // Form states for the add/edit provider modal
     let provider_name = use_state(|| String::new());
     let client_id = use_state(|| String::new());
     let client_secret = use_state(|| String::new());
@@ -426,8 +432,100 @@ pub fn oidc_settings() -> Html {
     let roles_claim = use_state(|| String::new());
     let user_role = use_state(|| String::new());
     let admin_role = use_state(|| String::new());
-    // Add this to your state declarations in the form component
     let selected_scopes = use_state(|| Vec::<String>::new());
+    let editing_provider_id = use_state(|| None::<i32>);
+
+    // Function to populate form with provider data for editing
+    let populate_form_for_edit = {
+        let provider_name = provider_name.clone();
+        let client_id = client_id.clone();
+        let client_secret = client_secret.clone();
+        let auth_url = auth_url.clone();
+        let token_url = token_url.clone();
+        let user_info_url = user_info_url.clone();
+        let button_text = button_text.clone();
+        let button_color = button_color.clone();
+        let button_text_color = button_text_color.clone();
+        let icon_svg = icon_svg.clone();
+        let name_claim = name_claim.clone();
+        let email_claim = email_claim.clone();
+        let username_claim = username_claim.clone();
+        let roles_claim = roles_claim.clone();
+        let user_role = user_role.clone();
+        let admin_role = admin_role.clone();
+        let selected_scopes = selected_scopes.clone();
+        let editing_provider_id = editing_provider_id.clone();
+
+        move |provider: &OIDCProvider| {
+            provider_name.set(provider.provider_name.clone());
+            client_id.set(provider.client_id.clone());
+            client_secret.set(provider.client_secret.clone());
+            auth_url.set(provider.authorization_url.clone());
+            token_url.set(provider.token_url.clone());
+            user_info_url.set(provider.user_info_url.clone());
+            button_text.set(provider.button_text.clone());
+            button_color.set(provider.button_color.clone());
+            button_text_color.set(provider.button_text_color.clone());
+            icon_svg.set(provider.icon_svg.as_ref().unwrap_or(&String::new()).clone());
+            name_claim.set(provider.name_claim.as_ref().unwrap_or(&String::new()).clone());
+            email_claim.set(provider.email_claim.as_ref().unwrap_or(&String::new()).clone());
+            username_claim.set(provider.username_claim.as_ref().unwrap_or(&String::new()).clone());
+            roles_claim.set(provider.roles_claim.as_ref().unwrap_or(&String::new()).clone());
+            user_role.set(provider.user_role.as_ref().unwrap_or(&String::new()).clone());
+            admin_role.set(provider.admin_role.as_ref().unwrap_or(&String::new()).clone());
+            editing_provider_id.set(Some(provider.provider_id));
+            
+            // Parse scopes from the provider's scope string
+            let scopes_vec: Vec<String> = provider.scope
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect();
+            selected_scopes.set(scopes_vec);
+        }
+    };
+
+    // Function to clear form for adding new provider
+    let clear_form = {
+        let provider_name = provider_name.clone();
+        let client_id = client_id.clone();
+        let client_secret = client_secret.clone();
+        let auth_url = auth_url.clone();
+        let token_url = token_url.clone();
+        let user_info_url = user_info_url.clone();
+        let button_text = button_text.clone();
+        let button_color = button_color.clone();
+        let button_text_color = button_text_color.clone();
+        let icon_svg = icon_svg.clone();
+        let name_claim = name_claim.clone();
+        let email_claim = email_claim.clone();
+        let username_claim = username_claim.clone();
+        let roles_claim = roles_claim.clone();
+        let user_role = user_role.clone();
+        let admin_role = admin_role.clone();
+        let selected_scopes = selected_scopes.clone();
+        let editing_provider_id = editing_provider_id.clone();
+
+        move || {
+            provider_name.set(String::new());
+            client_id.set(String::new());
+            client_secret.set(String::new());
+            auth_url.set(String::new());
+            token_url.set(String::new());
+            user_info_url.set(String::new());
+            button_text.set(String::new());
+            button_color.set(String::from("#000000"));
+            button_text_color.set(String::from("#000000"));
+            icon_svg.set(String::new());
+            name_claim.set(String::new());
+            email_claim.set(String::new());
+            username_claim.set(String::new());
+            roles_claim.set(String::new());
+            user_role.set(String::new());
+            admin_role.set(String::new());
+            selected_scopes.set(Vec::new());
+            editing_provider_id.set(None);
+        }
+    };
 
     // Add this callback after your other input handlers
     let scope_on_select = {
@@ -479,8 +577,22 @@ pub fn oidc_settings() -> Html {
 
     let on_add_provider = {
         let page_state = page_state.clone();
+        let clear_form = clear_form.clone();
         Callback::from(move |_| {
+            clear_form();
             page_state.set(PageState::AddProvider);
+        })
+    };
+
+    let on_edit_provider = {
+        let page_state = page_state.clone();
+        let populate_form_for_edit = populate_form_for_edit.clone();
+        let providers = providers.clone();
+        Callback::from(move |provider_id: i32| {
+            if let Some(provider) = providers.iter().find(|p| p.provider_id == provider_id) {
+                populate_form_for_edit(provider);
+                page_state.set(PageState::EditProvider(provider_id));
+            }
         })
     };
 
@@ -704,10 +816,14 @@ pub fn oidc_settings() -> Html {
         let selected_scopes = selected_scopes.clone();
         let i18n_oidc_provider_successfully_added = i18n_oidc_provider_successfully_added.clone();
         let i18n_failed_to_add_provider = i18n_failed_to_add_provider.clone();
+        let i18n_oidc_provider_successfully_updated = i18n_oidc_provider_successfully_updated.clone();
+        let i18n_failed_to_update_provider = i18n_failed_to_update_provider.clone();
 
         Callback::from(move |e: SubmitEvent| {
             let i18n_oidc_provider_successfully_added = i18n_oidc_provider_successfully_added.clone();
             let i18n_failed_to_add_provider = i18n_failed_to_add_provider.clone();
+            let i18n_oidc_provider_successfully_updated = i18n_oidc_provider_successfully_updated.clone();
+            let i18n_failed_to_update_provider = i18n_failed_to_update_provider.clone();
             let call_trigger = update_trigger.clone();
             let call_page_state = page_state.clone();
             let call_dispatch = _dispatch.clone();
@@ -750,22 +866,49 @@ pub fn oidc_settings() -> Html {
                 .and_then(|ud| ud.api_key.clone());
 
             if let (Some(server_name), Some(api_key)) = (server_name, api_key) {
+                let current_page_state = (*call_page_state).clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_add_oidc_provider(server_name, api_key, provider).await {
-                        Ok(_) => {
-                            call_trigger.set(!*call_trigger);
-                            call_page_state.set(PageState::Hidden);
-                            call_dispatch.reduce_mut(|state| {
-                                state.info_message =
-                                    Some(i18n_oidc_provider_successfully_added.clone());
-                            });
+                    match current_page_state {
+                        PageState::AddProvider => {
+                            match call_add_oidc_provider(server_name, api_key, provider).await {
+                                Ok(_) => {
+                                    call_trigger.set(!*call_trigger);
+                                    call_page_state.set(PageState::Hidden);
+                                    call_dispatch.reduce_mut(|state| {
+                                        state.info_message =
+                                            Some(i18n_oidc_provider_successfully_added.clone());
+                                    });
+                                }
+                                Err(e) => {
+                                    let formatted_error = format_error_message(&e.to_string());
+                                    call_dispatch.reduce_mut(|state| {
+                                        state.error_message =
+                                            Some(format!("{}{}", i18n_failed_to_add_provider, formatted_error));
+                                    });
+                                }
+                            }
                         }
-                        Err(e) => {
-                            let formatted_error = format_error_message(&e.to_string());
-                            call_dispatch.reduce_mut(|state| {
-                                state.error_message =
-                                    Some(format!("{}{}", i18n_failed_to_add_provider, formatted_error));
-                            });
+                        PageState::EditProvider(provider_id) => {
+                            match call_update_oidc_provider(server_name, api_key, provider_id, provider).await {
+                                Ok(_) => {
+                                    call_trigger.set(!*call_trigger);
+                                    call_page_state.set(PageState::Hidden);
+                                    call_dispatch.reduce_mut(|state| {
+                                        state.info_message =
+                                            Some(i18n_oidc_provider_successfully_updated.clone());
+                                    });
+                                }
+                                Err(e) => {
+                                    let formatted_error = format_error_message(&e.to_string());
+                                    call_dispatch.reduce_mut(|state| {
+                                        state.error_message =
+                                            Some(format!("{}{}", i18n_failed_to_update_provider, formatted_error));
+                                    });
+                                }
+                            }
+                        }
+                        PageState::Hidden => {
+                            // This shouldn't happen, but handle gracefully
                         }
                     }
                 });
@@ -798,7 +941,11 @@ pub fn oidc_settings() -> Html {
                 <div class="modal-container relative rounded-lg shadow">
                     <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
                         <h3 class="text-xl font-semibold">
-{&i18n_add_oidc_provider}
+{match &*page_state {
+    PageState::AddProvider => &i18n_add_oidc_provider,
+    PageState::EditProvider(_) => &i18n_edit_oidc_provider,
+    PageState::Hidden => &i18n_add_oidc_provider, // fallback
+}}
                         </h3>
                         <button onclick={on_close_modal.clone()}
                             class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
@@ -1001,7 +1148,11 @@ pub fn oidc_settings() -> Html {
                             </div>
                             <div class="flex justify-end mt-4">
                                 <button type="submit" class="download-button focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">
-{&i18n_submit}
+{match &*page_state {
+    PageState::AddProvider => &i18n_add,
+    PageState::EditProvider(_) => &i18n_update,
+    PageState::Hidden => &i18n_submit, // fallback
+}}
                                 </button>
                             </div>
                         </form>
@@ -1065,17 +1216,49 @@ pub fn oidc_settings() -> Html {
                             })
                         };
 
+                        let on_edit = {
+                            let on_edit_provider = on_edit_provider.clone();
+                            let provider_id = provider.provider_id;
+                            Callback::from(move |_| {
+                                on_edit_provider.emit(provider_id);
+                            })
+                        };
+
                         html! {
                             <div class="oidc-provider-card">
                                 <div class="oidc-provider-header">
                                     <div>
-                                        <h3 class="text-lg font-medium">{&provider.provider_name}</h3>
+                                        <div class="flex items-center gap-2">
+                                            <h3 class="text-lg font-medium">{&provider.provider_name}</h3>
+                                            if provider.initialized_from_env {
+                                                <span class="px-2 py-1 text-xs rounded-full bg-blue-900/20 text-blue-300 border border-blue-800/30">
+                                                    {"Environment"}
+                                                </span>
+                                            }
+                                        </div>
                                         <p class="text-sm opacity-70">{&provider.client_id}</p>
                                     </div>
-                                    <button onclick={on_remove} class="oidc-remove-button">
-                                        <i class="ph ph-trash"></i>
-{&i18n_remove}
-                                    </button>
+                                    <div class="flex items-center gap-2">
+                                        <button onclick={on_edit} class="oidc-edit-button">
+                                            <i class="ph ph-pencil"></i>
+                                            {"Edit"}
+                                        </button>
+                                        if !provider.initialized_from_env {
+                                            <button onclick={on_remove} class="oidc-remove-button">
+                                                <i class="ph ph-trash"></i>
+                                                {&i18n_remove}
+                                            </button>
+                                        } else {
+                                            <button 
+                                                class="oidc-remove-button opacity-50 cursor-not-allowed" 
+                                                disabled=true
+                                                title="Cannot remove environment-initialized providers"
+                                            >
+                                                <i class="ph ph-trash"></i>
+                                                {&i18n_remove}
+                                            </button>
+                                        }
+                                    </div>
                                 </div>
                                 <div class="oidc-provider-info">
                                     <div class="oidc-info-group">
@@ -1100,6 +1283,7 @@ pub fn oidc_settings() -> Html {
             {
                 match *page_state {
                     PageState::AddProvider => add_provider_modal,
+                    PageState::EditProvider(_) => add_provider_modal, // Reuse the same modal for editing
                     PageState::Hidden => html! {},
                 }
             }
