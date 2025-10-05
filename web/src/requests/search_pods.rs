@@ -259,7 +259,7 @@ pub async fn call_get_podcast_info(
     search_index: &str,
 ) -> Result<PodcastSearchResult, anyhow::Error> {
     let url = if let Some(api_url) = search_api_url {
-        format!("{}?query={}&index={}", api_url, podcast_value, search_index)
+        format!("{}?query={}&index={}", api_url, urlencoding::encode(podcast_value), search_index)
     } else {
         return Err(anyhow::Error::msg("API URL is not provided"));
     };
@@ -342,7 +342,7 @@ pub async fn call_get_person_info(
     let url = if let Some(api_url) = search_api_url {
         format!(
             "{}?query={}&index={}&search_type=person",
-            api_url, person_name, search_index
+            api_url, urlencoding::encode(person_name), search_index
         )
     } else {
         return Err(anyhow::Error::msg("API URL is not provided"));
@@ -794,7 +794,7 @@ pub async fn call_youtube_search(
     search_api_url: &Option<String>,
 ) -> Result<YouTubeSearchResponse, Error> {
     let url = if let Some(api_url) = search_api_url {
-        format!("{}?query={}&index=youtube", api_url, query)
+        format!("{}?query={}&index=youtube", api_url, urlencoding::encode(query))
     } else {
         return Err(anyhow::Error::msg("Search API URL is not provided"));
     };

@@ -314,7 +314,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/user/set_playback_speed", post(handlers::settings::set_playback_speed_user))
         .route("/user/test_notification", post(handlers::settings::test_notification))
         .route("/add_oidc_provider", post(handlers::settings::add_oidc_provider))
-        .route("/update_oidc_provider/:provider_id", put(handlers::settings::update_oidc_provider))
+        .route("/update_oidc_provider/{provider_id}", put(handlers::settings::update_oidc_provider))
         .route("/list_oidc_providers", get(handlers::settings::list_oidc_providers))
         .route("/remove_oidc_provider", post(handlers::settings::remove_oidc_provider))
         .route("/startpage", get(handlers::settings::get_startpage))

@@ -162,8 +162,8 @@ pub struct CreatePlaylistRequest {
     pub include_unplayed: bool,
     pub include_partially_played: bool,
     pub include_played: bool,
-    pub play_progress_min: Option<f32>,
-    pub play_progress_max: Option<f32>,
+    pub play_progress_min: Option<f64>,
+    pub play_progress_max: Option<f64>,
     pub time_filter_hours: Option<i32>,
     pub min_duration: Option<i32>,
     pub max_duration: Option<i32>,
@@ -346,11 +346,26 @@ pub struct SavedEpisode {
     pub queued: bool,
     pub downloaded: bool,
     pub is_youtube: bool,
+    pub podcastid: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SavedEpisodesResponse {
     pub saved_episodes: Vec<SavedEpisode>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlaylistInfo {
+    pub name: String,
+    pub description: String,
+    pub episode_count: i32,
+    pub icon_name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlaylistEpisodesResponse {
+    pub episodes: Vec<SavedEpisode>,
+    pub playlist_info: PlaylistInfo,
 }
 
 #[derive(Debug, Serialize)]

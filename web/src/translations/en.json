@@ -285,7 +285,9 @@
     "fresh_releases_empty": "No new episodes have been released in the last 24 hours. Check back later for fresh content!",
     "currently_listening_empty": "Start listening to some episodes and they'll appear here for easy access.",
     "almost_done_empty": "You don't have any episodes that are near completion. Keep listening!",
-    "no_episodes_match_criteria": "No episodes match the current playlist criteria. Try adjusting the filters or add more podcasts."
+    "no_episodes_match_criteria": "No episodes match the current playlist criteria. Try adjusting the filters or add more podcasts.",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing..."
   },
   "common": {
     "loading": "Loading...",

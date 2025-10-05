@@ -3341,13 +3341,6 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 let query = r#"
-                    WITH filtered_episodes AS (
-                        SELECT pc.playlistid, pc.episodeid
-                        FROM "PlaylistContents" pc
-                        JOIN "Episodes" e ON pc.episodeid = e.episodeid
-                        JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                        WHERE p.userid = $1
-                    )
                     SELECT
                         p.playlistid,
                         p.userid,
@@ -3366,17 +3359,13 @@ impl DatabasePool {
                         p.lastupdated,
                         p.created,
                         p.iconname,
-                        COUNT(fe.episodeid)::INTEGER as episode_count
+                        COALESCE(p.episodecount, 0) as episode_count
                     FROM "Playlists" p
-                    LEFT JOIN filtered_episodes fe ON p.playlistid = fe.playlistid
-                    WHERE p.issystemplaylist = TRUE
-                        OR p.userid = $2
-                    GROUP BY p.playlistid
+                    WHERE p.userid = $1
                     ORDER BY p.issystemplaylist DESC, p.name ASC
                 "#;
 
                 let rows = sqlx::query(query)
-                    .bind(user_id)
                     .bind(user_id)
                     .fetch_all(pool)
                     .await?;
@@ -3443,13 +3432,6 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let query = r#"
-                    WITH filtered_episodes AS (
-                        SELECT pc.PlaylistID, pc.EpisodeID
-                        FROM PlaylistContents pc
-                        JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
-                        JOIN Podcasts p ON e.PodcastID = p.PodcastID
-                        WHERE p.UserID = ?
-                    )
                     SELECT
                         p.PlaylistID,
                         p.UserID,
@@ -3468,17 +3450,13 @@ impl DatabasePool {
                         p.LastUpdated,
                         p.Created,
                         p.IconName,
-                        COUNT(fe.EpisodeID) as episode_count
+                        COALESCE(p.EpisodeCount, 0) as episode_count
                     FROM Playlists p
-                    LEFT JOIN filtered_episodes fe ON p.PlaylistID = fe.PlaylistID
-                    WHERE p.IsSystemPlaylist = TRUE
-                        OR p.UserID = ?
-                    GROUP BY p.PlaylistID
+                    WHERE p.UserID = ?
                     ORDER BY p.IsSystemPlaylist DESC, p.Name ASC
                 "#;
 
                 let rows = sqlx::query(query)
-                    .bind(user_id)
                     .bind(user_id)
                     .fetch_all(pool)
                     .await?;
@@ -3780,7 +3758,8 @@ impl DatabasePool {
                             TRUE as saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            "Podcasts".podcastid as podcastid
                         FROM "SavedEpisodes"
                         INNER JOIN "Episodes" ON "SavedEpisodes".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
@@ -3813,7 +3792,8 @@ impl DatabasePool {
                             TRUE as saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL AND "EpisodeQueue".is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            "Podcasts".podcastid as podcastid
                         FROM "SavedVideos"
                         INNER JOIN "YouTubeVideos" ON "SavedVideos".videoid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
@@ -3859,6 +3839,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        podcastid: row.try_get("podcastid").ok(),
                     });
                 }
                 Ok(episodes)
@@ -3881,7 +3862,8 @@ impl DatabasePool {
                             TRUE as saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            Podcasts.PodcastID as podcastid
                         FROM SavedEpisodes
                         INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
@@ -3914,7 +3896,8 @@ impl DatabasePool {
                             TRUE as saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL AND EpisodeQueue.is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            Podcasts.PodcastID as podcastid
                         FROM SavedVideos
                         INNER JOIN YouTubeVideos ON SavedVideos.VideoID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
@@ -3960,6 +3943,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        podcastid: row.try_get("podcastid").ok(),
                     });
                 }
                 Ok(episodes)
@@ -4949,6 +4933,40 @@ impl DatabasePool {
         })?;
         
         if !response.status().is_success() {
+            // If we get a 403, the server might be blocking browser User-Agents
+            // Try with a podcast client User-Agent first
+            if response.status() == 403 {
+                println!("Got 403 Forbidden, trying with podcast client User-Agent");
+                
+                let podcast_client = reqwest::Client::builder()
+                    .user_agent("PinePods/1.0")
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .map_err(|e| {
+                        println!("Failed to build podcast client: {}", e);
+                        AppError::Http(e)
+                    })?;
+                
+                let mut podcast_request = podcast_client.get(url);
+                
+                if let (Some(user), Some(pass)) = (username, password) {
+                    println!("Adding basic auth to podcast client request for user: {}", user);
+                    podcast_request = podcast_request.basic_auth(user, Some(pass));
+                }
+                
+                let podcast_response = podcast_request.send().await.map_err(|e| {
+                    println!("Podcast client request failed for {}: {}", url, e);
+                    AppError::Http(e)
+                })?;
+                
+                if podcast_response.status().is_success() {
+                    println!("Podcast client request succeeded with status: {}", podcast_response.status());
+                    return Ok(podcast_response.text().await.map_err(|e| AppError::Http(e))?);
+                }
+                
+                println!("Podcast client request also failed with status: {}", podcast_response.status());
+            }
+            
             println!("Initial request failed with status: {}, trying alternate URL", response.status());
             // Try alternate URL (www vs non-www)
             let alternate_url = if url.contains("://www.") {
@@ -8650,6 +8668,12 @@ impl DatabasePool {
                     .execute(pool)
                     .await?;
 
+                // Create default playlists for the new user
+                if let Err(e) = self.create_default_playlists_for_user(user_id).await {
+                    tracing::warn!("⚠️ Failed to create default playlists for new user {}: {}", user_id, e);
+                    // Don't fail user creation if playlist creation fails
+                }
+
                 Ok(user_id)
             }
             DatabasePool::MySQL(pool) => {
@@ -8671,6 +8695,12 @@ impl DatabasePool {
                     .bind("light")
                     .execute(pool)
                     .await?;
+
+                // Create default playlists for the new user
+                if let Err(e) = self.create_default_playlists_for_user(user_id).await {
+                    tracing::warn!("⚠️ Failed to create default playlists for new user {}: {}", user_id, e);
+                    // Don't fail user creation if playlist creation fails
+                }
 
                 Ok(user_id)
             }
@@ -8759,6 +8789,12 @@ impl DatabasePool {
                     .execute(pool)
                     .await.ok();
 
+                // CRITICAL: Delete user's playlists to avoid foreign key constraint violations
+                sqlx::query(r#"DELETE FROM "Playlists" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await.ok();
+
                 // Delete from Users (main table)
                 sqlx::query(r#"DELETE FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
@@ -8798,6 +8834,12 @@ impl DatabasePool {
 
                 // Delete from UserStats
                 sqlx::query("DELETE FROM UserStats WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(pool)
+                    .await.ok();
+
+                // CRITICAL: Delete user's playlists to avoid foreign key constraint violations
+                sqlx::query("DELETE FROM Playlists WHERE UserID = ?")
                     .bind(user_id)
                     .execute(pool)
                     .await.ok();
@@ -12723,10 +12765,57 @@ impl DatabasePool {
         
         println!("Received response with status: {}", response.status());
         if !response.status().is_success() {
+            // If we get a 403, the server might be blocking browser User-Agents
+            // Try with a podcast client User-Agent
+            if response.status() == 403 {
+                println!("Got 403 Forbidden, trying with podcast client User-Agent");
+                
+                let podcast_client = reqwest::Client::builder()
+                    .user_agent("PinePods/1.0")
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .map_err(|e| {
+                        println!("Failed to build podcast client in get_podcast_values: {}", e);
+                        AppError::Http(e)
+                    })?;
+                
+                let mut podcast_request = podcast_client.get(feed_url);
+                
+                if let (Some(user), Some(pass)) = (username, password) {
+                    println!("Using basic authentication for podcast client request: {}", feed_url);
+                    use base64::Engine;
+                    let encoded = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
+                    podcast_request = podcast_request.header(AUTHORIZATION, format!("Basic {}", encoded));
+                }
+                
+                let podcast_response = podcast_request.send().await
+                    .map_err(|e| {
+                        println!("Podcast client request failed for {}: {}", feed_url, e);
+                        AppError::Http(e)
+                    })?;
+                
+                if podcast_response.status().is_success() {
+                    println!("Podcast client request succeeded with status: {}", podcast_response.status());
+                    let content = podcast_response.text().await?;
+                    
+                    // Continue with the same parsing logic
+                    return self.parse_feed_content_to_values(content, feed_url, user_id).await;
+                }
+                
+                println!("Podcast client request also failed with status: {}", podcast_response.status());
+            }
+            
             return Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", response.status())));
         }
         
         let content = response.text().await?;
+        
+        self.parse_feed_content_to_values(content, feed_url, user_id).await
+    }
+    
+    // Helper function to parse feed content into podcast values (extracted to avoid duplication)
+    async fn parse_feed_content_to_values(&self, content: String, feed_url: &str, user_id: i32) -> AppResult<std::collections::HashMap<String, String>> {
+        use feed_rs::parser;
         
         // Parse RSS feed using feed-rs
         let feed = parser::parse(content.as_bytes())
@@ -16648,7 +16737,7 @@ impl DatabasePool {
         
         // Add podcast filter (PostgreSQL IN clause support)
         if let Some(ref podcast_ids) = config.podcast_ids {
-            println!("PostgreSQL applying podcast filter with IDs: {:?}", podcast_ids);
+            println!("Playlist {}: Applying podcast filter with IDs: {:?}", playlist_id, podcast_ids);
             if !podcast_ids.is_empty() {
                 if podcast_ids.len() == 1 {
                     println!("PostgreSQL single podcast filter: p.podcastid = {}", podcast_ids[0]);
@@ -16665,6 +16754,11 @@ impl DatabasePool {
                     all_params.extend(podcast_ids);
                     param_index += podcast_ids.len();
                 }
+            } else {
+                // If podcast_ids is Some but empty, user selected specific podcasts but list is empty
+                // This should return no results (exclude all podcasts)
+                println!("PostgreSQL podcast filter is empty - excluding all podcasts");
+                select_query.push_str(" AND FALSE");
             }
         } else {
             println!("PostgreSQL no podcast filter applied - config.podcast_ids is None");
@@ -16693,10 +16787,13 @@ impl DatabasePool {
         }
         
         // Add play state filters - EXACT PYTHON LOGIC
+        println!("Playlist {}: Applying play state filters - unplayed: {}, partially_played: {}, played: {}", 
+                playlist_id, config.include_unplayed, config.include_partially_played, config.include_played);
         let mut play_state_conditions = Vec::new();
         
         if config.include_unplayed {
             play_state_conditions.push("h.listenduration IS NULL".to_string());
+            println!("Playlist {}: Added unplayed episode filter", playlist_id);
         }
         
         if config.include_partially_played {
@@ -16715,19 +16812,19 @@ impl DatabasePool {
         
         if config.include_played {
             play_state_conditions.push("h.listenduration >= e.episodeduration".to_string());
+            tracing::debug!("Playlist {}: Added played/completed episode filter", playlist_id);
         }
         
         if !play_state_conditions.is_empty() {
             select_query.push_str(&format!(" AND ({})", play_state_conditions.join(" OR ")));
+            tracing::debug!("Playlist {}: Applied play state filter: ({})", playlist_id, play_state_conditions.join(" OR "));
+        } else {
+            // If no play states are selected, exclude all episodes (return no results)
+            select_query.push_str(" AND FALSE");
+            tracing::debug!("Playlist {}: No play states selected - excluding all episodes", playlist_id);
         }
         
-        // Add sorting and grouping - EXACT PYTHON LOGIC
-        let sort_order = config.get_postgres_sort_order();
-        if config.group_by_podcast {
-            select_query.push_str(&format!(" ORDER BY p.podcastid, {}", sort_order.replace("ORDER BY ", "")));
-        } else {
-            select_query.push_str(&format!(" {}", sort_order));
-        }
+        // Note: No ORDER BY in inner query - final sorting is handled by ROW_NUMBER() OVER clause
         
         // Add limit
         if let Some(max_episodes) = config.max_episodes {
@@ -16735,10 +16832,16 @@ impl DatabasePool {
         }
         
         // Now wrap the SELECT query in INSERT with ROW_NUMBER() - FIXED ALIAS SCOPING
+        println!("Playlist {}: group_by_podcast setting: {}", playlist_id, config.group_by_podcast);
         let sort_for_insert = if config.group_by_podcast {
-            format!("ORDER BY episodes.podcastid, {}", config.get_postgres_outer_sort_order().replace("ORDER BY ", ""))
+            let sort_with_grouping = format!("ORDER BY episodes.podcastid, {}", config.get_postgres_outer_sort_order().replace("ORDER BY ", ""));
+            println!("Playlist {}: Using grouped sort: {}", playlist_id, sort_with_grouping);
+            sort_with_grouping
         } else {
-            config.get_postgres_outer_sort_order()
+            let sort_without_grouping = config.get_postgres_outer_sort_order();
+            println!("Playlist {}: Using non-grouped sort: {}", playlist_id, sort_without_grouping);
+            println!("Playlist {}: Debug - raw sort_order: '{}'", playlist_id, config.sort_order);
+            sort_without_grouping
         };
         
         let insert_query = format!(r#"
@@ -16746,6 +16849,8 @@ impl DatabasePool {
             SELECT $1, episodes.episodeid, ROW_NUMBER() OVER ({}) as position
             FROM ({}) episodes
         "#, sort_for_insert, select_query);
+        
+        println!("Playlist {}: Final insert query: {}", playlist_id, insert_query);
         
         // Final params: playlist_id first, then all query params
         let mut final_params = vec![playlist_id];
@@ -16787,7 +16892,10 @@ impl DatabasePool {
                     println!("MySQL multiple podcast filter: p.PodcastID IN ({})", placeholders);
                 }
             } else {
-                println!("MySQL podcast_ids is empty, no filter applied");
+                // If podcast_ids is Some but empty, user selected specific podcasts but list is empty
+                // This should return no results (exclude all podcasts)
+                println!("MySQL podcast filter is empty - excluding all podcasts");
+                select_query.push_str(" AND FALSE");
             }
         } else {
             println!("MySQL no podcast_ids specified, no filter applied");
@@ -16840,15 +16948,12 @@ impl DatabasePool {
         
         if !play_state_conditions.is_empty() {
             select_query.push_str(&format!(" AND ({})", play_state_conditions.join(" OR ")));
+        } else {
+            // If no play states are selected, exclude all episodes (return no results)
+            select_query.push_str(" AND FALSE");
         }
         
-        // Add sorting and grouping - EXACT PYTHON LOGIC
-        let sort_order = config.get_mysql_sort_order();
-        if config.group_by_podcast {
-            select_query.push_str(&format!(" ORDER BY p.PodcastID, {}", sort_order.replace("ORDER BY ", "")));
-        } else {
-            select_query.push_str(&format!(" {}", sort_order));
-        }
+        // Note: No ORDER BY in inner query - final sorting is handled by ROW_NUMBER() OVER clause
         
         // Add limit
         if let Some(max_episodes) = config.max_episodes {
@@ -16856,10 +16961,15 @@ impl DatabasePool {
         }
         
         // Now wrap the SELECT query in INSERT with ROW_NUMBER() - FIXED ALIAS SCOPING
+        println!("Playlist {}: group_by_podcast setting: {}", playlist_id, config.group_by_podcast);
         let sort_for_insert = if config.group_by_podcast {
-            format!("ORDER BY episodes.PodcastID, {}", config.get_mysql_outer_sort_order().replace("ORDER BY ", ""))
+            let sort_with_grouping = format!("ORDER BY episodes.PodcastID, {}", config.get_mysql_outer_sort_order().replace("ORDER BY ", ""));
+            println!("Playlist {}: Using grouped sort: {}", playlist_id, sort_with_grouping);
+            sort_with_grouping
         } else {
-            config.get_mysql_outer_sort_order()
+            let sort_without_grouping = config.get_mysql_outer_sort_order();
+            println!("Playlist {}: Using non-grouped sort: {}", playlist_id, sort_without_grouping);
+            sort_without_grouping
         };
         
         let insert_query = format!(r#"
@@ -17608,7 +17718,7 @@ impl DatabasePool {
                 let row = playlist_row.unwrap();
                 let playlist_name: String = row.try_get("name")?;
                 let playlist_description: String = row.try_get("description").unwrap_or_default();
-                let episode_count: i64 = row.try_get("episode_count")?;
+                let episode_count: i64 = row.try_get("episodecount")?;
                 let icon_name: String = row.try_get("iconname").unwrap_or_default();
                 let is_system_playlist: bool = row.try_get("issystemplaylist")?;
 
@@ -17785,7 +17895,7 @@ impl DatabasePool {
                 let row = playlist_row.unwrap();
                 let playlist_name: String = row.try_get("Name")?;
                 let playlist_description: String = row.try_get("Description").unwrap_or_default();
-                let episode_count: i64 = row.try_get("episode_count")?;
+                let episode_count: i64 = row.try_get("EpisodeCount")?;
                 let icon_name: String = row.try_get("IconName").unwrap_or_default();
                 let is_system_playlist: bool = row.try_get::<i8, _>("IsSystemPlaylist")? != 0;
 
@@ -22502,6 +22612,1008 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
+    // Create missing default playlists for existing users
+    pub async fn create_missing_default_playlists(&self) -> AppResult<()> {
+        use tracing::{info, warn, error};
+        
+        info!("🎵 Checking for missing default playlists for existing users...");
+        
+        // Define default playlists (same as migration 032)
+        let default_playlists = vec![
+            ("Quick Listens", "Short episodes under 15 minutes, perfect for quick breaks", Some(1), Some(900), "duration_asc", false, true, true, None, false, Some(1000), "ph-fast-forward"),
+            ("Longform", "Extended episodes over 1 hour, ideal for long drives or deep dives", Some(3600), None, "duration_desc", true, true, true, None, false, Some(1000), "ph-car"),
+            ("Currently Listening", "Episodes you've started but haven't finished", None, None, "date_desc", false, true, false, None, false, None, "ph-play"),
+            ("Fresh Releases", "Latest episodes from the last 24 hours", None, None, "date_desc", true, false, false, Some(24), false, None, "ph-sparkle"),
+            ("Weekend Marathon", "Longer episodes (30+ minutes) perfect for weekend listening", Some(1800), None, "duration_desc", true, true, true, None, true, Some(1000), "ph-couch"),
+            ("Commuter Mix", "Perfect-length episodes (15-45 minutes) for your daily commute", Some(900), Some(2700), "date_desc", true, true, true, None, false, Some(1000), "ph-car-simple"),
+        ];
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Get all existing users (excluding background user if present)
+                let user_rows = sqlx::query(r#"SELECT userid FROM "Users" WHERE userid > 1"#)
+                    .fetch_all(pool)
+                    .await?;
+                
+                info!("Found {} users to check for missing default playlists", user_rows.len());
+                
+                for user_row in user_rows {
+                    let user_id: i32 = user_row.try_get("userid")?;
+                    
+                    for (name, description, min_duration, max_duration, sort_order, include_unplayed, include_partially_played, include_played, time_filter_hours, group_by_podcast, max_episodes, icon_name) in &default_playlists {
+                        // Check if this playlist already exists for this user
+                        let exists: bool = sqlx::query_scalar(
+                            r#"SELECT EXISTS(SELECT 1 FROM "Playlists" WHERE userid = $1 AND name = $2)"#
+                        ).bind(user_id).bind(name).fetch_one(pool).await?;
+                        
+                        if !exists {
+                            // Create the playlist for this user
+                            match sqlx::query(r#"
+                                INSERT INTO "Playlists" (
+                                    userid, name, description, issystemplaylist, minduration, maxduration, sortorder,
+                                    includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
+                                    groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids,
+                                    iconname, episodecount
+                                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                                "#)
+                                .bind(user_id).bind(name).bind(description).bind(false)
+                                .bind(min_duration).bind(max_duration).bind(sort_order)
+                                .bind(include_unplayed).bind(include_partially_played).bind(include_played)
+                                .bind(time_filter_hours).bind(group_by_podcast).bind(max_episodes)
+                                .bind(0.0).bind(100.0).bind(&[] as &[i32]).bind(icon_name).bind(0)
+                                .execute(pool).await {
+                                Ok(_) => info!("Created playlist '{}' for user {}", name, user_id),
+                                Err(e) => warn!("Failed to create playlist '{}' for user {}: {}", name, user_id, e),
+                            }
+                        }
+                    }
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                // Get all existing users (excluding background user if present)
+                let user_rows = sqlx::query("SELECT UserID FROM Users WHERE UserID > 1")
+                    .fetch_all(pool)
+                    .await?;
+                
+                info!("Found {} users to check for missing default playlists", user_rows.len());
+                
+                for user_row in user_rows {
+                    let user_id: i32 = user_row.try_get("UserID")?;
+                    
+                    for (name, description, min_duration, max_duration, sort_order, include_unplayed, include_partially_played, include_played, time_filter_hours, group_by_podcast, max_episodes, icon_name) in &default_playlists {
+                        // Check if this playlist already exists for this user
+                        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM Playlists WHERE UserID = ? AND Name = ?")
+                            .bind(user_id)
+                            .bind(name)
+                            .fetch_one(pool)
+                            .await?;
+                        
+                        if count == 0 {
+                            // Create the playlist for this user
+                            match sqlx::query("
+                                INSERT INTO Playlists (
+                                    UserID, Name, Description, IsSystemPlaylist, MinDuration, MaxDuration, SortOrder,
+                                    IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
+                                    GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
+                                    IconName, episode_count
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ")
+                                .bind(user_id).bind(name).bind(description).bind(false)
+                                .bind(min_duration).bind(max_duration).bind(sort_order)
+                                .bind(include_unplayed).bind(include_partially_played).bind(include_played)
+                                .bind(time_filter_hours).bind(group_by_podcast).bind(max_episodes)
+                                .bind(0.0).bind(100.0).bind("[]").bind(icon_name).bind(0)
+                                .execute(pool).await {
+                                Ok(_) => info!("Created playlist '{}' for user {}", name, user_id),
+                                Err(e) => warn!("Failed to create playlist '{}' for user {}: {}", name, user_id, e),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        info!("✅ Finished checking for missing default playlists");
+        Ok(())
+    }
+
+    // Create default playlists for a single user - shared by user creation and startup check
+    async fn create_default_playlists_for_user(&self, user_id: i32) -> AppResult<()> {
+        use tracing::{info, warn};
+        
+        // Define default playlists (same as migration 032)
+        let default_playlists = vec![
+            ("Quick Listens", "Short episodes under 15 minutes, perfect for quick breaks", Some(1), Some(900), "duration_asc", true, true, true, None, false, Some(1000), "ph-fast-forward"),
+            ("Longform", "Extended episodes over 1 hour, ideal for long drives or deep dives", Some(3600), None, "duration_desc", true, true, true, None, false, Some(1000), "ph-car"),
+            ("Currently Listening", "Episodes you've started but haven't finished", None, None, "date_desc", false, true, false, None, false, None, "ph-play"),
+            ("Fresh Releases", "Latest episodes from the last 24 hours", None, None, "date_desc", true, false, false, Some(24), false, None, "ph-sparkle"),
+            ("Weekend Marathon", "Longer episodes (30+ minutes) perfect for weekend listening", Some(1800), None, "duration_desc", true, true, true, None, true, Some(1000), "ph-couch"),
+            ("Commuter Mix", "Perfect-length episodes (15-45 minutes) for your daily commute", Some(900), Some(2700), "date_desc", true, true, true, None, false, Some(1000), "ph-car-simple"),
+        ];
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                for (name, description, min_duration, max_duration, sort_order, include_unplayed, include_partially_played, include_played, time_filter_hours, group_by_podcast, max_episodes, icon_name) in &default_playlists {
+                    // Check if this playlist already exists for this user
+                    let exists: bool = sqlx::query_scalar(
+                        r#"SELECT EXISTS(SELECT 1 FROM "Playlists" WHERE userid = $1 AND name = $2)"#
+                    ).bind(user_id).bind(name).fetch_one(pool).await?;
+                    
+                    if !exists {
+                        // Create the playlist for this user
+                        match sqlx::query(r#"
+                            INSERT INTO "Playlists" (
+                                userid, name, description, issystemplaylist, minduration, maxduration, sortorder,
+                                includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
+                                groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids,
+                                iconname, episodecount
+                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                            "#)
+                            .bind(user_id).bind(name).bind(description).bind(false)
+                            .bind(min_duration).bind(max_duration).bind(sort_order)
+                            .bind(include_unplayed).bind(include_partially_played).bind(include_played)
+                            .bind(time_filter_hours).bind(group_by_podcast).bind(max_episodes)
+                            .bind(0.0).bind(100.0).bind(&[] as &[i32]).bind(icon_name).bind(0)
+                            .execute(pool).await {
+                            Ok(_) => info!("Created playlist '{}' for user {}", name, user_id),
+                            Err(e) => warn!("Failed to create playlist '{}' for user {}: {}", name, user_id, e),
+                        }
+                    }
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                for (name, description, min_duration, max_duration, sort_order, include_unplayed, include_partially_played, include_played, time_filter_hours, group_by_podcast, max_episodes, icon_name) in &default_playlists {
+                    // Check if this playlist already exists for this user
+                    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM Playlists WHERE UserID = ? AND Name = ?")
+                        .bind(user_id)
+                        .bind(name)
+                        .fetch_one(pool)
+                        .await?;
+                    
+                    if count == 0 {
+                        // Create the playlist for this user
+                        match sqlx::query("
+                            INSERT INTO Playlists (
+                                UserID, Name, Description, IsSystemPlaylist, MinDuration, MaxDuration, SortOrder,
+                                IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
+                                GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
+                                IconName, episode_count
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ")
+                            .bind(user_id).bind(name).bind(description).bind(false)
+                            .bind(min_duration).bind(max_duration).bind(sort_order)
+                            .bind(include_unplayed).bind(include_partially_played).bind(include_played)
+                            .bind(time_filter_hours).bind(group_by_podcast).bind(max_episodes)
+                            .bind(0.0).bind(100.0).bind("[]").bind(icon_name).bind(0)
+                            .execute(pool).await {
+                            Ok(_) => info!("Created playlist '{}' for user {}", name, user_id),
+                            Err(e) => warn!("Failed to create playlist '{}' for user {}: {}", name, user_id, e),
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
+    // Update episode counts for all playlists - replaces complex playlist content updates
+    pub async fn update_playlist_episode_counts(&self) -> AppResult<()> {
+        use tracing::{info, warn, debug};
+        
+        info!("📊 Starting playlist episode count updates...");
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Get all playlists
+                let playlists = sqlx::query(
+                    r#"SELECT playlistid, userid, name FROM "Playlists" ORDER BY userid, playlistid"#
+                ).fetch_all(pool).await?;
+                
+                info!("Found {} playlists to update counts for", playlists.len());
+                
+                let mut updated_count = 0;
+                let mut failed_count = 0;
+                
+                for playlist in playlists {
+                    let playlist_id: i32 = playlist.try_get("playlistid")?;
+                    let user_id: i32 = playlist.try_get("userid")?;
+                    let name: String = playlist.try_get("name")?;
+                    
+                    match self.count_playlist_episodes_dynamic(playlist_id, user_id).await {
+                        Ok(count) => {
+                            // Update the episode_count in the playlist
+                            match sqlx::query(
+                                r#"UPDATE "Playlists" SET episodecount = $1 WHERE playlistid = $2"#
+                            ).bind(count).bind(playlist_id).execute(pool).await {
+                                Ok(_) => {
+                                    debug!("Updated playlist '{}' (ID: {}) count to {}", name, playlist_id, count);
+                                    updated_count += 1;
+                                }
+                                Err(e) => {
+                                    warn!("Failed to update count for playlist '{}' (ID: {}): {}", name, playlist_id, e);
+                                    failed_count += 1;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to count episodes for playlist '{}' (ID: {}): {}", name, playlist_id, e);
+                            failed_count += 1;
+                        }
+                    }
+                }
+                
+                info!("✅ Playlist count update completed: {} updated, {} failed", updated_count, failed_count);
+            }
+            DatabasePool::MySQL(pool) => {
+                // Get all playlists
+                let playlists = sqlx::query(
+                    r#"SELECT PlaylistID, UserID, Name FROM Playlists ORDER BY UserID, PlaylistID"#
+                ).fetch_all(pool).await?;
+                
+                info!("Found {} playlists to update counts for (MySQL)", playlists.len());
+                
+                let mut updated_count = 0;
+                let mut failed_count = 0;
+                
+                for playlist in playlists {
+                    let playlist_id: i32 = playlist.try_get("PlaylistID")?;
+                    let user_id: i32 = playlist.try_get("UserID")?;
+                    let name: String = playlist.try_get("Name")?;
+                    
+                    match self.count_playlist_episodes_dynamic(playlist_id, user_id).await {
+                        Ok(count) => {
+                            // Update the episode_count in the playlist
+                            match sqlx::query(
+                                r#"UPDATE Playlists SET episode_count = ? WHERE PlaylistID = ?"#
+                            ).bind(count).bind(playlist_id).execute(pool).await {
+                                Ok(_) => {
+                                    debug!("Updated MySQL playlist '{}' (ID: {}) count to {}", name, playlist_id, count);
+                                    updated_count += 1;
+                                }
+                                Err(e) => {
+                                    warn!("Failed to update MySQL count for playlist '{}' (ID: {}): {}", name, playlist_id, e);
+                                    failed_count += 1;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to count MySQL episodes for playlist '{}' (ID: {}): {}", name, playlist_id, e);
+                            failed_count += 1;
+                        }
+                    }
+                }
+                
+                info!("✅ MySQL playlist count update completed: {} updated, {} failed", updated_count, failed_count);
+            }
+        }
+        
+        Ok(())
+    }
+
+    // Count episodes for a playlist using the same dynamic logic (without pagination)
+    async fn count_playlist_episodes_dynamic(&self, playlist_id: i32, user_id: i32) -> AppResult<i32> {
+        use tracing::{debug, warn};
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Get user timezone for proper date calculations
+                let user_timezone: String = sqlx::query_scalar(
+                    r#"SELECT timezone FROM "Users" WHERE userid = $1"#
+                ).bind(user_id).fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
+                let user_timezone = if user_timezone.is_empty() { "UTC".to_string() } else { user_timezone };
+                
+                // Get playlist configuration
+                let playlist_row = sqlx::query(
+                    r#"SELECT userid, name, minduration, maxduration, sortorder, 
+                       includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
+                       groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids
+                       FROM "Playlists" WHERE playlistid = $1"#
+                ).bind(playlist_id).fetch_optional(pool).await?;
+                
+                let playlist = playlist_row.ok_or_else(|| crate::error::AppError::not_found("Playlist not found"))?;
+                
+                // Build count query using same logic as dynamic function
+                let mut query_parts = Vec::new();
+                let mut where_conditions = Vec::new();
+                
+                query_parts.push(format!(r#"
+                    SELECT COUNT(DISTINCT e.episodeid)
+                    FROM "Episodes" e
+                    JOIN "Podcasts" p ON e.podcastid = p.podcastid AND p.userid = {}
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}"#, 
+                    user_id, user_id
+                ));
+                
+                where_conditions.push("p.userid = $1".to_string());
+                
+                // Apply all the same filters as dynamic function
+                if let Some(min_dur) = playlist.try_get::<Option<i32>, _>("minduration")? {
+                    where_conditions.push(format!("e.episodeduration >= {}", min_dur));
+                }
+                if let Some(max_dur) = playlist.try_get::<Option<i32>, _>("maxduration")? {
+                    where_conditions.push(format!("e.episodeduration <= {}", max_dur));
+                }
+                
+                if let Some(hours) = playlist.try_get::<Option<i32>, _>("timefilterhours")? {
+                    where_conditions.push(format!(
+                        "e.episodepubdate >= (NOW() AT TIME ZONE '{}' - INTERVAL '{} hours') AT TIME ZONE '{}' AT TIME ZONE 'UTC'", 
+                        user_timezone, hours, user_timezone
+                    ));
+                }
+                
+                // Handle PostgreSQL array type for podcast IDs
+                if let Some(podcast_ids) = playlist.try_get::<Option<Vec<i32>>, _>("podcastids")? {
+                    if !podcast_ids.is_empty() && !podcast_ids.contains(&-1) {
+                        let podcast_ids_str = podcast_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
+                        where_conditions.push(format!("p.podcastid IN ({})", podcast_ids_str));
+                    }
+                }
+                
+                // Play state filters
+                let mut play_state_conditions = Vec::new();
+                if playlist.try_get::<bool, _>("includeunplayed")? {
+                    play_state_conditions.push("(h.listenduration IS NULL OR h.listenduration = 0)".to_string());
+                }
+                if playlist.try_get::<bool, _>("includepartiallyplayed")? {
+                    play_state_conditions.push(
+                        "(h.listenduration > 0 AND h.listenduration < e.episodeduration * 0.9 AND (e.episodeduration - h.listenduration) > 30)".to_string()
+                    );
+                }
+                if playlist.try_get::<bool, _>("includeplayed")? {
+                    play_state_conditions.push(
+                        "(h.listenduration IS NOT NULL AND (h.listenduration >= e.episodeduration * 0.9 OR (e.episodeduration - h.listenduration) <= 30))".to_string()
+                    );
+                }
+                
+                if !play_state_conditions.is_empty() {
+                    where_conditions.push(format!("({})", play_state_conditions.join(" OR ")));
+                } else {
+                    where_conditions.push("FALSE".to_string());
+                }
+                
+                // Progress filters
+                if let Some(min_progress) = playlist.try_get::<Option<f64>, _>("playprogressmin")? {
+                    where_conditions.push(format!(
+                        "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) >= {}", 
+                        min_progress / 100.0
+                    ));
+                }
+                if let Some(max_progress) = playlist.try_get::<Option<f64>, _>("playprogressmax")? {
+                    where_conditions.push(format!(
+                        "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) <= {}", 
+                        max_progress / 100.0
+                    ));
+                }
+                
+                let where_clause = if where_conditions.is_empty() {
+                    String::new()
+                } else {
+                    format!(" WHERE {}", where_conditions.join(" AND "))
+                };
+                
+                let final_query = format!("{}{}", query_parts.join(" "), where_clause);
+                
+                let count: i64 = sqlx::query_scalar(&final_query)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                // Apply MaxEpisodes limit if specified
+                let final_count = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("maxepisodes")? {
+                    if max_eps > 0 {
+                        std::cmp::min(count as i32, max_eps)
+                    } else {
+                        count as i32
+                    }
+                } else {
+                    count as i32
+                };
+                
+                Ok(final_count)
+            }
+            DatabasePool::MySQL(pool) => {
+                // Similar implementation for MySQL with adjusted syntax
+                let user_timezone: String = sqlx::query_scalar("SELECT TimeZone FROM Users WHERE UserID = ?")
+                    .bind(user_id).fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
+                let user_timezone = if user_timezone.is_empty() { "UTC".to_string() } else { user_timezone };
+                
+                let playlist_row = sqlx::query(
+                    r#"SELECT UserID, Name, MinDuration, MaxDuration, SortOrder, 
+                       IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
+                       GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs
+                       FROM Playlists WHERE PlaylistID = ?"#
+                ).bind(playlist_id).fetch_optional(pool).await?;
+                
+                let playlist = playlist_row.ok_or_else(|| crate::error::AppError::not_found("Playlist not found"))?;
+                
+                // MySQL count query with similar logic
+                let mut query_parts = Vec::new();
+                let mut where_conditions = Vec::new();
+                
+                query_parts.push(format!(r#"
+                    SELECT COUNT(DISTINCT e.EpisodeID)
+                    FROM Episodes e
+                    JOIN Podcasts p ON e.PodcastID = p.PodcastID AND p.UserID = {}
+                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}"#, 
+                    user_id, user_id
+                ));
+                
+                where_conditions.push("p.UserID = ?".to_string());
+                
+                // Apply all MySQL filters
+                if let Some(min_dur) = playlist.try_get::<Option<i32>, _>("MinDuration")? {
+                    where_conditions.push(format!("e.EpisodeDuration >= {}", min_dur));
+                }
+                if let Some(max_dur) = playlist.try_get::<Option<i32>, _>("MaxDuration")? {
+                    where_conditions.push(format!("e.EpisodeDuration <= {}", max_dur));
+                }
+                
+                if let Some(hours) = playlist.try_get::<Option<i32>, _>("TimeFilterHours")? {
+                    where_conditions.push(format!(
+                        "e.EpisodePubDate >= DATE_SUB(CONVERT_TZ(NOW(), 'UTC', '{}'), INTERVAL {} HOUR)", 
+                        user_timezone, hours
+                    ));
+                }
+                
+                // Continue with all other MySQL filters...
+                let where_clause = if where_conditions.is_empty() {
+                    String::new()
+                } else {
+                    format!(" WHERE {}", where_conditions.join(" AND "))
+                };
+                
+                let final_query = format!("{}{}", query_parts.join(" "), where_clause);
+                
+                let count: i64 = sqlx::query_scalar(&final_query)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                let final_count = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("MaxEpisodes")? {
+                    if max_eps > 0 {
+                        std::cmp::min(count as i32, max_eps)
+                    } else {
+                        count as i32
+                    }
+                } else {
+                    count as i32
+                };
+                
+                Ok(final_count)
+            }
+        }
+    }
+
+    // Get playlist episodes dynamically without using PlaylistContents table
+    // ULTRA-PRECISE implementation covering ALL playlist options with timezone awareness
+    pub async fn get_playlist_episodes_dynamic(
+        &self, 
+        playlist_id: i32, 
+        user_id: i32, 
+        page: Option<i32>, 
+        per_page: Option<i32>
+    ) -> AppResult<crate::models::PlaylistEpisodesResponse> {
+        use tracing::{info, debug, warn};
+        
+        let page = page.unwrap_or(1).max(1);
+        let per_page = per_page.unwrap_or(50).min(100).max(1);
+        let offset = (page - 1) * per_page;
+        
+        debug!("🎵 Getting dynamic playlist episodes for playlist {} user {} page {} per_page {}", playlist_id, user_id, page, per_page);
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Get user timezone for proper date calculations
+                let user_timezone: String = sqlx::query_scalar(
+                    r#"SELECT timezone FROM "Users" WHERE userid = $1"#
+                ).bind(user_id).fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
+                let user_timezone = if user_timezone.is_empty() { "UTC".to_string() } else { user_timezone };
+                
+                debug!("User {} timezone: {}", user_id, user_timezone);
+                
+                // Get playlist configuration with ALL fields
+                let playlist_row = sqlx::query(
+                    r#"SELECT userid, name, description, minduration, maxduration, sortorder, 
+                       includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
+                       groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids,
+                       issystemplaylist, created, iconname, episodecount
+                       FROM "Playlists" WHERE playlistid = $1"#
+                ).bind(playlist_id).fetch_optional(pool).await?;
+                
+                let playlist = playlist_row.ok_or_else(|| crate::error::AppError::not_found("Playlist not found"))?;
+                
+                // Check user permissions - users can only access their own playlists
+                if playlist.try_get::<i32, _>("userid")? != user_id {
+                    return Err(crate::error::AppError::forbidden("You can only access your own playlists"));
+                }
+                
+                debug!("📋 Playlist '{}' config: min_dur={:?}, max_dur={:?}, sort={}, time_filter={:?}, progress_min={:?}, progress_max={:?}", 
+                    playlist.try_get::<String, _>("name")?, playlist.try_get::<Option<i32>, _>("minduration")?, playlist.try_get::<Option<i32>, _>("maxduration")?, playlist.try_get::<String, _>("sortorder")?, 
+                    playlist.try_get::<Option<i32>, _>("timefilterhours")?, playlist.try_get::<Option<f64>, _>("playprogressmin")?, playlist.try_get::<Option<f64>, _>("playprogressmax")?);
+                
+                // Build the comprehensive dynamic query
+                let mut query_parts = Vec::new();
+                let mut where_conditions = Vec::new();
+                let mut bind_values: Vec<Box<dyn std::fmt::Debug + Send + Sync>> = Vec::new();
+                
+                // Base SELECT with all episode data needed for SavedEpisode model including podcastid
+                query_parts.push(format!(r#"
+                    SELECT DISTINCT
+                        e.episodetitle,
+                        p.podcastname,
+                        TO_CHAR(e.episodepubdate AT TIME ZONE '{}', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as episodepubdate,
+                        e.episodedescription,
+                        COALESCE(e.episodeartwork, p.artworkurl) as episodeartwork,
+                        e.episodeurl,
+                        e.episodeduration,
+                        COALESCE(h.listenduration, 0) as listenduration,
+                        e.episodeid,
+                        COALESCE(p.websiteurl, '') as websiteurl,
+                        -- ULTRA-PRECISE completion logic: 90% threshold OR within 30 seconds of end
+                        CASE WHEN 
+                            h.listenduration IS NOT NULL AND (
+                                h.listenduration >= e.episodeduration * 0.9 OR 
+                                (e.episodeduration - h.listenduration) <= 30
+                            ) 
+                        THEN true ELSE false END as completed,
+                        EXISTS(SELECT 1 FROM "SavedEpisodes" se WHERE se.episodeid = e.episodeid AND se.userid = {}) as saved,
+                        EXISTS(SELECT 1 FROM "EpisodeQueue" eq WHERE eq.episodeid = e.episodeid AND eq.userid = {}) as queued,
+                        EXISTS(SELECT 1 FROM "DownloadedEpisodes" de WHERE de.episodeid = e.episodeid AND de.userid = {}) as downloaded,
+                        false as is_youtube,
+                        p.podcastid,
+                        -- Progress percentage for debugging
+                        ROUND(((COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) * 100)::numeric, 2) as progress_percent
+                    FROM "Episodes" e
+                    JOIN "Podcasts" p ON e.podcastid = p.podcastid AND p.userid = {}
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}"#, 
+                    user_timezone, user_id, user_id, user_id, user_id, user_id
+                ));
+                
+                // Base condition - always filter by user's podcasts
+                where_conditions.push("p.userid = $1".to_string());
+                
+                // 1. DURATION FILTERS - exact duration matching
+                if let Some(min_dur) = playlist.try_get::<Option<i32>, _>("minduration")? {
+                    where_conditions.push(format!("e.episodeduration >= {}", min_dur));
+                    debug!("🕒 Added min duration filter: {} seconds", min_dur);
+                }
+                if let Some(max_dur) = playlist.try_get::<Option<i32>, _>("maxduration")? {
+                    where_conditions.push(format!("e.episodeduration <= {}", max_dur));
+                    debug!("🕒 Added max duration filter: {} seconds", max_dur);
+                }
+                
+                // 2. TIMEZONE-AWARE TIME FILTER - ULTRA-PRECISE datetime handling
+                if let Some(hours) = playlist.try_get::<Option<i32>, _>("timefilterhours")? {
+                    // Convert hours to user's timezone for precise "last X hours" calculation
+                    where_conditions.push(format!(
+                        "e.episodepubdate >= (NOW() AT TIME ZONE '{}' - INTERVAL '{} hours') AT TIME ZONE '{}' AT TIME ZONE 'UTC'", 
+                        user_timezone, hours, user_timezone
+                    ));
+                    debug!("📅 Added timezone-aware time filter: last {} hours in timezone {}", hours, user_timezone);
+                }
+                
+                // 3. PODCAST FILTER - handle PostgreSQL array of podcast IDs
+                if let Some(podcast_ids) = playlist.try_get::<Option<Vec<i32>>, _>("podcastids")? {
+                    if !podcast_ids.is_empty() && !podcast_ids.contains(&-1) {
+                        let podcast_ids_str = podcast_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
+                        where_conditions.push(format!("p.podcastid IN ({})", podcast_ids_str));
+                        debug!("🎙️ Added PostgreSQL podcast filter: {:?}", podcast_ids);
+                    } else {
+                        debug!("🎙️ PostgreSQL podcast filter contains -1 or is empty, including all podcasts");
+                    }
+                }
+                
+                // 4. ULTRA-PRECISE PLAY STATE FILTERS
+                let mut play_state_conditions = Vec::new();
+                
+                if playlist.try_get::<bool, _>("includeunplayed")? {
+                    // UNPLAYED: No history record OR listen duration is 0 or NULL
+                    play_state_conditions.push("(h.listenduration IS NULL OR h.listenduration = 0)".to_string());
+                    debug!("▶️ Including UNPLAYED episodes");
+                }
+                
+                if playlist.try_get::<bool, _>("includepartiallyplayed")? {
+                    // PARTIALLY PLAYED: Has listen time > 0 but < 90% AND not within 30 seconds of end
+                    play_state_conditions.push(
+                        "(h.listenduration > 0 AND h.listenduration < e.episodeduration * 0.9 AND (e.episodeduration - h.listenduration) > 30)".to_string()
+                    );
+                    debug!("⏸️ Including PARTIALLY PLAYED episodes (>0% and <90%, not within 30s of end)");
+                }
+                
+                if playlist.try_get::<bool, _>("includeplayed")? {
+                    // PLAYED: Listen duration >= 90% OR within 30 seconds of end
+                    play_state_conditions.push(
+                        "(h.listenduration IS NOT NULL AND (h.listenduration >= e.episodeduration * 0.9 OR (e.episodeduration - h.listenduration) <= 30))".to_string()
+                    );
+                    debug!("✅ Including PLAYED episodes (>=90% or within 30s of end)");
+                }
+                
+                if !play_state_conditions.is_empty() {
+                    where_conditions.push(format!("({})", play_state_conditions.join(" OR ")));
+                } else {
+                    // No play states selected - return no results
+                    where_conditions.push("FALSE".to_string());
+                    warn!("⚠️ No play states selected for playlist '{}' - will return empty results", playlist.try_get::<String, _>("name")?);
+                }
+                
+                // 5. ULTRA-PRECISE PROGRESS PERCENTAGE FILTERS
+                if let Some(min_progress) = playlist.try_get::<Option<f64>, _>("playprogressmin")? {
+                    let min_decimal = min_progress / 100.0;
+                    where_conditions.push(format!(
+                        "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) >= {}", 
+                        min_decimal
+                    ));
+                    debug!("📊 Added min progress filter: {}% ({})", min_progress, min_decimal);
+                }
+                if let Some(max_progress) = playlist.try_get::<Option<f64>, _>("playprogressmax")? {
+                    let max_decimal = max_progress / 100.0;
+                    where_conditions.push(format!(
+                        "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) <= {}", 
+                        max_decimal
+                    ));
+                    debug!("📊 Added max progress filter: {}% ({})", max_progress, max_decimal);
+                }
+                
+                // 6. ULTRA-PRECISE ORDERING with podcast grouping support
+                let mut order_parts = Vec::new();
+                
+                if playlist.try_get::<bool, _>("groupbypodcast")? {
+                    order_parts.push("p.podcastid".to_string());
+                    debug!("📚 Grouping by podcast enabled");
+                }
+                
+                let sort_clause = match playlist.try_get::<String, _>("sortorder")?.as_str() {
+                    "date_asc" => "e.episodepubdate ASC",
+                    "date_desc" => "e.episodepubdate DESC", 
+                    "duration_asc" => "e.episodeduration ASC",
+                    "duration_desc" => "e.episodeduration DESC",
+                    "listen_progress" => "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) DESC",
+                    "completion" => "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) DESC",
+                    "random" => "RANDOM()",
+                    "title_asc" => "e.episodetitle ASC",
+                    "title_desc" => "e.episodetitle DESC",
+                    "podcast_asc" => "p.podcastname ASC",
+                    "podcast_desc" => "p.podcastname DESC",
+                    _ => {
+                        warn!("⚠️ Unknown sort order '{}', defaulting to date_desc", playlist.try_get::<String, _>("sortorder")?);
+                        "e.episodepubdate DESC"
+                    }
+                };
+                order_parts.push(sort_clause.to_string());
+                debug!("🔄 Sort order: {}", sort_clause);
+                
+                // 7. BUILD FINAL QUERY
+                let where_clause = if where_conditions.is_empty() {
+                    String::new()
+                } else {
+                    format!(" WHERE {}", where_conditions.join(" AND "))
+                };
+                
+                let order_clause = format!(" ORDER BY {}", order_parts.join(", "));
+                
+                // Apply MaxEpisodes limit if specified
+                let limit_clause = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("maxepisodes")? {
+                    if max_eps > 0 {
+                        format!(" LIMIT {}", max_eps.min(per_page))
+                    } else {
+                        format!(" LIMIT {}", per_page)
+                    }
+                } else {
+                    format!(" LIMIT {}", per_page)
+                };
+                
+                let offset_clause = format!(" OFFSET {}", offset);
+                
+                let final_query = format!("{}{}{}{}{}", 
+                    query_parts.join(" "), where_clause, order_clause, limit_clause, offset_clause);
+                
+                debug!("🔍 Final dynamic playlist query: {}", final_query);
+                
+                // Execute the main query
+                let rows = sqlx::query(&final_query)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                let mut episodes = Vec::new();
+                for row in rows {
+                    episodes.push(crate::models::SavedEpisode {
+                        episodetitle: row.try_get("episodetitle")?,
+                        podcastname: row.try_get("podcastname")?,
+                        episodepubdate: row.try_get("episodepubdate")?,
+                        episodedescription: row.try_get("episodedescription")?,
+                        episodeartwork: row.try_get("episodeartwork")?,
+                        episodeurl: row.try_get("episodeurl")?,
+                        episodeduration: row.try_get("episodeduration")?,
+                        listenduration: row.try_get("listenduration").ok(),
+                        episodeid: row.try_get("episodeid")?,
+                        websiteurl: row.try_get("websiteurl")?,
+                        completed: row.try_get("completed")?,
+                        saved: row.try_get("saved")?,
+                        queued: row.try_get("queued")?,
+                        downloaded: row.try_get("downloaded")?,
+                        is_youtube: row.try_get("is_youtube")?,
+                        podcastid: row.try_get("podcastid").ok(),
+                    });
+                }
+                
+                debug!("📝 Retrieved {} episodes from dynamic query", episodes.len());
+                
+                // Get total count (without LIMIT/OFFSET)
+                let count_query = format!("SELECT COUNT(*) FROM ({}) AS count_subquery", 
+                    final_query.replace(&limit_clause, "").replace(&offset_clause, ""));
+                
+                let total_count: i64 = sqlx::query_scalar(&count_query)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                debug!("📊 Total episodes matching criteria: {}", total_count);
+                
+                // Create playlist info from the playlist row we already have
+                let playlist_info = crate::models::PlaylistInfo {
+                    name: playlist.try_get::<String, _>("name")?,
+                    description: playlist.try_get::<String, _>("description")?,
+                    episode_count: total_count as i32,
+                    icon_name: playlist.try_get::<String, _>("iconname")?,
+                };
+                
+                Ok(crate::models::PlaylistEpisodesResponse {
+                    episodes,
+                    playlist_info,
+                })
+            }
+            DatabasePool::MySQL(pool) => {
+                // FULL MySQL implementation with exact same logic but MySQL syntax
+                let user_timezone: String = sqlx::query_scalar("SELECT TimeZone FROM Users WHERE UserID = ?").bind(user_id)
+                    .fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
+                let user_timezone = if user_timezone.is_empty() { "UTC".to_string() } else { user_timezone };
+                
+                debug!("User {} timezone: {}", user_id, user_timezone);
+                
+                let playlist_row = sqlx::query(
+                    r#"SELECT UserID, Name, Description, MinDuration, MaxDuration, SortOrder, 
+                       IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
+                       GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
+                       IsSystemPlaylist, Created, IconName, episode_count
+                       FROM Playlists WHERE PlaylistID = ?"#
+                ).bind(playlist_id).fetch_optional(pool).await?;
+                
+                let playlist = playlist_row.ok_or_else(|| crate::error::AppError::not_found("Playlist not found"))?;
+                
+                if playlist.try_get::<i32, _>("UserID")? != user_id {
+                    return Err(crate::error::AppError::forbidden("You can only access your own playlists"));
+                }
+                
+                debug!("📋 MySQL Playlist '{}' config loaded", playlist.try_get::<String, _>("Name")?);
+                
+                // MySQL version with adjusted syntax for timezone conversion and date handling
+                let mut query_parts = Vec::new();
+                let mut where_conditions = Vec::new();
+                
+                query_parts.push(format!(r#"
+                    SELECT DISTINCT
+                        e.EpisodeTitle as episodetitle,
+                        p.PodcastName as podcastname,
+                        DATE_FORMAT(CONVERT_TZ(e.EpisodePubDate, 'UTC', '{}'), '%Y-%m-%dT%H:%i:%sZ') as episodepubdate,
+                        e.EpisodeDescription as episodedescription,
+                        COALESCE(e.EpisodeArtwork, p.ArtworkURL) as episodeartwork,
+                        e.EpisodeURL as episodeurl,
+                        e.EpisodeDuration as episodeduration,
+                        COALESCE(h.ListenDuration, 0) as listenduration,
+                        e.EpisodeID as episodeid,
+                        COALESCE(p.WebsiteURL, '') as websiteurl,
+                        CASE WHEN 
+                            h.ListenDuration IS NOT NULL AND (
+                                h.ListenDuration >= e.EpisodeDuration * 0.9 OR 
+                                (e.EpisodeDuration - h.ListenDuration) <= 30
+                            ) 
+                        THEN 1 ELSE 0 END as completed,
+                        EXISTS(SELECT 1 FROM SavedEpisodes se WHERE se.EpisodeID = e.EpisodeID AND se.UserID = {}) as saved,
+                        EXISTS(SELECT 1 FROM EpisodeQueue eq WHERE eq.EpisodeID = e.EpisodeID AND eq.UserID = {}) as queued,
+                        EXISTS(SELECT 1 FROM DownloadedEpisodes de WHERE de.EpisodeID = e.EpisodeID AND de.UserID = {}) as downloaded,
+                        0 as is_youtube,
+                        p.PodcastID as podcastid,
+                        ROUND((COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) * 100, 2) as progress_percent
+                    FROM Episodes e
+                    JOIN Podcasts p ON e.PodcastID = p.PodcastID AND p.UserID = {}
+                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}"#, 
+                    user_timezone, user_id, user_id, user_id, user_id, user_id
+                ));
+                
+                where_conditions.push("p.UserID = ?".to_string());
+                
+                // Apply all the same filters with MySQL syntax
+                if let Some(min_dur) = playlist.try_get::<Option<i32>, _>("MinDuration")? {
+                    where_conditions.push(format!("e.EpisodeDuration >= {}", min_dur));
+                }
+                if let Some(max_dur) = playlist.try_get::<Option<i32>, _>("MaxDuration")? {
+                    where_conditions.push(format!("e.EpisodeDuration <= {}", max_dur));
+                }
+                
+                if let Some(hours) = playlist.try_get::<Option<i32>, _>("TimeFilterHours")? {
+                    where_conditions.push(format!(
+                        "e.EpisodePubDate >= DATE_SUB(CONVERT_TZ(NOW(), 'UTC', '{}'), INTERVAL {} HOUR)", 
+                        user_timezone, hours
+                    ));
+                    debug!("📅 Added MySQL timezone-aware time filter: last {} hours in timezone {}", hours, user_timezone);
+                }
+                
+                // 3. PODCAST FILTER - handle JSON array of podcast IDs (MySQL)
+                if let Some(podcast_ids_json) = playlist.try_get::<Option<String>, _>("PodcastIDs")?.as_ref() {
+                    if !podcast_ids_json.is_empty() && podcast_ids_json != "[]" && podcast_ids_json != "null" {
+                        match serde_json::from_str::<Vec<i32>>(podcast_ids_json) {
+                            Ok(podcast_ids) if !podcast_ids.is_empty() && !podcast_ids.contains(&-1) => {
+                                let podcast_ids_str = podcast_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
+                                where_conditions.push(format!("p.PodcastID IN ({})", podcast_ids_str));
+                                debug!("🎙️ Added MySQL podcast filter: {:?}", podcast_ids);
+                            }
+                            Ok(_) => debug!("🎙️ MySQL podcast filter contains -1 or is empty, including all podcasts"),
+                            Err(e) => warn!("⚠️ Failed to parse MySQL podcast IDs JSON '{}': {}", podcast_ids_json, e),
+                        }
+                    }
+                }
+                
+                // 4. ULTRA-PRECISE PLAY STATE FILTERS (MySQL)
+                let mut play_state_conditions = Vec::new();
+                
+                if playlist.try_get::<bool, _>("IncludeUnplayed")? {
+                    play_state_conditions.push("(h.ListenDuration IS NULL OR h.ListenDuration = 0)".to_string());
+                    debug!("▶️ Including UNPLAYED episodes (MySQL)");
+                }
+                
+                if playlist.try_get::<bool, _>("IncludePartiallyPlayed")? {
+                    play_state_conditions.push(
+                        "(h.ListenDuration > 0 AND h.ListenDuration < e.EpisodeDuration * 0.9 AND (e.EpisodeDuration - h.ListenDuration) > 30)".to_string()
+                    );
+                    debug!("⏸️ Including PARTIALLY PLAYED episodes (MySQL)");
+                }
+                
+                if playlist.try_get::<bool, _>("IncludePlayed")? {
+                    play_state_conditions.push(
+                        "(h.ListenDuration IS NOT NULL AND (h.ListenDuration >= e.EpisodeDuration * 0.9 OR (e.EpisodeDuration - h.ListenDuration) <= 30))".to_string()
+                    );
+                    debug!("✅ Including PLAYED episodes (MySQL)");
+                }
+                
+                if !play_state_conditions.is_empty() {
+                    where_conditions.push(format!("({})", play_state_conditions.join(" OR ")));
+                } else {
+                    where_conditions.push("FALSE".to_string());
+                    warn!("⚠️ No play states selected for MySQL playlist '{}' - will return empty results", playlist.try_get::<String, _>("Name")?);
+                }
+                
+                // 5. ULTRA-PRECISE PROGRESS PERCENTAGE FILTERS (MySQL)
+                if let Some(min_progress) = playlist.try_get::<Option<f64>, _>("PlayProgressMin")? {
+                    let min_decimal = min_progress / 100.0;
+                    where_conditions.push(format!(
+                        "(COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) >= {}", 
+                        min_decimal
+                    ));
+                    debug!("📊 Added MySQL min progress filter: {}% ({})", min_progress, min_decimal);
+                }
+                if let Some(max_progress) = playlist.try_get::<Option<f64>, _>("PlayProgressMax")? {
+                    let max_decimal = max_progress / 100.0;
+                    where_conditions.push(format!(
+                        "(COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) <= {}", 
+                        max_decimal
+                    ));
+                    debug!("📊 Added MySQL max progress filter: {}% ({})", max_progress, max_decimal);
+                }
+                
+                // 6. ULTRA-PRECISE ORDERING with podcast grouping support (MySQL)
+                let mut order_parts = Vec::new();
+                
+                if playlist.try_get::<bool, _>("GroupByPodcast")? {
+                    order_parts.push("p.PodcastID".to_string());
+                    debug!("📚 MySQL grouping by podcast enabled");
+                }
+                
+                let sort_clause = match playlist.try_get::<String, _>("SortOrder")?.as_str() {
+                    "date_asc" => "e.EpisodePubDate ASC",
+                    "date_desc" => "e.EpisodePubDate DESC", 
+                    "duration_asc" => "e.EpisodeDuration ASC",
+                    "duration_desc" => "e.EpisodeDuration DESC",
+                    "listen_progress" => "(COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) DESC",
+                    "completion" => "(COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) DESC",
+                    "random" => "RAND()",
+                    "title_asc" => "e.EpisodeTitle ASC",
+                    "title_desc" => "e.EpisodeTitle DESC",
+                    "podcast_asc" => "p.PodcastName ASC",
+                    "podcast_desc" => "p.PodcastName DESC",
+                    _ => {
+                        warn!("⚠️ Unknown MySQL sort order '{}', defaulting to date_desc", playlist.try_get::<String, _>("SortOrder")?);
+                        "e.EpisodePubDate DESC"
+                    }
+                };
+                order_parts.push(sort_clause.to_string());
+                debug!("🔄 MySQL Sort order: {}", sort_clause);
+                
+                // 7. BUILD FINAL MYSQL QUERY
+                let where_clause = if where_conditions.is_empty() {
+                    String::new()
+                } else {
+                    format!(" WHERE {}", where_conditions.join(" AND "))
+                };
+                
+                let order_clause = format!(" ORDER BY {}", order_parts.join(", "));
+                
+                // Apply MaxEpisodes limit if specified (MySQL)
+                let limit_clause = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("MaxEpisodes")? {
+                    if max_eps > 0 {
+                        format!(" LIMIT {}", max_eps.min(per_page))
+                    } else {
+                        format!(" LIMIT {}", per_page)
+                    }
+                } else {
+                    format!(" LIMIT {}", per_page)
+                };
+                
+                let offset_clause = format!(" OFFSET {}", offset);
+                
+                let final_query = format!("{}{}{}{}{}", 
+                    query_parts.join(" "), where_clause, order_clause, limit_clause, offset_clause);
+                
+                debug!("🔍 Final MySQL dynamic playlist query: {}", final_query);
+                
+                // Execute the main MySQL query
+                let rows = sqlx::query(&final_query)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                let mut episodes = Vec::new();
+                for row in rows {
+                    episodes.push(crate::models::SavedEpisode {
+                        episodetitle: row.try_get("episodetitle")?,
+                        podcastname: row.try_get("podcastname")?,
+                        episodepubdate: row.try_get("episodepubdate")?,
+                        episodedescription: row.try_get("episodedescription")?,
+                        episodeartwork: row.try_get("episodeartwork")?,
+                        episodeurl: row.try_get("episodeurl")?,
+                        episodeduration: row.try_get("episodeduration")?,
+                        listenduration: row.try_get("listenduration").ok(),
+                        episodeid: row.try_get("episodeid")?,
+                        websiteurl: row.try_get("websiteurl")?,
+                        completed: row.try_get("completed")?,
+                        saved: row.try_get("saved")?,
+                        queued: row.try_get("queued")?,
+                        downloaded: row.try_get("downloaded")?,
+                        is_youtube: row.try_get("is_youtube")?,
+                        podcastid: row.try_get("podcastid").ok(),
+                    });
+                }
+                
+                debug!("📝 Retrieved {} episodes from MySQL dynamic query", episodes.len());
+                
+                // Get total count (without LIMIT/OFFSET) for MySQL
+                let count_query = format!("SELECT COUNT(*) FROM ({}) AS count_subquery", 
+                    final_query.replace(&limit_clause, "").replace(&offset_clause, ""));
+                
+                let total_count: i64 = sqlx::query_scalar(&count_query)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                debug!("📊 Total MySQL episodes matching criteria: {}", total_count);
+                
+                // Create playlist info from the MySQL playlist row we already have
+                let playlist_info = crate::models::PlaylistInfo {
+                    name: playlist.try_get::<String, _>("Name")?,
+                    description: playlist.try_get::<String, _>("Description")?,
+                    episode_count: total_count as i32,
+                    icon_name: playlist.try_get::<String, _>("IconName")?,
+                };
+                
+                Ok(crate::models::PlaylistEpisodesResponse {
+                    episodes,
+                    playlist_info,
+                })
             }
         }
     }

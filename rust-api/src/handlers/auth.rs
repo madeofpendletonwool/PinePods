@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+
 // Global storage for password-verified sessions pending MFA
 // Key: session_token, Value: (user_id, timestamp)
 lazy_static::lazy_static! {
@@ -387,6 +388,12 @@ pub async fn create_first_admin(
     if let Err(e) = state.db_pool.add_news_feed_if_not_added().await {
         eprintln!("Failed to add PinePods news feed during first admin creation: {}", e);
         // Don't fail the admin creation if news feed addition fails
+    }
+    
+    // Create default playlists for the new admin user
+    if let Err(e) = state.db_pool.create_missing_default_playlists().await {
+        eprintln!("Failed to create default playlists during first admin creation: {}", e);
+        // Don't fail the admin creation if playlist creation fails
     }
     
     Ok(Json(CreateFirstAdminResponse {
@@ -872,7 +879,7 @@ async fn process_opml_import(
         ).await;
         
         // Try to get podcast values and add podcast with robust error handling
-        match get_podcast_values_from_url(podcast_url).await {
+        match get_podcast_values_from_url(podcast_url, &db_pool).await {
             Ok(mut podcast_values) => {
                 podcast_values.user_id = import_request.user_id;
                 match db_pool.add_podcast(&podcast_values, 0, None, None).await {
@@ -905,186 +912,34 @@ async fn process_opml_import(
 }
 
 // Get podcast values from URL - simplified version of Python get_podcast_values
-async fn get_podcast_values_from_url(url: &str) -> Result<crate::handlers::podcasts::PodcastValues, AppError> {
-    use std::collections::HashMap;
+async fn get_podcast_values_from_url(url: &str, db_pool: &crate::database::DatabasePool) -> Result<crate::handlers::podcasts::PodcastValues, AppError> {
+    // Use the same feed-rs based parsing that manual add uses (which works correctly)
+    // This avoids the ampersand truncation issue in the custom quick_xml parser
     
-    let client = reqwest::Client::new();
-    let response = client.get(url)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        .send()
-        .await
-        .map_err(|e| AppError::Http(e))?;
+    // Use the working get_podcast_values function that manual add uses
+    let podcast_values_map = db_pool.get_podcast_values(url, 0, None, None).await
+        .map_err(|e| AppError::internal(&format!("Failed to parse podcast feed: {}", e)))?;
     
-    let content = response.text().await.map_err(|e| AppError::Http(e))?;
+    println!("🎙️  Parsed podcast: title='{}', author='{}', description_len={}", 
+        podcast_values_map.get("podcastname").unwrap_or(&"Unknown".to_string()),
+        podcast_values_map.get("author").unwrap_or(&"Unknown".to_string()),
+        podcast_values_map.get("description").unwrap_or(&"".to_string()).len());
     
-    // Parse RSS feed to extract podcast information with Python-style comprehensive fallbacks
-    use quick_xml::Reader;
-    use quick_xml::events::Event;
-    
-    let mut reader = Reader::from_str(&content);
-    reader.config_mut().trim_text(true);
-    
-    let mut metadata: HashMap<String, String> = HashMap::new();
-    let mut current_tag = String::new();
-    let mut current_text = String::new();
-    let mut current_attrs: HashMap<String, String> = HashMap::new();
-    let mut in_channel = false;
-    let mut categories: HashMap<String, String> = HashMap::new();
-    let mut category_counter = 0;
-    
-    loop {
-        match reader.read_event() {
-            Ok(Event::Start(ref e)) => {
-                current_tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                current_text.clear();
-                current_attrs.clear();
-                
-                // Track when we're in the channel section (not in items)
-                if current_tag == "channel" {
-                    in_channel = true;
-                } else if current_tag == "item" {
-                    in_channel = false;
-                }
-                
-                // Store attributes
-                for attr in e.attributes() {
-                    if let Ok(attr) = attr {
-                        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
-                        let value = String::from_utf8_lossy(&attr.value).to_string();
-                        current_attrs.insert(key, value);
-                    }
-                }
-                
-                // Handle iTunes image with href attribute (priority for artwork)
-                if (current_tag == "itunes:image" || current_tag == "image") && in_channel {
-                    if let Some(href) = current_attrs.get("href") {
-                        if !href.trim().is_empty() {
-                            metadata.insert("itunes_image_href".to_string(), href.clone());
-                        }
-                    }
-                }
-                
-                // Handle iTunes category attributes  
-                if current_tag == "itunes:category" && in_channel {
-                    if let Some(text) = current_attrs.get("text") {
-                        categories.insert(category_counter.to_string(), text.clone());
-                        category_counter += 1;
-                    }
-                }
-            }
-            Ok(Event::Empty(ref e)) => {
-                // Handle self-closing tags
-                current_tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                current_attrs.clear();
-                
-                // Store attributes from self-closing tag
-                for attr in e.attributes() {
-                    if let Ok(attr) = attr {
-                        let key = String::from_utf8_lossy(attr.key.as_ref()).to_string();
-                        let value = String::from_utf8_lossy(&attr.value).to_string();
-                        current_attrs.insert(key, value);
-                    }
-                }
-                
-                // Handle iTunes image with href attribute
-                if (current_tag == "itunes:image" || current_tag == "image") && in_channel {
-                    if let Some(href) = current_attrs.get("href") {
-                        if !href.trim().is_empty() {
-                            metadata.insert("itunes_image_href".to_string(), href.clone());
-                        }
-                    }
-                }
-                
-                // Handle iTunes category attributes
-                if current_tag == "itunes:category" && in_channel {
-                    if let Some(text) = current_attrs.get("text") {
-                        categories.insert(category_counter.to_string(), text.clone());
-                        category_counter += 1;
-                    }
-                }
-            }
-            Ok(Event::Text(e)) => {
-                current_text = e.decode().unwrap_or_default().into_owned();
-            }
-            Ok(Event::CData(e)) => {
-                current_text = e.decode().unwrap_or_default().into_owned();
-            }
-            Ok(Event::End(ref e)) => {
-                let tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
-                
-                // Only store channel-level metadata, not item-level
-                if in_channel && !current_text.trim().is_empty() {
-                    metadata.insert(tag.clone(), current_text.clone());
-                }
-            }
-            Ok(Event::Eof) => break,
-            Err(_) => break,
-            _ => {}
-        }
-    }
-    
-    // Apply Python-style comprehensive fallback logic for each field
-    
-    // Title - required field with robust fallbacks
-    let podcast_title = metadata.get("title")
-        .filter(|s| !s.trim().is_empty())
-        .cloned()
-        .unwrap_or_else(|| "Unknown Podcast".to_string());
-    
-    // Author - multiple fallback sources like Python version
-    let podcast_author = metadata.get("itunes:author")
-        .or_else(|| metadata.get("author"))
-        .or_else(|| metadata.get("managingEditor"))
-        .or_else(|| metadata.get("dc:creator"))
-        .filter(|s| !s.trim().is_empty())
-        .cloned()
-        .unwrap_or_else(|| "Unknown Author".to_string());
-    
-    // Artwork - comprehensive fallback chain like Python version
-    let podcast_artwork = metadata.get("itunes_image_href")
-        .or_else(|| metadata.get("image_href"))
-        .or_else(|| metadata.get("url"))  // From <image><url> tags
-        .or_else(|| metadata.get("href")) // From <image href=""> attributes
-        .filter(|s| !s.trim().is_empty() && s.starts_with("http"))
-        .cloned()
-        .unwrap_or_else(|| String::new());
-    
-    // Description - multiple fallback sources like Python version
-    let podcast_description = metadata.get("itunes:summary")
-        .or_else(|| metadata.get("description"))
-        .or_else(|| metadata.get("subtitle"))
-        .or_else(|| metadata.get("itunes:subtitle"))
-        .filter(|s| !s.trim().is_empty())
-        .cloned()
-        .unwrap_or_else(|| "No description available".to_string());
-    
-    // Website - link field
-    let podcast_website = metadata.get("link")
-        .filter(|s| !s.trim().is_empty() && s.starts_with("http"))
-        .cloned()
-        .unwrap_or_else(|| String::new());
-    
-    // Explicit - handle both string and boolean values like Python
-    let podcast_explicit = metadata.get("itunes:explicit")
-        .map(|s| {
-            let lower = s.to_lowercase();
-            lower == "yes" || lower == "true" || lower == "explicit" || lower == "1"
-        })
-        .unwrap_or(false);
-    
-    println!("🎙️  Parsed podcast: title='{}', author='{}', artwork='{}', description_len={}, website='{}', explicit={}, categories_count={}", 
-        podcast_title, podcast_author, podcast_artwork, podcast_description.len(), podcast_website, podcast_explicit, categories.len());
+    // Convert HashMap to PodcastValues struct
+    let categories: std::collections::HashMap<String, String> = 
+        serde_json::from_str(podcast_values_map.get("categories").unwrap_or(&"{}".to_string()))
+        .unwrap_or_default();
     
     Ok(crate::handlers::podcasts::PodcastValues {
-        pod_title: podcast_title,
-        pod_artwork: podcast_artwork,
-        pod_author: podcast_author,
+        pod_title: podcast_values_map.get("podcastname").unwrap_or(&"Unknown Podcast".to_string()).clone(),
+        pod_artwork: podcast_values_map.get("artworkurl").unwrap_or(&"".to_string()).clone(),
+        pod_author: podcast_values_map.get("author").unwrap_or(&"Unknown Author".to_string()).clone(),
         categories: categories,
-        pod_description: podcast_description,
-        pod_episode_count: 0,
+        pod_description: podcast_values_map.get("description").unwrap_or(&"No description available".to_string()).clone(),
+        pod_episode_count: podcast_values_map.get("episodecount").unwrap_or(&"0".to_string()).parse().unwrap_or(0),
         pod_feed_url: url.to_string(),
-        pod_website: podcast_website,
-        pod_explicit: podcast_explicit,
+        pod_website: podcast_values_map.get("websiteurl").unwrap_or(&"".to_string()).clone(),
+        pod_explicit: podcast_values_map.get("explicit").unwrap_or(&"False".to_string()) == "True",
         user_id: 0, // Will be set by the caller
     })
 }

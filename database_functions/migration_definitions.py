@@ -2661,6 +2661,240 @@ def migration_031_add_oidc_env_initialized_column(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("032", "create_user_default_playlists", "Create default playlists for all existing users", requires=["012"])
+def migration_032_create_user_default_playlists(conn, db_type: str):
+    """Create default playlists for all existing users, eliminating system playlists"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting user default playlists migration")
+        
+        # First, add the episode_count column to Playlists table if it doesn't exist
+        if db_type == "postgresql":
+            # Check if episode_count column exists
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'Playlists' 
+                AND column_name = 'episodecount'
+            """)
+            column_exists = len(cursor.fetchall()) > 0
+            
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE "Playlists"
+                    ADD COLUMN episodecount INTEGER DEFAULT 0
+                """)
+                logger.info("Added episode_count column to Playlists table (PostgreSQL)")
+            else:
+                logger.info("episode_count column already exists in Playlists table (PostgreSQL)")
+        else:
+            # Check if episode_count column exists (MySQL)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Playlists' 
+                AND COLUMN_NAME = 'EpisodeCount'
+                AND TABLE_SCHEMA = DATABASE()
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+            
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE Playlists
+                    ADD COLUMN EpisodeCount INT DEFAULT 0
+                """)
+                logger.info("Added EpisodeCount column to Playlists table (MySQL)")
+            else:
+                logger.info("EpisodeCount column already exists in Playlists table (MySQL)")
+        
+        # Define default playlists (same as migration 012 but will be assigned to each user)
+        default_playlists = [
+            {
+                'name': 'Quick Listens',
+                'description': 'Short episodes under 15 minutes, perfect for quick breaks',
+                'min_duration': 1,  # Exclude 0-duration episodes
+                'max_duration': 900,  # 15 minutes
+                'sort_order': 'duration_asc',
+                'icon_name': 'ph-fast-forward',
+                'max_episodes': 1000
+            },
+            {
+                'name': 'Longform',
+                'description': 'Extended episodes over 1 hour, ideal for long drives or deep dives',
+                'min_duration': 3600,  # 1 hour
+                'max_duration': None,
+                'sort_order': 'duration_desc',
+                'icon_name': 'ph-car',
+                'max_episodes': 1000
+            },
+            {
+                'name': 'Currently Listening',
+                'description': 'Episodes you\'ve started but haven\'t finished',
+                'min_duration': None,
+                'max_duration': None,
+                'sort_order': 'date_desc',
+                'include_unplayed': False,
+                'include_partially_played': True,
+                'include_played': False,
+                'icon_name': 'ph-play'
+            },
+            {
+                'name': 'Fresh Releases',
+                'description': 'Latest episodes from the last 24 hours',
+                'min_duration': None,
+                'max_duration': None,
+                'sort_order': 'date_desc',
+                'include_unplayed': True,
+                'include_partially_played': False,
+                'include_played': False,
+                'time_filter_hours': 24,
+                'icon_name': 'ph-sparkle'
+            },
+            {
+                'name': 'Weekend Marathon',
+                'description': 'Longer episodes (30+ minutes) perfect for weekend listening',
+                'min_duration': 1800,  # 30 minutes
+                'max_duration': None,
+                'sort_order': 'duration_desc',
+                'group_by_podcast': True,
+                'icon_name': 'ph-couch',
+                'max_episodes': 1000
+            },
+            {
+                'name': 'Commuter Mix',
+                'description': 'Perfect-length episodes (15-45 minutes) for your daily commute',
+                'min_duration': 900,   # 15 minutes
+                'max_duration': 2700,  # 45 minutes
+                'sort_order': 'random',
+                'icon_name': 'ph-car-simple',
+                'max_episodes': 1000
+            }
+        ]
+        
+        # Get all existing users (excluding background user if present)
+        if db_type == "postgresql":
+            cursor.execute('SELECT userid FROM "Users" WHERE userid > 1')
+        else:
+            cursor.execute('SELECT UserID FROM Users WHERE UserID > 1')
+        
+        users = cursor.fetchall()
+        logger.info(f"Found {len(users)} users to create default playlists for")
+        
+        # Create default playlists for each user
+        for user_row in users:
+            user_id = user_row[0] if isinstance(user_row, tuple) else user_row['userid' if db_type == "postgresql" else 'UserID']
+            logger.info(f"Creating default playlists for user {user_id}")
+            
+            for playlist in default_playlists:
+                try:
+                    # Check if this playlist already exists for this user
+                    if db_type == "postgresql":
+                        cursor.execute("""
+                            SELECT COUNT(*)
+                            FROM "Playlists"
+                            WHERE userid = %s AND name = %s
+                        """, (user_id, playlist['name']))
+                    else:
+                        cursor.execute("""
+                            SELECT COUNT(*)
+                            FROM Playlists
+                            WHERE UserID = %s AND Name = %s
+                        """, (user_id, playlist['name']))
+                    
+                    if cursor.fetchone()[0] == 0:
+                        # Create the playlist for this user
+                        if db_type == "postgresql":
+                            cursor.execute("""
+                                INSERT INTO "Playlists" (
+                                    userid,
+                                    name,
+                                    description,
+                                    issystemplaylist,
+                                    minduration,
+                                    maxduration,
+                                    sortorder,
+                                    includeunplayed,
+                                    includepartiallyplayed,
+                                    includeplayed,
+                                    timefilterhours,
+                                    groupbypodcast,
+                                    maxepisodes,
+                                    iconname,
+                                    episodecount
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            """, (
+                                user_id,
+                                playlist['name'],
+                                playlist['description'],
+                                False,  # No longer system playlists
+                                playlist.get('min_duration'),
+                                playlist.get('max_duration'),
+                                playlist['sort_order'],
+                                playlist.get('include_unplayed', True),
+                                playlist.get('include_partially_played', True),
+                                playlist.get('include_played', True),
+                                playlist.get('time_filter_hours'),
+                                playlist.get('group_by_podcast', False),
+                                playlist.get('max_episodes'),
+                                playlist['icon_name'],
+                                0  # Will be updated by scheduled count update
+                            ))
+                        else:
+                            cursor.execute("""
+                                INSERT INTO Playlists (
+                                    UserID,
+                                    Name,
+                                    Description,
+                                    IsSystemPlaylist,
+                                    MinDuration,
+                                    MaxDuration,
+                                    SortOrder,
+                                    IncludeUnplayed,
+                                    IncludePartiallyPlayed,
+                                    IncludePlayed,
+                                    TimeFilterHours,
+                                    GroupByPodcast,
+                                    MaxEpisodes,
+                                    IconName,
+                                    EpisodeCount
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            """, (
+                                user_id,
+                                playlist['name'],
+                                playlist['description'],
+                                False,  # No longer system playlists
+                                playlist.get('min_duration'),
+                                playlist.get('max_duration'),
+                                playlist['sort_order'],
+                                playlist.get('include_unplayed', True),
+                                playlist.get('include_partially_played', True),
+                                playlist.get('include_played', True),
+                                playlist.get('time_filter_hours'),
+                                playlist.get('group_by_podcast', False),
+                                playlist.get('max_episodes'),
+                                playlist['icon_name'],
+                                0  # Will be updated by scheduled count update
+                            ))
+                        
+                        logger.info(f"Created playlist '{playlist['name']}' for user {user_id}")
+                    else:
+                        logger.info(f"Playlist '{playlist['name']}' already exists for user {user_id}")
+                        
+                except Exception as e:
+                    logger.error(f"Failed to create playlist '{playlist['name']}' for user {user_id}: {e}")
+                    # Continue with other playlists even if one fails
+        
+        # Commit all changes
+        conn.commit()
+        logger.info("Successfully created default playlists for all existing users")
+        
+    except Exception as e:
+        logger.error(f"Error in user default playlists migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 # ============================================================================
 # GPODDER SYNC MIGRATIONS
 # These migrations match the gpodder-api service migrations from Go code

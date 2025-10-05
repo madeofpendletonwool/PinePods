@@ -1812,14 +1812,16 @@ pub async fn get_playback_speed(
     Ok(Json(serde_json::json!({ "playback_speed": playback_speed })))
 }
 
-// Query struct for get_playlist_episodes
+// Query struct for get_playlist_episodes - updated with pagination support
 #[derive(Deserialize)]
 pub struct GetPlaylistEpisodesQuery {
     pub user_id: i32,
     pub playlist_id: i32,
+    pub page: Option<i32>,
+    pub per_page: Option<i32>,
 }
 
-// Get playlist episodes - matches Python api_get_playlist_episodes function
+// Get playlist episodes - UPDATED to use dynamic playlist system
 pub async fn get_playlist_episodes(
     State(state): State<crate::AppState>,
     headers: HeaderMap,
@@ -1835,9 +1837,16 @@ pub async fn get_playlist_episodes(
         return Err(AppError::forbidden("You can only view your own playlist episodes!"));
     }
 
-    let playlist_episodes = state.db_pool.get_playlist_episodes(query.user_id, query.playlist_id).await?;
+    // Use new dynamic playlist system
+    let playlist_response = state.db_pool.get_playlist_episodes_dynamic(
+        query.playlist_id, 
+        query.user_id, 
+        query.page, 
+        query.per_page
+    ).await?;
     
-    Ok(Json(playlist_episodes))
+    // Return in format expected by frontend
+    Ok(Json(serde_json::to_value(playlist_response)?))
 }
 
 // Get podcast details - matches Python get_podcast_details endpoint
