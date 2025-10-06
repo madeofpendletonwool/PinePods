@@ -2302,6 +2302,9 @@ pub struct NotificationSettingsRequest {
     pub ntfy_access_token: Option<String>,
     pub gotify_url: Option<String>,
     pub gotify_token: Option<String>,
+    pub http_url: Option<String>,
+    pub http_token: Option<String>,
+    pub http_method: Option<String>,
 }
 
 // Request struct for test_notification
@@ -2526,7 +2529,10 @@ pub async fn update_notification_settings(
         request.ntfy_password.as_deref(),
         request.ntfy_access_token.as_deref(),
         request.gotify_url.as_deref(),
-        request.gotify_token.as_deref()
+        request.gotify_token.as_deref(),
+        request.http_url.as_deref(),
+        request.http_token.as_deref(),
+        request.http_method.as_deref()
     ).await?;
     Ok(Json(serde_json::json!({ "detail": "Notification settings updated successfully" })))
 }

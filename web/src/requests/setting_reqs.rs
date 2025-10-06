@@ -1978,6 +1978,9 @@ pub struct NotificationSettings {
     pub ntfy_access_token: Option<String>,
     pub gotify_url: Option<String>,
     pub gotify_token: Option<String>,
+    pub http_url: Option<String>,
+    pub http_token: Option<String>,
+    pub http_method: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

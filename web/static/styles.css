@@ -4485,6 +4485,105 @@ button.item-container-action-button.item-container-action-button {
     font-size: 1.25rem;
 }
 
+/* Notification settings helper text */
+.form-helper-text {
+    color: var(--text-secondary-color);
+    opacity: 0.8;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+    display: block;
+}
+
+/* Modern toggle switch for notification enable/disable */
+.notification-toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 26px;
+}
+
+.notification-toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.notification-toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--button-color);
+    transition: 0.3s;
+    border-radius: 26px;
+    border: 2px solid var(--border-color);
+}
+
+.notification-toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 2px;
+    bottom: 2px;
+    background-color: var(--text-color);
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+input:checked + .notification-toggle-slider {
+    background-color: var(--accent-color);
+    border-color: var(--hover-color);
+}
+
+input:checked + .notification-toggle-slider:before {
+    transform: translateX(24px);
+}
+
+.notification-toggle-slider:hover {
+    background-color: var(--hover-color);
+}
+
+/* Notification platform selector tabs */
+.notification-platform-tabs {
+    background-color: var(--secondary-background);
+    padding: 0.25rem;
+    border-radius: 0.5rem;
+    width: fit-content;
+    display: inline-flex;
+}
+
+.notification-platform-tab {
+    color: var(--text-color);
+    padding: 0.5rem 1.5rem;
+    border-radius: 0.375rem;
+    transition: all 0.2s ease;
+    background-color: var(--secondary-background);
+    border: 1px solid transparent;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-right: 0.25rem;
+}
+
+.notification-platform-tab:last-child {
+    margin-right: 0;
+}
+
+.notification-platform-tab:hover {
+    background-color: var(--container-button-color);
+    transform: translateY(-1px);
+}
+
+.notification-platform-tab.active {
+    background-color: var(--accent-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
 .playback-submit-button {
     width: 100%;
     padding: 0.875rem;

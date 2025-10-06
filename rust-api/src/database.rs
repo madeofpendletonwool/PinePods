@@ -13423,7 +13423,7 @@ impl DatabasePool {
         let settings = match self {
             DatabasePool::Postgres(pool) => {
                 let rows = sqlx::query(r#"
-                    SELECT platform, enabled, ntfytopic, ntfyserverurl, ntfyusername, ntfypassword, ntfyaccesstoken, gotifyurl, gotifytoken
+                    SELECT platform, enabled, ntfytopic, ntfyserverurl, ntfyusername, ntfypassword, ntfyaccesstoken, gotifyurl, gotifytoken, httpurl, httptoken, httpmethod
                     FROM "UserNotificationSettings" 
                     WHERE userid = $1
                 "#)
@@ -13442,7 +13442,10 @@ impl DatabasePool {
                         "ntfy_password": row.try_get::<Option<String>, _>("ntfypassword")?,
                         "ntfy_access_token": row.try_get::<Option<String>, _>("ntfyaccesstoken")?,
                         "gotify_url": row.try_get::<Option<String>, _>("gotifyurl")?,
-                        "gotify_token": row.try_get::<Option<String>, _>("gotifytoken")?
+                        "gotify_token": row.try_get::<Option<String>, _>("gotifytoken")?,
+                        "http_url": row.try_get::<Option<String>, _>("httpurl")?,
+                        "http_token": row.try_get::<Option<String>, _>("httptoken")?,
+                        "http_method": row.try_get::<Option<String>, _>("httpmethod")?
                     });
                     settings.push(setting);
                 }
@@ -13450,7 +13453,7 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let rows = sqlx::query("
-                    SELECT Platform, Enabled, NtfyTopic, NtfyServerURL, NtfyUsername, NtfyPassword, NtfyAccessToken, GotifyURL, GotifyToken
+                    SELECT Platform, Enabled, NtfyTopic, NtfyServerURL, NtfyUsername, NtfyPassword, NtfyAccessToken, GotifyURL, GotifyToken, HttpUrl, HttpToken, HttpMethod
                     FROM UserNotificationSettings 
                     WHERE UserID = ?
                     ORDER BY Platform
@@ -13470,7 +13473,10 @@ impl DatabasePool {
                         "ntfy_password": row.try_get::<Option<String>, _>("NtfyPassword")?,
                         "ntfy_access_token": row.try_get::<Option<String>, _>("NtfyAccessToken")?,
                         "gotify_url": row.try_get::<Option<String>, _>("GotifyURL")?,
-                        "gotify_token": row.try_get::<Option<String>, _>("GotifyToken")?
+                        "gotify_token": row.try_get::<Option<String>, _>("GotifyToken")?,
+                        "http_url": row.try_get::<Option<String>, _>("HttpUrl")?,
+                        "http_token": row.try_get::<Option<String>, _>("HttpToken")?,
+                        "http_method": row.try_get::<Option<String>, _>("HttpMethod")?
                     });
                     settings.push(setting);
                 }
@@ -13483,7 +13489,7 @@ impl DatabasePool {
     }
     
     // Update notification settings - matches Python update_notification_settings function exactly
-    pub async fn update_notification_settings(&self, user_id: i32, platform: &str, enabled: bool, ntfy_topic: Option<&str>, ntfy_server_url: Option<&str>, ntfy_username: Option<&str>, ntfy_password: Option<&str>, ntfy_access_token: Option<&str>, gotify_url: Option<&str>, gotify_token: Option<&str>) -> AppResult<bool> {
+    pub async fn update_notification_settings(&self, user_id: i32, platform: &str, enabled: bool, ntfy_topic: Option<&str>, ntfy_server_url: Option<&str>, ntfy_username: Option<&str>, ntfy_password: Option<&str>, ntfy_access_token: Option<&str>, gotify_url: Option<&str>, gotify_token: Option<&str>, http_url: Option<&str>, http_token: Option<&str>, http_method: Option<&str>) -> AppResult<bool> {
         println!("Updating notification settings for user {} platform {}", user_id, platform);
         
         // Check if settings exist for this user/platform combination and perform update/insert
@@ -13501,7 +13507,7 @@ impl DatabasePool {
                     // Update existing record
                     let result = sqlx::query(r#"
                         UPDATE "UserNotificationSettings" 
-                        SET enabled = $3, ntfytopic = $4, ntfyserverurl = $5, ntfyusername = $6, ntfypassword = $7, ntfyaccesstoken = $8, gotifyurl = $9, gotifytoken = $10
+                        SET enabled = $3, ntfytopic = $4, ntfyserverurl = $5, ntfyusername = $6, ntfypassword = $7, ntfyaccesstoken = $8, gotifyurl = $9, gotifytoken = $10, httpurl = $11, httptoken = $12, httpmethod = $13
                         WHERE userid = $1 AND platform = $2
                     "#)
                         .bind(user_id)
@@ -13514,6 +13520,9 @@ impl DatabasePool {
                         .bind(ntfy_access_token)
                         .bind(gotify_url)
                         .bind(gotify_token)
+                        .bind(http_url)
+                        .bind(http_token)
+                        .bind(http_method)
                         .execute(pool)
                         .await?;
                     result.rows_affected() > 0
@@ -13521,8 +13530,8 @@ impl DatabasePool {
                     // Insert new record
                     let result = sqlx::query(r#"
                         INSERT INTO "UserNotificationSettings" 
-                        (userid, platform, enabled, ntfytopic, ntfyserverurl, ntfyusername, ntfypassword, ntfyaccesstoken, gotifyurl, gotifytoken)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                        (userid, platform, enabled, ntfytopic, ntfyserverurl, ntfyusername, ntfypassword, ntfyaccesstoken, gotifyurl, gotifytoken, httpurl, httptoken, httpmethod)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                     "#)
                         .bind(user_id)
                         .bind(platform)
@@ -13534,6 +13543,9 @@ impl DatabasePool {
                         .bind(ntfy_access_token)
                         .bind(gotify_url)
                         .bind(gotify_token)
+                        .bind(http_url)
+                        .bind(http_token)
+                        .bind(http_method)
                         .execute(pool)
                         .await?;
                     result.rows_affected() > 0
@@ -13552,7 +13564,7 @@ impl DatabasePool {
                     // Update existing record
                     let result = sqlx::query("
                         UPDATE UserNotificationSettings 
-                        SET Enabled = ?, NtfyTopic = ?, NtfyServerURL = ?, NtfyUsername = ?, NtfyPassword = ?, NtfyAccessToken = ?, GotifyURL = ?, GotifyToken = ?
+                        SET Enabled = ?, NtfyTopic = ?, NtfyServerURL = ?, NtfyUsername = ?, NtfyPassword = ?, NtfyAccessToken = ?, GotifyURL = ?, GotifyToken = ?, HttpUrl = ?, HttpToken = ?, HttpMethod = ?
                         WHERE UserID = ? AND Platform = ?
                     ")
                         .bind(enabled)
@@ -13563,6 +13575,9 @@ impl DatabasePool {
                         .bind(ntfy_access_token)
                         .bind(gotify_url)
                         .bind(gotify_token)
+                        .bind(http_url)
+                        .bind(http_token)
+                        .bind(http_method)
                         .bind(user_id)
                         .bind(platform)
                         .execute(pool)
@@ -13572,8 +13587,8 @@ impl DatabasePool {
                     // Insert new record
                     let result = sqlx::query("
                         INSERT INTO UserNotificationSettings 
-                        (UserID, Platform, Enabled, NtfyTopic, NtfyServerURL, NtfyUsername, NtfyPassword, NtfyAccessToken, GotifyURL, GotifyToken)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (UserID, Platform, Enabled, NtfyTopic, NtfyServerURL, NtfyUsername, NtfyPassword, NtfyAccessToken, GotifyURL, GotifyToken, HttpUrl, HttpToken, HttpMethod)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ")
                         .bind(user_id)
                         .bind(platform)
@@ -13585,6 +13600,9 @@ impl DatabasePool {
                         .bind(ntfy_access_token)
                         .bind(gotify_url)
                         .bind(gotify_token)
+                        .bind(http_url)
+                        .bind(http_token)
+                        .bind(http_method)
                         .execute(pool)
                         .await?;
                     result.rows_affected() > 0

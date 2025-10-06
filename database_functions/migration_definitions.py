@@ -3446,6 +3446,98 @@ def migration_106_optimize_subscription_sync_performance(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("033", "add_http_notification_columns", "Add generic HTTP notification columns to UserNotificationSettings table", requires=["011"])
+def migration_033_add_http_notification_columns(conn, db_type: str):
+    """Add generic HTTP notification columns for platforms like Telegram"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            # Check if columns already exist (PostgreSQL - lowercase column names)
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name IN ('httpurl', 'httptoken', 'httpmethod')
+            """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'httpurl' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "UserNotificationSettings"
+                    ADD COLUMN HttpUrl VARCHAR(500)
+                """)
+                logger.info("Added HttpUrl column to UserNotificationSettings table (PostgreSQL)")
+            
+            if 'httptoken' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "UserNotificationSettings"
+                    ADD COLUMN HttpToken VARCHAR(255)
+                """)
+                logger.info("Added HttpToken column to UserNotificationSettings table (PostgreSQL)")
+            
+            if 'httpmethod' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "UserNotificationSettings"
+                    ADD COLUMN HttpMethod VARCHAR(10) DEFAULT 'POST'
+                """)
+                logger.info("Added HttpMethod column to UserNotificationSettings table (PostgreSQL)")
+        
+        else:
+            # Check if columns already exist (MySQL)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name = 'HttpUrl'
+                AND table_schema = DATABASE()
+            """)
+            url_exists = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name = 'HttpToken'
+                AND table_schema = DATABASE()
+            """)
+            token_exists = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name = 'HttpMethod'
+                AND table_schema = DATABASE()
+            """)
+            method_exists = cursor.fetchone()[0] > 0
+            
+            if not url_exists:
+                cursor.execute("""
+                    ALTER TABLE UserNotificationSettings
+                    ADD COLUMN HttpUrl VARCHAR(500)
+                """)
+                logger.info("Added HttpUrl column to UserNotificationSettings table (MySQL)")
+            
+            if not token_exists:
+                cursor.execute("""
+                    ALTER TABLE UserNotificationSettings
+                    ADD COLUMN HttpToken VARCHAR(255)
+                """)
+                logger.info("Added HttpToken column to UserNotificationSettings table (MySQL)")
+            
+            if not method_exists:
+                cursor.execute("""
+                    ALTER TABLE UserNotificationSettings
+                    ADD COLUMN HttpMethod VARCHAR(10) DEFAULT 'POST'
+                """)
+                logger.info("Added HttpMethod column to UserNotificationSettings table (MySQL)")
+        
+        logger.info("HTTP notification columns migration completed successfully")
+        
+    finally:
+        cursor.close()
+
+
 if __name__ == "__main__":
     # Register all migrations and run them
     register_all_migrations()

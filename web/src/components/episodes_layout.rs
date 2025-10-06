@@ -407,11 +407,11 @@ pub fn episode_layout() -> Html {
                         edit_username.set(String::new()); // Username not available in current podcast info
                         edit_password.set(String::new()); // Password not available in current podcast info
                         edit_podcast_name.set(info.podcastname.clone());
-                        edit_description.set(info.description.as_deref().unwrap_or_default().to_string());
-                        edit_author.set(info.author.as_deref().unwrap_or_default().to_string());
-                        edit_artwork_url.set(info.artworkurl.as_deref().unwrap_or_default().to_string());
-                        edit_website_url.set(info.websiteurl.as_deref().unwrap_or_default().to_string());
-                        edit_podcast_index_id.set(info.podcastindexid.map(|id| id.to_string()).unwrap_or_default());
+                        edit_description.set(info.description.clone());
+                        edit_author.set(info.author.clone());
+                        edit_artwork_url.set(info.artworkurl.clone());
+                        edit_website_url.set(info.websiteurl.clone());
+                        edit_podcast_index_id.set(info.podcastindexid.to_string());
                     }
                 }
             },
@@ -1990,7 +1990,7 @@ pub fn episode_layout() -> Html {
                                     </button>
                                 </div>
                             </div>
-                            
+
                             // Edit podcast info button
                             <div class="mt-4">
                                 <button
@@ -2160,6 +2160,126 @@ pub fn episode_layout() -> Html {
                                         })}
                                     />
                                 </div>
+                                <div>
+                                    <label for="edit_podcast_name" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.podcast_name")}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="edit_podcast_name"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.podcast_name_placeholder").to_string()}
+                                        value={(*edit_podcast_name).clone()}
+                                        oninput={Callback::from({
+                                            let edit_podcast_name = edit_podcast_name.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_podcast_name.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_description" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.description")}
+                                    </label>
+                                    <textarea
+                                        id="edit_description"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.description_placeholder").to_string()}
+                                        value={(*edit_description).clone()}
+                                        oninput={Callback::from({
+                                            let edit_description = edit_description.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<web_sys::HtmlTextAreaElement>() {
+                                                    edit_description.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                        rows="3"
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_author" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.author")}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="edit_author"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.author_placeholder").to_string()}
+                                        value={(*edit_author).clone()}
+                                        oninput={Callback::from({
+                                            let edit_author = edit_author.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_author.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_artwork_url" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.artwork_url")}
+                                    </label>
+                                    <input
+                                        type="url"
+                                        id="edit_artwork_url"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.artwork_url_placeholder").to_string()}
+                                        value={(*edit_artwork_url).clone()}
+                                        oninput={Callback::from({
+                                            let edit_artwork_url = edit_artwork_url.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_artwork_url.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_website_url" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.website_url")}
+                                    </label>
+                                    <input
+                                        type="url"
+                                        id="edit_website_url"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.website_url_placeholder").to_string()}
+                                        value={(*edit_website_url).clone()}
+                                        oninput={Callback::from({
+                                            let edit_website_url = edit_website_url.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_website_url.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_podcast_index_id" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.podcast_index_id")}
+                                    </label>
+                                    <input
+                                        type="number"
+                                        id="edit_podcast_index_id"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.podcast_index_id_placeholder").to_string()}
+                                        value={(*edit_podcast_index_id).clone()}
+                                        oninput={Callback::from({
+                                            let edit_podcast_index_id = edit_podcast_index_id.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_podcast_index_id.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
                                 <div class="flex justify-between space-x-4">
                                     <button
                                         type="button"
@@ -2168,26 +2288,46 @@ pub fn episode_layout() -> Html {
                                             let edit_feed_url = edit_feed_url.clone();
                                             let edit_username = edit_username.clone();
                                             let edit_password = edit_password.clone();
+                                            let edit_podcast_name = edit_podcast_name.clone();
+                                            let edit_description = edit_description.clone();
+                                            let edit_author = edit_author.clone();
+                                            let edit_artwork_url = edit_artwork_url.clone();
+                                            let edit_website_url = edit_website_url.clone();
+                                            let edit_podcast_index_id = edit_podcast_index_id.clone();
                                             let clicked_podcast_info = clicked_podcast_info.clone();
                                             let api_key = api_key.clone();
                                             let server_name = server_name.clone();
                                             let user_id = user_id.clone();
                                             let page_state = page_state.clone();
+                                            let dispatch = _search_dispatch.clone();
 
                                             Callback::from(move |_| {
                                                 let edit_feed_url = edit_feed_url.clone();
                                                 let edit_username = edit_username.clone();
                                                 let edit_password = edit_password.clone();
+                                                let edit_podcast_name = edit_podcast_name.clone();
+                                                let edit_description = edit_description.clone();
+                                                let edit_author = edit_author.clone();
+                                                let edit_artwork_url = edit_artwork_url.clone();
+                                                let edit_website_url = edit_website_url.clone();
+                                                let edit_podcast_index_id = edit_podcast_index_id.clone();
                                                 let clicked_podcast_info = clicked_podcast_info.clone();
                                                 let api_key = api_key.clone();
                                                 let server_name = server_name.clone();
                                                 let user_id = user_id.clone();
                                                 let page_state = page_state.clone();
+                                                let dispatch = dispatch.clone();
 
                                                 if let Some(podcast_info) = clicked_podcast_info.as_ref() {
                                                     let podcast_id = podcast_info.podcastid;
                                                     let current_feed_url = podcast_info.feedurl.clone();
-                                                    
+                                                    let current_podcast_name = podcast_info.podcastname.clone();
+                                                    let current_description = podcast_info.description.clone();
+                                                    let current_author = podcast_info.author.clone();
+                                                    let current_artwork_url = podcast_info.artworkurl.clone();
+                                                    let current_website_url = podcast_info.websiteurl.clone();
+                                                    let current_podcast_index_id = podcast_info.podcastindexid.to_string();
+
                                                     spawn_local(async move {
                                                         let feed_url = if (*edit_feed_url).trim().is_empty() || *edit_feed_url == current_feed_url {
                                                             None
@@ -2207,8 +2347,50 @@ pub fn episode_layout() -> Html {
                                                             Some((*edit_password).clone())
                                                         };
 
-                                                        if feed_url.is_none() && username.is_none() && password.is_none() {
-                                                            web_sys::console::log_1(&"No changes to save".into());
+
+                                                        let podcast_name = if (*edit_podcast_name).trim().is_empty() || *edit_podcast_name == current_podcast_name {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_podcast_name).clone())
+                                                        };
+
+                                                        let description = if (*edit_description).trim().is_empty() || *edit_description == current_description {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_description).clone())
+                                                        };
+
+                                                        let author = if (*edit_author).trim().is_empty() || *edit_author == current_author {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_author).clone())
+                                                        };
+
+                                                        let artwork_url = if (*edit_artwork_url).trim().is_empty() || *edit_artwork_url == current_artwork_url {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_artwork_url).clone())
+                                                        };
+
+                                                        let website_url = if (*edit_website_url).trim().is_empty() || *edit_website_url == current_website_url {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_website_url).clone())
+                                                        };
+
+                                                        let podcast_index_id = if (*edit_podcast_index_id).trim().is_empty() || *edit_podcast_index_id == current_podcast_index_id {
+                                                            None
+                                                        } else {
+                                                            (*edit_podcast_index_id).parse::<i64>().ok()
+                                                        };
+
+                                                        // Check if any changes were made
+                                                        if feed_url.is_none() && username.is_none() && password.is_none() && 
+                                                           podcast_name.is_none() && description.is_none() && author.is_none() && 
+                                                           artwork_url.is_none() && website_url.is_none() && podcast_index_id.is_none() {
+                                                            dispatch.reduce_mut(|state| {
+                                                                state.info_message = Some("No changes to save".to_string())
+                                                            });
                                                             return;
                                                         }
 
@@ -2220,23 +2402,29 @@ pub fn episode_layout() -> Html {
                                                             feed_url,
                                                             username,
                                                             password,
-                                                            None, // podcast_name - TODO: get from form
-                                                            None, // description - TODO: get from form  
-                                                            None, // author - TODO: get from form
-                                                            None, // artwork_url - TODO: get from form
-                                                            None, // website_url - TODO: get from form
-                                                            None, // podcast_index_id - TODO: get from form
+                                                            podcast_name,
+                                                            description,
+                                                            author,
+                                                            artwork_url,
+                                                            website_url,
+                                                            podcast_index_id,
                                                         ).await {
                                                             Ok(response) => {
                                                                 if response.success {
-                                                                    web_sys::console::log_1(&"Podcast updated successfully".into());
+                                                                    dispatch.reduce_mut(|state| {
+                                                                        state.info_message = Some("Podcast updated successfully".to_string())
+                                                                    });
                                                                     page_state.set(PageState::Hidden);
                                                                 } else {
-                                                                    web_sys::console::log_1(&format!("Update failed: {}", response.message).into());
+                                                                    dispatch.reduce_mut(|state| {
+                                                                        state.error_message = Some(format!("Update failed: {}", response.message))
+                                                                    });
                                                                 }
                                                             }
                                                             Err(e) => {
-                                                                web_sys::console::log_1(&format!("Error updating podcast: {}", e).into());
+                                                                dispatch.reduce_mut(|state| {
+                                                                    state.error_message = Some(format!("Error updating podcast: {}", e))
+                                                                });
                                                             }
                                                         }
                                                     });

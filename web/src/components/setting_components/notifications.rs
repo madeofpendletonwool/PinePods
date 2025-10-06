@@ -55,6 +55,9 @@ pub fn notification_settings() -> Html {
     let ntfy_access_token = use_state(|| "".to_string());
     let gotify_url = use_state(|| "".to_string());
     let gotify_token = use_state(|| "".to_string());
+    let http_url = use_state(|| "".to_string());
+    let http_token = use_state(|| "".to_string());
+    let http_method = use_state(|| "POST".to_string());
 
     // Add state for notification info
     let notification_info: UseStateHandle<Option<NotificationSettingsResponse>> =
@@ -98,6 +101,9 @@ pub fn notification_settings() -> Html {
         let ntfy_access_token = ntfy_access_token.clone();
         let gotify_url = gotify_url.clone();
         let gotify_token = gotify_token.clone();
+        let http_url = http_url.clone();
+        let http_token = http_token.clone();
+        let http_method = http_method.clone();
         let _dispatch = _dispatch.clone();
         let notification_info = notification_info.clone();
 
@@ -123,6 +129,7 @@ pub fn notification_settings() -> Html {
                                 // Always default to ntfy platform, but populate all settings
                                 let ntfy_setting = settings_response.settings.iter().find(|s| s.platform == "ntfy");
                                 let gotify_setting = settings_response.settings.iter().find(|s| s.platform == "gotify");
+                                let http_setting = settings_response.settings.iter().find(|s| s.platform == "http");
                                 
                                 // Always set platform to ntfy by default - override any existing setting
                                 platform.set("ntfy".to_string());
@@ -162,6 +169,19 @@ pub fn notification_settings() -> Html {
                                         gotify_token.set(token.clone());
                                     }
                                 }
+                                
+                                // Populate HTTP fields if HTTP setting exists (for when user switches)
+                                if let Some(http) = http_setting {
+                                    if let Some(url) = &http.http_url {
+                                        http_url.set(url.clone());
+                                    }
+                                    if let Some(token) = &http.http_token {
+                                        http_token.set(token.clone());
+                                    }
+                                    if let Some(method) = &http.http_method {
+                                        http_method.set(method.clone());
+                                    }
+                                }
                             }
                             Err(e) => {
                                 let formatted_error = format_error_message(&e.to_string());
@@ -195,6 +215,9 @@ pub fn notification_settings() -> Html {
         let ntfy_access_token = ntfy_access_token.clone();
         let gotify_url = gotify_url.clone();
         let gotify_token = gotify_token.clone();
+        let http_url = http_url.clone();
+        let http_token = http_token.clone();
+        let http_method = http_method.clone();
         let show_success = show_success.clone();
         let success_message = success_message.clone();
         let _dispatch = _dispatch.clone();
@@ -224,6 +247,9 @@ pub fn notification_settings() -> Html {
                 ntfy_access_token: Some((*ntfy_access_token).clone()),
                 gotify_url: Some((*gotify_url).clone()),
                 gotify_token: Some((*gotify_token).clone()),
+                http_url: Some((*http_url).clone()),
+                http_token: Some((*http_token).clone()),
+                http_method: Some((*http_method).clone()),
             };
 
             wasm_bindgen_futures::spawn_local(async move {
@@ -366,29 +392,50 @@ pub fn notification_settings() -> Html {
             <form onsubmit={on_submit} class="space-y-4">
                 <div class="form-group">
                     <label class="form-label">{&i18n_notification_platform}</label>
-                    <select
-                        class="form-input"
-                        value="ntfy"
-                        onchange={let platform = platform.clone(); Callback::from(move |e: Event| {
-                            let target: HtmlInputElement = e.target_unchecked_into();
-                            platform.set(target.value());
-                        })}
-                    >
-                        <option value="ntfy" selected=true>{"ntfy"}</option>
-                        <option value="gotify">{"Gotify"}</option>
-                    </select>
+                    <div class="notification-platform-tabs">
+                        <button
+                            type="button"
+                            class={if *platform == "ntfy" { "notification-platform-tab active" } else { "notification-platform-tab" }}
+                            onclick={let platform = platform.clone(); Callback::from(move |_| {
+                                platform.set("ntfy".to_string());
+                            })}
+                        >
+                            {"ntfy"}
+                        </button>
+                        <button
+                            type="button"
+                            class={if *platform == "gotify" { "notification-platform-tab active" } else { "notification-platform-tab" }}
+                            onclick={let platform = platform.clone(); Callback::from(move |_| {
+                                platform.set("gotify".to_string());
+                            })}
+                        >
+                            {"Gotify"}
+                        </button>
+                        <button
+                            type="button"
+                            class={if *platform == "http" { "notification-platform-tab active" } else { "notification-platform-tab" }}
+                            onclick={let platform = platform.clone(); Callback::from(move |_| {
+                                platform.set("http".to_string());
+                            })}
+                        >
+                            {"HTTP/Telegram"}
+                        </button>
+                    </div>
                 </div>
 
                 <div class="form-group">
                     <label class="form-label">{&i18n_enable_notifications}</label>
-                    <input
-                        type="checkbox"
-                        checked={*enabled}
-                        onchange={let enabled = enabled.clone(); Callback::from(move |e: Event| {
-                            let target: HtmlInputElement = e.target_unchecked_into();
-                            enabled.set(target.checked());
-                        })}
-                    />
+                    <label class="notification-toggle-switch">
+                        <input
+                            type="checkbox"
+                            checked={*enabled}
+                            onchange={let enabled = enabled.clone(); Callback::from(move |e: Event| {
+                                let target: HtmlInputElement = e.target_unchecked_into();
+                                enabled.set(target.checked());
+                            })}
+                        />
+                        <span class="notification-toggle-slider"></span>
+                    </label>
                 </div>
 
                 {
@@ -524,6 +571,70 @@ pub fn notification_settings() -> Html {
                                 </div>
                             </>
                         }
+                    }
+                }
+
+                {
+                    if *platform == "http" {
+                        html! {
+                            <>
+                                <div class="form-group">
+                                    <label for="http_url" class="form-label">{"HTTP Endpoint URL"}</label>
+                                    <input
+                                        type="text"
+                                        id="http_url"
+                                        value={(*http_url).clone()}
+                                        oninput={let http_url = http_url.clone(); Callback::from(move |e: InputEvent| {
+                                            let target: HtmlInputElement = e.target_unchecked_into();
+                                            http_url.set(target.value());
+                                        })}
+                                        class="form-input"
+                                        placeholder="https://api.telegram.org/bot<token>/sendMessage"
+                                    />
+                                    <span class="form-helper-text">{"For Telegram: https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage"}</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="http_token" class="form-label">{"Token/Authentication"}</label>
+                                    <input
+                                        type="text"
+                                        id="http_token"
+                                        value={(*http_token).clone()}
+                                        oninput={let http_token = http_token.clone(); Callback::from(move |e: InputEvent| {
+                                            let target: HtmlInputElement = e.target_unchecked_into();
+                                            http_token.set(target.value());
+                                        })}
+                                        class="form-input"
+                                        placeholder="For Telegram: <bot_token>:<chat_id>"
+                                    />
+                                    <span class="form-helper-text">{"For Telegram: Format as bot_token:chat_id"}</span>
+                                </div>
+                                <div class="form-group">
+                                    <label for="http_method" class="form-label">{"HTTP Method"}</label>
+                                    <div class="notification-platform-tabs">
+                                        <button
+                                            type="button"
+                                            class={if *http_method == "POST" { "notification-platform-tab active" } else { "notification-platform-tab" }}
+                                            onclick={let http_method = http_method.clone(); Callback::from(move |_| {
+                                                http_method.set("POST".to_string());
+                                            })}
+                                        >
+                                            {"POST"}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class={if *http_method == "GET" { "notification-platform-tab active" } else { "notification-platform-tab" }}
+                                            onclick={let http_method = http_method.clone(); Callback::from(move |_| {
+                                                http_method.set("GET".to_string());
+                                            })}
+                                        >
+                                            {"GET"}
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
+                        }
+                    } else {
+                        html! { <></> }
                     }
                 }
 

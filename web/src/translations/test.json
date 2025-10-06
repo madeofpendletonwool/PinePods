@@ -791,7 +791,10 @@
     "website_url": "ZZTEST-WEBSITE-URL-ZZTEST",
     "website_url_placeholder": "ZZTEST-ENTER-WEBSITE-URL-ZZTEST",
     "podcast_index_id": "ZZTEST-PODCAST-INDEX-ID-ZZTEST",
-    "podcast_index_id_placeholder": "ZZTEST-ENTER-PODCAST-INDEX-ID-ZZTEST"
+    "podcast_index_id_placeholder": "ZZTEST-ENTER-PODCAST-INDEX-ID-ZZTEST",
+    "no_changes_to_save": "ZZTEST-NO-CHANGES-TO-SAVE-ZZTEST",
+    "podcast_updated_successfully": "ZZTEST-PODCAST-UPDATED-SUCCESSFULLY-ZZTEST",
+    "podcast_update_failed": "ZZTEST-FAILED-TO-UPDATE-PODCAST-ZZTEST"
   },
   "feed": {
     "no_recent_episodes_found": "ZZTEST-NO-RECENT-EPISODES-FOUND-ZZTEST",

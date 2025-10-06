@@ -884,7 +884,10 @@
     "website_url": "Website URL",
     "website_url_placeholder": "Enter website URL",
     "podcast_index_id": "Podcast Index ID",
-    "podcast_index_id_placeholder": "Enter Podcast Index ID"
+    "podcast_index_id_placeholder": "Enter Podcast Index ID",
+    "no_changes_to_save": "No changes to save",
+    "podcast_updated_successfully": "Podcast updated successfully",
+    "podcast_update_failed": "Failed to update podcast"
   },
   "feed": {
     "no_recent_episodes_found": "No Recent Episodes Found",
