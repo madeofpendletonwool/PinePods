@@ -770,6 +770,125 @@ impl DatabasePool {
         }
     }
 
+    // Add podcast without episodes - for background episode processing
+    pub async fn add_podcast_without_episodes(
+        &self,
+        podcast_values: &crate::handlers::podcasts::PodcastValues,
+        podcast_index_id: i64,
+        username: Option<&str>,
+        password: Option<&str>,
+    ) -> AppResult<i32> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Check if podcast already exists
+                let existing = sqlx::query(r#"SELECT podcastid, podcastname, feedurl FROM "Podcasts" WHERE feedurl = $1 AND userid = $2"#)
+                    .bind(&podcast_values.pod_feed_url)
+                    .bind(podcast_values.user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = existing {
+                    let podcast_id: i32 = row.try_get("podcastid")?;
+                    return Ok(podcast_id);
+                }
+                
+                // Convert categories to string
+                let category_list = serde_json::to_string(&podcast_values.categories)?;
+                
+                // Insert new podcast without episodes
+                let row = sqlx::query(
+                    r#"INSERT INTO "Podcasts" 
+                       (podcastname, artworkurl, author, categories, description, episodecount, 
+                        feedurl, websiteurl, explicit, userid, feedcutoffdays, username, password, podcastindexid)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                       RETURNING podcastid"#
+                )
+                .bind(&podcast_values.pod_title)
+                .bind(&podcast_values.pod_artwork)
+                .bind(&podcast_values.pod_author)
+                .bind(&category_list)
+                .bind(&podcast_values.pod_description)
+                .bind(0) // EpisodeCount starts at 0
+                .bind(&podcast_values.pod_feed_url)
+                .bind(&podcast_values.pod_website)
+                .bind(podcast_values.pod_explicit)
+                .bind(podcast_values.user_id)
+                .bind(30) // Default feed cutoff days
+                .bind(username)
+                .bind(password)
+                .bind(podcast_index_id)
+                .fetch_one(pool)
+                .await?;
+                
+                let podcast_id: i32 = row.try_get("podcastid")?;
+                
+                // Update UserStats table
+                sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded + 1 WHERE userid = $1"#)
+                    .bind(podcast_values.user_id)
+                    .execute(pool)
+                    .await?;
+                
+                println!("✅ Added podcast '{}' for user {} (episodes will be processed in background)", 
+                    podcast_values.pod_title, podcast_values.user_id);
+                
+                Ok(podcast_id)
+            }
+            DatabasePool::MySQL(pool) => {
+                // Check if podcast already exists
+                let existing = sqlx::query("SELECT PodcastID, PodcastName, FeedURL FROM Podcasts WHERE FeedURL = ? AND UserID = ?")
+                    .bind(&podcast_values.pod_feed_url)
+                    .bind(podcast_values.user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = existing {
+                    let podcast_id: i32 = row.try_get("PodcastID")?;
+                    return Ok(podcast_id);
+                }
+                
+                // Convert categories to string
+                let category_list = serde_json::to_string(&podcast_values.categories)?;
+                
+                // Insert new podcast without episodes
+                let result = sqlx::query(
+                    "INSERT INTO Podcasts 
+                     (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, 
+                      FeedURL, WebsiteURL, Explicit, UserID, FeedCutoffDays, Username, Password, PodcastIndexID)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                )
+                .bind(&podcast_values.pod_title)
+                .bind(&podcast_values.pod_artwork)
+                .bind(&podcast_values.pod_author)
+                .bind(&category_list)
+                .bind(&podcast_values.pod_description)
+                .bind(0) // EpisodeCount starts at 0
+                .bind(&podcast_values.pod_feed_url)
+                .bind(&podcast_values.pod_website)
+                .bind(podcast_values.pod_explicit)
+                .bind(podcast_values.user_id)
+                .bind(30) // Default feed cutoff days
+                .bind(username)
+                .bind(password)
+                .bind(podcast_index_id)
+                .execute(pool)
+                .await?;
+                
+                let podcast_id = result.last_insert_id() as i32;
+                
+                // Update UserStats table
+                sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = ?")
+                    .bind(podcast_values.user_id)
+                    .execute(pool)
+                    .await?;
+                
+                println!("✅ Added podcast '{}' for user {} (episodes will be processed in background)", 
+                    podcast_values.pod_title, podcast_values.user_id);
+                
+                Ok(podcast_id)
+            }
+        }
+    }
+
     // Remove podcast - matches Python remove_podcast function
     pub async fn remove_podcast(
         &self,
@@ -11968,17 +12087,26 @@ impl DatabasePool {
                                 
                                 // Get episode duration to check if it should be marked as complete
                                 if let Ok(episode_duration) = self.get_episode_duration(episode_id).await {
-                                    if episode_duration > 0 && (episode_duration - position as i32) <= 120 {
-                                        // Within 2 minutes of completion - mark as complete
+                                    let position_sec = position as i32;
+                                    let remaining_time = episode_duration - position_sec;
+                                    
+                                    // Always log for debugging GPodder sync completion issues
+                                    println!("GPodder sync episode: {} - Duration: {}s, Position: {}s, Remaining: {}s", 
+                                             episode_url, episode_duration, position_sec, remaining_time);
+                                    
+                                    // Mark complete if position is at/beyond the end OR within 60 seconds of completion
+                                    if episode_duration > 0 && (position_sec >= episode_duration || remaining_time <= 60) {
+                                        // At end or within 1 minute of completion - mark as complete
                                         // GPodder sync only handles regular podcast episodes, never YouTube videos
                                         self.mark_episode_completed(episode_id, user_id, false).await?;
                                         applied_count += 1;
-                                        tracing::debug!("Marked episode as completed: {} ({}s of {}s)", episode_url, position, episode_duration);
+                                        println!("✓ Marked episode as completed via GPodder sync: {} ({}s of {}s)", 
+                                                episode_url, position_sec, episode_duration);
                                     } else {
                                         // Update progress normally
-                                        self.update_episode_progress(user_id, episode_id, position as i32, timestamp).await?;
+                                        self.update_episode_progress(user_id, episode_id, position_sec, timestamp).await?;
                                         applied_count += 1;
-                                        tracing::debug!("Applied episode action: {} -> position {}", episode_url, position);
+                                        println!("Updated episode progress: {} -> {}s/{}s", episode_url, position_sec, episode_duration);
                                     }
                                 } else {
                                     // Fallback to normal progress update if duration unavailable
@@ -19734,6 +19862,196 @@ impl DatabasePool {
         }
     }
 
+    // Update podcast basic info - for edit podcast functionality
+    pub async fn update_podcast_info(&self, podcast_id: i32, user_id: i32, feed_url: Option<String>, username: Option<String>, password: Option<String>, podcast_name: Option<String>, description: Option<String>, author: Option<String>, artwork_url: Option<String>, website_url: Option<String>, podcast_index_id: Option<i64>) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // First verify podcast exists and belongs to user
+                let existing = sqlx::query(r#"SELECT podcastid FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                if existing.is_none() {
+                    return Ok(false);
+                }
+
+                // Build dynamic update query based on provided fields
+                let mut update_parts = Vec::new();
+                let mut bind_count = 1;
+                
+                if feed_url.is_some() {
+                    update_parts.push(format!("feedurl = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if username.is_some() {
+                    update_parts.push(format!("username = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if password.is_some() {
+                    update_parts.push(format!("password = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if podcast_name.is_some() {
+                    update_parts.push(format!("podcastname = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if description.is_some() {
+                    update_parts.push(format!("description = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if author.is_some() {
+                    update_parts.push(format!("author = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if artwork_url.is_some() {
+                    update_parts.push(format!("artworkurl = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if website_url.is_some() {
+                    update_parts.push(format!("websiteurl = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if podcast_index_id.is_some() {
+                    update_parts.push(format!("podcastindexid = ${}", bind_count));
+                    bind_count += 1;
+                }
+
+                if update_parts.is_empty() {
+                    return Ok(false);
+                }
+
+                let query_str = format!(
+                    r#"UPDATE "Podcasts" SET {} WHERE podcastid = ${} AND userid = ${}"#,
+                    update_parts.join(", "),
+                    bind_count,
+                    bind_count + 1
+                );
+
+                let mut query = sqlx::query(&query_str);
+                
+                if let Some(url) = feed_url {
+                    query = query.bind(url);
+                }
+                if let Some(uname) = username {
+                    query = query.bind(uname);
+                }
+                if let Some(pwd) = password {
+                    query = query.bind(pwd);
+                }
+                if let Some(name) = podcast_name {
+                    query = query.bind(name);
+                }
+                if let Some(desc) = description {
+                    query = query.bind(desc);
+                }
+                if let Some(auth) = author {
+                    query = query.bind(auth);
+                }
+                if let Some(artwork) = artwork_url {
+                    query = query.bind(artwork);
+                }
+                if let Some(website) = website_url {
+                    query = query.bind(website);
+                }
+                if let Some(idx_id) = podcast_index_id {
+                    query = query.bind(idx_id);
+                }
+                
+                query = query.bind(podcast_id).bind(user_id);
+                
+                let result = query.execute(pool).await?;
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                // First verify podcast exists and belongs to user
+                let existing = sqlx::query("SELECT PodcastID FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                if existing.is_none() {
+                    return Ok(false);
+                }
+
+                // Build dynamic update query based on provided fields
+                let mut update_parts = Vec::new();
+                
+                if feed_url.is_some() {
+                    update_parts.push("FeedURL = ?");
+                }
+                if username.is_some() {
+                    update_parts.push("Username = ?");
+                }
+                if password.is_some() {
+                    update_parts.push("Password = ?");
+                }
+                if podcast_name.is_some() {
+                    update_parts.push("PodcastName = ?");
+                }
+                if description.is_some() {
+                    update_parts.push("Description = ?");
+                }
+                if author.is_some() {
+                    update_parts.push("Author = ?");
+                }
+                if artwork_url.is_some() {
+                    update_parts.push("ArtworkURL = ?");
+                }
+                if website_url.is_some() {
+                    update_parts.push("WebsiteURL = ?");
+                }
+                if podcast_index_id.is_some() {
+                    update_parts.push("PodcastIndexID = ?");
+                }
+
+                if update_parts.is_empty() {
+                    return Ok(false);
+                }
+
+                let query_str = format!(
+                    "UPDATE Podcasts SET {} WHERE PodcastID = ? AND UserID = ?",
+                    update_parts.join(", ")
+                );
+
+                let mut query = sqlx::query(&query_str);
+                
+                if let Some(url) = feed_url {
+                    query = query.bind(url);
+                }
+                if let Some(uname) = username {
+                    query = query.bind(uname);
+                }
+                if let Some(pwd) = password {
+                    query = query.bind(pwd);
+                }
+                if let Some(name) = podcast_name {
+                    query = query.bind(name);
+                }
+                if let Some(desc) = description {
+                    query = query.bind(desc);
+                }
+                if let Some(auth) = author {
+                    query = query.bind(auth);
+                }
+                if let Some(artwork) = artwork_url {
+                    query = query.bind(artwork);
+                }
+                if let Some(website) = website_url {
+                    query = query.bind(website);
+                }
+                if let Some(idx_id) = podcast_index_id {
+                    query = query.bind(idx_id);
+                }
+                
+                query = query.bind(podcast_id).bind(user_id);
+                
+                let result = query.execute(pool).await?;
+                Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
     // Bulk episode operations for efficient batch processing
     pub async fn bulk_mark_episodes_completed(&self, episode_ids: Vec<i32>, user_id: i32, is_youtube: bool) -> AppResult<(i32, i32)> {
         if episode_ids.is_empty() {
@@ -23094,17 +23412,11 @@ impl DatabasePool {
     pub async fn get_playlist_episodes_dynamic(
         &self, 
         playlist_id: i32, 
-        user_id: i32, 
-        page: Option<i32>, 
-        per_page: Option<i32>
+        user_id: i32
     ) -> AppResult<crate::models::PlaylistEpisodesResponse> {
         use tracing::{info, debug, warn};
         
-        let page = page.unwrap_or(1).max(1);
-        let per_page = per_page.unwrap_or(50).min(100).max(1);
-        let offset = (page - 1) * per_page;
-        
-        debug!("🎵 Getting dynamic playlist episodes for playlist {} user {} page {} per_page {}", playlist_id, user_id, page, per_page);
+        debug!("🎵 Getting dynamic playlist episodes for playlist {} user {}", playlist_id, user_id);
         
         match self {
             DatabasePool::Postgres(pool) => {
@@ -23296,21 +23608,19 @@ impl DatabasePool {
                 
                 let order_clause = format!(" ORDER BY {}", order_parts.join(", "));
                 
-                // Apply MaxEpisodes limit if specified
+                // Apply MaxEpisodes limit if specified (playlist setting, not pagination)
                 let limit_clause = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("maxepisodes")? {
                     if max_eps > 0 {
-                        format!(" LIMIT {}", max_eps.min(per_page))
+                        format!(" LIMIT {}", max_eps)
                     } else {
-                        format!(" LIMIT {}", per_page)
+                        String::new()
                     }
                 } else {
-                    format!(" LIMIT {}", per_page)
+                    String::new()
                 };
                 
-                let offset_clause = format!(" OFFSET {}", offset);
-                
-                let final_query = format!("{}{}{}{}{}", 
-                    query_parts.join(" "), where_clause, order_clause, limit_clause, offset_clause);
+                let final_query = format!("{}{}{}{}", 
+                    query_parts.join(" "), where_clause, order_clause, limit_clause);
                 
                 debug!("🔍 Final dynamic playlist query: {}", final_query);
                 
@@ -23344,22 +23654,11 @@ impl DatabasePool {
                 
                 debug!("📝 Retrieved {} episodes from dynamic query", episodes.len());
                 
-                // Get total count (without LIMIT/OFFSET)
-                let count_query = format!("SELECT COUNT(*) FROM ({}) AS count_subquery", 
-                    final_query.replace(&limit_clause, "").replace(&offset_clause, ""));
-                
-                let total_count: i64 = sqlx::query_scalar(&count_query)
-                    .bind(user_id)
-                    .fetch_one(pool)
-                    .await?;
-                
-                debug!("📊 Total episodes matching criteria: {}", total_count);
-                
                 // Create playlist info from the playlist row we already have
                 let playlist_info = crate::models::PlaylistInfo {
                     name: playlist.try_get::<String, _>("name")?,
                     description: playlist.try_get::<String, _>("description")?,
-                    episode_count: total_count as i32,
+                    episode_count: episodes.len() as i32,
                     icon_name: playlist.try_get::<String, _>("iconname")?,
                 };
                 
@@ -23546,18 +23845,16 @@ impl DatabasePool {
                 // Apply MaxEpisodes limit if specified (MySQL)
                 let limit_clause = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("MaxEpisodes")? {
                     if max_eps > 0 {
-                        format!(" LIMIT {}", max_eps.min(per_page))
+                        format!(" LIMIT {}", max_eps)
                     } else {
-                        format!(" LIMIT {}", per_page)
+                        String::new()
                     }
                 } else {
-                    format!(" LIMIT {}", per_page)
+                    String::new()
                 };
                 
-                let offset_clause = format!(" OFFSET {}", offset);
-                
-                let final_query = format!("{}{}{}{}{}", 
-                    query_parts.join(" "), where_clause, order_clause, limit_clause, offset_clause);
+                let final_query = format!("{}{}{}{}", 
+                    query_parts.join(" "), where_clause, order_clause, limit_clause);
                 
                 debug!("🔍 Final MySQL dynamic playlist query: {}", final_query);
                 
@@ -23591,22 +23888,11 @@ impl DatabasePool {
                 
                 debug!("📝 Retrieved {} episodes from MySQL dynamic query", episodes.len());
                 
-                // Get total count (without LIMIT/OFFSET) for MySQL
-                let count_query = format!("SELECT COUNT(*) FROM ({}) AS count_subquery", 
-                    final_query.replace(&limit_clause, "").replace(&offset_clause, ""));
-                
-                let total_count: i64 = sqlx::query_scalar(&count_query)
-                    .bind(user_id)
-                    .fetch_one(pool)
-                    .await?;
-                
-                debug!("📊 Total MySQL episodes matching criteria: {}", total_count);
-                
                 // Create playlist info from the MySQL playlist row we already have
                 let playlist_info = crate::models::PlaylistInfo {
                     name: playlist.try_get::<String, _>("Name")?,
                     description: playlist.try_get::<String, _>("Description")?,
-                    episode_count: total_count as i32,
+                    episode_count: episodes.len() as i32,
                     icon_name: playlist.try_get::<String, _>("IconName")?,
                 };
                 

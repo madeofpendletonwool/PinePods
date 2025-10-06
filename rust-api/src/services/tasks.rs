@@ -963,3 +963,79 @@ async fn download_artwork(url: &str) -> Result<Vec<u8>, Box<dyn std::error::Erro
         Err(format!("Failed to download artwork: HTTP {}", response.status()).into())
     }
 }
+
+impl TaskSpawner {
+    pub async fn spawn_add_podcast_episodes_task(
+        &self,
+        podcast_id: i32,
+        feed_url: String,
+        artwork_url: String,
+        user_id: i32,
+        username: Option<String>,
+        password: Option<String>,
+    ) -> AppResult<String> {
+        let task_type = "add_podcast_episodes".to_string();
+        
+        self.spawn_task(
+            task_type,
+            user_id,
+            move |task_id, task_manager, db_pool| {
+                Box::pin(async move {
+                    println!("Starting episode processing for podcast {} (user {})", podcast_id, user_id);
+                    
+                    // Update progress - starting
+                    task_manager.update_task_progress(&task_id, 10.0, Some("Fetching podcast feed...".to_string())).await?;
+                    
+                    // Add episodes to the existing podcast
+                    match db_pool.add_episodes(
+                        podcast_id,
+                        &feed_url,
+                        &artwork_url,
+                        false, // auto_download
+                        username.as_deref(),
+                        password.as_deref(),
+                    ).await {
+                        Ok(first_episode_id) => {
+                            // Update progress - fetching count
+                            task_manager.update_task_progress(&task_id, 80.0, Some("Counting episodes...".to_string())).await?;
+                            
+                            // Count episodes for logging and notification
+                            let episode_count: i64 = match &db_pool {
+                                crate::database::DatabasePool::Postgres(pool) => {
+                                    sqlx::query_scalar(r#"SELECT COUNT(*) FROM "Episodes" WHERE podcastid = $1"#)
+                                        .bind(podcast_id)
+                                        .fetch_one(pool)
+                                        .await?
+                                }
+                                crate::database::DatabasePool::MySQL(pool) => {
+                                    sqlx::query_scalar("SELECT COUNT(*) FROM Episodes WHERE PodcastID = ?")
+                                        .bind(podcast_id)
+                                        .fetch_one(pool)
+                                        .await?
+                                }
+                            };
+                            
+                            // Final progress update
+                            task_manager.update_task_progress(&task_id, 100.0, Some(format!("Added {} episodes", episode_count))).await?;
+                            
+                            println!("✅ Added {} episodes for podcast {} (user {})", episode_count, podcast_id, user_id);
+                            
+                            Ok(serde_json::json!({
+                                "podcast_id": podcast_id,
+                                "user_id": user_id,
+                                "episode_count": episode_count,
+                                "first_episode_id": first_episode_id,
+                                "status": "completed"
+                            }))
+                        }
+                        Err(e) => {
+                            println!("Failed to add episodes for podcast {}: {}", podcast_id, e);
+                            task_manager.update_task_progress(&task_id, 0.0, Some(format!("Failed to add episodes: {}", e))).await?;
+                            Err(e)
+                        }
+                    }
+                })
+            },
+        ).await
+    }
+}

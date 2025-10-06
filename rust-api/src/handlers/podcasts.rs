@@ -147,6 +147,28 @@ pub struct RemovePodcastResponse {
     pub success: bool,
 }
 
+// Request struct for update_podcast_info - matches edit podcast functionality
+#[derive(Deserialize)]
+pub struct UpdatePodcastInfoRequest {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub feed_url: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub podcast_name: Option<String>,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub artwork_url: Option<String>,
+    pub website_url: Option<String>,
+    pub podcast_index_id: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct UpdatePodcastInfoResponse {
+    pub success: bool,
+    pub message: String,
+}
+
 // Query struct for get_podcast_details - matches Python endpoint
 #[derive(Deserialize)]
 pub struct GetPodcastDetailsQuery {
@@ -240,10 +262,20 @@ pub async fn add_podcast(
         pod_explicit: parsed_podcast_values.get("explicit").unwrap_or(&"False".to_string()) == "True",
     };
     
-    // Add podcast to database using backend-parsed values
-    let (podcast_id, first_episode_id) = state.db_pool.add_podcast(
+    // Add podcast to database immediately (without episodes)
+    let podcast_id = state.db_pool.add_podcast_without_episodes(
         &backend_podcast_values,
         request.podcast_index_id.unwrap_or(0),
+        None, // username
+        None, // password
+    ).await?;
+    
+    // Spawn background task to add episodes
+    let _task_id = state.task_spawner.spawn_add_podcast_episodes_task(
+        podcast_id,
+        backend_podcast_values.pod_feed_url.clone(),
+        backend_podcast_values.pod_artwork.clone(),
+        backend_podcast_values.user_id,
         None, // username
         None, // password
     ).await?;
@@ -251,7 +283,7 @@ pub async fn add_podcast(
     Ok(Json(PodcastStatusResponse {
         success: true,
         podcast_id,
-        first_episode_id: first_episode_id.unwrap_or(0),
+        first_episode_id: 0, // Episodes will be added in background
     }))
 }
 
@@ -1812,13 +1844,11 @@ pub async fn get_playback_speed(
     Ok(Json(serde_json::json!({ "playback_speed": playback_speed })))
 }
 
-// Query struct for get_playlist_episodes - updated with pagination support
+// Query struct for get_playlist_episodes
 #[derive(Deserialize)]
 pub struct GetPlaylistEpisodesQuery {
     pub user_id: i32,
     pub playlist_id: i32,
-    pub page: Option<i32>,
-    pub per_page: Option<i32>,
 }
 
 // Get playlist episodes - UPDATED to use dynamic playlist system
@@ -1840,9 +1870,7 @@ pub async fn get_playlist_episodes(
     // Use new dynamic playlist system
     let playlist_response = state.db_pool.get_playlist_episodes_dynamic(
         query.playlist_id, 
-        query.user_id, 
-        query.page, 
-        query.per_page
+        query.user_id
     ).await?;
     
     // Return in format expected by frontend
@@ -2273,4 +2301,67 @@ pub async fn fetch_podcast_feed(
         .map_err(|e| AppError::external_error(&format!("Failed to parse podcast feed: {}", e)))?;
     
     Ok(Json(serde_json::json!({ "episodes": episodes })))
+}
+
+// Handler for updating podcast basic info (URL, username, password)
+pub async fn update_podcast_info(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<UpdatePodcastInfoRequest>,
+) -> Result<Json<UpdatePodcastInfoResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Check authorization - users can only modify their own podcasts
+    let requesting_user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    
+    if !check_user_access(&state, &api_key, requesting_user_id).await? {
+        return Err(AppError::forbidden("You can only modify your own podcasts!"));
+    }
+
+    if request.user_id != requesting_user_id {
+        return Err(AppError::forbidden("You can only modify your own podcasts!"));
+    }
+
+    // Validate that at least one field is being updated
+    if request.feed_url.is_none() && request.username.is_none() && request.password.is_none() 
+        && request.podcast_name.is_none() && request.description.is_none() && request.author.is_none()
+        && request.artwork_url.is_none() && request.website_url.is_none() && request.podcast_index_id.is_none() {
+        return Ok(Json(UpdatePodcastInfoResponse {
+            success: false,
+            message: "No fields provided to update".to_string(),
+        }));
+    }
+
+    // Update the podcast info
+    let success = state.db_pool.update_podcast_info(
+        request.podcast_id,
+        request.user_id,
+        request.feed_url,
+        request.username,
+        request.password,
+        request.podcast_name,
+        request.description,
+        request.author,
+        request.artwork_url,
+        request.website_url,
+        request.podcast_index_id,
+    ).await?;
+
+    if success {
+        Ok(Json(UpdatePodcastInfoResponse {
+            success: true,
+            message: "Podcast updated successfully".to_string(),
+        }))
+    } else {
+        Ok(Json(UpdatePodcastInfoResponse {
+            success: false,
+            message: "Podcast not found or no changes made".to_string(),
+        }))
+    }
 }

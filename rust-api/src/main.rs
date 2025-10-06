@@ -193,6 +193,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/increment_listen_time/{user_id}", put(handlers::podcasts::increment_listen_time))
         .route("/get_playback_speed", post(handlers::podcasts::get_playback_speed))
         .route("/add_podcast", post(handlers::podcasts::add_podcast))
+        .route("/update_podcast_info", put(handlers::podcasts::update_podcast_info))
         .route("/remove_podcast", post(handlers::podcasts::remove_podcast))
         .route("/remove_podcast_id", post(handlers::podcasts::remove_podcast_id))
         .route("/remove_podcast_name", post(handlers::podcasts::remove_podcast_by_name))

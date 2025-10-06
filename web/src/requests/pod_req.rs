@@ -188,6 +188,81 @@ pub async fn call_add_podcast(
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UpdatePodcastInfoRequest {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub feed_url: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub podcast_name: Option<String>,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub artwork_url: Option<String>,
+    pub website_url: Option<String>,
+    pub podcast_index_id: Option<i64>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+pub struct UpdatePodcastInfoResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+pub async fn call_update_podcast_info(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: i32,
+    feed_url: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
+    podcast_name: Option<String>,
+    description: Option<String>,
+    author: Option<String>,
+    artwork_url: Option<String>,
+    website_url: Option<String>,
+    podcast_index_id: Option<i64>,
+) -> Result<UpdatePodcastInfoResponse, Error> {
+    let url = format!("{}/api/data/update_podcast_info", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| Error::msg("API key is missing"))?;
+
+    let request_body = UpdatePodcastInfoRequest {
+        user_id,
+        podcast_id,
+        feed_url,
+        username,
+        password,
+        podcast_name,
+        description,
+        author,
+        artwork_url,
+        website_url,
+        podcast_index_id,
+    };
+
+    let json_body = serde_json::to_string(&request_body)?;
+
+    let response = Request::put(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(json_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<UpdatePodcastInfoResponse>().await?;
+        Ok(response_body)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating podcast info: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RemovePodcastValues {
     pub podcast_id: i32,
     pub user_id: i32,

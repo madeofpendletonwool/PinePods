@@ -15,7 +15,7 @@ Major Version:
 
 0.8.2
 
-- [] translations
+- [] Translations on the web app
 - [] Account Settings now updates dropdowns with pre-populated values
 - [] episode-layout (podcast page) will now set sort settings based on pod id
 - [] Added endpoint to delete OIDC settings
@@ -23,6 +23,8 @@ Major Version:
 - [] OIDC Setup on start
 - [] Better errors if needed vars are missing
 - [] Redis/Valkey Authentication
+- [] Move Episode Addition process to the background when adding a podcast
+- [] Fully dynamic Playlist implementation
 
 0.7.9
 

@@ -377,6 +377,39 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
         }
     }
     
+    // Run auto-complete check for all users with auto-complete enabled after episode refresh
+    println!("Running auto-complete threshold check for all users...");
+    match state.db_pool.get_users_with_auto_complete_enabled().await {
+        Ok(users_with_auto_complete) => {
+            let mut total_completed = 0;
+            for user_auto_complete in users_with_auto_complete {
+                match state.db_pool.auto_complete_user_episodes(
+                    user_auto_complete.user_id, 
+                    user_auto_complete.auto_complete_seconds
+                ).await {
+                    Ok(completed_count) => {
+                        if completed_count > 0 {
+                            println!("Auto-completed {} episodes for user {} (threshold: {}s)", 
+                                    completed_count, user_auto_complete.user_id, user_auto_complete.auto_complete_seconds);
+                        }
+                        total_completed += completed_count;
+                    }
+                    Err(e) => {
+                        println!("Failed to run auto-complete for user {}: {}", user_auto_complete.user_id, e);
+                    }
+                }
+            }
+            if total_completed > 0 {
+                println!("Auto-complete threshold check completed: {} total episodes marked complete", total_completed);
+            } else {
+                println!("Auto-complete threshold check completed: no episodes needed completion");
+            }
+        }
+        Err(e) => {
+            println!("Failed to get users with auto-complete enabled: {}", e);
+        }
+    }
+    
     println!("Refresh completed");
     Ok(())
 }
