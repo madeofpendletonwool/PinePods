@@ -214,7 +214,7 @@ pub fn settings() -> Html {
                             <AccordionItem title={i18n.t("settings.mfa_settings")} content={html!{ <setting_components::mfa_settings::MFAOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.export_backup_podcasts")} content={html!{ <setting_components::export_settings::ExportOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.import_podcasts")} content={html!{ <setting_components::import_options::ImportOptions /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.default_login_page")} content={html!{ <setting_components::start_page_options::StartPageOptions /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title={i18n.t("settings.display_settings")} content={html!{ <setting_components::start_page_options::StartPageOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.notification_settings")} content={html!{ <setting_components::notifications::NotificationOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.add_custom_feed")} content={html!{ <setting_components::custom_feed::CustomFeed /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.podcast_sync")} content={html!{ <setting_components::nextcloud_options::SyncOptions /> }} position={AccordionItemPosition::Middle}/>

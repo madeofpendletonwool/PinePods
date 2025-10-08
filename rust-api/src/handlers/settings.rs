@@ -3857,3 +3857,91 @@ pub async fn get_server_default_language() -> Result<Json<serde_json::Value>, Ap
     })))
 }
 
+// Request struct for set_global_podcast_cover_preference - matches playback speed pattern
+#[derive(Deserialize)]
+pub struct SetGlobalPodcastCoverPreference {
+    pub user_id: i32,
+    pub use_podcast_covers: bool,
+}
+
+// Set global podcast cover preference - matches Python api_set_global_podcast_cover_preference function
+pub async fn set_global_podcast_cover_preference(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SetGlobalPodcastCoverPreference>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only set their own preference
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own settings."));
+    }
+
+    state.db_pool.set_global_podcast_cover_preference(request.user_id, request.use_podcast_covers).await?;
+
+    Ok(Json(serde_json::json!({ "detail": "Global podcast cover preference updated." })))
+}
+
+// Request struct for set_podcast_cover_preference - matches podcast playback speed pattern
+#[derive(Deserialize)]
+pub struct SetPodcastCoverPreference {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub use_podcast_covers: bool,
+}
+
+// Set podcast cover preference - matches Python api_set_podcast_cover_preference function
+pub async fn set_podcast_cover_preference(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SetPodcastCoverPreference>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only modify their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    state.db_pool.set_podcast_cover_preference(request.user_id, request.podcast_id, request.use_podcast_covers).await?;
+
+    Ok(Json(serde_json::json!({ "detail": "Podcast cover preference updated." })))
+}
+
+// Request struct for clear_podcast_cover_preference - matches clear playback speed pattern
+#[derive(Deserialize)]
+pub struct ClearPodcastCoverPreference {
+    pub user_id: i32,
+    pub podcast_id: i32,
+}
+
+// Clear podcast cover preference - matches Python api_clear_podcast_cover_preference function
+pub async fn clear_podcast_cover_preference(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ClearPodcastCoverPreference>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only modify their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    state.db_pool.clear_podcast_cover_preference(request.user_id, request.podcast_id).await?;
+
+    Ok(Json(serde_json::json!({ "detail": "Podcast cover preference cleared." })))
+}
+

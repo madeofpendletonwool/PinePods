@@ -13,7 +13,7 @@ use crate::components::host_component::HostDropdown;
 use crate::components::safehtml::SafeHtml;
 use crate::requests::pod_req;
 use crate::requests::pod_req::{
-    call_check_podcast, call_create_share_link, call_download_episode,
+    call_check_podcast, call_create_share_link, call_download_episode, call_download_episode_file,
     call_fetch_podcasting_2_data, call_get_episode_id, call_mark_episode_completed,
     call_mark_episode_uncompleted, call_queue_episode, call_remove_downloaded_episode,
     call_remove_queued_episode, call_remove_saved_episode, call_save_episode,
@@ -452,6 +452,8 @@ pub fn epsiode() -> Html {
     let i18n_mark_episode_complete = i18n.t("episode.mark_episode_complete").to_string();
     let i18n_mark_episode_incomplete = i18n.t("episode.mark_episode_incomplete").to_string();
     let i18n_share_episode = i18n.t("episode.share_episode").to_string();
+    let i18n_download_episode = i18n.t("episode.download_episode").to_string();
+    let i18n_downloading = i18n.t("episode.downloading").to_string();
     let i18n_share_link_description = i18n.t("episode.share_link_description").to_string();
     let i18n_current_page_link_description = i18n.t("episode.current_page_link_description").to_string();
     let i18n_add_podcast_to_enable_actions = i18n.t("episode.add_podcast_to_enable_actions").to_string();
@@ -1198,6 +1200,52 @@ pub fn epsiode() -> Html {
         })
     };
 
+    let download_episode_file = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let episode_id = episode_id.clone();
+        let dispatch = dispatch.clone();
+
+        Callback::from(move |_| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let ep_id_deref = episode_id.clone().unwrap();
+            let dispatch = dispatch.clone();
+
+            // Set global loading state
+            dispatch.reduce_mut(|state| {
+                state.is_loading = Some(true);
+            });
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(_api_key), Some(server_name)) =
+                    (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_download_episode_file(
+                        &server_name,
+                        &api_key.unwrap(),
+                        ep_id_deref,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            web_sys::console::log_1(&"Episode download started".into());
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error downloading episode file: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+                // Clear global loading state
+                dispatch.reduce_mut(|state| {
+                    state.is_loading = Some(false);
+                });
+            });
+        })
+    };
+
     // Define the modal for showing the shareable link
     let share_url_modal = {
         let shared_url_copy = {
@@ -1814,9 +1862,14 @@ pub fn epsiode() -> Html {
                                                     }
                                                     {
                                                         html! {
-                                                            <button onclick={create_share_link.clone()} class="ml-2">
-                                                                <i class="ph ph-share-network text-2xl"></i>
-                                                            </button>
+                                                            <>
+                                                                <button onclick={create_share_link.clone()} class="ml-2">
+                                                                    <i class="ph ph-share-network text-2xl"></i>
+                                                                </button>
+                                                                <button onclick={download_episode_file.clone()} class="ml-2">
+                                                                    <i class="ph ph-download text-2xl"></i>
+                                                                </button>
+                                                            </>
                                                         }
                                                     }
                                                 </h2>
@@ -2115,12 +2168,32 @@ pub fn epsiode() -> Html {
                                                     html! {}
                                                 }
                                             }
-                                            <button
-                                                class="share-button font-bold py-2 px-4 rounded"
-                                                onclick={create_share_link.clone()}
-                                            >
-                                                {&i18n_share_episode}
-                                            </button>
+                                            <div class="flex gap-2">
+                                                <button
+                                                    class="share-button font-bold py-2 px-4 rounded"
+                                                    onclick={create_share_link.clone()}
+                                                >
+                                                    {&i18n_share_episode}
+                                                </button>
+                                                <button
+                                                    class="download-button font-bold py-2 px-4 rounded"
+                                                    onclick={download_episode_file.clone()}
+                                                    disabled={state.is_loading.unwrap_or(false)}
+                                                >
+                                                    {
+                                                        if state.is_loading.unwrap_or(false) {
+                                                            html! {
+                                                                <>
+                                                                    <div class="animate-spin inline-block w-4 h-4 mr-2 border-2 border-gray-300 border-t-white rounded-full"></div>
+                                                                    {&i18n_downloading}
+                                                                </>
+                                                            }
+                                                        } else {
+                                                            html! { {&i18n_download_episode} }
+                                                        }
+                                                    }
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="episode-action-buttons">

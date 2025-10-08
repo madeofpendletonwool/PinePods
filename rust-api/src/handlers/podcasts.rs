@@ -2365,3 +2365,133 @@ pub async fn update_podcast_info(
         }))
     }
 }
+
+// Request/Response structs for podcast merging
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MergePodcastsRequest {
+    pub secondary_podcast_ids: Vec<i32>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MergePodcastsResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct UnmergePodcastResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MergedPodcastsResponse {
+    pub merged_podcast_ids: Vec<i32>,
+}
+
+// Merge podcasts endpoint
+pub async fn merge_podcasts(
+    Path(primary_podcast_id): Path<i32>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<MergePodcastsRequest>,
+) -> Result<Json<MergePodcastsResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Get user ID from API key
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    // Validate request
+    if request.secondary_podcast_ids.is_empty() {
+        return Ok(Json(MergePodcastsResponse {
+            success: false,
+            message: "No secondary podcasts provided".to_string(),
+        }));
+    }
+
+    // Check if primary podcast is in secondary list
+    if request.secondary_podcast_ids.contains(&primary_podcast_id) {
+        return Ok(Json(MergePodcastsResponse {
+            success: false,
+            message: "Cannot merge a podcast with itself".to_string(),
+        }));
+    }
+
+    // Perform the merge
+    match state.db_pool.merge_podcasts(primary_podcast_id, &request.secondary_podcast_ids, user_id).await {
+        Ok(()) => Ok(Json(MergePodcastsResponse {
+            success: true,
+            message: format!("Successfully merged {} podcasts", request.secondary_podcast_ids.len()),
+        })),
+        Err(e) => Ok(Json(MergePodcastsResponse {
+            success: false,
+            message: format!("Failed to merge podcasts: {}", e),
+        })),
+    }
+}
+
+// Unmerge podcast endpoint
+pub async fn unmerge_podcast(
+    Path((primary_podcast_id, target_podcast_id)): Path<(i32, i32)>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<UnmergePodcastResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Get user ID from API key
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    // Perform the unmerge
+    match state.db_pool.unmerge_podcast(primary_podcast_id, target_podcast_id, user_id).await {
+        Ok(()) => Ok(Json(UnmergePodcastResponse {
+            success: true,
+            message: "Successfully unmerged podcast".to_string(),
+        })),
+        Err(e) => Ok(Json(UnmergePodcastResponse {
+            success: false,
+            message: format!("Failed to unmerge podcast: {}", e),
+        })),
+    }
+}
+
+// Get merged podcasts endpoint
+pub async fn get_merged_podcasts(
+    Path(podcast_id): Path<i32>,
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<MergedPodcastsResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Invalid API key"));
+    }
+
+    // Get user ID from API key
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+
+    // Check if user owns the podcast
+    if !check_user_access(&state, &api_key, user_id).await? {
+        return Err(AppError::forbidden("You can only access your own podcasts"));
+    }
+
+    // Get merged podcast IDs
+    let merged_ids = state.db_pool.get_merged_podcast_ids(podcast_id).await?;
+    
+    Ok(Json(MergedPodcastsResponse {
+        merged_podcast_ids: merged_ids,
+    }))
+}

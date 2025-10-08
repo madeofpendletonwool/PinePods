@@ -185,7 +185,8 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
             let rows = sqlx::query(
                 r#"SELECT podcastid, feedurl, artworkurl, autodownload, username, password,
                           isyoutubechannel, userid, COALESCE(feedurl, '') as channel_id, feedcutoffdays, podcastname
-                   FROM "Podcasts""#
+                   FROM "Podcasts" 
+                   WHERE COALESCE(refreshpodcast, TRUE) = TRUE"#
             )
             .fetch_all(pool)
             .await?;
@@ -282,7 +283,8 @@ async fn refresh_all_podcasts_background(state: &AppState) -> AppResult<()> {
             let rows = sqlx::query(
                 "SELECT PodcastID, FeedURL, ArtworkURL, AutoDownload, Username, Password,
                         IsYouTubeChannel, UserID, COALESCE(FeedURL, '') as channel_id, FeedCutoffDays, PodcastName
-                 FROM Podcasts"
+                 FROM Podcasts
+                 WHERE COALESCE(RefreshPodcast, 1) = 1"
             )
             .fetch_all(pool)
             .await?;

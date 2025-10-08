@@ -3097,3 +3097,49 @@ pub async fn call_get_server_default_language(
         )))
     }
 }
+
+// Podcast Cover Preference Requests
+
+#[derive(Serialize, Debug)]
+pub struct SetGlobalPodcastCoverPreferenceRequest {
+    pub user_id: i32,
+    pub use_podcast_covers: bool,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct SetGlobalPodcastCoverPreferenceResponse {
+    pub detail: String,
+}
+
+pub async fn call_set_global_podcast_cover_preference(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    use_podcast_covers: bool,
+) -> Result<String, Error> {
+    let url = format!("{}/api/data/user/set_global_podcast_cover_preference", server_name);
+    
+    let request_body = SetGlobalPodcastCoverPreferenceRequest {
+        user_id,
+        use_podcast_covers,
+    };
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: SetGlobalPodcastCoverPreferenceResponse = response.json().await?;
+        Ok(response_data.detail)
+    } else {
+        Err(Error::msg(format!(
+            "Error setting global podcast cover preference: {}",
+            response.status_text()
+        )))
+    }
+}

@@ -396,7 +396,11 @@ impl DatabasePool {
                             "Episodes".episodetitle as episodetitle,
                             "Episodes".episodepubdate as episodepubdate,
                             "Episodes".episodedescription as episodedescription,
-                            "Episodes".episodeartwork as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl as episodeurl,
                             "Episodes".episodeduration as episodeduration,
                             "UserEpisodeHistory".listenduration as listenduration,
@@ -408,6 +412,7 @@ impl DatabasePool {
                             FALSE as is_youtube
                         FROM "Episodes"
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "Episodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "UserEpisodeHistory".userid = $1
@@ -431,7 +436,11 @@ impl DatabasePool {
                             "YouTubeVideos".videotitle as episodetitle,
                             "YouTubeVideos".publishedat as episodepubdate,
                             "YouTubeVideos".videodescription as episodedescription,
-                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "YouTubeVideos".thumbnailurl
+                            END as episodeartwork,
                             "YouTubeVideos".videourl as episodeurl,
                             "YouTubeVideos".duration as episodeduration,
                             "YouTubeVideos".listenposition as listenduration,
@@ -443,6 +452,7 @@ impl DatabasePool {
                             TRUE as is_youtube
                         FROM "YouTubeVideos"
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "SavedVideos" ON
                             "YouTubeVideos".videoid = "SavedVideos".videoid
                             AND "SavedVideos".userid = $2
@@ -498,7 +508,11 @@ impl DatabasePool {
                             Episodes.EpisodeTitle as episodetitle,
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
-                            Episodes.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                ELSE Episodes.EpisodeArtwork
+                            END as episodeartwork,
                             Episodes.EpisodeURL as episodeurl,
                             Episodes.EpisodeDuration as episodeduration,
                             UserEpisodeHistory.ListenDuration as listenduration,
@@ -510,6 +524,7 @@ impl DatabasePool {
                             FALSE as is_youtube
                         FROM Episodes
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
                             AND UserEpisodeHistory.UserID = ?
@@ -533,7 +548,11 @@ impl DatabasePool {
                             YouTubeVideos.VideoTitle as episodetitle,
                             YouTubeVideos.PublishedAt as episodepubdate,
                             YouTubeVideos.VideoDescription as episodedescription,
-                            YouTubeVideos.ThumbnailURL as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                ELSE YouTubeVideos.ThumbnailURL
+                            END as episodeartwork,
                             YouTubeVideos.VideoURL as episodeurl,
                             YouTubeVideos.Duration as episodeduration,
                             YouTubeVideos.ListenPosition as listenduration,
@@ -545,6 +564,7 @@ impl DatabasePool {
                             TRUE as is_youtube
                         FROM YouTubeVideos
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN SavedVideos ON
                             YouTubeVideos.VideoID = SavedVideos.VideoID
                             AND SavedVideos.UserID = ?
@@ -1407,7 +1427,7 @@ impl DatabasePool {
                         COALESCE(explicit, false) as explicit,
                         COALESCE(podcastindexid, 0) as podcastindexid
                     FROM "Podcasts"
-                    WHERE userid = $1
+                    WHERE userid = $1 AND COALESCE(displaypodcast, TRUE) = TRUE
                     ORDER BY podcastname"#
                 )
                 .bind(user_id)
@@ -1454,7 +1474,7 @@ impl DatabasePool {
                         COALESCE(Explicit, false) as explicit,
                         COALESCE(PodcastIndexID, 0) as podcastindexid
                     FROM Podcasts
-                    WHERE UserID = ?
+                    WHERE UserID = ? AND COALESCE(DisplayPodcast, 1) = 1
                     ORDER BY PodcastName"
                 )
                 .bind(user_id)
@@ -1513,7 +1533,7 @@ impl DatabasePool {
                     FROM "Podcasts" p
                     LEFT JOIN "Episodes" e ON p.podcastid = e.podcastid
                     LEFT JOIN "UserEpisodeHistory" ueh ON e.episodeid = ueh.episodeid AND ueh.userid = $1
-                    WHERE p.userid = $1
+                    WHERE p.userid = $1 AND COALESCE(p.displaypodcast, TRUE) = TRUE
                     GROUP BY p.podcastid, p.podcastname, p.artworkurl, p.description, 
                              p.episodecount, p.websiteurl, p.feedurl, p.author, 
                              p.categories, p.explicit, p.podcastindexid, p.isyoutube
@@ -1576,7 +1596,7 @@ impl DatabasePool {
                     FROM Podcasts p
                     LEFT JOIN Episodes e ON p.PodcastID = e.PodcastID
                     LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
-                    WHERE p.UserID = ?
+                    WHERE p.UserID = ? AND COALESCE(p.DisplayPodcast, 1) = 1
                     GROUP BY p.PodcastID, p.PodcastName, p.ArtworkURL, p.Description, 
                              p.EpisodeCount, p.WebsiteURL, p.FeedURL, p.Author, 
                              p.Categories, p.Explicit, p.PodcastIndexID, p.IsYouTubeChannel
@@ -1614,6 +1634,216 @@ impl DatabasePool {
                     });
                 }
                 Ok(podcasts)
+            }
+        }
+    }
+
+    // Merge podcasts - set DisplayPodcast=FALSE for secondary podcasts and update primary with merged IDs
+    pub async fn merge_podcasts(&self, primary_podcast_id: i32, secondary_podcast_ids: &[i32], user_id: i32) -> AppResult<()> {
+        // Validate that all podcasts belong to the user
+        for &podcast_id in std::iter::once(&primary_podcast_id).chain(secondary_podcast_ids.iter()) {
+            let exists = self.verify_podcast_belongs_to_user(podcast_id, user_id).await?;
+            if !exists {
+                return Err(crate::error::AppError::forbidden("One or more podcasts do not belong to this user"));
+            }
+        }
+
+        // Prevent circular merges - check if any secondary podcasts are already primary podcasts with merges
+        for &secondary_id in secondary_podcast_ids {
+            let existing_merges = self.get_merged_podcast_ids(secondary_id).await?;
+            if !existing_merges.is_empty() {
+                return Err(crate::error::AppError::bad_request("Cannot merge a podcast that is already a primary podcast with merged podcasts"));
+            }
+        }
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // Set DisplayPodcast=FALSE for secondary podcasts
+                for &secondary_id in secondary_podcast_ids {
+                    sqlx::query(r#"UPDATE "Podcasts" SET displaypodcast = FALSE WHERE podcastid = $1"#)
+                        .bind(secondary_id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                
+                // Get current merged IDs for primary podcast
+                let current_merged_ids = self.get_merged_podcast_ids(primary_podcast_id).await?;
+                let mut all_merged_ids = current_merged_ids;
+                all_merged_ids.extend_from_slice(secondary_podcast_ids);
+                
+                // Update primary podcast with merged IDs
+                let merged_json = serde_json::to_string(&all_merged_ids)?;
+                sqlx::query(r#"UPDATE "Podcasts" SET mergedpodcastids = $1 WHERE podcastid = $2"#)
+                    .bind(merged_json)
+                    .bind(primary_podcast_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // Set DisplayPodcast=0 for secondary podcasts
+                for &secondary_id in secondary_podcast_ids {
+                    sqlx::query("UPDATE Podcasts SET DisplayPodcast = 0 WHERE PodcastID = ?")
+                        .bind(secondary_id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                
+                // Get current merged IDs for primary podcast
+                let current_merged_ids = self.get_merged_podcast_ids(primary_podcast_id).await?;
+                let mut all_merged_ids = current_merged_ids;
+                all_merged_ids.extend_from_slice(secondary_podcast_ids);
+                
+                // Update primary podcast with merged IDs
+                let merged_json = serde_json::to_string(&all_merged_ids)?;
+                sqlx::query("UPDATE Podcasts SET MergedPodcastIDs = ? WHERE PodcastID = ?")
+                    .bind(merged_json)
+                    .bind(primary_podcast_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Unmerge a specific podcast from a primary podcast
+    pub async fn unmerge_podcast(&self, primary_podcast_id: i32, target_podcast_id: i32, user_id: i32) -> AppResult<()> {
+        // Validate ownership
+        let primary_exists = self.verify_podcast_belongs_to_user(primary_podcast_id, user_id).await?;
+        let target_exists = self.verify_podcast_belongs_to_user(target_podcast_id, user_id).await?;
+        
+        if !primary_exists || !target_exists {
+            return Err(crate::error::AppError::forbidden("One or more podcasts do not belong to this user"));
+        }
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // Get current merged IDs and remove the target
+                let mut merged_ids = self.get_merged_podcast_ids(primary_podcast_id).await?;
+                merged_ids.retain(|&id| id != target_podcast_id);
+                
+                // Update primary podcast
+                let merged_json = if merged_ids.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::to_string(&merged_ids)?)
+                };
+                
+                sqlx::query(r#"UPDATE "Podcasts" SET mergedpodcastids = $1 WHERE podcastid = $2"#)
+                    .bind(merged_json)
+                    .bind(primary_podcast_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                // Set DisplayPodcast=TRUE for the unmerged podcast
+                sqlx::query(r#"UPDATE "Podcasts" SET displaypodcast = TRUE WHERE podcastid = $1"#)
+                    .bind(target_podcast_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // Get current merged IDs and remove the target
+                let mut merged_ids = self.get_merged_podcast_ids(primary_podcast_id).await?;
+                merged_ids.retain(|&id| id != target_podcast_id);
+                
+                // Update primary podcast
+                let merged_json = if merged_ids.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::to_string(&merged_ids)?)
+                };
+                
+                sqlx::query("UPDATE Podcasts SET MergedPodcastIDs = ? WHERE PodcastID = ?")
+                    .bind(merged_json)
+                    .bind(primary_podcast_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                // Set DisplayPodcast=1 for the unmerged podcast
+                sqlx::query("UPDATE Podcasts SET DisplayPodcast = 1 WHERE PodcastID = ?")
+                    .bind(target_podcast_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Get merged podcast IDs for a primary podcast
+    pub async fn get_merged_podcast_ids(&self, podcast_id: i32) -> AppResult<Vec<i32>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT mergedpodcastids FROM "Podcasts" WHERE podcastid = $1"#)
+                    .bind(podcast_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    if let Some(merged_json) = row.try_get::<Option<String>, _>("mergedpodcastids")? {
+                        let merged_ids: Vec<i32> = serde_json::from_str(&merged_json).unwrap_or_default();
+                        Ok(merged_ids)
+                    } else {
+                        Ok(Vec::new())
+                    }
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT MergedPodcastIDs FROM Podcasts WHERE PodcastID = ?")
+                    .bind(podcast_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    if let Some(merged_json) = row.try_get::<Option<String>, _>("mergedpodcastids")? {
+                        let merged_ids: Vec<i32> = serde_json::from_str(&merged_json).unwrap_or_default();
+                        Ok(merged_ids)
+                    } else {
+                        Ok(Vec::new())
+                    }
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+        }
+    }
+
+    // Helper function to verify a podcast belongs to a user
+    pub async fn verify_podcast_belongs_to_user(&self, podcast_id: i32, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let count = sqlx::query(r#"SELECT COUNT(*) as count FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                Ok(count.try_get::<i64, _>("count")? > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let count = sqlx::query("SELECT COUNT(*) as count FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                Ok(count.try_get::<i64, _>("count")? > 0)
             }
         }
     }
@@ -1917,7 +2147,11 @@ impl DatabasePool {
                             "Podcasts".podcastname as podcastname,
                             "Episodes".episodepubdate as episodepubdate,
                             "Episodes".episodedescription as episodedescription,
-                            "Episodes".episodeartwork as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl as episodeurl,
                             "EpisodeQueue".queueposition as queueposition,
                             "Episodes".episodeduration as episodeduration,
@@ -1932,6 +2166,7 @@ impl DatabasePool {
                         FROM "EpisodeQueue"
                         INNER JOIN "Episodes" ON "EpisodeQueue".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "EpisodeQueue".episodeid = "UserEpisodeHistory".episodeid
                             AND "EpisodeQueue".userid = "UserEpisodeHistory".userid
@@ -1950,7 +2185,11 @@ impl DatabasePool {
                             "Podcasts".podcastname as podcastname,
                             "YouTubeVideos".publishedat as episodepubdate,
                             "YouTubeVideos".videodescription as episodedescription,
-                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "YouTubeVideos".thumbnailurl
+                            END as episodeartwork,
                             "YouTubeVideos".videourl as episodeurl,
                             "EpisodeQueue".queueposition as queueposition,
                             "YouTubeVideos".duration as episodeduration,
@@ -1965,6 +2204,7 @@ impl DatabasePool {
                         FROM "EpisodeQueue"
                         INNER JOIN "YouTubeVideos" ON "EpisodeQueue".episodeid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "SavedVideos" ON
                             "EpisodeQueue".episodeid = "SavedVideos".videoid
                             AND "EpisodeQueue".userid = "SavedVideos".userid
@@ -2017,7 +2257,11 @@ impl DatabasePool {
                             Podcasts.PodcastName as podcastname,
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
-                            Episodes.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                ELSE Episodes.EpisodeArtwork
+                            END as episodeartwork,
                             Episodes.EpisodeURL as episodeurl,
                             EpisodeQueue.QueuePosition as queueposition,
                             Episodes.EpisodeDuration as episodeduration,
@@ -2032,6 +2276,7 @@ impl DatabasePool {
                         FROM EpisodeQueue
                         INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             EpisodeQueue.EpisodeID = UserEpisodeHistory.EpisodeID
                             AND EpisodeQueue.UserID = UserEpisodeHistory.UserID
@@ -2050,7 +2295,11 @@ impl DatabasePool {
                             Podcasts.PodcastName as podcastname,
                             YouTubeVideos.PublishedAt as episodepubdate,
                             YouTubeVideos.VideoDescription as episodedescription,
-                            YouTubeVideos.ThumbnailURL as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                ELSE YouTubeVideos.ThumbnailURL
+                            END as episodeartwork,
                             YouTubeVideos.VideoURL as episodeurl,
                             EpisodeQueue.QueuePosition as queueposition,
                             YouTubeVideos.Duration as episodeduration,
@@ -2065,6 +2314,7 @@ impl DatabasePool {
                         FROM EpisodeQueue
                         INNER JOIN YouTubeVideos ON EpisodeQueue.EpisodeID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN SavedVideos ON
                             EpisodeQueue.EpisodeID = SavedVideos.VideoID
                             AND EpisodeQueue.UserID = SavedVideos.UserID
@@ -2751,7 +3001,11 @@ impl DatabasePool {
                         e.episodetitle,
                         e.episodedescription,
                         e.episodeurl,
-                        e.episodeartwork,
+                        CASE 
+                            WHEN p.usepodcastcoverscustomized = TRUE AND p.usepodcastcovers = TRUE THEN p.artworkurl
+                            WHEN u.usepodcastcovers = TRUE THEN p.artworkurl
+                            ELSE e.episodeartwork
+                        END as episodeartwork,
                         e.episodepubdate,
                         e.episodeduration,
                         COALESCE(h.listenduration, 0) as listenduration,
@@ -2760,6 +3014,7 @@ impl DatabasePool {
                         CASE WHEN eq.episodeid IS NOT NULL THEN true ELSE false END as queued,
                         CASE WHEN de.episodeid IS NOT NULL THEN true ELSE false END as downloaded
                     FROM "Podcasts" p
+                    LEFT JOIN "Users" u ON p.userid = u.userid
                     LEFT JOIN "Episodes" e ON p.podcastid = e.podcastid
                     LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
                     LEFT JOIN "SavedEpisodes" se ON e.episodeid = se.episodeid AND se.userid = $2
@@ -2836,7 +3091,11 @@ impl DatabasePool {
                         e.EpisodeTitle as episodetitle,
                         e.EpisodeDescription as episodedescription,
                         e.EpisodeURL as episodeurl,
-                        e.EpisodeArtwork as episodeartwork,
+                        CASE 
+                            WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                            WHEN u.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                            ELSE e.EpisodeArtwork
+                        END as episodeartwork,
                         e.EpisodePubDate as episodepubdate,
                         e.EpisodeDuration as episodeduration,
                         COALESCE(h.ListenDuration, 0) as listenduration,
@@ -2845,6 +3104,7 @@ impl DatabasePool {
                         CASE WHEN eq.EpisodeID IS NOT NULL THEN true ELSE false END as queued,
                         CASE WHEN de.EpisodeID IS NOT NULL THEN true ELSE false END as downloaded
                     FROM Podcasts p
+                    LEFT JOIN Users u ON p.UserID = u.UserID
                     LEFT JOIN Episodes e ON p.PodcastID = e.PodcastID
                     LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = ?
                     LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
@@ -2931,7 +3191,11 @@ impl DatabasePool {
                         "Episodes".episodetitle,
                         "Episodes".episodepubdate,
                         "Episodes".episodedescription,
-                        "Episodes".episodeartwork,
+                        CASE 
+                            WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            ELSE "Episodes".episodeartwork
+                        END as episodeartwork,
                         "Episodes".episodeurl,
                         "Episodes".episodeduration,
                         "Episodes".completed,
@@ -2944,6 +3208,7 @@ impl DatabasePool {
                         CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
                     FROM "Episodes"
                     INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                    LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                     LEFT JOIN "UserEpisodeHistory" ON
                         "Episodes".episodeid = "UserEpisodeHistory".episodeid
                         AND "UserEpisodeHistory".userid = $1
@@ -3017,7 +3282,11 @@ impl DatabasePool {
                         "Episodes".episodetitle,
                         "Episodes".episodepubdate,
                         "Episodes".episodedescription,
-                        "Episodes".episodeartwork,
+                        CASE 
+                            WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            ELSE "Episodes".episodeartwork
+                        END as episodeartwork,
                         "Episodes".episodeurl,
                         "Episodes".episodeduration,
                         "Episodes".completed,
@@ -3031,6 +3300,7 @@ impl DatabasePool {
                     FROM "UserEpisodeHistory"
                     JOIN "Episodes" ON "UserEpisodeHistory".episodeid = "Episodes".episodeid
                     JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                    LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                     LEFT JOIN "SavedEpisodes" ON
                         "Episodes".episodeid = "SavedEpisodes".episodeid
                         AND "SavedEpisodes".userid = $1
@@ -3200,7 +3470,11 @@ impl DatabasePool {
                         Episodes.EpisodeTitle,
                         Episodes.EpisodePubDate,
                         Episodes.EpisodeDescription,
-                        Episodes.EpisodeArtwork,
+                        CASE 
+                            WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                            WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                            ELSE Episodes.EpisodeArtwork
+                        END as EpisodeArtwork,
                         Episodes.EpisodeURL,
                         Episodes.EpisodeDuration,
                         Episodes.Completed,
@@ -3213,6 +3487,7 @@ impl DatabasePool {
                         CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
                     FROM Episodes
                     INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                    LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                     LEFT JOIN UserEpisodeHistory ON
                         Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
                         AND UserEpisodeHistory.UserID = ?
@@ -3286,7 +3561,11 @@ impl DatabasePool {
                         Episodes.EpisodeTitle,
                         Episodes.EpisodePubDate,
                         Episodes.EpisodeDescription,
-                        Episodes.EpisodeArtwork,
+                        CASE 
+                            WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                            WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                            ELSE Episodes.EpisodeArtwork
+                        END as EpisodeArtwork,
                         Episodes.EpisodeURL,
                         Episodes.EpisodeDuration,
                         Episodes.Completed,
@@ -3300,6 +3579,7 @@ impl DatabasePool {
                     FROM UserEpisodeHistory
                     JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID
                     JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                    LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                     LEFT JOIN SavedEpisodes ON
                         Episodes.EpisodeID = SavedEpisodes.EpisodeID
                         AND SavedEpisodes.UserID = ?
@@ -3868,7 +4148,11 @@ impl DatabasePool {
                             "Episodes".episodepubdate as episodepubdate,
                             "Episodes".episodedescription as episodedescription,
                             "Episodes".episodeid as episodeid,
-                            "Episodes".episodeartwork as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl as episodeurl,
                             "Episodes".episodeduration as episodeduration,
                             "Podcasts".websiteurl as websiteurl,
@@ -3882,6 +4166,7 @@ impl DatabasePool {
                         FROM "SavedEpisodes"
                         INNER JOIN "Episodes" ON "SavedEpisodes".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "SavedEpisodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "UserEpisodeHistory".userid = $1
@@ -3902,7 +4187,11 @@ impl DatabasePool {
                             "YouTubeVideos".publishedat as episodepubdate,
                             "YouTubeVideos".videodescription as episodedescription,
                             "YouTubeVideos".videoid as episodeid,
-                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "YouTubeVideos".thumbnailurl
+                            END as episodeartwork,
                             "YouTubeVideos".videourl as episodeurl,
                             "YouTubeVideos".duration as episodeduration,
                             "Podcasts".websiteurl as websiteurl,
@@ -3916,6 +4205,7 @@ impl DatabasePool {
                         FROM "SavedVideos"
                         INNER JOIN "YouTubeVideos" ON "SavedVideos".videoid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "EpisodeQueue" ON
                             "SavedVideos".videoid = "EpisodeQueue".episodeid
                             AND "EpisodeQueue".userid = $5
@@ -3972,7 +4262,11 @@ impl DatabasePool {
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
                             Episodes.EpisodeID as episodeid,
-                            Episodes.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                ELSE Episodes.EpisodeArtwork
+                            END as episodeartwork,
                             Episodes.EpisodeURL as episodeurl,
                             Episodes.EpisodeDuration as episodeduration,
                             Podcasts.WebsiteURL as websiteurl,
@@ -3986,6 +4280,7 @@ impl DatabasePool {
                         FROM SavedEpisodes
                         INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             SavedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID
                             AND UserEpisodeHistory.UserID = ?
@@ -4006,7 +4301,11 @@ impl DatabasePool {
                             YouTubeVideos.PublishedAt as episodepubdate,
                             YouTubeVideos.VideoDescription as episodedescription,
                             YouTubeVideos.VideoID as episodeid,
-                            YouTubeVideos.ThumbnailURL as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                ELSE YouTubeVideos.ThumbnailURL
+                            END as episodeartwork,
                             YouTubeVideos.VideoURL as episodeurl,
                             YouTubeVideos.Duration as episodeduration,
                             Podcasts.WebsiteURL as websiteurl,
@@ -4020,6 +4319,7 @@ impl DatabasePool {
                         FROM SavedVideos
                         INNER JOIN YouTubeVideos ON SavedVideos.VideoID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN EpisodeQueue ON
                             SavedVideos.VideoID = EpisodeQueue.EpisodeID
                             AND EpisodeQueue.UserID = ?
@@ -6149,7 +6449,11 @@ impl DatabasePool {
                             "Episodes".episodetitle as episodetitle,
                             "Episodes".episodepubdate as episodepubdate,
                             "Episodes".episodedescription as episodedescription,
-                            "Episodes".episodeartwork as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl as episodeurl,
                             "Episodes".episodeduration as episodeduration,
                             "Podcasts".podcastindexid as podcastindexid,
@@ -6164,6 +6468,7 @@ impl DatabasePool {
                         FROM "DownloadedEpisodes"
                         INNER JOIN "Episodes" ON "DownloadedEpisodes".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "DownloadedEpisodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "DownloadedEpisodes".userid = "UserEpisodeHistory".userid
@@ -6186,7 +6491,11 @@ impl DatabasePool {
                             "YouTubeVideos".videotitle as episodetitle,
                             "YouTubeVideos".publishedat as episodepubdate,
                             "YouTubeVideos".videodescription as episodedescription,
-                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "YouTubeVideos".thumbnailurl
+                            END as episodeartwork,
                             "YouTubeVideos".videourl as episodeurl,
                             "YouTubeVideos".duration as episodeduration,
                             "Podcasts".podcastindexid as podcastindexid,
@@ -6201,6 +6510,7 @@ impl DatabasePool {
                         FROM "DownloadedVideos"
                         INNER JOIN "YouTubeVideos" ON "DownloadedVideos".videoid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "SavedVideos" ON
                             "DownloadedVideos".videoid = "SavedVideos".videoid
                             AND "SavedVideos".userid = $4
@@ -6261,7 +6571,11 @@ impl DatabasePool {
                             Episodes.EpisodeTitle as episodetitle,
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
-                            Episodes.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                ELSE Episodes.EpisodeArtwork
+                            END as episodeartwork,
                             Episodes.EpisodeURL as episodeurl,
                             Episodes.EpisodeDuration as episodeduration,
                             Podcasts.PodcastIndexID as podcastindexid,
@@ -6276,6 +6590,7 @@ impl DatabasePool {
                         FROM DownloadedEpisodes
                         INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             DownloadedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID
                             AND DownloadedEpisodes.UserID = UserEpisodeHistory.UserID
@@ -6298,7 +6613,11 @@ impl DatabasePool {
                             YouTubeVideos.VideoTitle as episodetitle,
                             YouTubeVideos.PublishedAt as episodepubdate,
                             YouTubeVideos.VideoDescription as episodedescription,
-                            YouTubeVideos.ThumbnailURL as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                ELSE YouTubeVideos.ThumbnailURL
+                            END as episodeartwork,
                             YouTubeVideos.VideoURL as episodeurl,
                             YouTubeVideos.Duration as episodeduration,
                             Podcasts.PodcastIndexID as podcastindexid,
@@ -6313,6 +6632,7 @@ impl DatabasePool {
                         FROM DownloadedVideos
                         INNER JOIN YouTubeVideos ON DownloadedVideos.VideoID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN SavedVideos ON
                             DownloadedVideos.VideoID = SavedVideos.VideoID
                             AND SavedVideos.UserID = ?
@@ -6533,11 +6853,17 @@ impl DatabasePool {
                     r#"SELECT 
                         "Podcasts".podcastid, "Podcasts".podcastname, "Episodes".episodeid,
                         "Episodes".episodetitle, "Episodes".episodepubdate, "Episodes".episodedescription,
-                        "Episodes".episodeartwork, "Episodes".episodeurl, "Episodes".episodeduration,
+                        CASE 
+                            WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            ELSE "Episodes".episodeartwork
+                        END as episodeartwork,
+                        "Episodes".episodeurl, "Episodes".episodeduration,
                         "Episodes".completed,
                         "UserEpisodeHistory".listenduration, CAST("Episodes".episodeid AS VARCHAR) AS guid
                        FROM "Episodes"
                        INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                       LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                        LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid AND "UserEpisodeHistory".userid = $1
                        WHERE "Podcasts".podcastid = $2 AND "Podcasts".userid = $3
                        ORDER BY "Episodes".episodepubdate DESC"#
@@ -6577,11 +6903,17 @@ impl DatabasePool {
                     "SELECT 
                         Podcasts.PodcastID, Podcasts.PodcastName, Episodes.EpisodeID,
                         Episodes.EpisodeTitle, Episodes.EpisodePubDate, Episodes.EpisodeDescription,
-                        Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration,
+                        CASE 
+                            WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                            WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                            ELSE Episodes.EpisodeArtwork
+                        END as EpisodeArtwork,
+                        Episodes.EpisodeURL, Episodes.EpisodeDuration,
                         Episodes.Completed,
                         UserEpisodeHistory.ListenDuration, CAST(Episodes.EpisodeID AS CHAR) AS guid
                      FROM Episodes
                      INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                     LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                      LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = ?
                      WHERE Podcasts.PodcastID = ? AND Podcasts.UserID = ?
                      ORDER BY Episodes.EpisodePubDate DESC"
@@ -8207,7 +8539,11 @@ impl DatabasePool {
                             "Episodes".episodetitle as "Episodetitle",
                             "Episodes".episodepubdate as "Episodepubdate",
                             "Episodes".episodedescription as "Episodedescription",
-                            "Episodes".episodeartwork as "Episodeartwork",
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as "Episodeartwork",
                             "Episodes".episodeurl as "Episodeurl",
                             "Episodes".episodeduration as "Episodeduration",
                             "UserEpisodeHistory".listenduration as "Listenduration",
@@ -8219,6 +8555,7 @@ impl DatabasePool {
                             FALSE as is_youtube
                         FROM "Episodes"
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "Episodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "UserEpisodeHistory".userid = $1
@@ -8232,7 +8569,14 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedEpisodes" ON
                             "Episodes".episodeid = "DownloadedEpisodes".episodeid
                             AND "DownloadedEpisodes".userid = $1
-                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = $2
+                        WHERE "Podcasts".userid = $1 AND (
+                            "Podcasts".podcastid = $2 OR
+                            "Podcasts".podcastid IN (
+                                SELECT jsonb_array_elements_text(COALESCE(mergedpodcastids::jsonb, '[]'::jsonb))::int
+                                FROM "Podcasts" p2
+                                WHERE p2.podcastid = $2 AND p2.userid = $1
+                            )
+                        )
 
                         UNION ALL
 
@@ -8241,7 +8585,11 @@ impl DatabasePool {
                             "YouTubeVideos".videotitle as "Episodetitle",
                             "YouTubeVideos".publishedat as "Episodepubdate",
                             "YouTubeVideos".videodescription as "Episodedescription",
-                            "YouTubeVideos".thumbnailurl as "Episodeartwork",
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "YouTubeVideos".thumbnailurl
+                            END as "Episodeartwork",
                             "YouTubeVideos".videourl as "Episodeurl",
                             "YouTubeVideos".duration as "Episodeduration",
                             "YouTubeVideos".listenposition as "Listenduration",
@@ -8253,6 +8601,7 @@ impl DatabasePool {
                             TRUE as is_youtube
                         FROM "YouTubeVideos"
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "SavedVideos" ON
                             "YouTubeVideos".videoid = "SavedVideos".videoid
                             AND "SavedVideos".userid = $1
@@ -8263,7 +8612,14 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedVideos" ON
                             "YouTubeVideos".videoid = "DownloadedVideos".videoid
                             AND "DownloadedVideos".userid = $1
-                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = $2
+                        WHERE "Podcasts".userid = $1 AND (
+                            "Podcasts".podcastid = $2 OR
+                            "Podcasts".podcastid IN (
+                                SELECT jsonb_array_elements_text(COALESCE(mergedpodcastids::jsonb, '[]'::jsonb))::int
+                                FROM "Podcasts" p2
+                                WHERE p2.podcastid = $2 AND p2.userid = $1
+                            )
+                        )
                     ) combined
                     ORDER BY "Episodepubdate" DESC"#
                 )
@@ -8305,7 +8661,11 @@ impl DatabasePool {
                             Episodes.EpisodeTitle as Episodetitle,
                             Episodes.EpisodePubDate as Episodepubdate,
                             Episodes.EpisodeDescription as Episodedescription,
-                            Episodes.EpisodeArtwork as Episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                ELSE Episodes.EpisodeArtwork
+                            END as Episodeartwork,
                             Episodes.EpisodeURL as Episodeurl,
                             Episodes.EpisodeDuration as Episodeduration,
                             UserEpisodeHistory.ListenDuration as Listenduration,
@@ -8317,6 +8677,7 @@ impl DatabasePool {
                             FALSE as is_youtube
                         FROM Episodes
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
                             AND UserEpisodeHistory.UserID = ?
@@ -8330,7 +8691,15 @@ impl DatabasePool {
                         LEFT JOIN DownloadedEpisodes ON
                             Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
                             AND DownloadedEpisodes.UserID = ?
-                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID = ?
+                        WHERE Podcasts.UserID = ? AND (
+                            Podcasts.PodcastID = ? OR
+                            Podcasts.PodcastID IN (
+                                SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) AS UNSIGNED)
+                                FROM (SELECT 0 as n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) numbers
+                                INNER JOIN Podcasts p2 ON p2.PodcastID = ? AND p2.UserID = ?
+                                WHERE JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) IS NOT NULL
+                            )
+                        )
 
                         UNION ALL
 
@@ -8339,7 +8708,11 @@ impl DatabasePool {
                             YouTubeVideos.VideoTitle as Episodetitle,
                             YouTubeVideos.PublishedAt as Episodepubdate,
                             YouTubeVideos.VideoDescription as Episodedescription,
-                            YouTubeVideos.ThumbnailURL as Episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                ELSE YouTubeVideos.ThumbnailURL
+                            END as Episodeartwork,
                             YouTubeVideos.VideoURL as Episodeurl,
                             YouTubeVideos.Duration as Episodeduration,
                             YouTubeVideos.ListenPosition as Listenduration,
@@ -8351,6 +8724,7 @@ impl DatabasePool {
                             TRUE as is_youtube
                         FROM YouTubeVideos
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN SavedVideos ON
                             YouTubeVideos.VideoID = SavedVideos.VideoID
                             AND SavedVideos.UserID = ?
@@ -8361,7 +8735,15 @@ impl DatabasePool {
                         LEFT JOIN DownloadedVideos ON
                             YouTubeVideos.VideoID = DownloadedVideos.VideoID
                             AND DownloadedVideos.UserID = ?
-                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID = ?
+                        WHERE Podcasts.UserID = ? AND (
+                            Podcasts.PodcastID = ? OR
+                            Podcasts.PodcastID IN (
+                                SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) AS UNSIGNED)
+                                FROM (SELECT 0 as n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) numbers
+                                INNER JOIN Podcasts p2 ON p2.PodcastID = ? AND p2.UserID = ?
+                                WHERE JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) IS NOT NULL
+                            )
+                        )
                     ) combined
                     ORDER BY Episodepubdate DESC"
                 )
@@ -8371,11 +8753,15 @@ impl DatabasePool {
                 .bind(user_id)
                 .bind(user_id)
                 .bind(podcast_id)
+                .bind(podcast_id)
+                .bind(user_id)
                 .bind(user_id)
                 .bind(user_id)
                 .bind(user_id)
                 .bind(user_id)
                 .bind(podcast_id)
+                .bind(podcast_id)
+                .bind(user_id)
                 .fetch_all(pool)
                 .await?;
 
@@ -14705,7 +15091,12 @@ impl DatabasePool {
                         CASE
                             WHEN pe.episodeartwork IS NULL THEN
                                 (SELECT artworkurl FROM "Podcasts" WHERE podcastid = pe.podcastid)
-                            ELSE pe.episodeartwork
+                            ELSE
+                                CASE 
+                                    WHEN p.usepodcastcoverscustomized = TRUE AND p.usepodcastcovers = TRUE THEN p.artworkurl
+                                    WHEN u.usepodcastcovers = TRUE THEN p.artworkurl
+                                    ELSE pe.episodeartwork
+                                END
                         END as episodeartwork,
                         pe.episodepubdate,
                         pe.episodeduration,
@@ -14747,6 +15138,7 @@ impl DatabasePool {
                     FROM "PeopleEpisodes" pe
                     INNER JOIN "People" pp ON pe.personid = pp.personid
                     INNER JOIN "Podcasts" p ON pe.podcastid = p.podcastid
+                    LEFT JOIN "Users" u ON p.userid = u.userid
                     LEFT JOIN "Episodes" e ON e.episodeurl = pe.episodeurl AND e.podcastid = pe.podcastid
                     LEFT JOIN (
                         SELECT * FROM "SavedEpisodes" WHERE userid = $2
@@ -14808,7 +15200,15 @@ impl DatabasePool {
                         pe.EpisodeTitle,
                         pe.EpisodeDescription,
                         pe.EpisodeURL,
-                        COALESCE(pe.EpisodeArtwork, p.ArtworkURL) as EpisodeArtwork,
+                        CASE 
+                            WHEN pe.EpisodeArtwork IS NULL THEN p.ArtworkURL
+                            ELSE
+                                CASE 
+                                    WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                                    WHEN u.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                                    ELSE pe.EpisodeArtwork
+                                END
+                        END as EpisodeArtwork,
                         pe.EpisodePubDate,
                         pe.EpisodeDuration,
                         p.PodcastName,
@@ -14843,6 +15243,7 @@ impl DatabasePool {
                     FROM PeopleEpisodes pe
                     INNER JOIN People pp ON pe.PersonID = pp.PersonID
                     INNER JOIN Podcasts p ON pe.PodcastID = p.PodcastID
+                    LEFT JOIN Users u ON p.UserID = u.UserID
                     LEFT JOIN Episodes e ON e.EpisodeURL = pe.EpisodeURL AND e.PodcastID = pe.PodcastID
                     LEFT JOIN (
                         SELECT * FROM SavedEpisodes WHERE UserID = ?
@@ -15316,7 +15717,11 @@ impl DatabasePool {
                             "UserEpisodeHistory".listenduration as listenduration,
                             "Episodes".episodetitle as episodetitle,
                             "Episodes".episodedescription as episodedescription,
-                            "Episodes".episodeartwork as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl as episodeurl,
                             "Episodes".episodeduration as episodeduration,
                             "Podcasts".podcastname as podcastname,
@@ -15329,6 +15734,7 @@ impl DatabasePool {
                         FROM "UserEpisodeHistory"
                         JOIN "Episodes" ON "UserEpisodeHistory".episodeid = "Episodes".episodeid
                         JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "SavedEpisodes" ON "Episodes".episodeid = "SavedEpisodes".episodeid AND "SavedEpisodes".userid = $1
                         LEFT JOIN "EpisodeQueue" ON "Episodes".episodeid = "EpisodeQueue".episodeid AND "EpisodeQueue".userid = $1
                         LEFT JOIN "DownloadedEpisodes" ON "Episodes".episodeid = "DownloadedEpisodes".episodeid AND "DownloadedEpisodes".userid = $1
@@ -15342,7 +15748,11 @@ impl DatabasePool {
                             "YouTubeVideos".listenposition as listenduration,
                             "YouTubeVideos".videotitle as episodetitle,
                             "YouTubeVideos".videodescription as episodedescription,
-                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "YouTubeVideos".thumbnailurl
+                            END as episodeartwork,
                             "YouTubeVideos".videourl as episodeurl,
                             "YouTubeVideos".duration as episodeduration,
                             "Podcasts".podcastname as podcastname,
@@ -15354,6 +15764,7 @@ impl DatabasePool {
                             TRUE as is_youtube
                         FROM "YouTubeVideos"
                         JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "SavedVideos" ON "YouTubeVideos".videoid = "SavedVideos".videoid AND "SavedVideos".userid = $1
                         LEFT JOIN "EpisodeQueue" ON "YouTubeVideos".videoid = "EpisodeQueue".episodeid AND "EpisodeQueue".userid = $1
                         LEFT JOIN "DownloadedVideos" ON "YouTubeVideos".videoid = "DownloadedVideos".videoid AND "DownloadedVideos".userid = $1
@@ -15402,7 +15813,11 @@ impl DatabasePool {
                             ueh.ListenDuration as listenduration,
                             e.EpisodeTitle as episodetitle,
                             e.EpisodeDescription as episodedescription,
-                            e.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN p.UsePodcastCoversCustomized = 1 AND p.UsePodcastCovers = 1 THEN p.ArtworkURL
+                                WHEN u.UsePodcastCovers = 1 THEN p.ArtworkURL
+                                ELSE e.EpisodeArtwork
+                            END as episodeartwork,
                             e.EpisodeURL as episodeurl,
                             e.EpisodeDuration as episodeduration,
                             p.PodcastName as podcastname,
@@ -15415,6 +15830,7 @@ impl DatabasePool {
                         FROM UserEpisodeHistory ueh
                         JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
                         JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                        LEFT JOIN Users u ON p.UserID = u.UserID
                         LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
                         LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ?
                         LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
@@ -15428,7 +15844,11 @@ impl DatabasePool {
                             yv.ListenPosition as listenduration,
                             yv.VideoTitle as episodetitle,
                             yv.VideoDescription as episodedescription,
-                            yv.ThumbnailURL as episodeartwork,
+                            CASE 
+                                WHEN p.UsePodcastCoversCustomized = 1 AND p.UsePodcastCovers = 1 THEN p.ArtworkURL
+                                WHEN u.UsePodcastCovers = 1 THEN p.ArtworkURL
+                                ELSE yv.ThumbnailURL
+                            END as episodeartwork,
                             yv.VideoURL as episodeurl,
                             yv.Duration as episodeduration,
                             p.PodcastName as podcastname,
@@ -15440,6 +15860,7 @@ impl DatabasePool {
                             1 as is_youtube
                         FROM YouTubeVideos yv
                         JOIN Podcasts p ON yv.PodcastID = p.PodcastID
+                        LEFT JOIN Users u ON p.UserID = u.UserID
                         LEFT JOIN SavedVideos sv ON yv.VideoID = sv.VideoID AND sv.UserID = ?
                         LEFT JOIN EpisodeQueue eq ON yv.VideoID = eq.EpisodeID AND eq.UserID = ?
                         LEFT JOIN DownloadedVideos dv ON yv.VideoID = dv.VideoID AND dv.UserID = ?
@@ -17879,7 +18300,11 @@ impl DatabasePool {
                             "Episodes".episodetitle,
                             "Episodes".episodepubdate,
                             "Episodes".episodedescription,
-                            "Episodes".episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl,
                             "Episodes".episodeduration,
                             "Episodes".completed,
@@ -17894,6 +18319,7 @@ impl DatabasePool {
                         FROM "PlaylistContents"
                         JOIN "Episodes" ON "PlaylistContents".episodeid = "Episodes".episodeid
                         JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "UserEpisodeHistory".userid = $1
                         LEFT JOIN "SavedEpisodes" ON "Episodes".episodeid = "SavedEpisodes".episodeid
@@ -17919,7 +18345,11 @@ impl DatabasePool {
                             "Episodes".episodetitle,
                             "Episodes".episodepubdate,
                             "Episodes".episodedescription,
-                            "Episodes".episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl,
                             "Episodes".episodeduration,
                             "Episodes".completed,
@@ -17934,6 +18364,7 @@ impl DatabasePool {
                         FROM "PlaylistContents"
                         JOIN "Episodes" ON "PlaylistContents".episodeid = "Episodes".episodeid
                         JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "UserEpisodeHistory".userid = $1
                         LEFT JOIN "SavedEpisodes" ON "Episodes".episodeid = "SavedEpisodes".episodeid
@@ -18056,7 +18487,11 @@ impl DatabasePool {
                             e.EpisodeTitle as episodetitle,
                             e.EpisodePubDate as episodepubdate,
                             e.EpisodeDescription as episodedescription,
-                            e.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                                WHEN u.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                                ELSE e.EpisodeArtwork
+                            END as episodeartwork,
                             e.EpisodeURL as episodeurl,
                             e.EpisodeDuration as episodeduration,
                             e.Completed as completed,
@@ -18071,6 +18506,7 @@ impl DatabasePool {
                          FROM PlaylistContents pc
                          JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
                          JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                         LEFT JOIN Users u ON p.UserID = u.UserID
                          LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
                          LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
                          LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ? AND eq.is_youtube = 0
@@ -18094,7 +18530,11 @@ impl DatabasePool {
                             e.EpisodeTitle as episodetitle,
                             e.EpisodePubDate as episodepubdate,
                             e.EpisodeDescription as episodedescription,
-                            e.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                                WHEN u.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                                ELSE e.EpisodeArtwork
+                            END as episodeartwork,
                             e.EpisodeURL as episodeurl,
                             e.EpisodeDuration as episodeduration,
                             e.Completed as completed,
@@ -18109,6 +18549,7 @@ impl DatabasePool {
                          FROM PlaylistContents pc
                          JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
                          JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                         LEFT JOIN Users u ON p.UserID = u.UserID
                          LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
                          LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
                          LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ? AND eq.is_youtube = 0
@@ -18195,6 +18636,71 @@ impl DatabasePool {
             DatabasePool::MySQL(pool) => {
                 sqlx::query("UPDATE Users SET PlaybackSpeed = ? WHERE UserID = ?")
                     .bind(playback_speed)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Set user podcast cover preference - global setting
+    pub async fn set_global_podcast_cover_preference(&self, user_id: i32, use_podcast_covers: bool) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Users" SET usepodcastcovers = $1 WHERE userid = $2"#)
+                    .bind(use_podcast_covers)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Users SET UsePodcastCovers = ? WHERE UserID = ?")
+                    .bind(use_podcast_covers as i32)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Set podcast cover preference - per-podcast setting
+    pub async fn set_podcast_cover_preference(&self, user_id: i32, podcast_id: i32, use_podcast_covers: bool) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET usepodcastcovers = $1, usepodcastcoverscustomized = TRUE WHERE podcastid = $2 AND userid = $3"#)
+                    .bind(use_podcast_covers)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET UsePodcastCovers = ?, UsePodcastCoversCustomized = 1 WHERE PodcastID = ? AND UserID = ?")
+                    .bind(use_podcast_covers as i32)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Clear podcast cover preference - reset to use global setting
+    pub async fn clear_podcast_cover_preference(&self, user_id: i32, podcast_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET usepodcastcovers = FALSE, usepodcastcoverscustomized = FALSE WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET UsePodcastCovers = 0, UsePodcastCoversCustomized = 0 WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
                     .bind(user_id)
                     .execute(pool)
                     .await?;

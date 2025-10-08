@@ -15,8 +15,8 @@ use crate::requests::pod_req::{
     call_check_podcast, call_clear_playback_speed, call_download_all_podcast,
     call_enable_auto_download, call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
     call_get_feed_cutoff_days, call_get_play_episode_details, call_get_podcast_id_from_ep,
-    call_get_podcast_id_from_ep_name, call_get_podcast_notifications_status, call_get_rss_key,
-    call_remove_category, call_remove_podcasts_name, call_remove_youtube_channel,
+    call_get_podcast_id_from_ep_name, call_get_podcast_notifications_status, call_get_podcasts,
+    call_get_merged_podcasts, call_get_rss_key, call_merge_podcasts, call_remove_category, call_remove_podcasts_name, call_remove_youtube_channel,
     call_set_playback_speed, call_toggle_podcast_notifications, call_update_feed_cutoff_days,
     call_update_podcast_info, AddCategoryRequest, AutoDownloadRequest, BulkEpisodeActionRequest,
     ClearPlaybackSpeedRequest, DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest,
@@ -36,7 +36,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::Element;
-use web_sys::{window, Event, HtmlInputElement, MouseEvent, UrlSearchParams};
+use web_sys::{console, window, Event, HtmlInputElement, MouseEvent, UrlSearchParams};
 use yew::prelude::*;
 use yew::Properties;
 use yew::{function_component, html, use_effect_with, use_node_ref, Callback, Html, TargetCast};
@@ -175,6 +175,159 @@ pub enum EpisodeSortDirection {
     LongestFirst,
     TitleAZ,
     TitleZA,
+}
+
+#[derive(Properties, PartialEq)]
+pub struct PodcastMergeSelectorProps {
+    pub selected_podcasts: Vec<i32>,
+    pub on_select: Callback<Vec<i32>>,
+    pub available_podcasts: Vec<crate::requests::pod_req::Podcast>,
+    pub loading: bool,
+}
+
+#[function_component(PodcastMergeSelector)]
+pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
+    let (i18n, _) = use_translation();
+    let is_open = use_state(|| false);
+    let dropdown_ref = use_node_ref();
+
+    // Handle clicking outside to close dropdown
+    {
+        let is_open = is_open.clone();
+        let dropdown_ref = dropdown_ref.clone();
+
+        use_effect_with(dropdown_ref.clone(), move |dropdown_ref| {
+            let document = web_sys::window().unwrap().document().unwrap();
+            let dropdown_element = dropdown_ref.cast::<HtmlInputElement>();
+
+            let listener = wasm_bindgen::closure::Closure::wrap(Box::new(move |event: web_sys::Event| {
+                if let Some(target) = event.target() {
+                    if let Some(dropdown) = &dropdown_element {
+                        if let Ok(node) = target.dyn_into::<web_sys::Node>() {
+                            if !dropdown.contains(Some(&node)) {
+                                is_open.set(false);
+                            }
+                        }
+                    }
+                }
+            }) as Box<dyn FnMut(_)>);
+
+            document.add_event_listener_with_callback("click", listener.as_ref().unchecked_ref()).unwrap();
+            
+            move || {
+                document.remove_event_listener_with_callback("click", listener.as_ref().unchecked_ref()).unwrap();
+            }
+        });
+    }
+
+    let toggle_dropdown = {
+        let is_open = is_open.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            is_open.set(!*is_open);
+        })
+    };
+
+    let toggle_podcast_selection = {
+        let selected = props.selected_podcasts.clone();
+        let on_select = props.on_select.clone();
+
+        Callback::from(move |podcast_id: i32| {
+            let mut new_selection = selected.clone();
+            if let Some(pos) = new_selection.iter().position(|&id| id == podcast_id) {
+                new_selection.remove(pos);
+            } else {
+                new_selection.push(podcast_id);
+            }
+            on_select.emit(new_selection);
+        })
+    };
+
+    let stop_propagation = Callback::from(|e: MouseEvent| {
+        e.stop_propagation();
+    });
+
+    html! {
+        <div class="relative" ref={dropdown_ref}>
+            <button
+                type="button"
+                onclick={toggle_dropdown.clone()}
+                class="search-bar-input border text-sm rounded-lg block w-full p-2.5 flex items-center"
+                disabled={props.loading}
+            >
+                <div class="flex items-center flex-grow">
+                    if props.loading {
+                        <span class="flex-grow text-left">{"Loading podcasts..."}</span>
+                    } else if props.selected_podcasts.is_empty() {
+                        <span class="flex-grow text-left">{"Select podcasts to merge"}</span>
+                    } else {
+                        <span class="flex-grow text-left">
+                            {format!("{} {} selected",
+                                props.selected_podcasts.len(),
+                                if props.selected_podcasts.len() == 1 { "podcast" } else { "podcasts" }
+                            )}
+                        </span>
+                    }
+                    <i class={classes!(
+                        "ph",
+                        "ph-caret-down",
+                        "transition-transform",
+                        "duration-200",
+                        if *is_open { "rotate-180" } else { "" }
+                    )}></i>
+                </div>
+            </button>
+
+            if *is_open && !props.loading {
+                <div
+                    class="absolute z-50 mt-1 w-full rounded-lg shadow-lg modal-container max-h-[400px] overflow-y-auto"
+                    onclick={stop_propagation}
+                >
+                    <div class="max-h-[400px] overflow-y-auto p-2 space-y-1">
+                        {
+                            props.available_podcasts.iter().map(|podcast| {
+                                let is_selected = props.selected_podcasts.contains(&podcast.podcastid);
+                                let onclick = {
+                                    let toggle = toggle_podcast_selection.clone();
+                                    let id = podcast.podcastid;
+                                    Callback::from(move |_| toggle.emit(id))
+                                };
+
+                                html! {
+                                    <div
+                                        key={podcast.podcastid}
+                                        {onclick}
+                                        class={classes!(
+                                            "flex",
+                                            "items-center",
+                                            "p-2",
+                                            "rounded-lg",
+                                            "cursor-pointer",
+                                            "hover:bg-gray-700",
+                                            "transition-colors",
+                                            if is_selected { "bg-gray-700" } else { "" }
+                                        )}
+                                    >
+                                        <FallbackImage
+                                            src={podcast.artworkurl.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
+                                            alt={format!("Cover for {}", podcast.podcastname)}
+                                            class="w-12 h-12 rounded object-cover"
+                                        />
+                                        <span class="ml-3 flex-grow truncate">
+                                            {&podcast.podcastname}
+                                        </span>
+                                        if is_selected {
+                                            <i class="ph ph-check text-blue-500 text-xl"></i>
+                                        }
+                                    </div>
+                                }
+                            }).collect::<Html>()
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
 }
 
 #[function_component(EpisodeLayout)]
@@ -384,6 +537,12 @@ pub fn episode_layout() -> Html {
     let edit_website_url = use_state(|| String::new());
     let edit_podcast_index_id = use_state(|| String::new());
 
+    // Merge podcast state
+    let selected_podcasts_to_merge = use_state(|| Vec::<i32>::new());
+    let available_podcasts_for_merge = use_state(|| Vec::<crate::requests::pod_req::Podcast>::new());
+    let current_merged_podcasts = use_state(|| Vec::<i32>::new());
+    let loading_merge_data = use_state(|| false);
+
     // Pre-populate edit form when modal opens
     {
         let edit_feed_url = edit_feed_url.clone();
@@ -412,6 +571,67 @@ pub fn episode_layout() -> Html {
                         edit_artwork_url.set(info.artworkurl.clone());
                         edit_website_url.set(info.websiteurl.clone());
                         edit_podcast_index_id.set(info.podcastindexid.to_string());
+                    }
+                }
+            },
+        );
+    }
+
+    // Load merge-related data when edit modal opens
+    {
+        let available_podcasts_for_merge = available_podcasts_for_merge.clone();
+        let current_merged_podcasts = current_merged_podcasts.clone();
+        let loading_merge_data = loading_merge_data.clone();
+        let page_state = page_state.clone();
+        let clicked_podcast_info = clicked_podcast_info.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+
+        use_effect_with(
+            (page_state.clone(), clicked_podcast_info.clone()),
+            move |(page_state, podcast_info)| {
+                if **page_state == PageState::EditPodcast {
+                    if let (Some(api_key), Some(server_name), Some(user_id), Some(podcast_info)) = 
+                        (api_key.as_ref(), server_name.as_ref(), user_id.as_ref(), podcast_info.as_ref()) {
+                        
+                        loading_merge_data.set(true);
+                        
+                        // Load available podcasts
+                        let available_podcasts_for_merge = available_podcasts_for_merge.clone();
+                        let current_merged_podcasts = current_merged_podcasts.clone();
+                        let loading_merge_data = loading_merge_data.clone();
+                        let api_key = api_key.clone();
+                        let server_name = server_name.clone();
+                        let user_id = *user_id;
+                        let podcast_id = podcast_info.podcastid;
+
+                        spawn_local(async move {
+                            // Load all available podcasts
+                            match call_get_podcasts(&server_name, &api_key, &user_id).await {
+                                Ok(mut podcasts) => {
+                                    // Remove the current podcast from the list
+                                    podcasts.retain(|p| p.podcastid != podcast_id as i32);
+                                    available_podcasts_for_merge.set(podcasts);
+                                }
+                                Err(e) => {
+                                    console::log_1(&format!("Error loading podcasts for merge: {}", e).into());
+                                }
+                            }
+
+                            // Load current merged podcasts
+                            match call_get_merged_podcasts(&server_name, &api_key, podcast_id as i32).await {
+                                Ok(merged_ids) => {
+                                    current_merged_podcasts.set(merged_ids);
+                                }
+                                Err(e) => {
+                                    console::log_1(&format!("Error loading merged podcasts: {}", e).into());
+                                    current_merged_podcasts.set(Vec::new());
+                                }
+                            }
+                            
+                            loading_merge_data.set(false);
+                        });
                     }
                 }
             },
@@ -1780,10 +2000,10 @@ pub fn episode_layout() -> Html {
     // Define the modal components
     let clicked_feed = clicked_podcast_info.clone();
     let podcast_option_model = html! {
-        <div id="podcast_option_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                <div class="modal-container relative rounded-lg shadow">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+        <div id="podcast_option_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25 py-8" onclick={on_background_click.clone()}>
+            <div class="modal-container relative w-full max-w-md max-h-full rounded-lg shadow mx-4 overflow-hidden flex flex-col" onclick={stop_propagation.clone()}>
+                <div class="modal-container relative rounded-lg shadow flex-1 flex flex-col overflow-hidden">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t flex-shrink-0">
                         <h3 class="text-xl font-semibold">
                             {&i18n.t("episodes_layout.podcast_options")}
                         </h3>
@@ -1794,7 +2014,7 @@ pub fn episode_layout() -> Html {
                             <span class="sr-only">{&i18n.t("episodes_layout.close_modal")}</span>
                         </button>
                     </div>
-                    <div class="p-4 md:p-5">
+                    <div class="p-4 md:p-5 overflow-y-auto flex-1">
                         <form class="space-y-4" action="#">
                             <div>
                                 <label for="download_schedule" class="block mb-2 text-sm font-medium">{&i18n_download_future_episodes}</label>
@@ -1844,6 +2064,34 @@ pub fn episode_layout() -> Html {
                                     </button>
                                 </div>
                                 <p class="text-xs text-gray-500 mt-1">{&i18n_playback_speed_description}</p>
+                            </div>
+
+                            <div class="mt-4">
+                                <label class="block mb-2 text-sm font-medium">{"Use Podcast Covers"}</label>
+                                <div class="flex items-center space-x-2">
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={false} // TODO: Add state for podcast cover preference
+                                            class="sr-only peer"
+                                            // TODO: Add onclick handler
+                                        />
+                                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                    </label>
+                                    <button
+                                        class="save-button font-bold py-2 px-4 rounded"
+                                        // TODO: Add onclick handler for save
+                                    >
+                                        {&i18n.t("episodes_layout.save")}
+                                    </button>
+                                    <button
+                                        class="clear-button bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
+                                        // TODO: Add onclick handler for clear
+                                    >
+                                        {&i18n.t("episodes_layout.reset")}
+                                    </button>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">{"Show podcast cover instead of episode artwork for this podcast's episodes"}</p>
                             </div>
 
                             <div class="mt-4">
@@ -2084,10 +2332,10 @@ pub fn episode_layout() -> Html {
     let edit_podcast_modal = {
         let clicked_feed = clicked_podcast_info.clone();
         html! {
-            <div id="edit_podcast_modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                    <div class="modal-container relative rounded-lg shadow">
-                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+            <div id="edit_podcast_modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25 py-8" onclick={on_background_click.clone()}>
+                <div class="modal-container relative w-full max-w-md max-h-full rounded-lg shadow mx-4 overflow-hidden flex flex-col" onclick={stop_propagation.clone()}>
+                    <div class="modal-container relative rounded-lg shadow flex-1 flex flex-col overflow-hidden">
+                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t flex-shrink-0">
                             <h3 class="text-xl font-semibold">
                                 {&i18n.t("episodes_layout.edit_podcast_info")}
                             </h3>
@@ -2098,7 +2346,7 @@ pub fn episode_layout() -> Html {
                                 <span class="sr-only">{&i18n.t("episodes_layout.close_modal")}</span>
                             </button>
                         </div>
-                        <div class="p-4 md:p-5">
+                        <div class="p-4 md:p-5 overflow-y-auto flex-1">
                             <form class="space-y-4" action="#">
                                 <div>
                                     <label for="edit_feed_url" class="block mb-2 text-sm font-medium">
@@ -2280,6 +2528,90 @@ pub fn episode_layout() -> Html {
                                         })}
                                     />
                                 </div>
+
+                                // Merge Podcasts Section
+                                <div class="mb-4 p-4 border rounded-lg">
+                                    <h4 class="text-lg font-semibold mb-3">{"Merge Podcasts"}</h4>
+                                    <p class="text-sm text-gray-600 mb-3">
+                                        {"Merge other podcasts into this one. Episodes from merged podcasts will appear under this podcast."}
+                                    </p>
+                                    
+                                    // Show currently merged podcasts
+                                    if !(*current_merged_podcasts).is_empty() {
+                                        <div class="mb-3">
+                                            <label class="block mb-2 text-sm font-medium">
+                                                {"Currently Merged Podcasts"}
+                                            </label>
+                                            <div class="text-sm text-gray-600">
+                                                {format!("{} podcasts merged into this one", (*current_merged_podcasts).len())}
+                                            </div>
+                                        </div>
+                                    }
+                                    
+                                    // Podcast selector for merging
+                                    <div class="mb-3">
+                                        <label class="block mb-2 text-sm font-medium">
+                                            {"Select Podcasts to Merge"}
+                                        </label>
+                                        <PodcastMergeSelector
+                                            selected_podcasts={(*selected_podcasts_to_merge).clone()}
+                                            on_select={{
+                                                let selected_podcasts_to_merge = selected_podcasts_to_merge.clone();
+                                                Callback::from(move |new_selection| {
+                                                    selected_podcasts_to_merge.set(new_selection);
+                                                })
+                                            }}
+                                            available_podcasts={(*available_podcasts_for_merge).clone()}
+                                            loading={*loading_merge_data}
+                                        />
+                                    </div>
+                                    
+                                    // Merge button
+                                    if !(*selected_podcasts_to_merge).is_empty() {
+                                        <button
+                                            type="button"
+                                            class="save-button font-bold py-2 px-4 rounded mr-2"
+                                            onclick={{
+                                                let selected_podcasts_to_merge = selected_podcasts_to_merge.clone();
+                                                let clicked_podcast_info = clicked_podcast_info.clone();
+                                                let api_key = api_key.clone();
+                                                let server_name = server_name.clone();
+                                                let user_id = user_id.clone();
+                                                
+                                                Callback::from(move |_| {
+                                                    if let (Some(api_key), Some(server_name), Some(user_id), Some(podcast_info)) = 
+                                                        (api_key.as_ref(), server_name.as_ref(), user_id.as_ref(), clicked_podcast_info.as_ref()) {
+                                                        
+                                                        let podcast_ids = (*selected_podcasts_to_merge).clone();
+                                                        let primary_id = podcast_info.podcastid;
+                                                        let selected_podcasts_to_merge = selected_podcasts_to_merge.clone();
+                                                        let api_key = api_key.clone();
+                                                        let server_name = server_name.clone();
+                                                        let user_id = *user_id;
+                                                        
+                                                        spawn_local(async move {
+                                                            match call_merge_podcasts(&server_name, &api_key, primary_id as i32, &podcast_ids).await {
+                                                                Ok(response) => {
+                                                                    console::log_1(&format!("Merge successful: {}", response.message).into());
+                                                                    // Clear selection after successful merge
+                                                                    selected_podcasts_to_merge.set(Vec::new());
+                                                                    // TODO: Refresh podcast list or show success message
+                                                                },
+                                                                Err(e) => {
+                                                                    console::log_1(&format!("Merge failed: {}", e).into());
+                                                                    // TODO: Show error message to user
+                                                                }
+                                                            }
+                                                        });
+                                                    }
+                                                })
+                                            }}
+                                        >
+                                            {format!("Merge {} Podcasts", (*selected_podcasts_to_merge).len())}
+                                        </button>
+                                    }
+                                </div>
+
                                 <div class="flex justify-between space-x-4">
                                     <button
                                         type="button"

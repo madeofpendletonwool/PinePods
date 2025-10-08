@@ -385,6 +385,34 @@ pub fn notification_settings() -> Html {
                                 }
                             }
                         </div>
+                        // HTTP Settings
+                        <div>
+                            <span class="text-sm opacity-80">{"HTTP Configuration:"}</span>
+                            {
+                                if let Some(http) = info.settings.iter().find(|s| s.platform == "http") {
+                                    html! {
+                                        <div class="mt-2 space-y-2">
+                                            <p>
+                                                <span class="text-sm opacity-80">{"Status: "}</span>
+                                                <span class="font-medium">{if http.enabled { "Active" } else { "Inactive" }}</span>
+                                            </p>
+                                            <p>
+                                                <span class="text-sm opacity-80">{"Endpoint: "}</span>
+                                                <span class="font-medium">{&http.http_url.clone().unwrap_or_else(|| "Not Set".to_string())}</span>
+                                            </p>
+                                            <p>
+                                                <span class="text-sm opacity-80">{"Method: "}</span>
+                                                <span class="font-medium">{&http.http_method.clone().unwrap_or_else(|| "POST".to_string())}</span>
+                                            </p>
+                                        </div>
+                                    }
+                                } else {
+                                    html! {
+                                        <p class="mt-2 text-sm opacity-80">{"Not Configured"}</p>
+                                    }
+                                }
+                            }
+                        </div>
                     </div>
                 </div>
             }
@@ -418,23 +446,25 @@ pub fn notification_settings() -> Html {
                                 platform.set("http".to_string());
                             })}
                         >
-                            {"HTTP/Telegram"}
+                            {"HTTP"}
                         </button>
                     </div>
                 </div>
 
                 <div class="form-group">
                     <label class="form-label">{&i18n_enable_notifications}</label>
-                    <label class="notification-toggle-switch">
+                    <label class="relative inline-flex items-center cursor-pointer">
                         <input
                             type="checkbox"
                             checked={*enabled}
+                            class="sr-only peer"
                             onchange={let enabled = enabled.clone(); Callback::from(move |e: Event| {
                                 let target: HtmlInputElement = e.target_unchecked_into();
                                 enabled.set(target.checked());
                             })}
                         />
-                        <span class="notification-toggle-slider"></span>
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                        <span class="ms-3 text-sm font-medium item_container-text">{&i18n_enable_notifications}</span>
                     </label>
                 </div>
 
@@ -538,7 +568,7 @@ pub fn notification_settings() -> Html {
                                 </div>
                             </>
                         }
-                    } else {
+                    } else if *platform == "gotify" {
                         html! {
                             <>
                                 <div class="form-group">
@@ -571,6 +601,8 @@ pub fn notification_settings() -> Html {
                                 </div>
                             </>
                         }
+                    } else {
+                        html! { <></> }
                     }
                 }
 
@@ -589,9 +621,9 @@ pub fn notification_settings() -> Html {
                                             http_url.set(target.value());
                                         })}
                                         class="form-input"
-                                        placeholder="https://api.telegram.org/bot<token>/sendMessage"
+                                        placeholder="https://api.example.com/webhook"
                                     />
-                                    <span class="form-helper-text">{"For Telegram: https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage"}</span>
+                                    <span class="form-helper-text">{"Enter the complete HTTP endpoint URL for your notification service"}</span>
                                 </div>
                                 <div class="form-group">
                                     <label for="http_token" class="form-label">{"Token/Authentication"}</label>
@@ -604,9 +636,9 @@ pub fn notification_settings() -> Html {
                                             http_token.set(target.value());
                                         })}
                                         class="form-input"
-                                        placeholder="For Telegram: <bot_token>:<chat_id>"
+                                        placeholder="API key, token, or authentication string"
                                     />
-                                    <span class="form-helper-text">{"For Telegram: Format as bot_token:chat_id"}</span>
+                                    <span class="form-helper-text">{"Optional: Authentication token or API key for your service"}</span>
                                 </div>
                                 <div class="form-group">
                                     <label for="http_method" class="form-label">{"HTTP Method"}</label>

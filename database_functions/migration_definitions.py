@@ -3538,6 +3538,190 @@ def migration_033_add_http_notification_columns(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("034", "add_podcast_merge_columns", "Add podcast merge columns to support merging podcasts", requires=["033"])
+def migration_034_add_podcast_merge_columns(conn, db_type: str):
+    """Add DisplayPodcast, RefreshPodcast, and MergedPodcastIDs columns to Podcasts table"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            # Check if columns already exist (PostgreSQL)
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'Podcasts' 
+                AND column_name IN ('displaypodcast', 'refreshpodcast', 'mergedpodcastids')
+            """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'displaypodcast' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN DisplayPodcast BOOLEAN DEFAULT TRUE
+                """)
+                logger.info("Added DisplayPodcast column to Podcasts table (PostgreSQL)")
+            
+            if 'refreshpodcast' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN RefreshPodcast BOOLEAN DEFAULT TRUE
+                """)
+                logger.info("Added RefreshPodcast column to Podcasts table (PostgreSQL)")
+            
+            if 'mergedpodcastids' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN MergedPodcastIDs TEXT
+                """)
+                logger.info("Added MergedPodcastIDs column to Podcasts table (PostgreSQL)")
+        
+        else:  # MySQL
+            # Check if columns already exist (MySQL)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'Podcasts' 
+                AND column_name = 'DisplayPodcast'
+                AND table_schema = DATABASE()
+            """)
+            display_exists = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'Podcasts' 
+                AND column_name = 'RefreshPodcast'
+                AND table_schema = DATABASE()
+            """)
+            refresh_exists = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'Podcasts' 
+                AND column_name = 'MergedPodcastIDs'
+                AND table_schema = DATABASE()
+            """)
+            merged_exists = cursor.fetchone()[0] > 0
+            
+            if not display_exists:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN DisplayPodcast TINYINT(1) DEFAULT 1
+                """)
+                logger.info("Added DisplayPodcast column to Podcasts table (MySQL)")
+            
+            if not refresh_exists:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN RefreshPodcast TINYINT(1) DEFAULT 1
+                """)
+                logger.info("Added RefreshPodcast column to Podcasts table (MySQL)")
+            
+            if not merged_exists:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN MergedPodcastIDs TEXT
+                """)
+                logger.info("Added MergedPodcastIDs column to Podcasts table (MySQL)")
+        
+        # Add index on DisplayPodcast for performance
+        table_quote = "`" if db_type != "postgresql" else '"'
+        safe_add_index(cursor, db_type, 
+            f'CREATE INDEX idx_podcasts_displaypodcast ON {table_quote}Podcasts{table_quote} (DisplayPodcast)', 
+            'idx_podcasts_displaypodcast')
+        
+        logger.info("Podcast merge columns migration completed successfully")
+        
+    finally:
+        cursor.close()
+
+
+@register_migration("035", "add_podcast_cover_preference_columns", "Add podcast cover preference columns to Users and Podcasts tables", requires=["034"])
+def migration_035_add_podcast_cover_preference_columns(conn, db_type: str):
+    """Add podcast cover preference columns to Users and Podcasts tables for existing installations"""
+    cursor = conn.cursor()
+    
+    try:
+        # Add UsePodcastCovers to Users table if it doesn't exist
+        try:
+            if db_type == "postgresql":
+                cursor.execute("""
+                    ALTER TABLE "Users" 
+                    ADD COLUMN IF NOT EXISTS UsePodcastCovers BOOLEAN DEFAULT FALSE
+                """)
+            else:  # MySQL/MariaDB
+                # Check if column exists first
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'Users' 
+                    AND COLUMN_NAME = 'UsePodcastCovers'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        ALTER TABLE Users 
+                        ADD COLUMN UsePodcastCovers TINYINT(1) DEFAULT 0
+                    """)
+                    logger.info("Added UsePodcastCovers column to Users table")
+                else:
+                    logger.info("UsePodcastCovers column already exists in Users table")
+                    
+        except Exception as e:
+            logger.error(f"Error adding UsePodcastCovers to Users table: {e}")
+    
+        # Add UsePodcastCovers columns to Podcasts table if they don't exist
+        try:
+            if db_type == "postgresql":
+                cursor.execute("""
+                    ALTER TABLE "Podcasts" 
+                    ADD COLUMN IF NOT EXISTS UsePodcastCovers BOOLEAN DEFAULT FALSE,
+                    ADD COLUMN IF NOT EXISTS UsePodcastCoversCustomized BOOLEAN DEFAULT FALSE
+                """)
+            else:  # MySQL/MariaDB
+                # Check if UsePodcastCovers column exists
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'Podcasts' 
+                    AND COLUMN_NAME = 'UsePodcastCovers'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        ALTER TABLE Podcasts 
+                        ADD COLUMN UsePodcastCovers TINYINT(1) DEFAULT 0
+                    """)
+                    logger.info("Added UsePodcastCovers column to Podcasts table")
+                else:
+                    logger.info("UsePodcastCovers column already exists in Podcasts table")
+                
+                # Check if UsePodcastCoversCustomized column exists
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'Podcasts' 
+                    AND COLUMN_NAME = 'UsePodcastCoversCustomized'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        ALTER TABLE Podcasts 
+                        ADD COLUMN UsePodcastCoversCustomized TINYINT(1) DEFAULT 0
+                    """)
+                    logger.info("Added UsePodcastCoversCustomized column to Podcasts table")
+                else:
+                    logger.info("UsePodcastCoversCustomized column already exists in Podcasts table")
+                    
+        except Exception as e:
+            logger.error(f"Error adding UsePodcastCovers columns to Podcasts table: {e}")
+    
+        logger.info("Podcast cover preference columns migration completed successfully")
+        
+    finally:
+        cursor.close()
+
+
 if __name__ == "__main__":
     # Register all migrations and run them
     register_all_migrations()
