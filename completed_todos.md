@@ -17,7 +17,7 @@ Major Version:
 
 - [] Translations on the web app
 - [] Account Settings now updates dropdowns with pre-populated values
-- [] episode-layout (podcast page) will now set sort settings based on pod id
+- [x] episode-layout (podcast page) will now set sort settings based on pod id
 - [] Added endpoint to delete OIDC settings
 - [] Manually search or enter podcast index id for matching to podcast index
 - [] OIDC Setup on start
@@ -31,6 +31,9 @@ Major Version:
 - [] Fixed issue with auto complete threshold. Will now mark historical episodes complete when enabled
 - [] Individual Episode download on /episode page
 - [] Option to use Podcast covers if desired
+
+- [] Checking on rss feeds returning downloaded urls correctly
+- yt-dlp get working again
 
 0.7.9
 

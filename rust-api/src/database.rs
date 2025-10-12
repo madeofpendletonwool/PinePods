@@ -23931,6 +23931,56 @@ impl DatabasePool {
         }
     }
 
+    /// Convert chrono-tz timezone names to PostgreSQL-compatible timezone names
+    /// This handles the mapping between frontend timezone selections and database queries
+    fn map_timezone_for_postgres(user_timezone: &str) -> String {
+        match user_timezone {
+            // US timezone mappings
+            "US/Central" => "America/Chicago".to_string(),
+            "US/Eastern" => "America/New_York".to_string(),
+            "US/Mountain" => "America/Denver".to_string(),
+            "US/Pacific" => "America/Los_Angeles".to_string(),
+            "US/Alaska" => "America/Anchorage".to_string(),
+            "US/Hawaii" => "Pacific/Honolulu".to_string(),
+            
+            // Common legacy timezone mappings
+            "EST" => "America/New_York".to_string(),
+            "CST" => "America/Chicago".to_string(),
+            "MST" => "America/Denver".to_string(),
+            "PST" => "America/Los_Angeles".to_string(),
+            "EST5EDT" => "America/New_York".to_string(),
+            "CST6CDT" => "America/Chicago".to_string(),
+            "MST7MDT" => "America/Denver".to_string(),
+            "PST8PDT" => "America/Los_Angeles".to_string(),
+            
+            // Common international legacy mappings
+            "GMT" => "UTC".to_string(),
+            "GMT+0" => "UTC".to_string(),
+            "GMT-0" => "UTC".to_string(),
+            "Greenwich" => "UTC".to_string(),
+            "UCT" => "UTC".to_string(),
+            "Universal" => "UTC".to_string(),
+            "Zulu" => "UTC".to_string(),
+            
+            // European legacy mappings
+            "CET" => "Europe/Paris".to_string(),
+            "EET" => "Europe/Helsinki".to_string(),
+            "WET" => "Europe/Lisbon".to_string(),
+            "MET" => "Europe/Paris".to_string(),
+            
+            // If it's already a valid IANA timezone name or unknown, pass through
+            _ => {
+                // For unknown timezones, fall back to UTC to prevent errors
+                if user_timezone.is_empty() {
+                    "UTC".to_string()
+                } else {
+                    // Most chrono-tz names are already IANA compliant, so try the original first
+                    user_timezone.to_string()
+                }
+            }
+        }
+    }
+
     // Get playlist episodes dynamically without using PlaylistContents table
     // ULTRA-PRECISE implementation covering ALL playlist options with timezone awareness
     pub async fn get_playlist_episodes_dynamic(
@@ -23945,12 +23995,13 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 // Get user timezone for proper date calculations
-                let user_timezone: String = sqlx::query_scalar(
+                let raw_user_timezone: String = sqlx::query_scalar(
                     r#"SELECT timezone FROM "Users" WHERE userid = $1"#
                 ).bind(user_id).fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
-                let user_timezone = if user_timezone.is_empty() { "UTC".to_string() } else { user_timezone };
+                let raw_timezone = if raw_user_timezone.is_empty() { "UTC".to_string() } else { raw_user_timezone };
+                let user_timezone = Self::map_timezone_for_postgres(&raw_timezone);
                 
-                debug!("User {} timezone: {}", user_id, user_timezone);
+                debug!("User {} timezone: {} -> {}", user_id, raw_timezone, user_timezone);
                 
                 // Get playlist configuration with ALL fields
                 let playlist_row = sqlx::query(
@@ -24104,20 +24155,20 @@ impl DatabasePool {
                 }
                 
                 let sort_clause = match playlist.try_get::<String, _>("sortorder")?.as_str() {
-                    "date_asc" => "e.episodepubdate ASC",
-                    "date_desc" => "e.episodepubdate DESC", 
-                    "duration_asc" => "e.episodeduration ASC",
-                    "duration_desc" => "e.episodeduration DESC",
+                    "date_asc" => "episodepubdate ASC",
+                    "date_desc" => "episodepubdate DESC", 
+                    "duration_asc" => "episodeduration ASC",
+                    "duration_desc" => "episodeduration DESC",
                     "listen_progress" => "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) DESC",
                     "completion" => "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) DESC",
                     "random" => "RANDOM()",
-                    "title_asc" => "e.episodetitle ASC",
-                    "title_desc" => "e.episodetitle DESC",
-                    "podcast_asc" => "p.podcastname ASC",
-                    "podcast_desc" => "p.podcastname DESC",
+                    "title_asc" => "episodetitle ASC",
+                    "title_desc" => "episodetitle DESC",
+                    "podcast_asc" => "podcastname ASC",
+                    "podcast_desc" => "podcastname DESC",
                     _ => {
                         warn!("⚠️ Unknown sort order '{}', defaulting to date_desc", playlist.try_get::<String, _>("sortorder")?);
-                        "e.episodepubdate DESC"
+                        "episodepubdate DESC"
                     }
                 };
                 order_parts.push(sort_clause.to_string());
@@ -24193,11 +24244,12 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 // FULL MySQL implementation with exact same logic but MySQL syntax
-                let user_timezone: String = sqlx::query_scalar("SELECT TimeZone FROM Users WHERE UserID = ?").bind(user_id)
+                let raw_user_timezone: String = sqlx::query_scalar("SELECT TimeZone FROM Users WHERE UserID = ?").bind(user_id)
                     .fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
-                let user_timezone = if user_timezone.is_empty() { "UTC".to_string() } else { user_timezone };
+                let raw_timezone = if raw_user_timezone.is_empty() { "UTC".to_string() } else { raw_user_timezone };
+                let user_timezone = Self::map_timezone_for_postgres(&raw_timezone);
                 
-                debug!("User {} timezone: {}", user_id, user_timezone);
+                debug!("User {} timezone: {} -> {}", user_id, raw_timezone, user_timezone);
                 
                 let playlist_row = sqlx::query(
                     r#"SELECT UserID, Name, Description, MinDuration, MaxDuration, SortOrder, 
@@ -24333,25 +24385,25 @@ impl DatabasePool {
                 let mut order_parts = Vec::new();
                 
                 if playlist.try_get::<bool, _>("GroupByPodcast")? {
-                    order_parts.push("p.PodcastID".to_string());
+                    order_parts.push("podcastid".to_string());
                     debug!("📚 MySQL grouping by podcast enabled");
                 }
                 
                 let sort_clause = match playlist.try_get::<String, _>("SortOrder")?.as_str() {
-                    "date_asc" => "e.EpisodePubDate ASC",
-                    "date_desc" => "e.EpisodePubDate DESC", 
-                    "duration_asc" => "e.EpisodeDuration ASC",
-                    "duration_desc" => "e.EpisodeDuration DESC",
+                    "date_asc" => "episodepubdate ASC",
+                    "date_desc" => "episodepubdate DESC", 
+                    "duration_asc" => "episodeduration ASC",
+                    "duration_desc" => "episodeduration DESC",
                     "listen_progress" => "(COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) DESC",
                     "completion" => "(COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) DESC",
                     "random" => "RAND()",
-                    "title_asc" => "e.EpisodeTitle ASC",
-                    "title_desc" => "e.EpisodeTitle DESC",
-                    "podcast_asc" => "p.PodcastName ASC",
-                    "podcast_desc" => "p.PodcastName DESC",
+                    "title_asc" => "episodetitle ASC",
+                    "title_desc" => "episodetitle DESC",
+                    "podcast_asc" => "podcastname ASC",
+                    "podcast_desc" => "podcastname DESC",
                     _ => {
                         warn!("⚠️ Unknown MySQL sort order '{}', defaulting to date_desc", playlist.try_get::<String, _>("SortOrder")?);
-                        "e.EpisodePubDate DESC"
+                        "episodepubdate DESC"
                     }
                 };
                 order_parts.push(sort_clause.to_string());

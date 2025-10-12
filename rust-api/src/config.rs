@@ -87,16 +87,16 @@ pub struct OIDCConfig {
 
 impl OIDCConfig {
     pub fn is_configured(&self) -> bool {
-        self.provider_name.is_some() &&
-        self.client_id.is_some() &&
-        self.client_secret.is_some() &&
-        self.authorization_url.is_some() &&
-        self.token_url.is_some() &&
-        self.user_info_url.is_some() &&
-        self.button_text.is_some() &&
-        self.scope.is_some() &&
-        self.button_color.is_some() &&
-        self.button_text_color.is_some()
+        self.provider_name.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
+        self.client_id.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
+        self.client_secret.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
+        self.authorization_url.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
+        self.token_url.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
+        self.user_info_url.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
+        self.button_text.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
+        self.scope.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
+        self.button_color.as_ref().map_or(false, |s| !s.trim().is_empty()) &&
+        self.button_text_color.as_ref().map_or(false, |s| !s.trim().is_empty())
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -284,6 +284,14 @@ impl Config {
             from_email: env::var("FROM_EMAIL").ok(),
         };
 
+        // Check if essential OIDC fields are present and non-empty before setting any defaults
+        let oidc_essentials_present = env::var("OIDC_PROVIDER_NAME").map_or(false, |s| !s.trim().is_empty()) &&
+            env::var("OIDC_CLIENT_ID").map_or(false, |s| !s.trim().is_empty()) &&
+            env::var("OIDC_CLIENT_SECRET").map_or(false, |s| !s.trim().is_empty()) &&
+            env::var("OIDC_AUTHORIZATION_URL").map_or(false, |s| !s.trim().is_empty()) &&
+            env::var("OIDC_TOKEN_URL").map_or(false, |s| !s.trim().is_empty()) &&
+            env::var("OIDC_USER_INFO_URL").map_or(false, |s| !s.trim().is_empty());
+
         let oidc = OIDCConfig {
             disable_standard_login: env::var("OIDC_DISABLE_STANDARD_LOGIN")
                 .unwrap_or_else(|_| "false".to_string())
@@ -295,28 +303,26 @@ impl Config {
             authorization_url: env::var("OIDC_AUTHORIZATION_URL").ok(),
             token_url: env::var("OIDC_TOKEN_URL").ok(),
             user_info_url: env::var("OIDC_USER_INFO_URL").ok(),
-            button_text: env::var("OIDC_BUTTON_TEXT").ok(),
-            scope: env::var("OIDC_SCOPE").or_else(|_| {
-                if env::var("OIDC_PROVIDER_NAME").is_ok() {
-                    Ok("openid email profile".to_string())
-                } else {
-                    Err(env::VarError::NotPresent)
-                }
-            }).ok(),
-            button_color: env::var("OIDC_BUTTON_COLOR").or_else(|_| {
-                if env::var("OIDC_PROVIDER_NAME").is_ok() {
-                    Ok("#000000".to_string())
-                } else {
-                    Err(env::VarError::NotPresent)
-                }
-            }).ok(),
-            button_text_color: env::var("OIDC_BUTTON_TEXT_COLOR").or_else(|_| {
-                if env::var("OIDC_PROVIDER_NAME").is_ok() {
-                    Ok("#FFFFFF".to_string())
-                } else {
-                    Err(env::VarError::NotPresent)
-                }
-            }).ok(),
+            button_text: if oidc_essentials_present {
+                env::var("OIDC_BUTTON_TEXT").ok().or_else(|| Some("Login with OIDC".to_string()))
+            } else {
+                env::var("OIDC_BUTTON_TEXT").ok()
+            },
+            scope: if oidc_essentials_present {
+                env::var("OIDC_SCOPE").ok().or_else(|| Some("openid email profile".to_string()))
+            } else {
+                env::var("OIDC_SCOPE").ok()
+            },
+            button_color: if oidc_essentials_present {
+                env::var("OIDC_BUTTON_COLOR").ok().or_else(|| Some("#000000".to_string()))
+            } else {
+                env::var("OIDC_BUTTON_COLOR").ok()
+            },
+            button_text_color: if oidc_essentials_present {
+                env::var("OIDC_BUTTON_TEXT_COLOR").ok().or_else(|| Some("#FFFFFF".to_string()))
+            } else {
+                env::var("OIDC_BUTTON_TEXT_COLOR").ok()
+            },
             icon_svg: env::var("OIDC_ICON_SVG").ok(),
             name_claim: env::var("OIDC_NAME_CLAIM").ok(),
             email_claim: env::var("OIDC_EMAIL_CLAIM").ok(),

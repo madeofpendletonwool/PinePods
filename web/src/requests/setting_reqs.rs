@@ -2133,7 +2133,6 @@ pub struct OIDCProvider {
     pub provider_id: i32,
     pub provider_name: String,
     pub client_id: String,
-    pub client_secret: String,
     pub authorization_url: String,
     pub token_url: String,
     pub user_info_url: String,

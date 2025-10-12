@@ -459,7 +459,7 @@ pub fn oidc_settings() -> Html {
         move |provider: &OIDCProvider| {
             provider_name.set(provider.provider_name.clone());
             client_id.set(provider.client_id.clone());
-            client_secret.set(provider.client_secret.clone());
+            client_secret.set(String::new()); // Don't populate secret for security
             auth_url.set(provider.authorization_url.clone());
             token_url.set(provider.token_url.clone());
             user_info_url.set(provider.user_info_url.clone());
