@@ -1756,7 +1756,7 @@ pub fn epsiode() -> Html {
                         // Before creating the play toggle handler, add this:
                         let listen_duration_percentage = if let Some(listen_duration) = episode.episode.listenduration {
                             if episode.episode.episodeduration > 0 {
-                                (listen_duration as f64 / episode.episode.episodeduration as f64) * 100.0
+                                ((listen_duration as f64 / episode.episode.episodeduration as f64) * 100.0).min(100.0)
                             } else {
                                 0.0
                             }

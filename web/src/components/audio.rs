@@ -11,8 +11,8 @@ use crate::requests::pod_req::{
     call_get_auto_skip_times, call_get_episode_id, call_get_play_episode_details,
     call_get_podcast_id_from_ep, call_get_queued_episodes, call_increment_listen_time,
     call_increment_played, call_mark_episode_completed, call_queue_episode,
-    call_record_listen_duration, call_remove_queued_episode, HistoryAddRequest,
-    MarkEpisodeCompletedRequest, QueuePodcastRequest, RecordListenDurationRequest,
+    call_record_listen_duration, call_remove_queued_episode, call_update_episode_duration, HistoryAddRequest,
+    MarkEpisodeCompletedRequest, QueuePodcastRequest, RecordListenDurationRequest, UpdateEpisodeDurationRequest
 };
 use gloo_timers::callback::Interval;
 use js_sys::Array;
@@ -1994,8 +1994,17 @@ pub fn on_play_click(
             let actual_duration_sec = get_actual_duration(&src_for_analysis).await;
 
             // Use the actual duration if available, otherwise fall back to provided duration
-            let final_duration_sec =
-                actual_duration_sec.unwrap_or(episode_duration_for_wasm as f64);
+            let final_duration_sec = actual_duration_sec.unwrap_or(episode_duration_for_wasm as f64);
+
+            // Set actual duration in db
+            if (final_duration_sec as i32) != episode_duration_for_wasm {
+                let req = UpdateEpisodeDurationRequest {
+                    episode_id,
+                    new_duration: final_duration_sec as i32,
+                    is_youtube: episode_is_youtube,
+                };
+                call_update_episode_duration(&server_name_for_player, &Some(api_key_for_player.clone()), &req).await;
+            }
 
             web_sys::console::log_1(&JsValue::from_str(&format!(
                 "Original duration: {}s, Actual duration: {}s",

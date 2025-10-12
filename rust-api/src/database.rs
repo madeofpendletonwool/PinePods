@@ -2229,6 +2229,42 @@ impl DatabasePool {
         }
     }
 
+    pub async fn update_episode_duration(&self, episode_id: i32, new_duration: i32, is_youtube: bool) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                if is_youtube {
+                    sqlx::query(r#"UPDATE "YouTubeVideos" SET duration = $1 WHERE videoid = $2"#)
+                        .bind(new_duration)
+                        .bind(episode_id)
+                        .execute(pool)
+                        .await?;
+                } else {
+                    sqlx::query(r#"UPDATE "Episodes" SET episodeduration = $1 WHERE episodeid = $2"#)
+                        .bind(new_duration)
+                        .bind(episode_id)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                if is_youtube {
+                    sqlx::query(r#"UPDATE YouTubeVideos SET duration = ? WHERE videoid = ?"#)
+                        .bind(new_duration)
+                        .bind(episode_id)
+                        .execute(pool)
+                        .await?;
+                } else {
+                    sqlx::query(r#"UPDATE Episodes SET episodeduration = ? WHERE episodeid = ?"#)
+                        .bind(new_duration)
+                        .bind(episode_id)
+                        .execute(pool)
+                        .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     // Mark episode as completed - matches Python mark_episode_completed function
     pub async fn mark_episode_completed(&self, episode_id: i32, user_id: i32, is_youtube: bool) -> AppResult<()> {
         match self {
