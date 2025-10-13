@@ -77,7 +77,7 @@ async-std = "1.13.2"
 argon2 = { version = "0.5.3", features = ["std", "password-hash"] }
 getrandom = { version = "0.3.3", features = ["wasm_js"] }
 rand = "0.9.2"
-regex = "1.11.2"
+regex = "1.12.1"
 js-sys = "0.3.77"
 percent-encoding = "2.3.2"
 data-encoding = "2.9.0"
