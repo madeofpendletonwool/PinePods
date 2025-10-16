@@ -1393,6 +1393,37 @@ pub async fn fetch_podcasting_2_pod_data(
     Ok(Json(data))
 }
 
+#[derive(Deserialize)]
+pub struct UpdateEpisodeDurationRequest {
+    pub episode_id: i32,
+    pub new_duration: i32,
+    pub is_youtube: bool,
+}
+
+pub async fn update_episode_duration(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<UpdateEpisodeDurationRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    // Verify API key
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized(
+            "Your API key is either invalid or does not have correct permission",
+        ));
+    }
+
+    state
+        .db_pool
+        .update_episode_duration(request.episode_id, request.new_duration, request.is_youtube)
+        .await?;
+    Ok(Json(
+        serde_json::json!({"detail": format!("Episode duration updated to {}", request.new_duration)}),
+    ))
+}
+
 // Request for mark_episode_completed - matches Python MarkEpisodeCompletedData
 #[derive(Deserialize)]
 pub struct MarkEpisodeCompletedRequest {
