@@ -142,8 +142,6 @@ fn switch(route: Route) -> Html {
 
 #[function_component(LanguageHandler)]
 fn language_handler() -> Html {
-    let (state, _) = use_store::<AppState>();
-
     // Set up translations with all available language files
     // IMPORTANT: English must be first for i18nrs fallback to work correctly
     let translations = HashMap::from([
@@ -208,13 +206,13 @@ fn language_handler() -> Html {
 
 #[function_component(LanguageManager)]
 fn language_manager() -> Html {
-    let (state, _) = use_store::<AppState>();
-    let (i18n, set_language) = use_translation();
+    let (_state, _) = use_store::<AppState>();
+    let (_i18n, set_language) = use_translation();
 
     // Load appropriate language based on auth state
     {
         let set_language = set_language.clone();
-        let state = state.clone();
+        let state = _state.clone();
 
         use_effect_with(state.clone(), move |state| {
             let set_language = set_language.clone();

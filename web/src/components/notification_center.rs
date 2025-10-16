@@ -2,9 +2,9 @@
 use crate::components::context::AppState;
 use crate::requests::pod_req::RefreshProgress;
 use crate::requests::task_reqs::init_task_monitoring;
-use i18nrs::yew::use_translation;
 use gloo_timers::callback::Interval;
 use gloo_timers::callback::Timeout;
+use i18nrs::yew::use_translation;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use wasm_bindgen::closure::Closure;
@@ -35,6 +35,7 @@ pub struct TaskProgress {
 
 impl TaskProgress {
     // Create a TaskProgress object from RefreshProgress data
+    #[allow(dead_code)]
     pub fn from_refresh_progress(progress: &RefreshProgress) -> Self {
         let progress_percentage = if progress.total > 0 {
             (progress.current as f64 / progress.total as f64) * 100.0
@@ -69,21 +70,27 @@ impl TaskProgress {
 #[function_component(NotificationCenter)]
 pub fn notification_center() -> Html {
     let (i18n, _) = use_translation();
-    
+
     // Pre-capture translation strings
     let i18n_notifications = i18n.t("notification_center.notifications").to_string();
     let i18n_hide_completed = i18n.t("notification_center.hide_completed").to_string();
     let i18n_show_completed = i18n.t("notification_center.show_completed").to_string();
-    let i18n_clear_all = i18n.t("notification_center.clear_all_notifications").to_string();
+    let i18n_clear_all = i18n
+        .t("notification_center.clear_all_notifications")
+        .to_string();
     let i18n_dismiss_completed = i18n.t("notification_center.dismiss_completed").to_string();
     let i18n_all_tasks = i18n.t("notification_center.all_tasks").to_string();
     let i18n_active_tasks = i18n.t("notification_center.active_tasks").to_string();
-    let i18n_dismiss_all_completed = i18n.t("notification_center.dismiss_all_completed_tasks").to_string();
-    let i18n_dismiss_notification = i18n.t("notification_center.dismiss_notification").to_string();
+    let i18n_dismiss_all_completed = i18n
+        .t("notification_center.dismiss_all_completed_tasks")
+        .to_string();
+    let i18n_dismiss_notification = i18n
+        .t("notification_center.dismiss_notification")
+        .to_string();
     let i18n_dismiss_error = i18n.t("notification_center.dismiss_error").to_string();
     let i18n_dismiss_message = i18n.t("notification_center.dismiss_message").to_string();
     let i18n_no_notifications = i18n.t("notification_center.no_notifications").to_string();
-    
+
     // Status translations
     let i18n_queued = i18n.t("notification_center.status_queued").to_string();
     let i18n_in_progress = i18n.t("notification_center.status_in_progress").to_string();
@@ -92,16 +99,18 @@ pub fn notification_center() -> Html {
     let i18n_finalizing = i18n.t("notification_center.status_finalizing").to_string();
     let i18n_completed = i18n.t("notification_center.status_completed").to_string();
     let i18n_failed = i18n.t("notification_center.status_failed").to_string();
-    
+
     // Task type translations
     let i18n_download = i18n.t("notification_center.task_download").to_string();
     let i18n_feed_refresh = i18n.t("notification_center.task_feed_refresh").to_string();
     let i18n_playlist = i18n.t("notification_center.task_playlist").to_string();
-    let i18n_youtube_download = i18n.t("notification_center.task_youtube_download").to_string();
+    let i18n_youtube_download = i18n
+        .t("notification_center.task_youtube_download")
+        .to_string();
     let i18n_episode = i18n.t("notification_center.item_episode").to_string();
     let i18n_youtube_video = i18n.t("notification_center.item_youtube_video").to_string();
     let i18n_item = i18n.t("notification_center.item_generic").to_string();
-    
+
     let (state, dispatch) = use_store::<AppState>();
     let dropdown_open = use_state(|| false);
     let notification_count = use_state(|| 0);

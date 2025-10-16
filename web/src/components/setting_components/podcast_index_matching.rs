@@ -1,19 +1,18 @@
 use crate::components::context::AppState;
 use crate::components::gen_components::FallbackImage;
-use crate::components::gen_funcs::format_error_message;
-use crate::requests::search_pods::{call_get_podcast_info, PodcastSearchResult, UnifiedPodcast};
+use crate::requests::search_pods::{call_get_podcast_info, UnifiedPodcast};
 use crate::requests::setting_reqs::{
     call_get_ignored_podcasts, call_get_unmatched_podcasts, call_ignore_podcast_index_id,
     call_update_podcast_index_id, UnmatchedPodcast,
 };
 use gloo_events::EventListener;
+use i18nrs::yew::use_translation;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlElement;
-use yew::prelude::*;
 use web_sys::{InputEvent, KeyboardEvent, MouseEvent};
+use yew::prelude::*;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
 
 #[function_component(PodcastIndexMatching)]
 pub fn podcast_index_matching() -> Html {
@@ -24,17 +23,9 @@ pub fn podcast_index_matching() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
 
     // Capture i18n strings before they get moved
-    let i18n_podcast_index_matching = i18n.t("podcast_index_matching.podcast_index_matching").to_string();
-    let i18n_unmatched_podcasts = i18n.t("podcast_index_matching.unmatched_podcasts").to_string();
-    let i18n_ignored_podcasts = i18n.t("podcast_index_matching.ignored_podcasts").to_string();
-    let i18n_show_ignored = i18n.t("podcast_index_matching.show_ignored").to_string();
-    let i18n_show_unmatched = i18n.t("podcast_index_matching.show_unmatched").to_string();
-    let i18n_no_unmatched_podcasts = i18n.t("podcast_index_matching.no_unmatched_podcasts").to_string();
-    let i18n_no_ignored_podcasts = i18n.t("podcast_index_matching.no_ignored_podcasts").to_string();
-    let i18n_search_results = i18n.t("podcast_index_matching.search_results").to_string();
-    let i18n_match = i18n.t("podcast_index_matching.match").to_string();
-    let i18n_ignore = i18n.t("podcast_index_matching.ignore").to_string();
-    let i18n_close = i18n.t("common.cancel").to_string();
+    let i18n_podcast_index_matching = i18n
+        .t("podcast_index_matching.podcast_index_matching")
+        .to_string();
 
     let unmatched_podcasts: UseStateHandle<Vec<UnmatchedPodcast>> = use_state(|| Vec::new());
     let ignored_podcasts: UseStateHandle<Vec<UnmatchedPodcast>> = use_state(|| Vec::new());
@@ -386,7 +377,7 @@ pub fn podcast_index_matching() -> Html {
         let manual_search_term = manual_search_term.clone();
         let search_podcast_index = search_podcast_index.clone();
         let search_results = search_results.clone();
-        
+
         Callback::from(move |_: MouseEvent| {
             let search_term = (*manual_search_term).trim();
             if !search_term.is_empty() {
@@ -400,10 +391,11 @@ pub fn podcast_index_matching() -> Html {
         let manual_podcast_id = manual_podcast_id.clone();
         let selected_podcast_id = selected_podcast_id.clone();
         let handle_match_selection = handle_match_selection.clone();
-        
+
         Callback::from(move |_: MouseEvent| {
             let id_str = (*manual_podcast_id).trim();
-            if let (Ok(index_id), Some(podcast_id)) = (id_str.parse::<i32>(), *selected_podcast_id) {
+            if let (Ok(index_id), Some(podcast_id)) = (id_str.parse::<i32>(), *selected_podcast_id)
+            {
                 handle_match_selection.emit((podcast_id, index_id));
             }
         })
@@ -524,7 +516,7 @@ pub fn podcast_index_matching() -> Html {
                                         <div class="mt-4 w-full max-w-full rounded-lg shadow-lg modal-container border relative z-50 overflow-hidden">
                                             <div class="p-4 border-b">
                                                 <h4 class="text_color_main font-medium text-sm mb-3">{"Manual Search Options"}</h4>
-                                                
+
                                                 // Manual search by term
                                                 <div class="mb-3">
                                                     <label class="text_color_accent text-xs mb-1 block">{"Search by custom terms:"}</label>

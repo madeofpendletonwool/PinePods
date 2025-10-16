@@ -3862,6 +3862,7 @@ pub async fn get_server_default_language() -> Result<Json<serde_json::Value>, Ap
 pub struct SetGlobalPodcastCoverPreference {
     pub user_id: i32,
     pub use_podcast_covers: bool,
+    pub podcast_id: Option<i32>,
 }
 
 // Set global podcast cover preference - matches Python api_set_global_podcast_cover_preference function
@@ -3881,9 +3882,14 @@ pub async fn set_global_podcast_cover_preference(
         return Err(AppError::forbidden("You can only modify your own settings."));
     }
 
-    state.db_pool.set_global_podcast_cover_preference(request.user_id, request.use_podcast_covers).await?;
-
-    Ok(Json(serde_json::json!({ "detail": "Global podcast cover preference updated." })))
+    // If podcast_id is provided, set per-podcast preference; otherwise set global preference
+    if let Some(podcast_id) = request.podcast_id {
+        state.db_pool.set_podcast_cover_preference(request.user_id, podcast_id, request.use_podcast_covers).await?;
+        Ok(Json(serde_json::json!({ "detail": "Podcast cover preference updated." })))
+    } else {
+        state.db_pool.set_global_podcast_cover_preference(request.user_id, request.use_podcast_covers).await?;
+        Ok(Json(serde_json::json!({ "detail": "Global podcast cover preference updated." })))
+    }
 }
 
 // Request struct for set_podcast_cover_preference - matches podcast playback speed pattern
@@ -3943,5 +3949,48 @@ pub async fn clear_podcast_cover_preference(
     state.db_pool.clear_podcast_cover_preference(request.user_id, request.podcast_id).await?;
 
     Ok(Json(serde_json::json!({ "detail": "Podcast cover preference cleared." })))
+}
+
+// Get global podcast cover preference
+pub async fn get_global_podcast_cover_preference(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+    
+    let user_id: i32 = params
+        .get("user_id")
+        .ok_or_else(|| AppError::bad_request("Missing user_id parameter"))?
+        .parse()
+        .map_err(|_| AppError::bad_request("Invalid user_id format"))?;
+        
+    // Check authorization - users can only access their own settings
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if user_id_from_api_key != user_id {
+        return Err(AppError::forbidden("You can only access your own settings."));
+    }
+
+    // If podcast_id is provided, get per-podcast preference; otherwise get global preference
+    let use_podcast_covers = if let Some(podcast_id_str) = params.get("podcast_id") {
+        let podcast_id: i32 = podcast_id_str
+            .parse()
+            .map_err(|_| AppError::bad_request("Invalid podcast_id format"))?;
+            
+        let per_podcast_preference = state.db_pool.get_podcast_cover_preference(user_id, podcast_id).await?;
+        
+        // If no per-podcast preference is set, fall back to global preference
+        match per_podcast_preference {
+            Some(preference) => preference,
+            None => state.db_pool.get_global_podcast_cover_preference(user_id).await?,
+        }
+    } else {
+        state.db_pool.get_global_podcast_cover_preference(user_id).await?
+    };
+
+    Ok(Json(serde_json::json!({
+        "use_podcast_covers": use_podcast_covers
+    })))
 }
 

@@ -31,6 +31,7 @@ Major Version:
 - [] Fixed issue with auto complete threshold. Will now mark historical episodes complete when enabled
 - [] Individual Episode download on /episode page
 - [] Option to use Podcast covers if desired
+- [] Fix issue where duplicate episodes where created if details of the episode were updated
 
 - [] Checking on rss feeds returning downloaded urls correctly
 - yt-dlp get working again

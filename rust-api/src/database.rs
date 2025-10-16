@@ -4905,31 +4905,72 @@ impl DatabasePool {
         let mut first_episode_id = None;
         
         for episode in episodes {
-            // Check if episode already exists
-            let exists = match self {
+            // Check if episode already exists by EITHER title OR url
+            // This handles cases where feed maintainers edit episodes
+            let existing_episode_id = match self {
                 DatabasePool::Postgres(pool) => {
-                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodetitle = $2"#)
+                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND (episodetitle = $2 OR episodeurl = $3)"#)
                         .bind(podcast_id)
                         .bind(&episode.title)
+                        .bind(&episode.url)
                         .fetch_optional(pool)
                         .await?;
-                    row.is_some()
+                    row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
                 }
                 DatabasePool::MySQL(pool) => {
-                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeTitle = ?")
+                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND (EpisodeTitle = ? OR EpisodeURL = ?)")
                         .bind(podcast_id)
                         .bind(&episode.title)
+                        .bind(&episode.url)
                         .fetch_optional(pool)
                         .await?;
-                    row.is_some()
+                    row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
                 }
             };
-            
-            if exists {
+
+            if let Some(episode_id) = existing_episode_id {
+                // Episode already exists (by title or URL) - UPDATE it with new metadata
+                match self {
+                    DatabasePool::Postgres(pool) => {
+                        sqlx::query(
+                            r#"UPDATE "Episodes"
+                               SET episodetitle = $1, episodedescription = $2, episodeurl = $3,
+                                   episodeartwork = $4, episodepubdate = $5, episodeduration = $6
+                               WHERE episodeid = $7"#
+                        )
+                        .bind(&episode.title)
+                        .bind(&episode.description)
+                        .bind(&episode.url)
+                        .bind(&episode.artwork_url)
+                        .bind(&episode.pub_date)
+                        .bind(episode.duration)
+                        .bind(episode_id)
+                        .execute(pool)
+                        .await?;
+                    }
+                    DatabasePool::MySQL(pool) => {
+                        sqlx::query(
+                            "UPDATE Episodes
+                             SET EpisodeTitle = ?, EpisodeDescription = ?, EpisodeURL = ?,
+                                 EpisodeArtwork = ?, EpisodePubDate = ?, EpisodeDuration = ?
+                             WHERE EpisodeID = ?"
+                        )
+                        .bind(&episode.title)
+                        .bind(&episode.description)
+                        .bind(&episode.url)
+                        .bind(&episode.artwork_url)
+                        .bind(&episode.pub_date)
+                        .bind(episode.duration)
+                        .bind(episode_id)
+                        .execute(pool)
+                        .await?;
+                    }
+                }
+                // Skip to next episode - don't insert or send notification for updates
                 continue;
             }
-            
-            // Insert new episode
+
+            // Insert new episode (neither title nor URL exists)
             let episode_id = match self {
                 DatabasePool::Postgres(pool) => {
                     let row = sqlx::query(
@@ -5009,30 +5050,71 @@ impl DatabasePool {
         let mut new_episodes = Vec::new();
         
         for mut episode in episodes {
-            // Check if episode already exists
-            let exists = match self {
+            // Check if episode already exists by EITHER title OR url
+            // This handles cases where feed maintainers edit episodes
+            let existing_episode_id = match self {
                 DatabasePool::Postgres(pool) => {
-                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodetitle = $2"#)
+                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND (episodetitle = $2 OR episodeurl = $3)"#)
                         .bind(podcast_id)
                         .bind(&episode.title)
+                        .bind(&episode.url)
                         .fetch_optional(pool)
                         .await?;
-                    row.is_some()
+                    row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
                 }
                 DatabasePool::MySQL(pool) => {
-                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeTitle = ?")
+                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND (EpisodeTitle = ? OR EpisodeURL = ?)")
                         .bind(podcast_id)
                         .bind(&episode.title)
+                        .bind(&episode.url)
                         .fetch_optional(pool)
                         .await?;
-                    row.is_some()
+                    row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
                 }
             };
-            
-            if exists {
-                continue; // Episode already exists, skip it
+
+            if let Some(episode_id) = existing_episode_id {
+                // Episode already exists (by title or URL) - UPDATE it with new metadata
+                match self {
+                    DatabasePool::Postgres(pool) => {
+                        sqlx::query(
+                            r#"UPDATE "Episodes"
+                               SET episodetitle = $1, episodedescription = $2, episodeurl = $3,
+                                   episodeartwork = $4, episodepubdate = $5, episodeduration = $6
+                               WHERE episodeid = $7"#
+                        )
+                        .bind(&episode.title)
+                        .bind(&episode.description)
+                        .bind(&episode.url)
+                        .bind(&episode.artwork_url)
+                        .bind(&episode.pub_date)
+                        .bind(episode.duration)
+                        .bind(episode_id)
+                        .execute(pool)
+                        .await?;
+                    }
+                    DatabasePool::MySQL(pool) => {
+                        sqlx::query(
+                            "UPDATE Episodes
+                             SET EpisodeTitle = ?, EpisodeDescription = ?, EpisodeURL = ?,
+                                 EpisodeArtwork = ?, EpisodePubDate = ?, EpisodeDuration = ?
+                             WHERE EpisodeID = ?"
+                        )
+                        .bind(&episode.title)
+                        .bind(&episode.description)
+                        .bind(&episode.url)
+                        .bind(&episode.artwork_url)
+                        .bind(&episode.pub_date)
+                        .bind(episode.duration)
+                        .bind(episode_id)
+                        .execute(pool)
+                        .await?;
+                    }
+                }
+                // Skip to next episode - don't add to new_episodes list for updates
+                continue;
             }
-            
+
             // This is a NEW episode - estimate duration if missing
             if episode.duration == 0 {
                 let audio_url = &episode.url;
@@ -18709,6 +18791,48 @@ impl DatabasePool {
         Ok(())
     }
 
+    // Get global podcast cover preference - for settings page
+    pub async fn get_global_podcast_cover_preference(&self, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query_scalar::<_, Option<bool>>(r#"SELECT usepodcastcovers FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                Ok(result.unwrap_or(false))
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query_scalar::<_, Option<i32>>("SELECT UsePodcastCovers FROM Users WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                Ok(result.unwrap_or(0) != 0)
+            }
+        }
+    }
+
+    // Get per-podcast cover preference - for episode layout page
+    pub async fn get_podcast_cover_preference(&self, user_id: i32, podcast_id: i32) -> AppResult<Option<bool>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query_scalar::<_, Option<bool>>(r#"SELECT usepodcastcovers FROM "Podcasts" WHERE podcastid = $1 AND userid = $2 AND usepodcastcoverscustomized = TRUE"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(result.flatten())
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query_scalar::<_, Option<i32>>("SELECT UsePodcastCovers FROM Podcasts WHERE PodcastID = ? AND UserID = ? AND UsePodcastCoversCustomized = 1")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(result.flatten().map(|val| val != 0))
+            }
+        }
+    }
+
     // Get all admin user IDs - matches Python add_news_feed_if_not_added logic
     pub async fn get_all_admin_user_ids(&self) -> AppResult<Vec<i32>> {
         match self {
@@ -23744,10 +23868,11 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 // Get user timezone for proper date calculations
-                let user_timezone: String = sqlx::query_scalar(
+                let raw_user_timezone: String = sqlx::query_scalar(
                     r#"SELECT timezone FROM "Users" WHERE userid = $1"#
                 ).bind(user_id).fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
-                let user_timezone = if user_timezone.is_empty() { "UTC".to_string() } else { user_timezone };
+                let raw_timezone = if raw_user_timezone.is_empty() { "UTC".to_string() } else { raw_user_timezone };
+                let user_timezone = Self::map_timezone_for_postgres(&raw_timezone);
                 
                 // Get playlist configuration
                 let playlist_row = sqlx::query(
@@ -23860,9 +23985,10 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 // Similar implementation for MySQL with adjusted syntax
-                let user_timezone: String = sqlx::query_scalar("SELECT TimeZone FROM Users WHERE UserID = ?")
+                let raw_user_timezone: String = sqlx::query_scalar("SELECT TimeZone FROM Users WHERE UserID = ?")
                     .bind(user_id).fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
-                let user_timezone = if user_timezone.is_empty() { "UTC".to_string() } else { user_timezone };
+                let raw_timezone = if raw_user_timezone.is_empty() { "UTC".to_string() } else { raw_user_timezone };
+                let user_timezone = Self::map_timezone_for_postgres(&raw_timezone);
                 
                 let playlist_row = sqlx::query(
                     r#"SELECT UserID, Name, MinDuration, MaxDuration, SortOrder, 

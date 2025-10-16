@@ -1,6 +1,6 @@
 use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
-use crate::requests::setting_reqs::{call_get_startpage, call_set_startpage, call_set_global_podcast_cover_preference};
+use crate::requests::setting_reqs::{call_get_startpage, call_set_startpage, call_set_global_podcast_cover_preference, call_get_podcast_cover_preference};
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{HtmlSelectElement, HtmlInputElement};
 use yew::prelude::*;
@@ -62,15 +62,27 @@ pub fn startpage() -> Html {
             let use_podcast_covers = use_podcast_covers.clone();
             let covers_loading = covers_loading.clone();
 
-            if let (Some(_api_key), Some(_user_id), Some(_server_name)) = (
+            if let (Some(api_key), Some(user_id), Some(server_name)) = (
                 state.auth_details.as_ref().and_then(|d| d.api_key.clone()),
                 state.user_details.as_ref().map(|d| d.UserID),
                 state.auth_details.as_ref().map(|d| d.server_name.clone()),
             ) {
-                // TODO: Add API call to get current podcast cover preference
-                // For now, default to false
-                use_podcast_covers.set(false);
-                covers_loading.set(false);
+                let use_podcast_covers = use_podcast_covers.clone();
+                let covers_loading = covers_loading.clone();
+                
+                spawn_local(async move {
+                    match call_get_podcast_cover_preference(&server_name, &api_key, user_id, None).await {
+                        Ok(current_preference) => {
+                            use_podcast_covers.set(current_preference);
+                            covers_loading.set(false);
+                        }
+                        Err(_e) => {
+                            // If API call fails, default to false
+                            use_podcast_covers.set(false);
+                            covers_loading.set(false);
+                        }
+                    }
+                });
             }
             || ()
         });
@@ -168,7 +180,7 @@ pub fn startpage() -> Html {
                 state.auth_details.as_ref().map(|d| d.server_name.clone()),
             ) {
                 spawn_local(async move {
-                    match call_set_global_podcast_cover_preference(&server_name, &api_key, user_id, covers_preference)
+                    match call_set_global_podcast_cover_preference(&server_name, &api_key, user_id, covers_preference, None)
                         .await
                     {
                         Ok(_) => {

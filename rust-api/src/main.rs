@@ -317,6 +317,7 @@ fn create_data_routes() -> Router<AppState> {
         .route("/user/notification_settings", put(handlers::settings::update_notification_settings))
         .route("/user/set_playback_speed", post(handlers::settings::set_playback_speed_user))
         .route("/user/set_global_podcast_cover_preference", post(handlers::settings::set_global_podcast_cover_preference))
+        .route("/user/get_podcast_cover_preference", get(handlers::settings::get_global_podcast_cover_preference))
         .route("/user/test_notification", post(handlers::settings::test_notification))
         .route("/add_oidc_provider", post(handlers::settings::add_oidc_provider))
         .route("/update_oidc_provider/{provider_id}", put(handlers::settings::update_oidc_provider))

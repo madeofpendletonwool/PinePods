@@ -50,6 +50,7 @@ pub struct AccordionItemProps {
 
 // Enum to represent the position of the accordion item
 #[derive(PartialEq, Clone)]
+#[allow(dead_code)]
 pub enum AccordionItemPosition {
     First,
     Middle,
@@ -123,7 +124,7 @@ pub fn settings() -> Html {
 
     let is_admin = use_state(|| false);
     let audio_admin = _post_dispatch.clone();
-    
+
     // Pre-capture translation string for async block
     let admin_check_error_msg = i18n.t("settings.admin_check_error");
 
@@ -148,8 +149,7 @@ pub fn settings() -> Html {
                                 audio_admin.reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "{}: {:?}",
-                                        admin_check_error_msg,
-                                        formatted_error
+                                        admin_check_error_msg, formatted_error
                                     ))
                                 });
                                 // console::log_1(&format!("Failed to check admin status: {:?}", e).into());

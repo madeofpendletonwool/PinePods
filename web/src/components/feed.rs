@@ -13,6 +13,7 @@ use crate::requests::pod_req;
 use crate::requests::pod_req::Episode as EpisodeData;
 use crate::requests::pod_req::RecentEps;
 use gloo::events::EventListener;
+use i18nrs::yew::use_translation;
 use wasm_bindgen::JsCast;
 use web_sys::window;
 use web_sys::{Element, HtmlElement};
@@ -20,27 +21,30 @@ use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
 
 use wasm_bindgen::prelude::*;
 
 // Helper function to calculate responsive item height - MUST be synchronous and accurate
+#[allow(dead_code)]
 fn calculate_item_height(window_width: f64) -> f64 {
     // CRITICAL: Must match the exact height that episodes render at, including margin
     // Episodes render at container_height + mb-4 margin (16px)
     let height = if window_width <= 530.0 {
         122.0 + 16.0 // Mobile: episode container 122px + mb-4 margin
     } else if window_width <= 768.0 {
-        150.0 + 16.0 // Tablet: episode container 150px + mb-4 margin  
+        150.0 + 16.0 // Tablet: episode container 150px + mb-4 margin
     } else {
         221.0 + 16.0 // Desktop: episode container 221px + mb-4 margin
     };
-    
-    web_sys::console::log_1(&format!(
-        "FEED HEIGHT CALC: width={}, calculated_height={}", 
-        window_width, height
-    ).into());
-    
+
+    web_sys::console::log_1(
+        &format!(
+            "FEED HEIGHT CALC: width={}, calculated_height={}",
+            window_width, height
+        )
+        .into(),
+    );
+
     height
 }
 
@@ -53,10 +57,11 @@ pub fn feed() -> Html {
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
-    
+
     // Capture i18n strings before they get moved
     let i18n_no_recent_episodes_found = i18n.t("feed.no_recent_episodes_found").to_string();
-    let i18n_no_recent_episodes_description = i18n.t("feed.no_recent_episodes_description").to_string();
+    let i18n_no_recent_episodes_description =
+        i18n.t("feed.no_recent_episodes_description").to_string();
 
     // Fetch episodes on component mount
     let loading_ep = loading.clone();
@@ -243,7 +248,13 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
                 let width = window_clone.inner_width().unwrap().as_f64().unwrap();
                 let new_item_height = calculate_item_height(width);
 
-                web_sys::console::log_1(&format!("Virtual list: width={}, item_height={}", width, new_item_height).into());
+                web_sys::console::log_1(
+                    &format!(
+                        "Virtual list: width={}, item_height={}",
+                        width, new_item_height
+                    )
+                    .into(),
+                );
                 item_height.set(new_item_height);
                 force_update.set(*force_update + 1);
             });
@@ -266,37 +277,42 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
             if let Some(container) = container_ref.cast::<HtmlElement>() {
                 let scroll_pos_clone = scroll_pos.clone();
                 let is_updating = std::rc::Rc::new(std::cell::RefCell::new(false));
-                
+
                 let scroll_listener = EventListener::new(&container, "scroll", move |event| {
                     // Prevent re-entrant calls that cause feedback loops
                     if *is_updating.borrow() {
                         return;
                     }
-                    
+
                     if let Some(target) = event.target() {
                         if let Ok(element) = target.dyn_into::<Element>() {
                             let new_scroll_top = element.scroll_top() as f64;
                             let old_scroll_top = *scroll_pos_clone;
-                            
+
                             // Always update scroll position for smoothest scrolling
                             if new_scroll_top != old_scroll_top {
                                 *is_updating.borrow_mut() = true;
-                                
+
                                 // Use requestAnimationFrame to batch updates and prevent feedback
                                 let scroll_pos_clone2 = scroll_pos_clone.clone();
                                 let is_updating_clone = is_updating.clone();
-                                let callback = wasm_bindgen::closure::Closure::wrap(Box::new(move || {
-                                    scroll_pos_clone2.set(new_scroll_top);
-                                    *is_updating_clone.borrow_mut() = false;
-                                }) as Box<dyn FnMut()>);
-                                
-                                web_sys::window().unwrap().request_animation_frame(callback.as_ref().unchecked_ref()).unwrap();
+                                let callback =
+                                    wasm_bindgen::closure::Closure::wrap(Box::new(move || {
+                                        scroll_pos_clone2.set(new_scroll_top);
+                                        *is_updating_clone.borrow_mut() = false;
+                                    })
+                                        as Box<dyn FnMut()>);
+
+                                web_sys::window()
+                                    .unwrap()
+                                    .request_animation_frame(callback.as_ref().unchecked_ref())
+                                    .unwrap();
                                 callback.forget();
                             }
                         }
                     }
                 });
-                
+
                 Box::new(move || {
                     drop(scroll_listener);
                 }) as Box<dyn FnOnce()>
@@ -308,15 +324,15 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
 
     let start_index = (*scroll_pos / *item_height).floor() as usize;
     let visible_count = ((*container_height / *item_height).ceil() as usize) + 1;
-    
+
     // Add buffer episodes above and below for smooth scrolling
     let buffer_size = 2; // Render 2 extra episodes above and below
     let buffered_start = start_index.saturating_sub(buffer_size);
     let buffered_end = (start_index + visible_count + buffer_size).min(props.episodes.len());
-    
+
     // Debug logging to see what's happening
     web_sys::console::log_1(&format!(
-        "Virtual list debug: scroll_pos={}, item_height={}, container_height={}, start_index={}, visible_count={}, buffered_start={}, buffered_end={}, total_episodes={}", 
+        "Virtual list debug: scroll_pos={}, item_height={}, container_height={}, start_index={}, visible_count={}, buffered_start={}, buffered_end={}, total_episodes={}",
         *scroll_pos, *item_height, *container_height, start_index, visible_count, buffered_start, buffered_end, props.episodes.len()
     ).into());
 
@@ -344,12 +360,12 @@ pub fn virtual_list(props: &VirtualListProps) -> Html {
         >
             // Top spacer to push content down without using transforms
             <div style={format!("height: {}px; flex-shrink: 0;", offset_y)}></div>
-            
-            // Visible episodes 
+
+            // Visible episodes
             <div>
                 { visible_episodes }
             </div>
-            
+
             // Bottom spacer to maintain total height
             <div style={format!("height: {}px; flex-shrink: 0;", total_height - offset_y - (buffered_end - buffered_start) as f64 * *item_height)}></div>
         </div>

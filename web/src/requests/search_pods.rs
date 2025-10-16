@@ -1,6 +1,6 @@
 use crate::components::podcast_layout::ClickedFeedURL;
 use anyhow::Error;
-use chrono::{DateTime, Offset};
+use chrono::DateTime;
 use gloo_net::http::Request;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
@@ -259,7 +259,12 @@ pub async fn call_get_podcast_info(
     search_index: &str,
 ) -> Result<PodcastSearchResult, anyhow::Error> {
     let url = if let Some(api_url) = search_api_url {
-        format!("{}?query={}&index={}", api_url, urlencoding::encode(podcast_value), search_index)
+        format!(
+            "{}?query={}&index={}",
+            api_url,
+            urlencoding::encode(podcast_value),
+            search_index
+        )
     } else {
         return Err(anyhow::Error::msg("API URL is not provided"));
     };
@@ -334,6 +339,7 @@ pub struct PeopleFeedResult {
     pub items: Vec<PeopleEpisode>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_person_info(
     person_name: &String,
     search_api_url: &Option<String>,
@@ -342,7 +348,9 @@ pub async fn call_get_person_info(
     let url = if let Some(api_url) = search_api_url {
         format!(
             "{}?query={}&index={}&search_type=person",
-            api_url, urlencoding::encode(person_name), search_index
+            api_url,
+            urlencoding::encode(person_name),
+            search_index
         )
     } else {
         return Err(anyhow::Error::msg("API URL is not provided"));
@@ -383,6 +391,7 @@ pub struct PodPeopleResponse {
 }
 
 // New function to call podpeople API
+#[allow(dead_code)]
 pub async fn call_get_podpeople_podcasts(
     hostname: &String,
     api_url: &Option<String>,
@@ -447,6 +456,7 @@ pub struct PodcastEpisodesResponse {
     pub episodes: Vec<Episode>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcast_episodes(
     server_name: &str,
     api_key: &Option<String>,
@@ -487,6 +497,7 @@ pub async fn call_get_podcast_episodes(
     Ok(PodcastFeedResult { episodes })
 }
 
+#[allow(dead_code)]
 pub async fn call_get_youtube_episodes(
     server_name: &str,
     api_key: &Option<String>,
@@ -531,6 +542,7 @@ pub async fn call_get_youtube_episodes(
     Ok(PodcastFeedResult { episodes })
 }
 
+#[allow(dead_code)]
 pub async fn call_parse_podcast_url(
     server_name: String,
     api_key: &Option<String>,
@@ -551,33 +563,36 @@ pub async fn call_parse_podcast_url(
         .await?;
     if request.ok() {
         let response_text = request.text().await?;
-        
+
         // Parse JSON response from backend (feed-rs parsed data)
         let json_response: serde_json::Value = serde_json::from_str(&response_text)?;
-        let episodes_json = json_response["episodes"].as_array()
+        let episodes_json = json_response["episodes"]
+            .as_array()
             .ok_or_else(|| anyhow::Error::msg("Invalid response format: missing episodes array"))?;
-        
+
         // Convert JSON episodes to Episode structs
         let mut episodes: Vec<Episode> = episodes_json
             .iter()
-            .map(|episode_json| {
-                Episode {
-                    title: episode_json["title"].as_str().map(|s| s.to_string()),
-                    description: episode_json["description"].as_str().map(|s| s.to_string()),
-                    content: episode_json["content"].as_str().map(|s| s.to_string()),
-                    enclosure_url: episode_json["enclosure_url"].as_str().map(|s| s.to_string()),
-                    enclosure_length: episode_json["enclosure_length"].as_str().map(|s| s.to_string()),
-                    pub_date: episode_json["pub_date"].as_str().map(|s| s.to_string()),
-                    artwork: episode_json["artwork"].as_str().map(|s| s.to_string()),
-                    duration: episode_json["duration"].as_i64().map(|d| d.to_string()),
-                    links: vec![],
-                    authors: vec![],
-                    guid: episode_json["guid"].as_str().map(|s| s.to_string()),
-                    episode_id: None,
-                    is_youtube: Some(false),
-                    completed: None,
-                    listen_duration: None,
-                }
+            .map(|episode_json| Episode {
+                title: episode_json["title"].as_str().map(|s| s.to_string()),
+                description: episode_json["description"].as_str().map(|s| s.to_string()),
+                content: episode_json["content"].as_str().map(|s| s.to_string()),
+                enclosure_url: episode_json["enclosure_url"]
+                    .as_str()
+                    .map(|s| s.to_string()),
+                enclosure_length: episode_json["enclosure_length"]
+                    .as_str()
+                    .map(|s| s.to_string()),
+                pub_date: episode_json["pub_date"].as_str().map(|s| s.to_string()),
+                artwork: episode_json["artwork"].as_str().map(|s| s.to_string()),
+                duration: episode_json["duration"].as_i64().map(|d| d.to_string()),
+                links: vec![],
+                authors: vec![],
+                guid: episode_json["guid"].as_str().map(|s| s.to_string()),
+                episode_id: None,
+                is_youtube: Some(false),
+                completed: None,
+                listen_duration: None,
             })
             .collect();
 
@@ -623,6 +638,7 @@ pub struct PodcastInfo {
     pub episode_count: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcast_details_dynamic(
     server_name: &str,
     api_key: &str,
@@ -712,6 +728,7 @@ pub struct SearchEpisode {
     pub is_youtube: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_search_database(
     server_name: &String,
     api_key: &Option<String>,
@@ -794,7 +811,11 @@ pub async fn call_youtube_search(
     search_api_url: &Option<String>,
 ) -> Result<YouTubeSearchResponse, Error> {
     let url = if let Some(api_url) = search_api_url {
-        format!("{}?query={}&index=youtube", api_url, urlencoding::encode(query))
+        format!(
+            "{}?query={}&index=youtube",
+            api_url,
+            urlencoding::encode(query)
+        )
     } else {
         return Err(anyhow::Error::msg("Search API URL is not provided"));
     };
@@ -858,6 +879,7 @@ pub struct YouTubeVideoDetails {
     pub duration: Option<String>,
 }
 
+#[allow(dead_code)]
 pub async fn call_youtube_channel_details(
     channel_id: &str,
     search_api_url: &Option<String>,

@@ -74,6 +74,7 @@ pub struct RecentEps {
     pub episodes: Option<Vec<Episode>>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_recent_eps(
     server_name: &String,
     api_key: &Option<String>,
@@ -143,6 +144,7 @@ pub struct PodcastStatusResponse {
     pub first_episode_id: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_add_podcast(
     server_name: &str,
     api_key: &Option<String>,
@@ -209,6 +211,7 @@ pub struct UpdatePodcastInfoResponse {
     pub message: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_update_podcast_info(
     server_name: &str,
     api_key: &Option<String>,
@@ -275,6 +278,7 @@ pub struct RemovePodcastResponse {
     pub success: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_remove_podcasts(
     server_name: &String,
     api_key: &Option<String>,
@@ -321,6 +325,7 @@ pub struct RemovePodcastValuesName {
     pub podcast_url: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_remove_podcasts_name(
     server_name: &String,
     api_key: &Option<String>,
@@ -500,6 +505,7 @@ impl From<PodcastExtra> for Podcast {
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcasts_extra(
     server_name: &String,
     api_key: &Option<String>,
@@ -577,10 +583,12 @@ pub async fn call_get_time_info(
 }
 
 #[derive(Default, Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct CheckPodcastResponse {
     pub exists: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_check_podcast(
     server: &str,
     api_key: &str,
@@ -819,10 +827,12 @@ pub async fn call_get_queued_episodes(
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct ReorderPayload {
     episode_ids: Vec<i32>,
 }
 
+#[allow(dead_code)]
 pub async fn call_reorder_queue(
     server_name: &str,
     api_key: &Option<String>,
@@ -892,6 +902,7 @@ pub struct SavedDataResponse {
     pub saved_episodes: Vec<SavedEpisode>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_saved_episodes(
     server_name: &str,
     api_key: &Option<String>,
@@ -1051,6 +1062,7 @@ pub struct HistoryDataResponse {
     pub data: Vec<HistoryEpisode>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_user_history(
     server_name: &str,
     api_key: &Option<String>,
@@ -1248,6 +1260,7 @@ pub struct DownloadAllPodcastRequest {
     pub user_id: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_download_all_podcast(
     server_name: &String,
     api_key: &Option<String>,
@@ -1386,6 +1399,7 @@ pub struct EpisodeMetadataResponse {
     pub episode: EpisodeInfo,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_episode_metadata(
     server_name: &str,
     api_key: Option<String>,
@@ -1614,6 +1628,7 @@ pub struct FetchPodcasting2PodDataRequest {
     pub user_id: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_fetch_podcasting_2_pod_data(
     server_name: &str,
     api_key: &Option<String>,
@@ -1751,6 +1766,7 @@ pub struct PodcastIdResponse {
     pub podcast_id: Option<i32>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcast_id(
     server_name: &str,
     api_key: &Option<String>,
@@ -1870,6 +1886,7 @@ pub async fn call_get_podcast_id_from_ep(
     Ok(response_data.podcast_id)
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcast_id_from_ep_name(
     server_name: &str,
     api_key: &Option<String>,
@@ -1927,10 +1944,12 @@ pub struct PodcastDetails {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct PodcastDetailsResponse {
     details: PodcastDetails,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcast_details(
     server_name: &str,
     api_key: &str,
@@ -2059,12 +2078,14 @@ pub struct BulkEpisodeActionRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct BulkEpisodeActionResponse {
     pub message: String,
     pub processed_count: i32,
     pub failed_count: Option<i32>,
 }
 
+#[allow(dead_code)]
 pub async fn call_bulk_mark_episodes_completed(
     server_name: &String,
     api_key: &Option<String>,
@@ -2102,6 +2123,7 @@ pub async fn call_bulk_mark_episodes_completed(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_bulk_save_episodes(
     server_name: &String,
     api_key: &Option<String>,
@@ -2139,6 +2161,7 @@ pub async fn call_bulk_save_episodes(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_bulk_queue_episodes(
     server_name: &String,
     api_key: &Option<String>,
@@ -2176,6 +2199,7 @@ pub async fn call_bulk_queue_episodes(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_bulk_download_episodes(
     server_name: &String,
     api_key: &Option<String>,
@@ -2250,6 +2274,7 @@ pub async fn call_bulk_delete_downloaded_episodes(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_download_episode_file(
     server_name: &String,
     api_key: &Option<String>,
@@ -2289,10 +2314,12 @@ pub struct AutoDownloadRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct AutoDownloadResponse {
     detail: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_enable_auto_download(
     server_name: &String,
     api_key: &String,
@@ -2338,6 +2365,7 @@ pub struct AutoDownloadStatusResponse {
     pub auto_download: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_auto_download_status(
     server_name: &str,
     user_id: i32,
@@ -2387,10 +2415,12 @@ pub struct PlaybackSpeedRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct PlaybackSpeedResponse {
     detail: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_set_playback_speed(
     server_name: &String,
     api_key: &Option<String>,
@@ -2432,10 +2462,12 @@ pub struct ClearPlaybackSpeedRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct ClearPlaybackSpeedResponse {
     message: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_clear_playback_speed(
     server_name: &String,
     api_key: &Option<String>,
@@ -2477,10 +2509,12 @@ pub struct GetPlaybackSpeedRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct PlaybackSpeedGetResponse {
     playback_speed: f64,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcast_playback_speed(
     server_name: &String,
     api_key: &Option<String>,
@@ -2533,10 +2567,12 @@ pub struct SkipTimesRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct SkipTimesResponse {
     detail: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_adjust_skip_times(
     server_name: &String,
     api_key: &Option<String>,
@@ -2586,6 +2622,7 @@ pub struct AutoSkipTimesResponse {
     pub end_skip: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_auto_skip_times(
     server_name: &str,
     api_key: &Option<String>,
@@ -3007,10 +3044,12 @@ pub async fn connect_to_episode_websocket(
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct ShareLinkResponse {
     url_key: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_create_share_link(
     server_name: &String,
     api_key: &String,
@@ -3062,6 +3101,7 @@ pub struct SharedEpisodeResponse {
     pub episode: EpisodeMetadata,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_episode_by_url_key(
     server_name: &String,
     url_key: &str,
@@ -3087,12 +3127,14 @@ pub async fn call_get_episode_by_url_key(
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct AddCategoryRequest {
     pub(crate) podcast_id: i32,
     pub(crate) user_id: i32,
     pub(crate) category: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_add_category(
     server_name: &String,
     api_key: &Option<String>,
@@ -3135,6 +3177,7 @@ pub async fn call_add_category(
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct UpdateFeedCutoffDaysRequest {
     pub(crate) podcast_id: i32,
     pub(crate) user_id: i32,
@@ -3142,11 +3185,13 @@ pub struct UpdateFeedCutoffDaysRequest {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct GetFeedCutoffDaysRequest {
     pub(crate) podcast_id: i32,
     pub(crate) user_id: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_update_feed_cutoff_days(
     server_name: &String,
     api_key: &Option<String>,
@@ -3188,6 +3233,7 @@ pub async fn call_update_feed_cutoff_days(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_get_feed_cutoff_days(
     server_name: &String,
     api_key: &Option<String>,
@@ -3237,12 +3283,14 @@ pub async fn call_get_feed_cutoff_days(
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct RemoveCategoryRequest {
     pub(crate) podcast_id: i32,
     pub(crate) user_id: i32,
     pub(crate) category: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_remove_category(
     server_name: &String,
     api_key: &Option<String>,
@@ -3284,6 +3332,7 @@ pub async fn call_remove_category(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_toggle_podcast_notifications(
     server_name: String,
     api_key: String,
@@ -3321,6 +3370,7 @@ pub async fn call_toggle_podcast_notifications(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcast_notifications_status(
     server_name: String,
     api_key: String,
@@ -3344,6 +3394,7 @@ pub async fn call_get_podcast_notifications_status(
 
     if response.ok() {
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         struct NotificationResponse {
             enabled: bool,
         }
@@ -3370,6 +3421,7 @@ pub struct YouTubeSubscribeResponse {
     pub message: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_subscribe_to_channel(
     server: &str,
     api_key: &str,
@@ -3415,6 +3467,7 @@ pub struct YoutubeChannelResponse {
     pub success: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_remove_youtube_channel(
     server_name: &String,
     api_key: &Option<String>,
@@ -3449,10 +3502,12 @@ pub async fn call_remove_youtube_channel(
 }
 
 #[derive(Default, Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct CheckYouTubeChannelResponse {
     pub exists: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_check_youtube_channel(
     server: &str,
     api_key: &str,
@@ -3534,6 +3589,7 @@ pub struct HomeOverview {
     pub queue_count: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_home_overview(
     server: &str,
     api_key: &str,
@@ -3619,10 +3675,12 @@ pub struct Playlist {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct PlaylistResponse {
     pub playlists: Vec<Playlist>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_playlists(
     server: &str,
     api_key: &str,
@@ -3664,6 +3722,7 @@ pub async fn call_get_playlists(
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
 pub struct CreatePlaylistRequest {
     pub user_id: i32,
     pub name: String,
@@ -3690,6 +3749,7 @@ pub struct CreatePlaylistResponse {
     pub playlist_id: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_create_playlist(
     server: &str,
     api_key: &str,
@@ -3731,6 +3791,7 @@ pub async fn call_create_playlist(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_delete_playlist(
     server: &str,
     api_key: &str,
@@ -3761,6 +3822,7 @@ pub async fn call_delete_playlist(
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct PlaylistEpisodesResponse {
     pub episodes: Vec<Episode>,
     pub playlist_info: PlaylistInfo,
@@ -3774,6 +3836,7 @@ pub struct PlaylistInfo {
     pub icon_name: Option<String>,  // Changed from String to Option<String>
 }
 
+#[allow(dead_code)]
 pub async fn call_get_playlist_episodes(
     server: &str,
     api_key: &str,
@@ -3810,6 +3873,7 @@ pub async fn call_get_playlist_episodes(
             Err(_) => {
                 // If parse fails, try parsing as a more basic structure
                 #[derive(Deserialize)]
+                #[allow(dead_code)]
                 struct BasicResponse {
                     playlist_info: PlaylistInfo,
                     episodes: Vec<Episode>,
@@ -3831,10 +3895,12 @@ pub async fn call_get_playlist_episodes(
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct RssKeyResponse {
     pub rss_key: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_rss_key(
     server_name: &str,
     api_key: &Option<String>,
@@ -3886,6 +3952,7 @@ pub struct MergedPodcastsResponse {
 }
 
 // Call to merge podcasts
+#[allow(dead_code)]
 pub async fn call_merge_podcasts(
     server_name: &str,
     api_key: &Option<String>,
@@ -3926,6 +3993,7 @@ pub async fn call_merge_podcasts(
 }
 
 // Call to unmerge a podcast
+#[allow(dead_code)]
 pub async fn call_unmerge_podcast(
     server_name: &str,
     api_key: &Option<String>,
@@ -3963,6 +4031,7 @@ pub async fn call_unmerge_podcast(
 }
 
 // Call to get merged podcasts
+#[allow(dead_code)]
 pub async fn call_get_merged_podcasts(
     server_name: &str,
     api_key: &Option<String>,

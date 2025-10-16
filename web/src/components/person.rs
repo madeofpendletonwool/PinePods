@@ -1,7 +1,6 @@
 use super::app_drawer::App_drawer;
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
-use i18nrs::yew::use_translation;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::ExpandedDescriptions;
 use crate::components::context::{AppState, UIState};
@@ -22,6 +21,7 @@ use crate::requests::pod_req::{
     RemovePodcastValuesName,
 };
 use base64::{engine::general_purpose, Engine as _};
+use i18nrs::yew::use_translation;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use wasm_bindgen::prelude::wasm_bindgen;
@@ -31,6 +31,7 @@ use yew_router::history::BrowserHistory;
 use yew_router::prelude::*;
 use yewdux::prelude::*;
 
+#[allow(dead_code)]
 fn generate_unique_id(podcast_id: Option<i32>, feed_url: &str) -> String {
     println!("Podcast ID: {:?}", podcast_id);
     match podcast_id {
@@ -46,11 +47,13 @@ fn generate_unique_id(podcast_id: Option<i32>, feed_url: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn sanitize_for_css(input: &str) -> String {
     input.replace(|c: char| !c.is_alphanumeric() && c != '-', "_")
 }
 
 #[derive(Clone, PartialEq, Routable)]
+#[allow(dead_code)]
 pub enum Route {
     #[at("/person/:name")]
     Person { name: String },
@@ -66,13 +69,13 @@ pub struct PersonProps {
 #[function_component(Person)]
 pub fn person(PersonProps { name }: &PersonProps) -> Html {
     let (i18n, _) = use_translation();
-    
+
     // Pre-capture translation strings for async blocks
     let i18n_podcast_removed = i18n.t("person.podcast_successfully_removed").to_string();
     let i18n_error_removing_podcast = i18n.t("person.error_removing_podcast").to_string();
     let i18n_podcast_added = i18n.t("person.podcast_successfully_added").to_string();
     let i18n_error_adding_podcast = i18n.t("person.error_adding_podcast").to_string();
-    
+
     let (state, dispatch) = use_store::<AppState>();
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let person_ids = use_state(|| HashMap::<String, i32>::new());
@@ -163,7 +166,9 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 let mut found_subscription = false;
 
                                 for sub in subs {
-                                    let associated_podcasts = sub.associatedpodcasts.to_string()
+                                    let associated_podcasts = sub
+                                        .associatedpodcasts
+                                        .to_string()
                                         .split(',')
                                         .filter_map(|s| s.parse::<i32>().ok())
                                         .collect::<Vec<i32>>();
@@ -256,8 +261,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                 new_set.remove(&podcast_id);
                                 added_podcasts_callback.set(new_set);
                                 dispatch_callback.reduce_mut(|state| {
-                                    state.info_message =
-                                        Some(i18n_podcast_removed.clone());
+                                    state.info_message = Some(i18n_podcast_removed.clone());
                                     state.is_loading = Some(false);
                                 });
                             }
@@ -274,16 +278,6 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                             }
                         }
                     } else {
-                        fn convert_categories_to_hashmap(
-                            categories: String,
-                        ) -> HashMap<String, String> {
-                            categories
-                                .split(',')
-                                .map(|s| s.trim().to_string())
-                                .map(|category| (category.clone(), category))
-                                .collect()
-                        }
-
                         // Assuming you have this inside the `toggle_podcast` closure:
                         let categories_og_hashmap = podcast.categories.clone().unwrap_or_default();
 
@@ -325,8 +319,7 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                             }
                                         }
                                     }
-                                    state.info_message =
-                                        Some(i18n_podcast_added.clone());
+                                    state.info_message = Some(i18n_podcast_added.clone());
                                     state.is_loading = Some(false);
                                 });
                                 let mut new_set = (*added_podcasts_callback).clone();
@@ -485,11 +478,11 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                 {
                     if let Some(person) = person_data {
                         web_sys::console::log_1(&format!("Image URL: {:?}", &person).into());
-                        
+
                         let subscribe_text = i18n.t("person.subscribe");
                         let unsubscribe_text = i18n.t("person.unsubscribe");
                         let profile_alt = i18n.t("person.profile_alt");
-                        
+
                         html! {
                             <div class="person-header bg-custom-light p-6 rounded-lg shadow-md mb-6">
                                 <div class="flex items-center gap-6">
@@ -533,9 +526,9 @@ pub fn person(PersonProps { name }: &PersonProps) -> Html {
                                                 }}
                                             >
                                                 {
-                                                    if *is_subscribed { 
+                                                    if *is_subscribed {
                                                         &unsubscribe_text
-                                                    } else { 
+                                                    } else {
                                                         &subscribe_text
                                                     }
                                                 }

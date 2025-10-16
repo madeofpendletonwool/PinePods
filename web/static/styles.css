@@ -2515,7 +2515,7 @@ input[type="range"]::-moz-range-thumb {
     width: 100%;
     max-width: 32rem;
     margin: auto; /* Center the modal */
-    max-height: min(95vh, 40rem); /* Limit height to 95% of viewport or 40rem */
+    max-height: min(95vh, 50rem); /* Limit height to 95% of viewport or 50rem */
     display: flex;
     flex-direction: column;
 }

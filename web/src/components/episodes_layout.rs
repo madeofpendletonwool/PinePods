@@ -14,18 +14,23 @@ use crate::requests::pod_req::{
     call_bulk_mark_episodes_completed, call_bulk_queue_episodes, call_bulk_save_episodes,
     call_check_podcast, call_clear_playback_speed, call_download_all_podcast,
     call_enable_auto_download, call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
-    call_get_feed_cutoff_days, call_get_play_episode_details, call_get_podcast_id_from_ep,
-    call_get_podcast_id_from_ep_name, call_get_podcast_notifications_status, call_get_podcasts,
-    call_get_merged_podcasts, call_get_rss_key, call_merge_podcasts, call_remove_category, call_remove_podcasts_name, call_remove_youtube_channel,
-    call_set_playback_speed, call_toggle_podcast_notifications, call_update_feed_cutoff_days,
-    call_update_podcast_info, AddCategoryRequest, AutoDownloadRequest, BulkEpisodeActionRequest,
-    ClearPlaybackSpeedRequest, DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest,
-    PlaybackSpeedRequest, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
-    RemoveYouTubeChannelValues, SkipTimesRequest, UpdateFeedCutoffDaysRequest,
-    UpdatePodcastInfoRequest, UpdatePodcastInfoResponse,
+    call_get_feed_cutoff_days, call_get_merged_podcasts, call_get_play_episode_details,
+    call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
+    call_get_podcast_notifications_status, call_get_podcasts, call_get_rss_key,
+    call_merge_podcasts, call_remove_category, call_remove_podcasts_name,
+    call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_notifications,
+    call_update_feed_cutoff_days, call_update_podcast_info, AddCategoryRequest,
+    AutoDownloadRequest, BulkEpisodeActionRequest, ClearPlaybackSpeedRequest,
+    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, PlaybackSpeedRequest, PodcastValues,
+    RemoveCategoryRequest, RemovePodcastValuesName, RemoveYouTubeChannelValues, SkipTimesRequest,
+    UpdateFeedCutoffDaysRequest,
 };
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
+use crate::requests::setting_reqs::{
+    call_get_podcast_cover_preference, call_set_global_podcast_cover_preference,
+};
+
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
 use i18nrs::yew::use_translation;
@@ -43,48 +48,57 @@ use yew::{function_component, html, use_effect_with, use_node_ref, Callback, Htm
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 
+#[allow(dead_code)]
 fn add_icon() -> Html {
     html! {
         <i class="ph ph-plus-circle text-2xl"></i>
     }
 }
 
+#[allow(dead_code)]
 fn payments_icon() -> Html {
     html! {
         <i class="ph ph-money-wavy text-2xl"></i>
     }
 }
 
+#[allow(dead_code)]
 fn rss_icon() -> Html {
     html! {
         <i class="ph ph-rss text-2xl"></i>
     }
 }
 
+#[allow(dead_code)]
 fn website_icon() -> Html {
     html! {
         <i class="ph ph-globe text-2xl"></i>
     }
 }
 
+#[allow(dead_code)]
 fn trash_icon() -> Html {
     html! {
         <i class="ph ph-trash text-2xl"></i>
 
     }
 }
+
+#[allow(dead_code)]
 fn settings_icon() -> Html {
     html! {
         <i class="ph ph-gear text-2xl"></i>
 
     }
 }
+#[allow(dead_code)]
 fn download_icon() -> Html {
     html! {
         <i class="ph ph-download text-2xl"></i>
 
     }
 }
+#[allow(dead_code)]
 fn no_icon() -> Html {
     html! {}
 }
@@ -108,6 +122,7 @@ pub struct Props {
     pub html: String,
 }
 
+#[allow(dead_code)]
 fn sanitize_html(html: &str) -> String {
     let cleaned_html = ammonia::clean(html);
     let decoded_data = decode(cleaned_html.as_bytes());
@@ -117,6 +132,7 @@ fn sanitize_html(html: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn get_rss_base_url() -> String {
     let window = window().expect("no global `window` exists");
     let location = window.location();
@@ -144,6 +160,7 @@ fn get_rss_base_url() -> String {
     )
 }
 
+#[allow(dead_code)]
 pub enum AppStateMsg {
     ExpandEpisode(String),
     CollapseEpisode(String),
@@ -168,6 +185,7 @@ impl Reducer<AppState> for AppStateMsg {
 }
 
 #[derive(Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum EpisodeSortDirection {
     NewestFirst,
     OldestFirst,
@@ -187,7 +205,7 @@ pub struct PodcastMergeSelectorProps {
 
 #[function_component(PodcastMergeSelector)]
 pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
-    let (i18n, _) = use_translation();
+    let (_i18n, _) = use_translation();
     let is_open = use_state(|| false);
     let dropdown_ref = use_node_ref();
 
@@ -200,22 +218,27 @@ pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
             let document = web_sys::window().unwrap().document().unwrap();
             let dropdown_element = dropdown_ref.cast::<HtmlInputElement>();
 
-            let listener = wasm_bindgen::closure::Closure::wrap(Box::new(move |event: web_sys::Event| {
-                if let Some(target) = event.target() {
-                    if let Some(dropdown) = &dropdown_element {
-                        if let Ok(node) = target.dyn_into::<web_sys::Node>() {
-                            if !dropdown.contains(Some(&node)) {
-                                is_open.set(false);
+            let listener =
+                wasm_bindgen::closure::Closure::wrap(Box::new(move |event: web_sys::Event| {
+                    if let Some(target) = event.target() {
+                        if let Some(dropdown) = &dropdown_element {
+                            if let Ok(node) = target.dyn_into::<web_sys::Node>() {
+                                if !dropdown.contains(Some(&node)) {
+                                    is_open.set(false);
+                                }
                             }
                         }
                     }
-                }
-            }) as Box<dyn FnMut(_)>);
+                }) as Box<dyn FnMut(_)>);
 
-            document.add_event_listener_with_callback("click", listener.as_ref().unchecked_ref()).unwrap();
-            
+            document
+                .add_event_listener_with_callback("click", listener.as_ref().unchecked_ref())
+                .unwrap();
+
             move || {
-                document.remove_event_listener_with_callback("click", listener.as_ref().unchecked_ref()).unwrap();
+                document
+                    .remove_event_listener_with_callback("click", listener.as_ref().unchecked_ref())
+                    .unwrap();
             }
         });
     }
@@ -340,8 +363,6 @@ pub fn episode_layout() -> Html {
     let clicked_podcast_info = search_state.clicked_podcast_info.clone();
 
     // Capture i18n strings before they get moved - this is a large component with many strings
-    let i18n_invalid_html_content = i18n.t("episodes_layout.invalid_html_content").to_string();
-    let i18n_unable_to_retrieve_url = i18n.t("episode.unable_to_retrieve_url").to_string();
     let i18n_youtube_channel_successfully_removed = i18n
         .t("episodes_layout.youtube_channel_successfully_removed")
         .to_string();
@@ -358,43 +379,13 @@ pub fn episode_layout() -> Html {
     let i18n_error_updating_playback_speed = i18n
         .t("episodes_layout.error_updating_playback_speed")
         .to_string();
-    let i18n_playback_speed_reset = i18n.t("episodes_layout.playback_speed_reset").to_string();
-    let i18n_error_resetting_playback_speed = i18n
-        .t("episodes_layout.error_resetting_playback_speed")
-        .to_string();
-    let i18n_skip_times_adjusted = i18n.t("episodes_layout.skip_times_adjusted").to_string();
-    let i18n_error_adjusting_skip_times = i18n
-        .t("episodes_layout.error_adjusting_skip_times")
-        .to_string();
     let i18n_podcast_successfully_added = i18n
         .t("episodes_layout.podcast_successfully_added")
         .to_string();
     let i18n_failed_to_add_podcast = i18n.t("episodes_layout.failed_to_add_podcast").to_string();
-    let i18n_rss_feed_url = i18n.t("episodes_layout.rss_feed_url").to_string();
-    let i18n_close_modal = i18n.t("common.close_modal").to_string();
-    let i18n_copy = i18n.t("common.copy").to_string();
-    let i18n_podcast_options = i18n.t("episodes_layout.podcast_options").to_string();
-    let i18n_save = i18n.t("common.save").to_string();
-    let i18n_reset = i18n.t("common.reset").to_string();
-    let i18n_confirm = i18n.t("common.confirm").to_string();
     let i18n_no_categories_available = i18n
         .t("episodes_layout.no_categories_available")
         .to_string();
-    let i18n_new_category = i18n.t("episodes_layout.new_category").to_string();
-    let i18n_add = i18n.t("common.add").to_string();
-    let i18n_verify_downloads = i18n.t("episodes_layout.verify_downloads").to_string();
-    let i18n_delete_podcast = i18n.t("episodes_layout.delete_podcast").to_string();
-    let i18n_visit_external_website = i18n.t("episodes_layout.visit_external_website").to_string();
-    let i18n_get_rss_feed_url = i18n.t("episodes_layout.get_rss_feed_url").to_string();
-    let i18n_download_all_episodes = i18n.t("episodes_layout.download_all_episodes").to_string();
-    let i18n_add_remove_podcast = i18n.t("episodes_layout.add_remove_podcast").to_string();
-    let i18n_podcast_specific_settings = i18n
-        .t("episodes_layout.podcast_specific_settings")
-        .to_string();
-    let i18n_explicit_yes = i18n.t("common.yes").to_string();
-    let i18n_explicit_no = i18n.t("common.no").to_string();
-    let i18n_match_it_here = i18n.t("episodes_layout.match_it_here").to_string();
-    let i18n_hosts = i18n.t("episodes_layout.hosts").to_string();
 
     // Additional i18n strings used throughout the component
     let i18n_category_name_cannot_be_empty = i18n
@@ -500,6 +491,7 @@ pub fn episode_layout() -> Html {
     let feed_cutoff_days = use_state(|| 0);
     let feed_cutoff_days_input = use_state(|| "0".to_string());
     let playback_speed = use_state(|| 1.0);
+    let use_podcast_covers = use_state(|| false);
     let playback_speed_input = playback_speed.clone();
     let playback_speed_clone = playback_speed.clone();
     let rss_key_state = use_state(|| None::<String>);
@@ -539,7 +531,8 @@ pub fn episode_layout() -> Html {
 
     // Merge podcast state
     let selected_podcasts_to_merge = use_state(|| Vec::<i32>::new());
-    let available_podcasts_for_merge = use_state(|| Vec::<crate::requests::pod_req::Podcast>::new());
+    let available_podcasts_for_merge =
+        use_state(|| Vec::<crate::requests::pod_req::Podcast>::new());
     let current_merged_podcasts = use_state(|| Vec::<i32>::new());
     let loading_merge_data = use_state(|| false);
 
@@ -592,11 +585,14 @@ pub fn episode_layout() -> Html {
             (page_state.clone(), clicked_podcast_info.clone()),
             move |(page_state, podcast_info)| {
                 if **page_state == PageState::EditPodcast {
-                    if let (Some(api_key), Some(server_name), Some(user_id), Some(podcast_info)) = 
-                        (api_key.as_ref(), server_name.as_ref(), user_id.as_ref(), podcast_info.as_ref()) {
-                        
+                    if let (Some(api_key), Some(server_name), Some(user_id), Some(podcast_info)) = (
+                        api_key.as_ref(),
+                        server_name.as_ref(),
+                        user_id.as_ref(),
+                        podcast_info.as_ref(),
+                    ) {
                         loading_merge_data.set(true);
-                        
+
                         // Load available podcasts
                         let available_podcasts_for_merge = available_podcasts_for_merge.clone();
                         let current_merged_podcasts = current_merged_podcasts.clone();
@@ -615,21 +611,31 @@ pub fn episode_layout() -> Html {
                                     available_podcasts_for_merge.set(podcasts);
                                 }
                                 Err(e) => {
-                                    console::log_1(&format!("Error loading podcasts for merge: {}", e).into());
+                                    console::log_1(
+                                        &format!("Error loading podcasts for merge: {}", e).into(),
+                                    );
                                 }
                             }
 
                             // Load current merged podcasts
-                            match call_get_merged_podcasts(&server_name, &api_key, podcast_id as i32).await {
+                            match call_get_merged_podcasts(
+                                &server_name,
+                                &api_key,
+                                podcast_id as i32,
+                            )
+                            .await
+                            {
                                 Ok(merged_ids) => {
                                     current_merged_podcasts.set(merged_ids);
                                 }
                                 Err(e) => {
-                                    console::log_1(&format!("Error loading merged podcasts: {}", e).into());
+                                    console::log_1(
+                                        &format!("Error loading merged podcasts: {}", e).into(),
+                                    );
                                     current_merged_podcasts.set(Vec::new());
                                 }
                             }
-                            
+
                             loading_merge_data.set(false);
                         });
                     }
@@ -1118,6 +1124,48 @@ pub fn episode_layout() -> Html {
                 || ()
             },
         );
+    }
+
+    // Load podcast cover preference when podcast_id changes
+    {
+        let use_podcast_covers = use_podcast_covers.clone();
+        let podcast_id = podcast_id.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+
+        use_effect_with(podcast_id.clone(), move |podcast_id| {
+            if **podcast_id > 0 {
+                let use_podcast_covers = use_podcast_covers.clone();
+                let podcast_id_val = **podcast_id;
+
+                if let (Some(api_key), Some(server_name), Some(user_id)) = (
+                    api_key.as_ref().and_then(|k| k.clone()),
+                    server_name.as_ref().map(|s| s.clone()),
+                    user_id.as_ref().cloned(),
+                ) {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match call_get_podcast_cover_preference(
+                            &server_name,
+                            &api_key,
+                            user_id,
+                            Some(podcast_id_val),
+                        )
+                        .await
+                        {
+                            Ok(current_preference) => {
+                                use_podcast_covers.set(current_preference);
+                            }
+                            Err(_) => {
+                                // If API call fails, default to false
+                                use_podcast_covers.set(false);
+                            }
+                        }
+                    });
+                }
+            }
+            || ()
+        });
     }
 
     let open_in_new_tab = Callback::from(move |url: String| {
@@ -1709,6 +1757,55 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let toggle_podcast_covers = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let use_podcast_covers = use_podcast_covers.clone();
+        let podcast_id = podcast_id.clone();
+        let user_id = user_id.clone();
+        let dispatch = _search_dispatch.clone();
+        Callback::from(move |_: MouseEvent| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let use_podcast_covers = use_podcast_covers.clone();
+            let new_setting = !*use_podcast_covers;
+            let pod_id_deref = *podcast_id.clone();
+            let user_id = user_id.clone().unwrap();
+            let dispatch = dispatch.clone();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_set_global_podcast_cover_preference(
+                        server_name,
+                        &api_key.clone().unwrap(),
+                        user_id,
+                        new_setting,
+                        Some(pod_id_deref),
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            use_podcast_covers.set(new_setting);
+                            dispatch.reduce_mut(|state| {
+                                state.info_message = Some(format!(
+                                    "Podcast cover preference {} for this podcast",
+                                    if new_setting { "enabled" } else { "disabled" }
+                                ));
+                            });
+                        }
+                        Err(e) => {
+                            dispatch.reduce_mut(|state| {
+                                state.error_message =
+                                    Some(format!("Error updating podcast cover preference: {}", e));
+                            });
+                        }
+                    }
+                }
+            });
+        })
+    };
+
     let start_skip_call = start_skip.clone();
     let end_skip_call = end_skip.clone();
     let start_skip_call_button = start_skip.clone();
@@ -2072,24 +2169,12 @@ pub fn episode_layout() -> Html {
                                     <label class="relative inline-flex items-center cursor-pointer">
                                         <input
                                             type="checkbox"
-                                            checked={false} // TODO: Add state for podcast cover preference
+                                            checked={*use_podcast_covers}
                                             class="sr-only peer"
-                                            // TODO: Add onclick handler
+                                            onclick={toggle_podcast_covers.clone()}
                                         />
                                         <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                     </label>
-                                    <button
-                                        class="save-button font-bold py-2 px-4 rounded"
-                                        // TODO: Add onclick handler for save
-                                    >
-                                        {&i18n.t("episodes_layout.save")}
-                                    </button>
-                                    <button
-                                        class="clear-button bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
-                                        // TODO: Add onclick handler for clear
-                                    >
-                                        {&i18n.t("episodes_layout.reset")}
-                                    </button>
                                 </div>
                                 <p class="text-xs text-gray-500 mt-1">{"Show podcast cover instead of episode artwork for this podcast's episodes"}</p>
                             </div>
@@ -2330,7 +2415,6 @@ pub fn episode_layout() -> Html {
 
     // Define the edit podcast modal
     let edit_podcast_modal = {
-        let clicked_feed = clicked_podcast_info.clone();
         html! {
             <div id="edit_podcast_modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25 py-8" onclick={on_background_click.clone()}>
                 <div class="modal-container relative w-full max-w-md max-h-full rounded-lg shadow mx-4 overflow-hidden flex flex-col" onclick={stop_propagation.clone()}>
@@ -2535,7 +2619,7 @@ pub fn episode_layout() -> Html {
                                     <p class="text-sm text-gray-600 mb-3">
                                         {"Merge other podcasts into this one. Episodes from merged podcasts will appear under this podcast."}
                                     </p>
-                                    
+
                                     // Show currently merged podcasts
                                     if !(*current_merged_podcasts).is_empty() {
                                         <div class="mb-3">
@@ -2547,7 +2631,7 @@ pub fn episode_layout() -> Html {
                                             </div>
                                         </div>
                                     }
-                                    
+
                                     // Podcast selector for merging
                                     <div class="mb-3">
                                         <label class="block mb-2 text-sm font-medium">
@@ -2565,7 +2649,7 @@ pub fn episode_layout() -> Html {
                                             loading={*loading_merge_data}
                                         />
                                     </div>
-                                    
+
                                     // Merge button
                                     if !(*selected_podcasts_to_merge).is_empty() {
                                         <button
@@ -2577,18 +2661,17 @@ pub fn episode_layout() -> Html {
                                                 let api_key = api_key.clone();
                                                 let server_name = server_name.clone();
                                                 let user_id = user_id.clone();
-                                                
+
                                                 Callback::from(move |_| {
-                                                    if let (Some(api_key), Some(server_name), Some(user_id), Some(podcast_info)) = 
+                                                    if let (Some(api_key), Some(server_name), Some(_user_id), Some(podcast_info)) =
                                                         (api_key.as_ref(), server_name.as_ref(), user_id.as_ref(), clicked_podcast_info.as_ref()) {
-                                                        
+
                                                         let podcast_ids = (*selected_podcasts_to_merge).clone();
                                                         let primary_id = podcast_info.podcastid;
                                                         let selected_podcasts_to_merge = selected_podcasts_to_merge.clone();
                                                         let api_key = api_key.clone();
                                                         let server_name = server_name.clone();
-                                                        let user_id = *user_id;
-                                                        
+
                                                         spawn_local(async move {
                                                             match call_merge_podcasts(&server_name, &api_key, primary_id as i32, &podcast_ids).await {
                                                                 Ok(response) => {
@@ -2717,8 +2800,8 @@ pub fn episode_layout() -> Html {
                                                         };
 
                                                         // Check if any changes were made
-                                                        if feed_url.is_none() && username.is_none() && password.is_none() && 
-                                                           podcast_name.is_none() && description.is_none() && author.is_none() && 
+                                                        if feed_url.is_none() && username.is_none() && password.is_none() &&
+                                                           podcast_name.is_none() && description.is_none() && author.is_none() &&
                                                            artwork_url.is_none() && website_url.is_none() && podcast_index_id.is_none() {
                                                             dispatch.reduce_mut(|state| {
                                                                 state.info_message = Some("No changes to save".to_string())

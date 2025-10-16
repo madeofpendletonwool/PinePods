@@ -23,10 +23,13 @@ use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
 
 // Add this at the top of your file
+#[allow(dead_code)]
 const SCROLL_THRESHOLD: f64 = 150.0; // Increased threshold for easier activation
+#[allow(dead_code)]
 const SCROLL_SPEED: f64 = 15.0; // Increased speed
 
 // Helper function to calculate responsive item height including all spacing
+#[allow(dead_code)]
 fn calculate_item_height(window_width: f64) -> f64 {
     // Try to measure actual height from DOM first
     if let Some(document) = web_sys::window().and_then(|w| w.document()) {
@@ -36,32 +39,37 @@ fn calculate_item_height(window_width: f64) -> f64 {
                 let actual_height = rect.height();
                 let margin_bottom = 16.0; // mb-4 = 1rem = 16px
                 let total_height = actual_height + margin_bottom;
-                
-                web_sys::console::log_1(&format!(
-                    "MEASURED: width={}, container_height={}, margin={}, total={}", 
-                    window_width, actual_height, margin_bottom, total_height
-                ).into());
-                
+
+                web_sys::console::log_1(
+                    &format!(
+                        "MEASURED: width={}, container_height={}, margin={}, total={}",
+                        window_width, actual_height, margin_bottom, total_height
+                    )
+                    .into(),
+                );
+
                 return total_height;
             }
         }
     }
-    
+
     // Fallback to estimated heights if measurement fails
     if window_width <= 530.0 {
         122.0 + 16.0 // Mobile: base height + mb-4
     } else if window_width <= 768.0 {
-        150.0 + 16.0 // Tablet: base height + mb-4  
+        150.0 + 16.0 // Tablet: base height + mb-4
     } else {
         221.0 + 16.0 // Desktop: base height + mb-4
     }
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 struct ScrollState {
     interval_id: Option<i32>,
 }
 
+#[allow(dead_code)]
 fn stop_auto_scroll(interval_id: i32) {
     if let Some(window) = window() {
         window.clear_interval_with_handle(interval_id);
@@ -72,32 +80,12 @@ fn stop_auto_scroll(interval_id: i32) {
 pub fn queue() -> Html {
     let (i18n, _) = use_translation();
     let (state, dispatch) = use_store::<AppState>();
-    let history = BrowserHistory::new();
 
     let error = use_state(|| None);
     let (post_state, _post_dispatch) = use_store::<AppState>();
-    let (audio_state, audio_dispatch) = use_store::<UIState>();
+    let (audio_state, _audio_dispatch) = use_store::<UIState>();
 
     let loading = use_state(|| true);
-    let active_modal = use_state(|| None::<i32>);
-    let active_modal_clone = active_modal.clone();
-    let on_modal_open = Callback::from(move |episode_id: i32| {
-        active_modal_clone.set(Some(episode_id));
-    });
-    let active_modal_clone = active_modal.clone();
-    let on_modal_close = Callback::from(move |_: MouseEvent| {
-        active_modal_clone.set(None);
-    });
-
-    let api_key = post_state
-        .auth_details
-        .as_ref()
-        .map(|ud| ud.api_key.clone());
-    let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
-    let server_name = post_state
-        .auth_details
-        .as_ref()
-        .map(|ud| ud.server_name.clone());
 
     // Fetch episodes on component mount
     let loading_ep = loading.clone();
@@ -256,10 +244,10 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
     let container_height = use_state(|| 0.0);
     let item_height = use_state(|| 234.0); // Default item height
     let force_update = use_state(|| 0);
-    
+
     // Shared drag state for all episodes
     let dragging = use_state(|| None::<i32>);
-    
+
     // Effect to set initial container height, item height, and listen for window resize
     {
         let container_height = container_height.clone();
@@ -277,7 +265,13 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
                 let width = window_clone.inner_width().unwrap().as_f64().unwrap();
                 let new_item_height = calculate_item_height(width);
 
-                web_sys::console::log_1(&format!("Virtual list: width={}, item_height={}", width, new_item_height).into());
+                web_sys::console::log_1(
+                    &format!(
+                        "Virtual list: width={}, item_height={}",
+                        width, new_item_height
+                    )
+                    .into(),
+                );
                 item_height.set(new_item_height);
                 force_update.set(*force_update + 1);
             });
@@ -300,37 +294,42 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
             if let Some(container) = container_ref.cast::<HtmlElement>() {
                 let scroll_pos_clone = scroll_pos.clone();
                 let is_updating = std::rc::Rc::new(std::cell::RefCell::new(false));
-                
+
                 let scroll_listener = EventListener::new(&container, "scroll", move |event| {
                     // Prevent re-entrant calls that cause feedback loops
                     if *is_updating.borrow() {
                         return;
                     }
-                    
+
                     if let Some(target) = event.target() {
                         if let Ok(element) = target.dyn_into::<Element>() {
                             let new_scroll_top = element.scroll_top() as f64;
                             let old_scroll_top = *scroll_pos_clone;
-                            
+
                             // Only update if there's a significant change
                             if (new_scroll_top - old_scroll_top).abs() >= 5.0 {
                                 *is_updating.borrow_mut() = true;
-                                
+
                                 // Use requestAnimationFrame to batch updates and prevent feedback
                                 let scroll_pos_clone2 = scroll_pos_clone.clone();
                                 let is_updating_clone = is_updating.clone();
-                                let callback = wasm_bindgen::closure::Closure::wrap(Box::new(move || {
-                                    scroll_pos_clone2.set(new_scroll_top);
-                                    *is_updating_clone.borrow_mut() = false;
-                                }) as Box<dyn FnMut()>);
-                                
-                                web_sys::window().unwrap().request_animation_frame(callback.as_ref().unchecked_ref()).unwrap();
+                                let callback =
+                                    wasm_bindgen::closure::Closure::wrap(Box::new(move || {
+                                        scroll_pos_clone2.set(new_scroll_top);
+                                        *is_updating_clone.borrow_mut() = false;
+                                    })
+                                        as Box<dyn FnMut()>);
+
+                                web_sys::window()
+                                    .unwrap()
+                                    .request_animation_frame(callback.as_ref().unchecked_ref())
+                                    .unwrap();
                                 callback.forget();
                             }
                         }
                     }
                 });
-                
+
                 Box::new(move || {
                     drop(scroll_listener);
                 }) as Box<dyn FnOnce()>
@@ -343,10 +342,10 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
     let start_index = (*scroll_pos / *item_height).floor() as usize;
     let visible_count = ((*container_height / *item_height).ceil() as usize) + 1;
     let end_index = (start_index + visible_count).min(props.episodes.len());
-    
+
     // Debug logging to see what's happening
     web_sys::console::log_1(&format!(
-        "Virtual list debug: scroll_pos={}, item_height={}, container_height={}, start_index={}, visible_count={}, end_index={}, total_episodes={}", 
+        "Virtual list debug: scroll_pos={}, item_height={}, container_height={}, start_index={}, visible_count={}, end_index={}, total_episodes={}",
         *scroll_pos, *item_height, *container_height, start_index, visible_count, end_index, props.episodes.len()
     ).into());
 
@@ -366,12 +365,15 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
 
     let total_height = props.episodes.len() as f64 * *item_height;
     let offset_y = start_index as f64 * *item_height;
-    
+
     // Debug the offset calculation specifically
-    web_sys::console::log_1(&format!(
-        "Offset debug: total_height={}, offset_y={}, start_index={}", 
-        total_height, offset_y, start_index
-    ).into());
+    web_sys::console::log_1(
+        &format!(
+            "Offset debug: total_height={}, offset_y={}, start_index={}",
+            total_height, offset_y, start_index
+        )
+        .into(),
+    );
 
     html! {
         <div
@@ -381,12 +383,12 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
         >
             // Top spacer to push content down without using transforms
             <div style={format!("height: {}px; flex-shrink: 0;", offset_y)}></div>
-            
-            // Visible episodes 
+
+            // Visible episodes
             <div>
                 { visible_episodes }
             </div>
-            
+
             // Bottom spacer to maintain total height
             <div style={format!("height: {}px; flex-shrink: 0;", total_height - offset_y - (end_index - start_index) as f64 * *item_height)}></div>
         </div>
@@ -406,7 +408,7 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
     let (post_state, _post_dispatch) = use_store::<AppState>();
     let (audio_state, audio_dispatch) = use_store::<UIState>();
     let history = BrowserHistory::new();
-    
+
     // Drag and drop state - use shared dragging from props
     let dragging = &props.dragging;
     let touch_start_y = use_state(|| 0.0);
@@ -415,7 +417,7 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
     let active_modal = use_state(|| None::<i32>);
     let dragged_element = use_state(|| None::<web_sys::Element>);
     let scroll_state = use_state(|| ScrollState { interval_id: None });
-    
+
     let active_modal_clone = active_modal.clone();
     let on_modal_open = Callback::from(move |episode_id: i32| {
         active_modal_clone.set(Some(episode_id));
@@ -474,19 +476,17 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
                     let container_rect = container_element.get_bounding_client_rect();
                     let container_top = container_rect.top();
                     let container_bottom = container_rect.bottom();
-                    
+
                     // Scroll up if cursor is near the top of the container
                     if (y as f64) < container_top + 50.0 {
-                        container_element.set_scroll_top(
-                            (container_element.scroll_top() - scroll_speed).max(0)
-                        );
+                        container_element
+                            .set_scroll_top((container_element.scroll_top() - scroll_speed).max(0));
                     }
-                    
+
                     // Scroll down if cursor is near the bottom of the container
                     if (y as f64) > container_bottom - 50.0 {
-                        container_element.set_scroll_top(
-                            container_element.scroll_top() + scroll_speed
-                        );
+                        container_element
+                            .set_scroll_top(container_element.scroll_top() + scroll_speed);
                     }
                 }
             }
@@ -502,51 +502,72 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
         let user_id = user_id.clone();
         Callback::from(move |e: DragEvent| {
             e.prevent_default();
-            
+
             web_sys::console::log_1(&"Desktop ondrop triggered".into());
-            
+
             if let Some(dragged_id) = *dragging {
                 web_sys::console::log_1(&format!("Dragged ID: {}", dragged_id).into());
-                
+
                 let mut target_index = None;
-                
+
                 // First try to find a visible target element
                 let mut target = e.target().unwrap().dyn_into::<web_sys::Element>().unwrap();
                 let mut attempts = 0;
-                while !target.has_attribute("data-id") && target.parent_element().is_some() && attempts < 10 {
+                while !target.has_attribute("data-id")
+                    && target.parent_element().is_some()
+                    && attempts < 10
+                {
                     target = target.parent_element().unwrap();
                     attempts += 1;
                 }
-                
+
                 if let Some(target_id_str) = target.get_attribute("data-id") {
-                    web_sys::console::log_1(&format!("Found target element with ID: {}", target_id_str).into());
+                    web_sys::console::log_1(
+                        &format!("Found target element with ID: {}", target_id_str).into(),
+                    );
                     if let Ok(target_id) = target_id_str.parse::<i32>() {
                         if target_id != dragged_id {
-                            target_index = all_episodes.iter().position(|x| x.episodeid == target_id);
+                            target_index =
+                                all_episodes.iter().position(|x| x.episodeid == target_id);
                         }
                     }
                 } else {
                     // No visible target found - calculate virtual drop position using mouse coordinates
-                    web_sys::console::log_1(&"No visible target found, calculating virtual position".into());
+                    web_sys::console::log_1(
+                        &"No visible target found, calculating virtual position".into(),
+                    );
                     let client_y = e.client_y() as f64;
-                    
+
                     if let Some(document) = web_sys::window().and_then(|w| w.document()) {
-                        if let Ok(Some(container)) = document.query_selector(".virtual-list-container") {
-                            if let Some(container_element) = container.dyn_ref::<web_sys::HtmlElement>() {
+                        if let Ok(Some(container)) =
+                            document.query_selector(".virtual-list-container")
+                        {
+                            if let Some(container_element) =
+                                container.dyn_ref::<web_sys::HtmlElement>()
+                            {
                                 let container_rect = container_element.get_bounding_client_rect();
                                 let scroll_top = container_element.scroll_top() as f64;
-                                
+
                                 // Calculate which episode index the drop position corresponds to
                                 // Use responsive item height calculation
-                                let window_width = web_sys::window().unwrap().inner_width().unwrap().as_f64().unwrap();
+                                let window_width = web_sys::window()
+                                    .unwrap()
+                                    .inner_width()
+                                    .unwrap()
+                                    .as_f64()
+                                    .unwrap();
                                 let item_height = calculate_item_height(window_width);
                                 let relative_y = (client_y - container_rect.top()) + scroll_top;
                                 let virtual_index = (relative_y / item_height).floor() as usize;
-                                
-                                web_sys::console::log_1(&format!("Virtual drop index calculated: {}", virtual_index).into());
-                                
+
+                                web_sys::console::log_1(
+                                    &format!("Virtual drop index calculated: {}", virtual_index)
+                                        .into(),
+                                );
+
                                 // Clamp to valid range
-                                target_index = Some(virtual_index.min(all_episodes.len().saturating_sub(1)));
+                                target_index =
+                                    Some(virtual_index.min(all_episodes.len().saturating_sub(1)));
                             }
                         }
                     }
@@ -554,20 +575,33 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
 
                 // Perform the reorder if we have a valid target
                 if let Some(target_idx) = target_index {
-                    web_sys::console::log_1(&format!("Reordering: dragged {} to position {}", dragged_id, target_idx).into());
-                    
+                    web_sys::console::log_1(
+                        &format!(
+                            "Reordering: dragged {} to position {}",
+                            dragged_id, target_idx
+                        )
+                        .into(),
+                    );
+
                     let mut episodes_vec = all_episodes.clone();
-                    if let Some(dragged_index) = episodes_vec.iter().position(|x| x.episodeid == dragged_id) {
+                    if let Some(dragged_index) =
+                        episodes_vec.iter().position(|x| x.episodeid == dragged_id)
+                    {
                         if dragged_index != target_idx {
                             // Remove and reinsert at the correct position
                             let dragged_item = episodes_vec.remove(dragged_index);
-                            let insert_idx = if dragged_index < target_idx { target_idx } else { target_idx };
+                            let insert_idx = if dragged_index < target_idx {
+                                target_idx
+                            } else {
+                                target_idx
+                            };
                             episodes_vec.insert(insert_idx.min(episodes_vec.len()), dragged_item);
-                            
+
                             web_sys::console::log_1(&"Calling reorder queue API".into());
-                            
+
                             // Extract episode IDs
-                            let episode_ids: Vec<i32> = episodes_vec.iter().map(|ep| ep.episodeid).collect();
+                            let episode_ids: Vec<i32> =
+                                episodes_vec.iter().map(|ep| ep.episodeid).collect();
 
                             dispatch.reduce_mut(|state| {
                                 state.queued_episodes = Some(QueuedEpisodesResponse {
@@ -580,10 +614,22 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
                             let api_key = api_key.clone();
                             let user_id = user_id.clone();
                             wasm_bindgen_futures::spawn_local(async move {
-                                if let Err(err) = pod_req::call_reorder_queue(&server_name.unwrap(), &api_key.unwrap(), &user_id.unwrap(), &episode_ids).await {
-                                    web_sys::console::log_1(&format!("Failed to update order on server: {:?}", err).into());
+                                if let Err(err) = pod_req::call_reorder_queue(
+                                    &server_name.unwrap(),
+                                    &api_key.unwrap(),
+                                    &user_id.unwrap(),
+                                    &episode_ids,
+                                )
+                                .await
+                                {
+                                    web_sys::console::log_1(
+                                        &format!("Failed to update order on server: {:?}", err)
+                                            .into(),
+                                    );
                                 } else {
-                                    web_sys::console::log_1(&"Reorder queue API call successful".into());
+                                    web_sys::console::log_1(
+                                        &"Reorder queue API call successful".into(),
+                                    );
                                 }
                             });
                         } else {
@@ -642,9 +688,7 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
                     let current_y = touch.client_y() as f64;
                     let current_x = touch.client_x() as f64;
                     let window = window().unwrap();
-                    let viewport_height = window.inner_height().unwrap().as_f64().unwrap();
                     let document = window.document().unwrap();
-                    let document_height = document.document_element().unwrap().scroll_height() as f64;
                     let current_scroll = window.scroll_y().unwrap();
 
                     // Store initial scroll position if not set
@@ -662,19 +706,22 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
                     let delta_x = current_x - *touch_start_x;
 
                     // Handle scrolling logic for virtual container
-                    if let Ok(Some(container)) = document.query_selector(".virtual-list-container") {
-                        if let Some(container_element) = container.dyn_ref::<web_sys::HtmlElement>() {
+                    if let Ok(Some(container)) = document.query_selector(".virtual-list-container")
+                    {
+                        if let Some(container_element) = container.dyn_ref::<web_sys::HtmlElement>()
+                        {
                             let container_rect = container_element.get_bounding_client_rect();
                             let container_top = container_rect.top();
                             let container_bottom = container_rect.bottom();
-                            
-                            let new_scroll_direction = if current_y < container_top + SCROLL_THRESHOLD {
-                                -1.0
-                            } else if current_y > container_bottom - SCROLL_THRESHOLD {
-                                1.0
-                            } else {
-                                0.0
-                            };
+
+                            let new_scroll_direction =
+                                if current_y < container_top + SCROLL_THRESHOLD {
+                                    -1.0
+                                } else if current_y > container_bottom - SCROLL_THRESHOLD {
+                                    1.0
+                                } else {
+                                    0.0
+                                };
 
                             if new_scroll_direction != 0.0 {
                                 let current_scroll_top = container_element.scroll_top();
@@ -693,7 +740,10 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
                         if let Some(html_element) = element.dyn_ref::<HtmlElement>() {
                             html_element
                                 .style()
-                                .set_property("transform", &format!("translate({}px, {}px)", delta_x, delta_y))
+                                .set_property(
+                                    "transform",
+                                    &format!("translate({}px, {}px)", delta_x, delta_y),
+                                )
                                 .unwrap();
                             html_element
                                 .style()
@@ -723,9 +773,7 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
             // Stop any ongoing scrolling
             if let Some(interval_id) = scroll_state.interval_id {
                 stop_auto_scroll(interval_id);
-                scroll_state.set(ScrollState {
-                    interval_id: None,
-                });
+                scroll_state.set(ScrollState { interval_id: None });
             }
 
             if *is_dragging {
@@ -746,8 +794,10 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
                                     if element != &dragged {
                                         let rect = element.get_bounding_client_rect();
                                         // Adjust for scroll position
-                                        let actual_center_y = rect.top() + rect.height() / 2.0 + scroll_y;
-                                        let distance = (actual_center_y - (dragged_center_y + scroll_y)).abs();
+                                        let actual_center_y =
+                                            rect.top() + rect.height() / 2.0 + scroll_y;
+                                        let distance =
+                                            (actual_center_y - (dragged_center_y + scroll_y)).abs();
 
                                         if distance < min_distance {
                                             min_distance = distance;
@@ -767,7 +817,7 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
 
                     if dragged_id != 0 {
                         let mut target_index = None;
-                        
+
                         // If we found a closest element, use that
                         if let Some(target) = closest_element {
                             let target_id = target
@@ -775,27 +825,38 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
                                 .unwrap_or_default()
                                 .parse::<i32>()
                                 .unwrap_or_default();
-                            
+
                             if target_id != 0 && target_id != dragged_id {
-                                target_index = all_episodes.iter().position(|x| x.episodeid == target_id);
+                                target_index =
+                                    all_episodes.iter().position(|x| x.episodeid == target_id);
                             }
                         } else {
                             // No visible element found - calculate virtual drop position
                             if let Some(document) = web_sys::window().and_then(|w| w.document()) {
-                                if let Ok(Some(container)) = document.query_selector(".virtual-list-container") {
-                                    if let Some(container_element) = container.dyn_ref::<web_sys::HtmlElement>() {
-                                        let container_rect = container_element.get_bounding_client_rect();
+                                if let Ok(Some(container)) =
+                                    document.query_selector(".virtual-list-container")
+                                {
+                                    if let Some(container_element) =
+                                        container.dyn_ref::<web_sys::HtmlElement>()
+                                    {
+                                        let container_rect =
+                                            container_element.get_bounding_client_rect();
                                         let scroll_top = container_element.scroll_top() as f64;
-                                        
-                                        // Calculate which episode index the drop position corresponds to  
+
+                                        // Calculate which episode index the drop position corresponds to
                                         // Use responsive item height calculation
-                                        let window_width = window.inner_width().unwrap().as_f64().unwrap();
+                                        let window_width =
+                                            window.inner_width().unwrap().as_f64().unwrap();
                                         let item_height = calculate_item_height(window_width);
-                                        let relative_y = (dragged_center_y - container_rect.top()) + scroll_top;
-                                        let virtual_index = (relative_y / item_height).floor() as usize;
-                                        
+                                        let relative_y =
+                                            (dragged_center_y - container_rect.top()) + scroll_top;
+                                        let virtual_index =
+                                            (relative_y / item_height).floor() as usize;
+
                                         // Clamp to valid range
-                                        target_index = Some(virtual_index.min(all_episodes.len().saturating_sub(1)));
+                                        target_index = Some(
+                                            virtual_index.min(all_episodes.len().saturating_sub(1)),
+                                        );
                                     }
                                 }
                             }
@@ -804,15 +865,23 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
                         // Perform the reorder if we have a valid target
                         if let Some(target_idx) = target_index {
                             let mut episodes_vec = all_episodes.clone();
-                            if let Some(dragged_index) = episodes_vec.iter().position(|x| x.episodeid == dragged_id) {
+                            if let Some(dragged_index) =
+                                episodes_vec.iter().position(|x| x.episodeid == dragged_id)
+                            {
                                 if dragged_index != target_idx {
                                     // Remove and reinsert at the correct position
                                     let dragged_item = episodes_vec.remove(dragged_index);
-                                    let insert_idx = if dragged_index < target_idx { target_idx } else { target_idx };
-                                    episodes_vec.insert(insert_idx.min(episodes_vec.len()), dragged_item);
+                                    let insert_idx = if dragged_index < target_idx {
+                                        target_idx
+                                    } else {
+                                        target_idx
+                                    };
+                                    episodes_vec
+                                        .insert(insert_idx.min(episodes_vec.len()), dragged_item);
 
                                     // Update the state
-                                    let episode_ids: Vec<i32> = episodes_vec.iter().map(|ep| ep.episodeid).collect();
+                                    let episode_ids: Vec<i32> =
+                                        episodes_vec.iter().map(|ep| ep.episodeid).collect();
                                     dispatch.reduce_mut(|state| {
                                         state.queued_episodes = Some(QueuedEpisodesResponse {
                                             episodes: episodes_vec.clone(),
@@ -828,9 +897,17 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
                                             &server_name.unwrap(),
                                             &api_key.unwrap(),
                                             &user_id.unwrap(),
-                                            &episode_ids
-                                        ).await {
-                                            web_sys::console::log_1(&format!("Failed to update order on server: {:?}", err).into());
+                                            &episode_ids,
+                                        )
+                                        .await
+                                        {
+                                            web_sys::console::log_1(
+                                                &format!(
+                                                    "Failed to update order on server: {:?}",
+                                                    err
+                                                )
+                                                .into(),
+                                            );
                                         }
                                     });
                                 }
@@ -852,19 +929,21 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
             dragged_element.set(None);
         })
     };
-    
+
     // Generate the episode item using the same logic as the original queue.rs
     let is_current_episode = audio_state
         .currently_playing
         .as_ref()
-        .map_or(false, |current| current.episode_id == props.episode.episodeid);
+        .map_or(false, |current| {
+            current.episode_id == props.episode.episodeid
+        });
     let is_playing = audio_state.audio_playing.unwrap_or(false);
 
     let history_clone = history.clone();
     let id_string = &props.episode.episodeid.to_string();
-    
+
     let is_expanded = state.expanded_descriptions.contains(id_string);
-    
+
     let episode_url_clone = props.episode.episodeurl.clone();
     let episode_title_clone = props.episode.episodetitle.clone();
     let episode_description_clone = props.episode.episodedescription.clone();
@@ -873,18 +952,19 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
     let episode_id_clone = props.episode.episodeid.clone();
     let episode_listened_clone = props.episode.listenduration.clone();
     let episode_is_youtube = Some(props.episode.is_youtube.clone());
-    
-    let sanitized_description = sanitize_html_with_blank_target(&props.episode.episodedescription.clone());
-    
+
+    let sanitized_description =
+        sanitize_html_with_blank_target(&props.episode.episodedescription.clone());
+
     let toggle_expanded = {
         let search_dispatch_clone = dispatch.clone();
         let state_clone = state.clone();
         let episode_guid = props.episode.episodeid.clone();
-        
+
         Callback::from(move |_: MouseEvent| {
             let guid_clone = episode_guid.to_string().clone();
             let search_dispatch_call = search_dispatch_clone.clone();
-            
+
             if state_clone.expanded_descriptions.contains(&guid_clone) {
                 search_dispatch_call.apply(AppStateMsg::CollapseEpisode(guid_clone));
             } else {
@@ -892,11 +972,14 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
             }
         })
     };
-    
+
     let date_format = match_date_format(state.date_format.as_deref());
     let datetime = parse_date(&props.episode.episodepubdate, &state.user_tz);
-    let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
-    
+    let format_release = format!(
+        "{}",
+        format_datetime(&datetime, &state.hour_preference, date_format)
+    );
+
     let on_play_pause = on_play_pause(
         episode_url_clone.clone(),
         episode_title_clone.clone(),
@@ -914,7 +997,7 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
         None,
         episode_is_youtube.clone(),
     );
-    
+
     let on_shownotes_click = on_shownotes_click(
         history_clone.clone(),
         dispatch.clone(),
@@ -926,7 +1009,7 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
         None,
         episode_is_youtube,
     );
-    
+
     let episode_url_for_ep_item = episode_url_clone.clone();
     let check_episode_id = &props.episode.episodeid.clone();
     let is_completed = state
@@ -935,7 +1018,7 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
         .unwrap_or(&vec![])
         .contains(&check_episode_id);
     let episode_id_clone = Some(props.episode.episodeid).clone();
-    
+
     let item = queue_episode_item(
         Box::new(props.episode.clone()),
         sanitized_description,
@@ -964,6 +1047,6 @@ pub fn queue_episode(props: &QueueEpisodeProps) -> Html {
         is_current_episode,
         is_playing,
     );
-    
+
     item
 }

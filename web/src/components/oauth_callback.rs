@@ -4,9 +4,9 @@ use crate::requests::login_requests::{
     call_get_user_id, call_setup_timezone_info, call_verify_key, LoginServerRequest, TimeZoneInfo,
 };
 use crate::requests::setting_reqs::call_get_theme;
-use i18nrs::yew::use_translation;
 use chrono_tz::{Tz, TZ_VARIANTS};
 use gloo::utils::window;
+use i18nrs::yew::use_translation;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlSelectElement;
 use yew::prelude::*;
@@ -14,6 +14,7 @@ use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 
 #[derive(PartialEq, Clone)]
+#[allow(dead_code)]
 enum PageState {
     Loading,
     Error(String),
@@ -23,10 +24,12 @@ enum PageState {
 }
 
 // Gravatar URL generation functions (outside of use_effect_with)
+#[allow(dead_code)]
 fn calculate_gravatar_hash(email: &String) -> String {
     format!("{:x}", md5::compute(email.to_lowercase()))
 }
 
+#[allow(dead_code)]
 pub fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
     let hash = calculate_gravatar_hash(&email.clone().unwrap());
     format!("https://gravatar.com/avatar/{}?s={}", hash, size)
@@ -35,24 +38,32 @@ pub fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
 #[function_component(OAuthCallback)]
 pub fn oauth_callback() -> Html {
     let (i18n, _) = use_translation();
-    
+
     // Pre-capture translation strings for async blocks
     let i18n_failed_set_timezone = i18n.t("oauth_callback.failed_to_set_timezone").to_string();
     let i18n_error_setting_timezone = i18n.t("oauth_callback.error_setting_timezone").to_string();
     let i18n_could_not_get_user_id = i18n.t("oauth_callback.could_not_get_user_id").to_string();
     let i18n_failed_get_user_id = i18n.t("oauth_callback.failed_to_get_user_id").to_string();
     let i18n_api_key_not_found = i18n.t("oauth_callback.api_key_not_found").to_string();
-    let i18n_error_checking_first_login = i18n.t("oauth_callback.error_checking_first_login_status").to_string();
-    let i18n_failed_get_server_config = i18n.t("oauth_callback.failed_to_get_server_configuration").to_string();
-    let i18n_failed_get_user_details = i18n.t("oauth_callback.failed_to_get_user_details").to_string();
+    let i18n_error_checking_first_login = i18n
+        .t("oauth_callback.error_checking_first_login_status")
+        .to_string();
+    let i18n_failed_get_server_config = i18n
+        .t("oauth_callback.failed_to_get_server_configuration")
+        .to_string();
+    let i18n_failed_get_user_details = i18n
+        .t("oauth_callback.failed_to_get_user_details")
+        .to_string();
     let i18n_invalid_api_key = i18n.t("oauth_callback.invalid_api_key").to_string();
     let i18n_username_conflict = i18n.t("oauth_callback.username_conflict").to_string();
     let i18n_authentication_failed = i18n.t("oauth_callback.authentication_failed").to_string();
     let i18n_invalid_provider = i18n.t("oauth_callback.invalid_provider").to_string();
     let i18n_no_access = i18n.t("oauth_callback.no_access").to_string();
     let i18n_unexpected_error = i18n.t("oauth_callback.unexpected_error").to_string();
-    let i18n_no_auth_info = i18n.t("oauth_callback.no_authentication_information").to_string();
-    
+    let i18n_no_auth_info = i18n
+        .t("oauth_callback.no_authentication_information")
+        .to_string();
+
     let history = BrowserHistory::new();
     let (_, dispatch) = use_store::<AppState>();
     let page_state = use_state(|| PageState::Loading);
@@ -171,8 +182,9 @@ pub fn oauth_callback() -> Html {
                                         }
                                     }
                                     Err(_) => {
-                                        call_page_state
-                                            .set(PageState::Error(i18n_error_setting_timezone.clone()));
+                                        call_page_state.set(PageState::Error(
+                                            i18n_error_setting_timezone.clone(),
+                                        ));
                                     }
                                 }
                             } else {
@@ -220,7 +232,7 @@ pub fn oauth_callback() -> Html {
             let i18n_no_access = i18n_no_access_effect.clone();
             let i18n_unexpected_error = i18n_unexpected_error_effect.clone();
             let i18n_no_auth_info = i18n_no_auth_info_effect.clone();
-            
+
             spawn_local(async move {
                 let window = window();
                 let search = window.location().search().unwrap_or_default();
@@ -342,7 +354,8 @@ pub fn oauth_callback() -> Html {
                                                             }
                                                             Err(_) => {
                                                                 page_state.set(PageState::Error(
-                                                                    i18n_error_checking_first_login.clone(),
+                                                                    i18n_error_checking_first_login
+                                                                        .clone(),
                                                                 ));
                                                             }
                                                         }
@@ -383,9 +396,7 @@ pub fn oauth_callback() -> Html {
                     };
                     page_state.set(PageState::Error(error_message));
                 } else {
-                    page_state.set(PageState::Error(
-                        i18n_no_auth_info.clone(),
-                    ));
+                    page_state.set(PageState::Error(i18n_no_auth_info.clone()));
                 }
             });
             || ()
@@ -508,7 +519,7 @@ struct ErrorDisplayProps {
 #[function_component(ErrorDisplay)]
 fn error_display(props: &ErrorDisplayProps) -> Html {
     let (i18n, _) = use_translation();
-    
+
     html! {
         <div class="auth-error-container">
             <div class="auth-error-message">
