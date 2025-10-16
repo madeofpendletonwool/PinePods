@@ -9,6 +9,7 @@ use crate::requests::pod_req;
 use crate::requests::pod_req::PodcastExtra;
 use crate::requests::pod_req::{call_remove_podcasts, PodcastResponseExtra, RemovePodcastValues};
 use crate::requests::setting_reqs::call_add_custom_feed;
+use i18nrs::yew::use_translation;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -18,7 +19,6 @@ use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
 
 // Add this enum to define the layout options
 #[derive(Clone, PartialEq, Debug, Deserialize, Default)]
@@ -28,6 +28,7 @@ pub enum PodcastLayout {
     List,
 }
 
+#[allow(dead_code)]
 enum AppStateMsg {
     // ... other messages ...
     RemovePodcast(i32), // Add this line
@@ -59,6 +60,7 @@ impl Reducer<AppState> for AppStateMsg {
     }
 }
 
+#[allow(dead_code)]
 fn render_layout_toggle(
     dispatch: Dispatch<AppState>,
     current_layout: Option<PodcastLayout>,
@@ -86,6 +88,7 @@ fn render_layout_toggle(
     }
 }
 
+#[allow(dead_code)]
 fn render_podcasts(
     podcasts: &[PodcastExtra],
     layout: Option<PodcastLayout>,
@@ -223,7 +226,7 @@ fn render_podcasts(
         Some(PodcastLayout::Grid) => {
             html! {
                 <div class="podcast-grid">
-                    {podcasts.iter().enumerate().map(|(index, podcast)| {
+                    {podcasts.iter().enumerate().map(|(_index, podcast)| {
                         // Log each grid podcast for debugging
 
                         // Create a key for this podcast
@@ -315,23 +318,18 @@ pub fn podcasts() -> Html {
 
     // Capture all i18n strings at function start to avoid borrow checker issues
     let i18n_delete_podcast = i18n.t("podcasts.delete_podcast").to_string();
-    let i18n_close_modal = i18n.t("podcasts.close_modal").to_string();
-    let i18n_delete_confirmation_text = i18n.t("podcasts.delete_confirmation_text").to_string();
     let i18n_yes_delete_podcast = i18n.t("podcasts.yes_delete_podcast").to_string();
     let i18n_no_take_me_back = i18n.t("podcasts.no_take_me_back").to_string();
     let i18n_add_custom_podcast = i18n.t("podcasts.add_custom_podcast").to_string();
-    let i18n_custom_podcast_instructions = i18n.t("podcasts.custom_podcast_instructions").to_string();
-    let i18n_username_optional = i18n.t("podcasts.username_optional").to_string();
-    let i18n_password_optional = i18n.t("podcasts.password_optional").to_string();
     let i18n_add_feed = i18n.t("podcasts.add_feed").to_string();
     let i18n_custom_feed = i18n.t("podcasts.custom_feed").to_string();
-    let i18n_search_podcasts_placeholder = i18n.t("podcasts.search_podcasts_placeholder").to_string();
-    let i18n_no_podcasts_found = i18n.t("podcasts.no_podcasts_found").to_string();
-    let i18n_no_podcasts_found_description = i18n.t("podcasts.no_podcasts_found_description").to_string();
+    let i18n_search_podcasts_placeholder =
+        i18n.t("podcasts.search_podcasts_placeholder").to_string();
     let i18n_youtube_channel_removed = i18n.t("podcasts.youtube_channel_removed").to_string();
     let i18n_podcast_successfully_added = i18n.t("podcasts.podcast_successfully_added").to_string();
     let i18n_podcast_removed = i18n.t("podcasts.podcast_removed").to_string();
-    let i18n_youtube_channel_remove_failed = i18n.t("podcasts.youtube_channel_remove_failed").to_string();
+    let i18n_youtube_channel_remove_failed =
+        i18n.t("podcasts.youtube_channel_remove_failed").to_string();
     let i18n_podcast_remove_failed = i18n.t("podcasts.podcast_remove_failed").to_string();
     let i18n_error_removing_content = i18n.t("podcasts.error_removing_content").to_string();
     let i18n_failed_to_add_podcast = i18n.t("podcasts.failed_to_add_podcast").to_string();
@@ -626,7 +624,7 @@ pub fn podcasts() -> Html {
             let is_loading_wasm = is_loading_call.clone();
             let unstate_pod_user = (*pod_user).clone();
             let unstate_pod_pass = (*pod_pass).clone();
-            
+
             // Capture translated messages before async block
             let success_msg = i18n_podcast_successfully_added.clone();
             let error_prefix = i18n_failed_to_add_podcast.clone();

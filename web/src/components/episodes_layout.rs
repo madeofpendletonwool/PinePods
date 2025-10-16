@@ -4,7 +4,7 @@ use crate::components::audio::AudioPlayer;
 use crate::components::click_events::create_on_title_click;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_funcs::{
-    format_error_message, get_filter_preference, set_filter_preference, get_default_sort_direction,
+    format_error_message, get_default_sort_direction, get_filter_preference, set_filter_preference,
 };
 use crate::components::host_component::HostDropdown;
 use crate::components::podcast_layout::ClickedFeedURL;
@@ -14,19 +14,26 @@ use crate::requests::pod_req::{
     call_bulk_mark_episodes_completed, call_bulk_queue_episodes, call_bulk_save_episodes,
     call_check_podcast, call_clear_playback_speed, call_download_all_podcast,
     call_enable_auto_download, call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
-    call_get_feed_cutoff_days, call_get_play_episode_details, call_get_podcast_id_from_ep,
-    call_get_podcast_id_from_ep_name, call_get_podcast_notifications_status, call_get_rss_key,
-    call_remove_category, call_remove_podcasts_name, call_remove_youtube_channel,
-    call_set_playback_speed, call_toggle_podcast_notifications, call_update_feed_cutoff_days,
-    AddCategoryRequest, AutoDownloadRequest, BulkEpisodeActionRequest,
-    ClearPlaybackSpeedRequest, DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest,
-    PlaybackSpeedRequest, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
-    RemoveYouTubeChannelValues, SkipTimesRequest, UpdateFeedCutoffDaysRequest,
+    call_get_feed_cutoff_days, call_get_merged_podcasts, call_get_play_episode_details,
+    call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
+    call_get_podcast_notifications_status, call_get_podcasts, call_get_rss_key,
+    call_merge_podcasts, call_remove_category, call_remove_podcasts_name,
+    call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_notifications,
+    call_update_feed_cutoff_days, call_update_podcast_info, AddCategoryRequest,
+    AutoDownloadRequest, BulkEpisodeActionRequest, ClearPlaybackSpeedRequest,
+    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, PlaybackSpeedRequest, PodcastValues,
+    RemoveCategoryRequest, RemovePodcastValuesName, RemoveYouTubeChannelValues, SkipTimesRequest,
+    UpdateFeedCutoffDaysRequest,
 };
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
+use crate::requests::setting_reqs::{
+    call_get_podcast_cover_preference, call_set_global_podcast_cover_preference,
+};
+
 use htmlentity::entity::decode;
 use htmlentity::entity::ICodedDataTrait;
+use i18nrs::yew::use_translation;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
@@ -34,56 +41,64 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::Element;
-use web_sys::{window, Event, HtmlInputElement, MouseEvent, UrlSearchParams};
+use web_sys::{console, window, Event, HtmlInputElement, MouseEvent, UrlSearchParams};
 use yew::prelude::*;
 use yew::Properties;
 use yew::{function_component, html, use_effect_with, use_node_ref, Callback, Html, TargetCast};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
 
+#[allow(dead_code)]
 fn add_icon() -> Html {
     html! {
         <i class="ph ph-plus-circle text-2xl"></i>
     }
 }
 
+#[allow(dead_code)]
 fn payments_icon() -> Html {
     html! {
         <i class="ph ph-money-wavy text-2xl"></i>
     }
 }
 
+#[allow(dead_code)]
 fn rss_icon() -> Html {
     html! {
         <i class="ph ph-rss text-2xl"></i>
     }
 }
 
+#[allow(dead_code)]
 fn website_icon() -> Html {
     html! {
         <i class="ph ph-globe text-2xl"></i>
     }
 }
 
+#[allow(dead_code)]
 fn trash_icon() -> Html {
     html! {
         <i class="ph ph-trash text-2xl"></i>
 
     }
 }
+
+#[allow(dead_code)]
 fn settings_icon() -> Html {
     html! {
         <i class="ph ph-gear text-2xl"></i>
 
     }
 }
+#[allow(dead_code)]
 fn download_icon() -> Html {
     html! {
         <i class="ph ph-download text-2xl"></i>
 
     }
 }
+#[allow(dead_code)]
 fn no_icon() -> Html {
     html! {}
 }
@@ -107,6 +122,7 @@ pub struct Props {
     pub html: String,
 }
 
+#[allow(dead_code)]
 fn sanitize_html(html: &str) -> String {
     let cleaned_html = ammonia::clean(html);
     let decoded_data = decode(cleaned_html.as_bytes());
@@ -116,6 +132,7 @@ fn sanitize_html(html: &str) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn get_rss_base_url() -> String {
     let window = window().expect("no global `window` exists");
     let location = window.location();
@@ -143,6 +160,7 @@ fn get_rss_base_url() -> String {
     )
 }
 
+#[allow(dead_code)]
 pub enum AppStateMsg {
     ExpandEpisode(String),
     CollapseEpisode(String),
@@ -167,6 +185,7 @@ impl Reducer<AppState> for AppStateMsg {
 }
 
 #[derive(Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum EpisodeSortDirection {
     NewestFirst,
     OldestFirst,
@@ -174,6 +193,164 @@ pub enum EpisodeSortDirection {
     LongestFirst,
     TitleAZ,
     TitleZA,
+}
+
+#[derive(Properties, PartialEq)]
+pub struct PodcastMergeSelectorProps {
+    pub selected_podcasts: Vec<i32>,
+    pub on_select: Callback<Vec<i32>>,
+    pub available_podcasts: Vec<crate::requests::pod_req::Podcast>,
+    pub loading: bool,
+}
+
+#[function_component(PodcastMergeSelector)]
+pub fn podcast_merge_selector(props: &PodcastMergeSelectorProps) -> Html {
+    let (_i18n, _) = use_translation();
+    let is_open = use_state(|| false);
+    let dropdown_ref = use_node_ref();
+
+    // Handle clicking outside to close dropdown
+    {
+        let is_open = is_open.clone();
+        let dropdown_ref = dropdown_ref.clone();
+
+        use_effect_with(dropdown_ref.clone(), move |dropdown_ref| {
+            let document = web_sys::window().unwrap().document().unwrap();
+            let dropdown_element = dropdown_ref.cast::<HtmlInputElement>();
+
+            let listener =
+                wasm_bindgen::closure::Closure::wrap(Box::new(move |event: web_sys::Event| {
+                    if let Some(target) = event.target() {
+                        if let Some(dropdown) = &dropdown_element {
+                            if let Ok(node) = target.dyn_into::<web_sys::Node>() {
+                                if !dropdown.contains(Some(&node)) {
+                                    is_open.set(false);
+                                }
+                            }
+                        }
+                    }
+                }) as Box<dyn FnMut(_)>);
+
+            document
+                .add_event_listener_with_callback("click", listener.as_ref().unchecked_ref())
+                .unwrap();
+
+            move || {
+                document
+                    .remove_event_listener_with_callback("click", listener.as_ref().unchecked_ref())
+                    .unwrap();
+            }
+        });
+    }
+
+    let toggle_dropdown = {
+        let is_open = is_open.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.stop_propagation();
+            is_open.set(!*is_open);
+        })
+    };
+
+    let toggle_podcast_selection = {
+        let selected = props.selected_podcasts.clone();
+        let on_select = props.on_select.clone();
+
+        Callback::from(move |podcast_id: i32| {
+            let mut new_selection = selected.clone();
+            if let Some(pos) = new_selection.iter().position(|&id| id == podcast_id) {
+                new_selection.remove(pos);
+            } else {
+                new_selection.push(podcast_id);
+            }
+            on_select.emit(new_selection);
+        })
+    };
+
+    let stop_propagation = Callback::from(|e: MouseEvent| {
+        e.stop_propagation();
+    });
+
+    html! {
+        <div class="relative" ref={dropdown_ref}>
+            <button
+                type="button"
+                onclick={toggle_dropdown.clone()}
+                class="search-bar-input border text-sm rounded-lg block w-full p-2.5 flex items-center"
+                disabled={props.loading}
+            >
+                <div class="flex items-center flex-grow">
+                    if props.loading {
+                        <span class="flex-grow text-left">{"Loading podcasts..."}</span>
+                    } else if props.selected_podcasts.is_empty() {
+                        <span class="flex-grow text-left">{"Select podcasts to merge"}</span>
+                    } else {
+                        <span class="flex-grow text-left">
+                            {format!("{} {} selected",
+                                props.selected_podcasts.len(),
+                                if props.selected_podcasts.len() == 1 { "podcast" } else { "podcasts" }
+                            )}
+                        </span>
+                    }
+                    <i class={classes!(
+                        "ph",
+                        "ph-caret-down",
+                        "transition-transform",
+                        "duration-200",
+                        if *is_open { "rotate-180" } else { "" }
+                    )}></i>
+                </div>
+            </button>
+
+            if *is_open && !props.loading {
+                <div
+                    class="absolute z-50 mt-1 w-full rounded-lg shadow-lg modal-container max-h-[400px] overflow-y-auto"
+                    onclick={stop_propagation}
+                >
+                    <div class="max-h-[400px] overflow-y-auto p-2 space-y-1">
+                        {
+                            props.available_podcasts.iter().map(|podcast| {
+                                let is_selected = props.selected_podcasts.contains(&podcast.podcastid);
+                                let onclick = {
+                                    let toggle = toggle_podcast_selection.clone();
+                                    let id = podcast.podcastid;
+                                    Callback::from(move |_| toggle.emit(id))
+                                };
+
+                                html! {
+                                    <div
+                                        key={podcast.podcastid}
+                                        {onclick}
+                                        class={classes!(
+                                            "flex",
+                                            "items-center",
+                                            "p-2",
+                                            "rounded-lg",
+                                            "cursor-pointer",
+                                            "hover:bg-gray-700",
+                                            "transition-colors",
+                                            if is_selected { "bg-gray-700" } else { "" }
+                                        )}
+                                    >
+                                        <FallbackImage
+                                            src={podcast.artworkurl.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string())}
+                                            alt={format!("Cover for {}", podcast.podcastname)}
+                                            class="w-12 h-12 rounded object-cover"
+                                        />
+                                        <span class="ml-3 flex-grow truncate">
+                                            {&podcast.podcastname}
+                                        </span>
+                                        if is_selected {
+                                            <i class="ph ph-check text-blue-500 text-xl"></i>
+                                        }
+                                    </div>
+                                }
+                            }).collect::<Html>()
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
 }
 
 #[function_component(EpisodeLayout)]
@@ -184,67 +361,75 @@ pub fn episode_layout() -> Html {
     let (search_state, _search_dispatch) = use_store::<AppState>();
     let podcast_feed_results = search_state.podcast_feed_results.clone();
     let clicked_podcast_info = search_state.clicked_podcast_info.clone();
-    
+
     // Capture i18n strings before they get moved - this is a large component with many strings
-    let i18n_invalid_html_content = i18n.t("episodes_layout.invalid_html_content").to_string();
-    let i18n_unable_to_retrieve_url = i18n.t("episode.unable_to_retrieve_url").to_string();
-    let i18n_youtube_channel_successfully_removed = i18n.t("episodes_layout.youtube_channel_successfully_removed").to_string();
-    let i18n_podcast_successfully_removed = i18n.t("episodes_layout.podcast_successfully_removed").to_string();
-    let i18n_failed_to_remove_youtube_channel = i18n.t("episodes_layout.failed_to_remove_youtube_channel").to_string();
-    let i18n_failed_to_remove_podcast = i18n.t("episodes_layout.failed_to_remove_podcast").to_string();
+    let i18n_youtube_channel_successfully_removed = i18n
+        .t("episodes_layout.youtube_channel_successfully_removed")
+        .to_string();
+    let i18n_podcast_successfully_removed = i18n
+        .t("episodes_layout.podcast_successfully_removed")
+        .to_string();
+    let i18n_failed_to_remove_youtube_channel = i18n
+        .t("episodes_layout.failed_to_remove_youtube_channel")
+        .to_string();
+    let i18n_failed_to_remove_podcast = i18n
+        .t("episodes_layout.failed_to_remove_podcast")
+        .to_string();
     let i18n_playback_speed_updated = i18n.t("episodes_layout.playback_speed_updated").to_string();
-    let i18n_error_updating_playback_speed = i18n.t("episodes_layout.error_updating_playback_speed").to_string();
-    let i18n_playback_speed_reset = i18n.t("episodes_layout.playback_speed_reset").to_string();
-    let i18n_error_resetting_playback_speed = i18n.t("episodes_layout.error_resetting_playback_speed").to_string();
-    let i18n_skip_times_adjusted = i18n.t("episodes_layout.skip_times_adjusted").to_string();
-    let i18n_error_adjusting_skip_times = i18n.t("episodes_layout.error_adjusting_skip_times").to_string();
-    let i18n_podcast_successfully_added = i18n.t("episodes_layout.podcast_successfully_added").to_string();
+    let i18n_error_updating_playback_speed = i18n
+        .t("episodes_layout.error_updating_playback_speed")
+        .to_string();
+    let i18n_podcast_successfully_added = i18n
+        .t("episodes_layout.podcast_successfully_added")
+        .to_string();
     let i18n_failed_to_add_podcast = i18n.t("episodes_layout.failed_to_add_podcast").to_string();
-    let i18n_rss_feed_url = i18n.t("episodes_layout.rss_feed_url").to_string();
-    let i18n_close_modal = i18n.t("common.close_modal").to_string();
-    let i18n_copy = i18n.t("common.copy").to_string();
-    let i18n_podcast_options = i18n.t("episodes_layout.podcast_options").to_string();
-    let i18n_save = i18n.t("common.save").to_string();
-    let i18n_reset = i18n.t("common.reset").to_string();
-    let i18n_confirm = i18n.t("common.confirm").to_string();
-    let i18n_no_categories_available = i18n.t("episodes_layout.no_categories_available").to_string();
-    let i18n_new_category = i18n.t("episodes_layout.new_category").to_string();
-    let i18n_add = i18n.t("common.add").to_string();
-    let i18n_verify_downloads = i18n.t("episodes_layout.verify_downloads").to_string();
-    let i18n_delete_podcast = i18n.t("episodes_layout.delete_podcast").to_string();
-    let i18n_visit_external_website = i18n.t("episodes_layout.visit_external_website").to_string();
-    let i18n_get_rss_feed_url = i18n.t("episodes_layout.get_rss_feed_url").to_string();
-    let i18n_download_all_episodes = i18n.t("episodes_layout.download_all_episodes").to_string();
-    let i18n_add_remove_podcast = i18n.t("episodes_layout.add_remove_podcast").to_string();
-    let i18n_podcast_specific_settings = i18n.t("episodes_layout.podcast_specific_settings").to_string();
-    let i18n_explicit_yes = i18n.t("common.yes").to_string();
-    let i18n_explicit_no = i18n.t("common.no").to_string();
-    let i18n_match_it_here = i18n.t("episodes_layout.match_it_here").to_string();
-    let i18n_hosts = i18n.t("episodes_layout.hosts").to_string();
-    
+    let i18n_no_categories_available = i18n
+        .t("episodes_layout.no_categories_available")
+        .to_string();
+
     // Additional i18n strings used throughout the component
-    let i18n_category_name_cannot_be_empty = i18n.t("episodes_layout.category_name_cannot_be_empty").to_string();
+    let i18n_category_name_cannot_be_empty = i18n
+        .t("episodes_layout.category_name_cannot_be_empty")
+        .to_string();
     let i18n_loading_rss_key = i18n.t("episodes_layout.loading_rss_key").to_string();
     let i18n_rss_feed_url = i18n.t("episodes_layout.rss_feed_url").to_string();
     let i18n_rss_feed_note = i18n.t("episodes_layout.rss_feed_note").to_string();
     let i18n_rss_feed_instruction = i18n.t("episodes_layout.rss_feed_instruction").to_string();
     let i18n_rss_feed_warning = i18n.t("episodes_layout.rss_feed_warning").to_string();
-    let i18n_download_future_episodes = i18n.t("episodes_layout.download_future_episodes").to_string();
-    let i18n_get_notifications_new_episodes = i18n.t("episodes_layout.get_notifications_new_episodes").to_string();
+    let i18n_download_future_episodes = i18n
+        .t("episodes_layout.download_future_episodes")
+        .to_string();
+    let i18n_get_notifications_new_episodes = i18n
+        .t("episodes_layout.get_notifications_new_episodes")
+        .to_string();
     let i18n_default_playback_speed = i18n.t("episodes_layout.default_playback_speed").to_string();
-    let i18n_playback_speed_description = i18n.t("episodes_layout.playback_speed_description").to_string();
-    let i18n_auto_skip_intros_outros = i18n.t("episodes_layout.auto_skip_intros_outros").to_string();
+    let i18n_playback_speed_description = i18n
+        .t("episodes_layout.playback_speed_description")
+        .to_string();
+    let i18n_auto_skip_intros_outros = i18n
+        .t("episodes_layout.auto_skip_intros_outros")
+        .to_string();
     let i18n_start_skip_seconds = i18n.t("episodes_layout.start_skip_seconds").to_string();
     let i18n_end_skip_seconds = i18n.t("episodes_layout.end_skip_seconds").to_string();
     let i18n_youtube_download_limit = i18n.t("episodes_layout.youtube_download_limit").to_string();
-    let i18n_youtube_limit_description = i18n.t("episodes_layout.youtube_limit_description").to_string();
-    let i18n_adjust_podcast_categories = i18n.t("episodes_layout.adjust_podcast_categories").to_string();
+    let i18n_youtube_limit_description = i18n
+        .t("episodes_layout.youtube_limit_description")
+        .to_string();
+    let i18n_adjust_podcast_categories = i18n
+        .t("episodes_layout.adjust_podcast_categories")
+        .to_string();
     let i18n_loading = i18n.t("episodes_layout.loading").to_string();
-    let i18n_new_category_placeholder = i18n.t("episodes_layout.new_category_placeholder").to_string();
-    let i18n_download_all_confirmation = i18n.t("episodes_layout.download_all_confirmation").to_string();
+    let i18n_new_category_placeholder = i18n
+        .t("episodes_layout.new_category_placeholder")
+        .to_string();
+    let i18n_download_all_confirmation = i18n
+        .t("episodes_layout.download_all_confirmation")
+        .to_string();
     let i18n_yes_download_all = i18n.t("episodes_layout.yes_download_all").to_string();
     let i18n_no_take_me_back = i18n.t("episodes_layout.no_take_me_back").to_string();
-    let i18n_delete_podcast_confirmation = i18n.t("episodes_layout.delete_podcast_confirmation").to_string();
+    let i18n_delete_podcast_confirmation = i18n
+        .t("episodes_layout.delete_podcast_confirmation")
+        .to_string();
     let i18n_yes_delete_podcast = i18n.t("episodes_layout.yes_delete_podcast").to_string();
     let i18n_show_only = i18n.t("episodes_layout.show_only").to_string();
     let i18n_showing_only_completed = i18n.t("episodes_layout.showing_only_completed").to_string();
@@ -257,7 +442,9 @@ pub fn episode_layout() -> Html {
     let i18n_explicit = i18n.t("episodes_layout.explicit").to_string();
     let i18n_yes = i18n.t("episodes_layout.yes").to_string();
     let i18n_no = i18n.t("episodes_layout.no").to_string();
-    let i18n_search_episodes_placeholder = i18n.t("episodes_layout.search_episodes_placeholder").to_string();
+    let i18n_search_episodes_placeholder = i18n
+        .t("episodes_layout.search_episodes_placeholder")
+        .to_string();
     let i18n_newest_first = i18n.t("episodes_layout.newest_first").to_string();
     let i18n_oldest_first = i18n.t("episodes_layout.oldest_first").to_string();
     let i18n_shortest_first = i18n.t("episodes_layout.shortest_first").to_string();
@@ -275,40 +462,40 @@ pub fn episode_layout() -> Html {
     let i18n_queue_episodes = i18n.t("episodes_layout.queue_episodes").to_string();
     let i18n_download_episodes = i18n.t("episodes_layout.download_episodes").to_string();
     let i18n_no_episodes_found = i18n.t("episodes_layout.no_episodes_found").to_string();
-    let i18n_no_episodes_description = i18n.t("episodes_layout.no_episodes_description").to_string();
-    let i18n_youtube_episode_limit_updated = i18n.t("episodes_layout.youtube_episode_limit_updated").to_string();
+    let i18n_no_episodes_description = i18n
+        .t("episodes_layout.no_episodes_description")
+        .to_string();
+    let i18n_youtube_episode_limit_updated = i18n
+        .t("episodes_layout.youtube_episode_limit_updated")
+        .to_string();
     let i18n_skip_times_adjusted = i18n.t("episodes_layout.skip_times_adjusted").to_string();
-    let i18n_error_adjusting_skip_times = i18n.t("episodes_layout.error_adjusting_skip_times").to_string();
-    let i18n_playback_speed_reset_default = i18n.t("episodes_layout.playback_speed_reset_default").to_string();
-    let i18n_error_resetting_playback_speed = i18n.t("episodes_layout.error_resetting_playback_speed").to_string();
+    let i18n_error_adjusting_skip_times = i18n
+        .t("episodes_layout.error_adjusting_skip_times")
+        .to_string();
+    let i18n_playback_speed_reset_default = i18n
+        .t("episodes_layout.playback_speed_reset_default")
+        .to_string();
+    let i18n_error_resetting_playback_speed = i18n
+        .t("episodes_layout.error_resetting_playback_speed")
+        .to_string();
     let loading = use_state(|| true);
     let page_state = use_state(|| PageState::Hidden);
     let episode_search_term = use_state(|| String::new());
-    
-    // Initialize sort direction from local storage or default to newest first
-    let episode_sort_direction = use_state(|| {
-        let saved_preference = get_filter_preference("episodes");
-        match saved_preference.as_deref() {
-            Some("newest") => Some(EpisodeSortDirection::NewestFirst),
-            Some("oldest") => Some(EpisodeSortDirection::OldestFirst),
-            Some("shortest") => Some(EpisodeSortDirection::ShortestFirst),
-            Some("longest") => Some(EpisodeSortDirection::LongestFirst),
-            Some("title_az") => Some(EpisodeSortDirection::TitleAZ),
-            Some("title_za") => Some(EpisodeSortDirection::TitleZA),
-            _ => Some(EpisodeSortDirection::NewestFirst), // Default to newest first
-        }
-    });
-    
+
+    // Initialize sort direction - will be updated when podcast_id changes
+    let episode_sort_direction = use_state(|| Some(EpisodeSortDirection::NewestFirst));
+
     let completed_filter_state = use_state(|| CompletedFilter::ShowAll);
     let show_in_progress = use_state(|| false);
     let notification_status = use_state(|| false);
     let feed_cutoff_days = use_state(|| 0);
     let feed_cutoff_days_input = use_state(|| "0".to_string());
     let playback_speed = use_state(|| 1.0);
+    let use_podcast_covers = use_state(|| false);
     let playback_speed_input = playback_speed.clone();
     let playback_speed_clone = playback_speed.clone();
     let rss_key_state = use_state(|| None::<String>);
-    
+
     // Bulk selection state
     let selected_episodes = use_state(|| HashSet::<i32>::new());
     let is_selecting = use_state(|| false);
@@ -330,6 +517,132 @@ pub fn episode_layout() -> Html {
     let podcast_added = search_state.podcast_added.unwrap_or_default();
     let pod_url = use_state(|| String::new());
     let new_category = use_state(|| String::new());
+
+    // Edit podcast form state
+    let edit_feed_url = use_state(|| String::new());
+    let edit_username = use_state(|| String::new());
+    let edit_password = use_state(|| String::new());
+    let edit_podcast_name = use_state(|| String::new());
+    let edit_description = use_state(|| String::new());
+    let edit_author = use_state(|| String::new());
+    let edit_artwork_url = use_state(|| String::new());
+    let edit_website_url = use_state(|| String::new());
+    let edit_podcast_index_id = use_state(|| String::new());
+
+    // Merge podcast state
+    let selected_podcasts_to_merge = use_state(|| Vec::<i32>::new());
+    let available_podcasts_for_merge =
+        use_state(|| Vec::<crate::requests::pod_req::Podcast>::new());
+    let current_merged_podcasts = use_state(|| Vec::<i32>::new());
+    let loading_merge_data = use_state(|| false);
+
+    // Pre-populate edit form when modal opens
+    {
+        let edit_feed_url = edit_feed_url.clone();
+        let edit_username = edit_username.clone();
+        let edit_password = edit_password.clone();
+        let edit_podcast_name = edit_podcast_name.clone();
+        let edit_description = edit_description.clone();
+        let edit_author = edit_author.clone();
+        let edit_artwork_url = edit_artwork_url.clone();
+        let edit_website_url = edit_website_url.clone();
+        let edit_podcast_index_id = edit_podcast_index_id.clone();
+        let clicked_podcast_info = clicked_podcast_info.clone();
+        let page_state = page_state.clone();
+
+        use_effect_with(
+            (page_state.clone(), clicked_podcast_info.clone()),
+            move |(page_state, podcast_info)| {
+                if **page_state == PageState::EditPodcast {
+                    if let Some(info) = podcast_info {
+                        edit_feed_url.set(info.feedurl.clone());
+                        edit_username.set(String::new()); // Username not available in current podcast info
+                        edit_password.set(String::new()); // Password not available in current podcast info
+                        edit_podcast_name.set(info.podcastname.clone());
+                        edit_description.set(info.description.clone());
+                        edit_author.set(info.author.clone());
+                        edit_artwork_url.set(info.artworkurl.clone());
+                        edit_website_url.set(info.websiteurl.clone());
+                        edit_podcast_index_id.set(info.podcastindexid.to_string());
+                    }
+                }
+            },
+        );
+    }
+
+    // Load merge-related data when edit modal opens
+    {
+        let available_podcasts_for_merge = available_podcasts_for_merge.clone();
+        let current_merged_podcasts = current_merged_podcasts.clone();
+        let loading_merge_data = loading_merge_data.clone();
+        let page_state = page_state.clone();
+        let clicked_podcast_info = clicked_podcast_info.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+
+        use_effect_with(
+            (page_state.clone(), clicked_podcast_info.clone()),
+            move |(page_state, podcast_info)| {
+                if **page_state == PageState::EditPodcast {
+                    if let (Some(api_key), Some(server_name), Some(user_id), Some(podcast_info)) = (
+                        api_key.as_ref(),
+                        server_name.as_ref(),
+                        user_id.as_ref(),
+                        podcast_info.as_ref(),
+                    ) {
+                        loading_merge_data.set(true);
+
+                        // Load available podcasts
+                        let available_podcasts_for_merge = available_podcasts_for_merge.clone();
+                        let current_merged_podcasts = current_merged_podcasts.clone();
+                        let loading_merge_data = loading_merge_data.clone();
+                        let api_key = api_key.clone();
+                        let server_name = server_name.clone();
+                        let user_id = *user_id;
+                        let podcast_id = podcast_info.podcastid;
+
+                        spawn_local(async move {
+                            // Load all available podcasts
+                            match call_get_podcasts(&server_name, &api_key, &user_id).await {
+                                Ok(mut podcasts) => {
+                                    // Remove the current podcast from the list
+                                    podcasts.retain(|p| p.podcastid != podcast_id as i32);
+                                    available_podcasts_for_merge.set(podcasts);
+                                }
+                                Err(e) => {
+                                    console::log_1(
+                                        &format!("Error loading podcasts for merge: {}", e).into(),
+                                    );
+                                }
+                            }
+
+                            // Load current merged podcasts
+                            match call_get_merged_podcasts(
+                                &server_name,
+                                &api_key,
+                                podcast_id as i32,
+                            )
+                            .await
+                            {
+                                Ok(merged_ids) => {
+                                    current_merged_podcasts.set(merged_ids);
+                                }
+                                Err(e) => {
+                                    console::log_1(
+                                        &format!("Error loading merged podcasts: {}", e).into(),
+                                    );
+                                    current_merged_podcasts.set(Vec::new());
+                                }
+                            }
+
+                            loading_merge_data.set(false);
+                        });
+                    }
+                }
+            },
+        );
+    }
 
     let new_cat_in = new_category.clone();
     let new_category_input = Callback::from(move |e: InputEvent| {
@@ -589,6 +902,29 @@ pub fn episode_layout() -> Html {
     let start_skip = use_state(|| 0);
     let end_skip = use_state(|| 0);
 
+    // Update sort direction when podcast_id changes to load per-podcast preferences
+    {
+        let episode_sort_direction = episode_sort_direction.clone();
+        let podcast_id_clone = podcast_id.clone();
+        use_effect_with(podcast_id_clone, move |podcast_id| {
+            if **podcast_id > 0 {
+                let preference_key = format!("podcast_{}", **podcast_id);
+                let saved_preference = get_filter_preference(&preference_key);
+                let new_direction = match saved_preference.as_deref() {
+                    Some("newest") => Some(EpisodeSortDirection::NewestFirst),
+                    Some("oldest") => Some(EpisodeSortDirection::OldestFirst),
+                    Some("shortest") => Some(EpisodeSortDirection::ShortestFirst),
+                    Some("longest") => Some(EpisodeSortDirection::LongestFirst),
+                    Some("title_az") => Some(EpisodeSortDirection::TitleAZ),
+                    Some("title_za") => Some(EpisodeSortDirection::TitleZA),
+                    _ => Some(EpisodeSortDirection::NewestFirst), // Default to newest first
+                };
+                episode_sort_direction.set(new_direction);
+            }
+            || ()
+        });
+    }
+
     {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
@@ -790,6 +1126,48 @@ pub fn episode_layout() -> Html {
         );
     }
 
+    // Load podcast cover preference when podcast_id changes
+    {
+        let use_podcast_covers = use_podcast_covers.clone();
+        let podcast_id = podcast_id.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+
+        use_effect_with(podcast_id.clone(), move |podcast_id| {
+            if **podcast_id > 0 {
+                let use_podcast_covers = use_podcast_covers.clone();
+                let podcast_id_val = **podcast_id;
+
+                if let (Some(api_key), Some(server_name), Some(user_id)) = (
+                    api_key.as_ref().and_then(|k| k.clone()),
+                    server_name.as_ref().map(|s| s.clone()),
+                    user_id.as_ref().cloned(),
+                ) {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        match call_get_podcast_cover_preference(
+                            &server_name,
+                            &api_key,
+                            user_id,
+                            Some(podcast_id_val),
+                        )
+                        .await
+                        {
+                            Ok(current_preference) => {
+                                use_podcast_covers.set(current_preference);
+                            }
+                            Err(_) => {
+                                // If API call fails, default to false
+                                use_podcast_covers.set(false);
+                            }
+                        }
+                    });
+                }
+            }
+            || ()
+        });
+    }
+
     let open_in_new_tab = Callback::from(move |url: String| {
         let window = web_sys::window().unwrap();
         window.open_with_url_and_target(&url, "_blank").unwrap();
@@ -850,16 +1228,19 @@ pub fn episode_layout() -> Html {
         let app_dispatch = _search_dispatch.clone();
         let call_is_added = is_added.clone();
         let page_state = page_state.clone();
-        let i18n_youtube_channel_successfully_removed = i18n_youtube_channel_successfully_removed.clone();
+        let i18n_youtube_channel_successfully_removed =
+            i18n_youtube_channel_successfully_removed.clone();
         let i18n_podcast_successfully_removed = i18n_podcast_successfully_removed.clone();
         let i18n_failed_to_remove_youtube_channel = i18n_failed_to_remove_youtube_channel.clone();
         let i18n_failed_to_remove_podcast = i18n_failed_to_remove_podcast.clone();
 
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
-            let i18n_youtube_channel_successfully_removed = i18n_youtube_channel_successfully_removed.clone();
+            let i18n_youtube_channel_successfully_removed =
+                i18n_youtube_channel_successfully_removed.clone();
             let i18n_podcast_successfully_removed = i18n_podcast_successfully_removed.clone();
-            let i18n_failed_to_remove_youtube_channel = i18n_failed_to_remove_youtube_channel.clone();
+            let i18n_failed_to_remove_youtube_channel =
+                i18n_failed_to_remove_youtube_channel.clone();
             let i18n_failed_to_remove_podcast = i18n_failed_to_remove_podcast.clone();
             let hist = delete_history.clone();
             let page_state = page_state.clone();
@@ -1060,6 +1441,7 @@ pub fn episode_layout() -> Html {
         Download,
         Delete,
         RSSFeed,
+        EditPodcast,
     }
 
     let button_content = if *is_added { trash_icon() } else { add_icon() };
@@ -1101,6 +1483,13 @@ pub fn episode_layout() -> Html {
     let stop_propagation = Callback::from(|e: MouseEvent| {
         e.stop_propagation();
     });
+
+    let toggle_edit_podcast = {
+        let page_state = page_state.clone();
+        Callback::from(move |_: MouseEvent| {
+            page_state.set(PageState::EditPodcast);
+        })
+    };
 
     let toggle_download = {
         let api_key = api_key.clone();
@@ -1190,8 +1579,7 @@ pub fn episode_layout() -> Html {
                     match call_set_playback_speed(&server_name, &api_key, &request).await {
                         Ok(_) => {
                             call_dispatch.reduce_mut(|state| {
-                                state.info_message =
-                                    Option::from(i18n_playback_speed_updated)
+                                state.info_message = Option::from(i18n_playback_speed_updated)
                             });
                         }
                         Err(e) => {
@@ -1235,8 +1623,7 @@ pub fn episode_layout() -> Html {
                     match call_clear_playback_speed(&server_name, &api_key, &request).await {
                         Ok(_) => {
                             call_dispatch.reduce_mut(|state| {
-                                state.info_message =
-                                    Option::from(i18n_playback_speed_reset_default)
+                                state.info_message = Option::from(i18n_playback_speed_reset_default)
                             });
                         }
                         Err(e) => {
@@ -1370,6 +1757,55 @@ pub fn episode_layout() -> Html {
         })
     };
 
+    let toggle_podcast_covers = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let use_podcast_covers = use_podcast_covers.clone();
+        let podcast_id = podcast_id.clone();
+        let user_id = user_id.clone();
+        let dispatch = _search_dispatch.clone();
+        Callback::from(move |_: MouseEvent| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let use_podcast_covers = use_podcast_covers.clone();
+            let new_setting = !*use_podcast_covers;
+            let pod_id_deref = *podcast_id.clone();
+            let user_id = user_id.clone().unwrap();
+            let dispatch = dispatch.clone();
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_set_global_podcast_cover_preference(
+                        server_name,
+                        &api_key.clone().unwrap(),
+                        user_id,
+                        new_setting,
+                        Some(pod_id_deref),
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            use_podcast_covers.set(new_setting);
+                            dispatch.reduce_mut(|state| {
+                                state.info_message = Some(format!(
+                                    "Podcast cover preference {} for this podcast",
+                                    if new_setting { "enabled" } else { "disabled" }
+                                ));
+                            });
+                        }
+                        Err(e) => {
+                            dispatch.reduce_mut(|state| {
+                                state.error_message =
+                                    Some(format!("Error updating podcast cover preference: {}", e));
+                            });
+                        }
+                    }
+                }
+            });
+        })
+    };
+
     let start_skip_call = start_skip.clone();
     let end_skip_call = end_skip.clone();
     let start_skip_call_button = start_skip.clone();
@@ -1419,8 +1855,7 @@ pub fn episode_layout() -> Html {
                                 &format!("Error updating skip times: {}", e).into(),
                             );
                             skip_call_dispatch.reduce_mut(|state| {
-                                state.error_message =
-                                    Option::from(i18n_error_adjusting_skip_times)
+                                state.error_message = Option::from(i18n_error_adjusting_skip_times)
                             });
                         }
                     }
@@ -1662,10 +2097,10 @@ pub fn episode_layout() -> Html {
     // Define the modal components
     let clicked_feed = clicked_podcast_info.clone();
     let podcast_option_model = html! {
-        <div id="podcast_option_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                <div class="modal-container relative rounded-lg shadow">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+        <div id="podcast_option_model" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25 py-8" onclick={on_background_click.clone()}>
+            <div class="modal-container relative w-full max-w-md max-h-full rounded-lg shadow mx-4 overflow-hidden flex flex-col" onclick={stop_propagation.clone()}>
+                <div class="modal-container relative rounded-lg shadow flex-1 flex flex-col overflow-hidden">
+                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t flex-shrink-0">
                         <h3 class="text-xl font-semibold">
                             {&i18n.t("episodes_layout.podcast_options")}
                         </h3>
@@ -1676,7 +2111,7 @@ pub fn episode_layout() -> Html {
                             <span class="sr-only">{&i18n.t("episodes_layout.close_modal")}</span>
                         </button>
                     </div>
-                    <div class="p-4 md:p-5">
+                    <div class="p-4 md:p-5 overflow-y-auto flex-1">
                         <form class="space-y-4" action="#">
                             <div>
                                 <label for="download_schedule" class="block mb-2 text-sm font-medium">{&i18n_download_future_episodes}</label>
@@ -1726,6 +2161,22 @@ pub fn episode_layout() -> Html {
                                     </button>
                                 </div>
                                 <p class="text-xs text-gray-500 mt-1">{&i18n_playback_speed_description}</p>
+                            </div>
+
+                            <div class="mt-4">
+                                <label class="block mb-2 text-sm font-medium">{"Use Podcast Covers"}</label>
+                                <div class="flex items-center space-x-2">
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={*use_podcast_covers}
+                                            class="sr-only peer"
+                                            onclick={toggle_podcast_covers.clone()}
+                                        />
+                                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                    </label>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">{"Show podcast cover instead of episode artwork for this podcast's episodes"}</p>
                             </div>
 
                             <div class="mt-4">
@@ -1803,6 +2254,7 @@ pub fn episode_layout() -> Html {
                                     html! {}  // Render nothing if podcast_info is None
                                 }
                             }
+
                             // Categories section of the modal
                             <div>
                                 <label for="category_adjust" class="block mb-2 text-sm font-medium">
@@ -1870,6 +2322,17 @@ pub fn episode_layout() -> Html {
                                         <span class="hidden md:inline">{&i18n.t("episodes_layout.add")}</span>
                                     </button>
                                 </div>
+                            </div>
+
+                            // Edit podcast info button
+                            <div class="mt-4">
+                                <button
+                                    type="button"
+                                    class="download-button font-bold py-2 px-4 rounded"
+                                    onclick={toggle_edit_podcast}
+                                >
+                                    {&i18n.t("episodes_layout.modify_podcast_info")}
+                                </button>
                             </div>
                         </form>
                     </div>
@@ -1948,6 +2411,458 @@ pub fn episode_layout() -> Html {
                 </div>
             </div>
         </div>
+    };
+
+    // Define the edit podcast modal
+    let edit_podcast_modal = {
+        html! {
+            <div id="edit_podcast_modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25 py-8" onclick={on_background_click.clone()}>
+                <div class="modal-container relative w-full max-w-md max-h-full rounded-lg shadow mx-4 overflow-hidden flex flex-col" onclick={stop_propagation.clone()}>
+                    <div class="modal-container relative rounded-lg shadow flex-1 flex flex-col overflow-hidden">
+                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t flex-shrink-0">
+                            <h3 class="text-xl font-semibold">
+                                {&i18n.t("episodes_layout.edit_podcast_info")}
+                            </h3>
+                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                                </svg>
+                                <span class="sr-only">{&i18n.t("episodes_layout.close_modal")}</span>
+                            </button>
+                        </div>
+                        <div class="p-4 md:p-5 overflow-y-auto flex-1">
+                            <form class="space-y-4" action="#">
+                                <div>
+                                    <label for="edit_feed_url" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.feed_url")}
+                                    </label>
+                                    <input
+                                        type="url"
+                                        id="edit_feed_url"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.feed_url_placeholder").to_string()}
+                                        value={(*edit_feed_url).clone()}
+                                        oninput={Callback::from({
+                                            let edit_feed_url = edit_feed_url.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_feed_url.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_username" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.username")}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="edit_username"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.username_placeholder").to_string()}
+                                        value={(*edit_username).clone()}
+                                        oninput={Callback::from({
+                                            let edit_username = edit_username.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_username.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_password" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.password")}
+                                    </label>
+                                    <input
+                                        type="password"
+                                        id="edit_password"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.password_placeholder").to_string()}
+                                        value={(*edit_password).clone()}
+                                        oninput={Callback::from({
+                                            let edit_password = edit_password.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_password.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_podcast_name" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.podcast_name")}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="edit_podcast_name"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.podcast_name_placeholder").to_string()}
+                                        value={(*edit_podcast_name).clone()}
+                                        oninput={Callback::from({
+                                            let edit_podcast_name = edit_podcast_name.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_podcast_name.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_description" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.description")}
+                                    </label>
+                                    <textarea
+                                        id="edit_description"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.description_placeholder").to_string()}
+                                        value={(*edit_description).clone()}
+                                        oninput={Callback::from({
+                                            let edit_description = edit_description.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<web_sys::HtmlTextAreaElement>() {
+                                                    edit_description.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                        rows="3"
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_author" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.author")}
+                                    </label>
+                                    <input
+                                        type="text"
+                                        id="edit_author"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.author_placeholder").to_string()}
+                                        value={(*edit_author).clone()}
+                                        oninput={Callback::from({
+                                            let edit_author = edit_author.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_author.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_artwork_url" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.artwork_url")}
+                                    </label>
+                                    <input
+                                        type="url"
+                                        id="edit_artwork_url"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.artwork_url_placeholder").to_string()}
+                                        value={(*edit_artwork_url).clone()}
+                                        oninput={Callback::from({
+                                            let edit_artwork_url = edit_artwork_url.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_artwork_url.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_website_url" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.website_url")}
+                                    </label>
+                                    <input
+                                        type="url"
+                                        id="edit_website_url"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.website_url_placeholder").to_string()}
+                                        value={(*edit_website_url).clone()}
+                                        oninput={Callback::from({
+                                            let edit_website_url = edit_website_url.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_website_url.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
+                                <div>
+                                    <label for="edit_podcast_index_id" class="block mb-2 text-sm font-medium">
+                                        {&i18n.t("episodes_layout.podcast_index_id")}
+                                    </label>
+                                    <input
+                                        type="number"
+                                        id="edit_podcast_index_id"
+                                        class="email-input border text-sm rounded-lg p-2.5 w-full"
+                                        placeholder={i18n.t("episodes_layout.podcast_index_id_placeholder").to_string()}
+                                        value={(*edit_podcast_index_id).clone()}
+                                        oninput={Callback::from({
+                                            let edit_podcast_index_id = edit_podcast_index_id.clone();
+                                            move |e: InputEvent| {
+                                                if let Some(input) = e.target_dyn_into::<HtmlInputElement>() {
+                                                    edit_podcast_index_id.set(input.value());
+                                                }
+                                            }
+                                        })}
+                                    />
+                                </div>
+
+                                // Merge Podcasts Section
+                                <div class="mb-4 p-4 border rounded-lg">
+                                    <h4 class="text-lg font-semibold mb-3">{"Merge Podcasts"}</h4>
+                                    <p class="text-sm text-gray-600 mb-3">
+                                        {"Merge other podcasts into this one. Episodes from merged podcasts will appear under this podcast."}
+                                    </p>
+
+                                    // Show currently merged podcasts
+                                    if !(*current_merged_podcasts).is_empty() {
+                                        <div class="mb-3">
+                                            <label class="block mb-2 text-sm font-medium">
+                                                {"Currently Merged Podcasts"}
+                                            </label>
+                                            <div class="text-sm text-gray-600">
+                                                {format!("{} podcasts merged into this one", (*current_merged_podcasts).len())}
+                                            </div>
+                                        </div>
+                                    }
+
+                                    // Podcast selector for merging
+                                    <div class="mb-3">
+                                        <label class="block mb-2 text-sm font-medium">
+                                            {"Select Podcasts to Merge"}
+                                        </label>
+                                        <PodcastMergeSelector
+                                            selected_podcasts={(*selected_podcasts_to_merge).clone()}
+                                            on_select={{
+                                                let selected_podcasts_to_merge = selected_podcasts_to_merge.clone();
+                                                Callback::from(move |new_selection| {
+                                                    selected_podcasts_to_merge.set(new_selection);
+                                                })
+                                            }}
+                                            available_podcasts={(*available_podcasts_for_merge).clone()}
+                                            loading={*loading_merge_data}
+                                        />
+                                    </div>
+
+                                    // Merge button
+                                    if !(*selected_podcasts_to_merge).is_empty() {
+                                        <button
+                                            type="button"
+                                            class="save-button font-bold py-2 px-4 rounded mr-2"
+                                            onclick={{
+                                                let selected_podcasts_to_merge = selected_podcasts_to_merge.clone();
+                                                let clicked_podcast_info = clicked_podcast_info.clone();
+                                                let api_key = api_key.clone();
+                                                let server_name = server_name.clone();
+                                                let user_id = user_id.clone();
+
+                                                Callback::from(move |_| {
+                                                    if let (Some(api_key), Some(server_name), Some(_user_id), Some(podcast_info)) =
+                                                        (api_key.as_ref(), server_name.as_ref(), user_id.as_ref(), clicked_podcast_info.as_ref()) {
+
+                                                        let podcast_ids = (*selected_podcasts_to_merge).clone();
+                                                        let primary_id = podcast_info.podcastid;
+                                                        let selected_podcasts_to_merge = selected_podcasts_to_merge.clone();
+                                                        let api_key = api_key.clone();
+                                                        let server_name = server_name.clone();
+
+                                                        spawn_local(async move {
+                                                            match call_merge_podcasts(&server_name, &api_key, primary_id as i32, &podcast_ids).await {
+                                                                Ok(response) => {
+                                                                    console::log_1(&format!("Merge successful: {}", response.message).into());
+                                                                    // Clear selection after successful merge
+                                                                    selected_podcasts_to_merge.set(Vec::new());
+                                                                    // TODO: Refresh podcast list or show success message
+                                                                },
+                                                                Err(e) => {
+                                                                    console::log_1(&format!("Merge failed: {}", e).into());
+                                                                    // TODO: Show error message to user
+                                                                }
+                                                            }
+                                                        });
+                                                    }
+                                                })
+                                            }}
+                                        >
+                                            {format!("Merge {} Podcasts", (*selected_podcasts_to_merge).len())}
+                                        </button>
+                                    }
+                                </div>
+
+                                <div class="flex justify-between space-x-4">
+                                    <button
+                                        type="button"
+                                        class="save-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+                                        onclick={{
+                                            let edit_feed_url = edit_feed_url.clone();
+                                            let edit_username = edit_username.clone();
+                                            let edit_password = edit_password.clone();
+                                            let edit_podcast_name = edit_podcast_name.clone();
+                                            let edit_description = edit_description.clone();
+                                            let edit_author = edit_author.clone();
+                                            let edit_artwork_url = edit_artwork_url.clone();
+                                            let edit_website_url = edit_website_url.clone();
+                                            let edit_podcast_index_id = edit_podcast_index_id.clone();
+                                            let clicked_podcast_info = clicked_podcast_info.clone();
+                                            let api_key = api_key.clone();
+                                            let server_name = server_name.clone();
+                                            let user_id = user_id.clone();
+                                            let page_state = page_state.clone();
+                                            let dispatch = _search_dispatch.clone();
+
+                                            Callback::from(move |_| {
+                                                let edit_feed_url = edit_feed_url.clone();
+                                                let edit_username = edit_username.clone();
+                                                let edit_password = edit_password.clone();
+                                                let edit_podcast_name = edit_podcast_name.clone();
+                                                let edit_description = edit_description.clone();
+                                                let edit_author = edit_author.clone();
+                                                let edit_artwork_url = edit_artwork_url.clone();
+                                                let edit_website_url = edit_website_url.clone();
+                                                let edit_podcast_index_id = edit_podcast_index_id.clone();
+                                                let clicked_podcast_info = clicked_podcast_info.clone();
+                                                let api_key = api_key.clone();
+                                                let server_name = server_name.clone();
+                                                let user_id = user_id.clone();
+                                                let page_state = page_state.clone();
+                                                let dispatch = dispatch.clone();
+
+                                                if let Some(podcast_info) = clicked_podcast_info.as_ref() {
+                                                    let podcast_id = podcast_info.podcastid;
+                                                    let current_feed_url = podcast_info.feedurl.clone();
+                                                    let current_podcast_name = podcast_info.podcastname.clone();
+                                                    let current_description = podcast_info.description.clone();
+                                                    let current_author = podcast_info.author.clone();
+                                                    let current_artwork_url = podcast_info.artworkurl.clone();
+                                                    let current_website_url = podcast_info.websiteurl.clone();
+                                                    let current_podcast_index_id = podcast_info.podcastindexid.to_string();
+
+                                                    spawn_local(async move {
+                                                        let feed_url = if (*edit_feed_url).trim().is_empty() || *edit_feed_url == current_feed_url {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_feed_url).clone())
+                                                        };
+
+                                                        let username = if (*edit_username).trim().is_empty() {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_username).clone())
+                                                        };
+
+                                                        let password = if (*edit_password).trim().is_empty() {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_password).clone())
+                                                        };
+
+
+                                                        let podcast_name = if (*edit_podcast_name).trim().is_empty() || *edit_podcast_name == current_podcast_name {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_podcast_name).clone())
+                                                        };
+
+                                                        let description = if (*edit_description).trim().is_empty() || *edit_description == current_description {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_description).clone())
+                                                        };
+
+                                                        let author = if (*edit_author).trim().is_empty() || *edit_author == current_author {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_author).clone())
+                                                        };
+
+                                                        let artwork_url = if (*edit_artwork_url).trim().is_empty() || *edit_artwork_url == current_artwork_url {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_artwork_url).clone())
+                                                        };
+
+                                                        let website_url = if (*edit_website_url).trim().is_empty() || *edit_website_url == current_website_url {
+                                                            None
+                                                        } else {
+                                                            Some((*edit_website_url).clone())
+                                                        };
+
+                                                        let podcast_index_id = if (*edit_podcast_index_id).trim().is_empty() || *edit_podcast_index_id == current_podcast_index_id {
+                                                            None
+                                                        } else {
+                                                            (*edit_podcast_index_id).parse::<i64>().ok()
+                                                        };
+
+                                                        // Check if any changes were made
+                                                        if feed_url.is_none() && username.is_none() && password.is_none() &&
+                                                           podcast_name.is_none() && description.is_none() && author.is_none() &&
+                                                           artwork_url.is_none() && website_url.is_none() && podcast_index_id.is_none() {
+                                                            dispatch.reduce_mut(|state| {
+                                                                state.info_message = Some("No changes to save".to_string())
+                                                            });
+                                                            return;
+                                                        }
+
+                                                        match call_update_podcast_info(
+                                                            &server_name.unwrap_or_default(),
+                                                            &api_key.unwrap(),
+                                                            user_id.unwrap_or_default(),
+                                                            podcast_id.try_into().unwrap_or_default(),
+                                                            feed_url,
+                                                            username,
+                                                            password,
+                                                            podcast_name,
+                                                            description,
+                                                            author,
+                                                            artwork_url,
+                                                            website_url,
+                                                            podcast_index_id,
+                                                        ).await {
+                                                            Ok(response) => {
+                                                                if response.success {
+                                                                    dispatch.reduce_mut(|state| {
+                                                                        state.info_message = Some("Podcast updated successfully".to_string())
+                                                                    });
+                                                                    page_state.set(PageState::Hidden);
+                                                                } else {
+                                                                    dispatch.reduce_mut(|state| {
+                                                                        state.error_message = Some(format!("Update failed: {}", response.message))
+                                                                    });
+                                                                }
+                                                            }
+                                                            Err(e) => {
+                                                                dispatch.reduce_mut(|state| {
+                                                                    state.error_message = Some(format!("Error updating podcast: {}", e))
+                                                                });
+                                                            }
+                                                        }
+                                                    });
+                                                }
+                                            })
+                                        }}
+                                    >
+                                        {&i18n.t("episodes_layout.save_changes")}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onclick={on_close_modal.clone()}
+                                        class="clear-button bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded"
+                                    >
+                                        {&i18n.t("episodes_layout.cancel")}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
     };
 
     // Define the callback functions
@@ -2101,8 +3016,7 @@ pub fn episode_layout() -> Html {
                                 });
                             } else {
                                 dispatch_wasm.reduce_mut(|state| {
-                                    state.error_message =
-                                        Option::from(i18n_failed_to_add_podcast)
+                                    state.error_message = Option::from(i18n_failed_to_add_podcast)
                                 });
                                 app_dispatch.reduce_mut(|state| state.is_loading = Some(false));
                             }
@@ -2199,7 +3113,6 @@ pub fn episode_layout() -> Html {
     let web_link = open_in_new_tab.clone();
     let pod_layout_data = clicked_podcast_info.clone();
 
-
     let (completed_icon, completed_text, completed_title) = match *completed_filter_state {
         CompletedFilter::ShowOnly => (
             "ph-check-circle",
@@ -2211,232 +3124,120 @@ pub fn episode_layout() -> Html {
     };
 
     html! {
-        <div class="main-container">
-            <Search_nav />
-            <UseScrollToTop />
-            {
-                match *page_state {
-                PageState::Shown => podcast_option_model,
-                PageState::Download => download_all_model,
-                PageState::Delete => delete_pod_model,
-                PageState::RSSFeed => rss_feed_modal,
-                _ => html! {},
-                }
-            }
-            {
-                if *loading { // If loading is true, display the loading animation
-                    html! {
-                        <div class="loading-animation">
-                            <div class="frame1"></div>
-                            <div class="frame2"></div>
-                            <div class="frame3"></div>
-                            <div class="frame4"></div>
-                            <div class="frame5"></div>
-                            <div class="frame6"></div>
-                        </div>
+            <div class="main-container">
+                <Search_nav />
+                <UseScrollToTop />
+                {
+                    match *page_state {
+                    PageState::Shown => podcast_option_model,
+                    PageState::Download => download_all_model,
+                    PageState::Delete => delete_pod_model,
+                    PageState::RSSFeed => rss_feed_modal,
+                    PageState::EditPodcast => edit_podcast_modal,
+                    _ => html! {},
                     }
-                } else {
-                    html! {
-                        <>
-                            {
-                                if let Some(podcast_info) = pod_layout_data {
-                                    let sanitized_title = podcast_info.podcastname.replace(|c: char| !c.is_alphanumeric(), "-");
-                                    let desc_id = format!("desc-{}", sanitized_title);
-                                    let pod_link = podcast_info.websiteurl.clone();
+                }
+                {
+                    if *loading { // If loading is true, display the loading animation
+                        html! {
+                            <div class="loading-animation">
+                                <div class="frame1"></div>
+                                <div class="frame2"></div>
+                                <div class="frame3"></div>
+                                <div class="frame4"></div>
+                                <div class="frame5"></div>
+                                <div class="frame6"></div>
+                            </div>
+                        }
+                    } else {
+                        html! {
+                            <>
+                                {
+                                    if let Some(podcast_info) = pod_layout_data {
+                                        let sanitized_title = podcast_info.podcastname.replace(|c: char| !c.is_alphanumeric(), "-");
+                                        let desc_id = format!("desc-{}", sanitized_title);
+                                        let pod_link = podcast_info.websiteurl.clone();
 
-                                    let toggle_description = {
-                                        let desc_id = desc_id.clone();
-                                        Callback::from(move |_| {
+                                        let toggle_description = {
                                             let desc_id = desc_id.clone();
-                                            wasm_bindgen_futures::spawn_local(async move {
-                                                let window = web_sys::window().expect("no global `window` exists");
-                                                let function = window
-                                                    .get("toggle_description")
-                                                    .expect("should have `toggle_description` as a function")
-                                                    .dyn_into::<js_sys::Function>()
-                                                    .unwrap();
-                                                let this = JsValue::NULL;
-                                                let guid = JsValue::from_str(&desc_id);
-                                                function.call1(&this, &guid).unwrap();
-                                            });
-                                        })
-                                    };
-                                    let sanitized_description = sanitize_html(&podcast_info.description);
-                                    let layout = if state.is_mobile.unwrap_or(false) {
-                                        html! {
-                                            <div class="mobile-layout">
-                                                <div class="button-container">
-                                                    <button
-                                                        onclick={
-                                                            let pod_link = pod_link.clone();
-                                                            Callback::from(move |_| web_link.emit(pod_link.clone()))
-                                                        }
-                                                        title="Visit external podcast website" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                        { website_icon }
-                                                    </button>
-                                                    {
-                                                        if let Some(funding_list) = &state.podcast_funding {
-                                                            if !funding_list.is_empty() {
-                                                                let funding_list_clone = funding_list.clone();
-                                                                html! {
-                                                                    <>
-                                                                    { for funding_list_clone.iter().map(|funding| {
-                                                                        let open_in_new_tab = open_in_new_tab.clone();
-                                                                        let payment_icon = payment_icon.clone();
-                                                                        let url = funding.url.clone();
-                                                                        html! {
-                                                                            <button
-                                                                                onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
-                                                                                title={funding.description.clone()}
-                                                                                class="item-container-button font-bold rounded-full self-center mr-4"
-                                                                            >
-                                                                                { payment_icon } // Replace with your payment_icon component
-                                                                            </button>
-                                                                        }
-                                                                    })}
-                                                                    </>
-                                                                }
-                                                            } else {
-                                                                html! {}
+                                            Callback::from(move |_| {
+                                                let desc_id = desc_id.clone();
+                                                wasm_bindgen_futures::spawn_local(async move {
+                                                    let window = web_sys::window().expect("no global `window` exists");
+                                                    let function = window
+                                                        .get("toggle_description")
+                                                        .expect("should have `toggle_description` as a function")
+                                                        .dyn_into::<js_sys::Function>()
+                                                        .unwrap();
+                                                    let this = JsValue::NULL;
+                                                    let guid = JsValue::from_str(&desc_id);
+                                                    function.call1(&this, &guid).unwrap();
+                                                });
+                                            })
+                                        };
+                                        let sanitized_description = sanitize_html(&podcast_info.description);
+                                        let layout = if state.is_mobile.unwrap_or(false) {
+                                            html! {
+                                                <div class="mobile-layout">
+                                                    <div class="button-container">
+                                                        <button
+                                                            onclick={
+                                                                let pod_link = pod_link.clone();
+                                                                Callback::from(move |_| web_link.emit(pod_link.clone()))
                                                             }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
-                                                    {
-                                                        if search_state.podcast_added.unwrap() {
-                                                            html! {
-                                                                <button
-                                                                    onclick={
-                                                                        let page_state = page_state.clone();
-                                                                        Callback::from(move |_| {
-                                                                            page_state.set(PageState::RSSFeed);
-                                                                        })
+                                                            title="Visit external podcast website" class="item-container-button font-bold rounded-full self-center mr-4">
+                                                            { website_icon }
+                                                        </button>
+                                                        {
+                                                            if let Some(funding_list) = &state.podcast_funding {
+                                                                if !funding_list.is_empty() {
+                                                                    let funding_list_clone = funding_list.clone();
+                                                                    html! {
+                                                                        <>
+                                                                        { for funding_list_clone.iter().map(|funding| {
+                                                                            let open_in_new_tab = open_in_new_tab.clone();
+                                                                            let payment_icon = payment_icon.clone();
+                                                                            let url = funding.url.clone();
+                                                                            html! {
+                                                                                <button
+                                                                                    onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
+                                                                                    title={funding.description.clone()}
+                                                                                    class="item-container-button font-bold rounded-full self-center mr-4"
+                                                                                >
+                                                                                    { payment_icon } // Replace with your payment_icon component
+                                                                                </button>
+                                                                            }
+                                                                        })}
+                                                                        </>
                                                                     }
-                                                                    title="Get RSS Feed URL"
-                                                                    class="item-container-button font-bold rounded-full self-center mr-4"
-                                                                    style="width: 30px; height: 30px;"
-                                                                >
-                                                                    { rss_icon }
-                                                                </button>
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
-                                                    {
-                                                        if search_state.podcast_added.unwrap() {
-                                                            html! {
-                                                                <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                                    { download_all }
-                                                                </button>
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
-                                                    <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                        { button_content }
-                                                    </button>
-                                                    {
-                                                        if search_state.podcast_added.unwrap() {
-                                                            html! {
-                                                                <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-4">
-                                                                    { setting_content }
-                                                                </button>
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
-                                                </div>
-                                                <div class="item-header-mobile-cover-container">
-                                                    <FallbackImage
-                                                        src={podcast_info.artworkurl.clone()}
-                                                        // onclick={on_title_click.clone()}
-                                                        alt={format!("Cover for {}", &podcast_info.podcastname)}
-                                                        class={"item-header-mobile-cover"}
-                                                    />
-                                                </div>
-
-                                                <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
-                                                <div class="item-header-description desc-collapsed" id={desc_id.clone()} onclick={toggle_description.clone()}>
-                                                    { sanitized_description }
-                                                    <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
-                                                </div>
-                                                <p class="header-info">{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</p>
-                                                <p class="header-info">{ format!("{}{}", i18n_authors, &podcast_info.author) }</p>
-                                                <p class="header-info">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</p>
-                                                {
-                                                    if !podcast_info.is_youtube.unwrap_or(false) {  // Only show if not a YouTube channel
-                                                        if podcast_info.podcastindexid == 0 {
-                                                            html! {
-                                                                <div class="import-box mt-2">
-                                                                    <p class="item_container-text text-sm">
-                                                                        {"⚠️ This podcast isn't matched to Podcast Index. "}
-                                                                        <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
-                                                                            {&i18n.t("episodes_layout.match_it_here")}
-                                                                        </a>
-                                                                        {" to enable host and guest information."}
-                                                                    </p>
-                                                                </div>
-                                                            }
-                                                        } else if let Some(people) = &state.podcast_people {
-                                                            if !people.is_empty() {
-                                                                html! {
-                                                                    <div class="header-info relative">
-                                                                        <div class="max-w-full overflow-x-auto">
-                                                                            <HostDropdown
-                                                                                title="Hosts"
-                                                                                hosts={people.clone()}
-                                                                                podcast_feed_url={podcast_info.feedurl}
-                                                                                podcast_id={*podcast_id}
-                                                                                podcast_index_id={podcast_info.podcastindexid}
-                                                                            />
-                                                                        </div>
-                                                                    </div>
+                                                                } else {
+                                                                    html! {}
                                                                 }
                                                             } else {
                                                                 html! {}
                                                             }
-                                                        } else {
-                                                            html! {}
                                                         }
-                                                    } else {
-                                                        html! {}
-                                                    }
-                                                }
-                                                <div>
-                                                <div class="categories-container">
-                                                {
-                                                    if let Some(categories) = &podcast_info.categories {
-                                                        html! {
-                                                            for categories.iter().map(|(_, category_name)| {
-                                                                html! { <span class="category-box">{ category_name }</span> }
-                                                            })
+                                                        {
+                                                            if search_state.podcast_added.unwrap() {
+                                                                html! {
+                                                                    <button
+                                                                        onclick={
+                                                                            let page_state = page_state.clone();
+                                                                            Callback::from(move |_| {
+                                                                                page_state.set(PageState::RSSFeed);
+                                                                            })
+                                                                        }
+                                                                        title="Get RSS Feed URL"
+                                                                        class="item-container-button font-bold rounded-full self-center mr-4"
+                                                                        style="width: 30px; height: 30px;"
+                                                                    >
+                                                                        { rss_icon }
+                                                                    </button>
+                                                                }
+                                                            } else {
+                                                                html! {}
+                                                            }
                                                         }
-                                                    } else {
-                                                        html! {}
-                                                    }
-                                                }
-                                                </div>
-
-                                                </div>
-                                            </div>
-                                        }
-                                    } else {
-                                        let pod_link = podcast_info.feedurl.clone();
-                                        html! {
-                                            <div class="item-header">
-                                                <FallbackImage
-                                                    src={podcast_info.artworkurl.clone()}
-                                                    // onclick={on_title_click.clone()}
-                                                    alt={format!("Cover for {}", &podcast_info.podcastname)}
-                                                    class={"item-header-cover"}
-                                                />
-                                                <div class="item-header-info">
-                                                    <div class="title-button-container">
-                                                        <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
                                                         {
                                                             if search_state.podcast_added.unwrap() {
                                                                 html! {
@@ -2448,7 +3249,7 @@ pub fn episode_layout() -> Html {
                                                                 html! {}
                                                             }
                                                         }
-                                                        <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class={"item-container-button font-bold py-2 px-4 rounded-full self-center mr-4"} style="width: 60px; height: 60px;">
+                                                        <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class="item-container-button font-bold rounded-full self-center mr-4">
                                                             { button_content }
                                                         </button>
                                                         {
@@ -2463,100 +3264,55 @@ pub fn episode_layout() -> Html {
                                                             }
                                                         }
                                                     </div>
+                                                    <div class="item-header-mobile-cover-container">
+                                                        <FallbackImage
+                                                            src={podcast_info.artworkurl.clone()}
+                                                            // onclick={on_title_click.clone()}
+                                                            alt={format!("Cover for {}", &podcast_info.podcastname)}
+                                                            class={"item-header-mobile-cover"}
+                                                        />
+                                                    </div>
 
-                                                    // <p class="item-header-description">{ &podcast_info.podcast_description }</p>
+                                                    <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
                                                     <div class="item-header-description desc-collapsed" id={desc_id.clone()} onclick={toggle_description.clone()}>
                                                         { sanitized_description }
                                                         <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
                                                     </div>
-                                                    <button
-                                                        onclick={Callback::from(move |_| web_link.clone().emit(pod_link.to_string()))}
-                                                        title="Visit external podcast website" class={"item-container-button font-bold rounded-full self-center mr-4"} style="width: 30px; height: 30px;">
-                                                        { website_icon }
-                                                    </button>
+                                                    <p class="header-info">{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</p>
+                                                    <p class="header-info">{ format!("{}{}", i18n_authors, &podcast_info.author) }</p>
+                                                    <p class="header-info">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</p>
                                                     {
-                                                        if let Some(funding_list) = &state.podcast_funding {
-                                                            if !funding_list.is_empty() {
-                                                                let funding_list_clone = funding_list.clone();
+                                                        if !podcast_info.is_youtube.unwrap_or(false) {  // Only show if not a YouTube channel
+                                                            if podcast_info.podcastindexid == 0 {
                                                                 html! {
-                                                                    <>
-                                                                    { for funding_list_clone.iter().map(|funding| {
-                                                                        let open_in_new_tab = open_in_new_tab.clone();
-                                                                        let payment_icon = payment_icon.clone();
-                                                                        let url = funding.url.clone();
-                                                                        html! {
-                                                                            <button
-                                                                                onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
-                                                                                title={funding.description.clone()}
-                                                                                class="item-container-button font-bold rounded-full self-center mr-4"
-                                                                                style="width: 30px; height: 30px;"
-                                                                            >
-                                                                                { payment_icon } // Replace with your payment_icon component
-                                                                            </button>
-                                                                        }
-                                                                    })}
-                                                                    </>
-                                                                }
-                                                            } else {
-                                                                html! {}
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
-                                                    {
-                                                        if search_state.podcast_added.unwrap_or(false) {
-                                                            html! {
-                                                                <button
-                                                                    onclick={
-                                                                        let page_state = page_state.clone();
-                                                                        Callback::from(move |_| {
-                                                                            page_state.set(PageState::RSSFeed);
-                                                                        })
-                                                                    }
-                                                                    title="Get RSS Feed URL"
-                                                                    class={"item-container-button font-bold rounded-full self-center mr-4"}
-                                                                    style="width: 30px; height: 30px;">
-                                                                    { rss_icon }
-                                                                </button>
-                                                            }
-                                                        } else {
-                                                            html! {}
-                                                        }
-                                                    }
-                                                    <div class="item-header-info">
-
-                                                        <p class="header-text">{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</p>
-                                                        <p class="header-text">{ format!("{}{}", i18n_authors, &podcast_info.author) }</p>
-                                                        <p class="header-text">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</p>
-                                                    {
-                                                        if podcast_info.podcastindexid == 0 {
-                                                            html! {
-                                                                <div class="import-box mt-2">
-                                                                    <p class="item_container-text text-sm">
-                                                                        {"⚠️ This podcast isn't matched to Podcast Index. "}
-                                                                        <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
-                                                                            {&i18n.t("episodes_layout.match_it_here")}
-                                                                        </a>
-                                                                        {" to enable host and guest information."}
-                                                                    </p>
-                                                                </div>
-                                                            }
-                                                        } else if let Some(people) = &state.podcast_people {
-                                                            if !people.is_empty() {
-                                                                html! {
-                                                                    <div class="header-info relative" style="max-width: 100%; min-width: 0;">  // Added min-width: 0 to allow shrinking
-                                                                        <div class="max-w-full overflow-x-auto">
-                                                                            <HostDropdown
-                                                                                title="Hosts"
-                                                                                hosts={people.clone()}
-                                                                                podcast_feed_url={podcast_info.feedurl}
-                                                                                podcast_id={*podcast_id}
-                                                                                podcast_index_id={podcast_info.podcastindexid}
-                                                                            />
-                                                                        </div>
+                                                                    <div class="import-box mt-2">
+                                                                        <p class="item_container-text text-sm">
+                                                                            {"⚠️ This podcast isn't matched to Podcast Index. "}
+                                                                            <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
+                                                                                {&i18n.t("episodes_layout.match_it_here")}
+                                                                            </a>
+                                                                            {" to enable host and guest information."}
+                                                                        </p>
                                                                     </div>
                                                                 }
+                                                            } else if let Some(people) = &state.podcast_people {
+                                                                if !people.is_empty() {
+                                                                    html! {
+                                                                        <div class="header-info relative">
+                                                                            <div class="max-w-full overflow-x-auto">
+                                                                                <HostDropdown
+                                                                                    title="Hosts"
+                                                                                    hosts={people.clone()}
+                                                                                    podcast_feed_url={podcast_info.feedurl}
+                                                                                    podcast_id={*podcast_id}
+                                                                                    podcast_index_id={podcast_info.podcastindexid}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    }
+                                                                } else {
+                                                                    html! {}
+                                                                }
                                                             } else {
                                                                 html! {}
                                                             }
@@ -2564,13 +3320,57 @@ pub fn episode_layout() -> Html {
                                                             html! {}
                                                         }
                                                     }
-                                                        <div>
+                                                    <div>
+                                                    <div class="categories-container">
+                                                    {
+                                                        if let Some(categories) = &podcast_info.categories {
+                                                            html! {
+                                                                for categories.iter().map(|(_, category_name)| {
+                                                                    html! { <span class="category-box">{ category_name }</span> }
+                                                                })
+                                                            }
+                                                        } else {
+                                                            html! {}
+                                                        }
+                                                    }
+                                                    </div>
+
+                                                    </div>
+                                                </div>
+                                            }
+                                        } else {
+                                            let pod_link = podcast_info.feedurl.clone();
+                                            html! {
+                                                <div class="item-header">
+                                                    <FallbackImage
+                                                        src={podcast_info.artworkurl.clone()}
+                                                        // onclick={on_title_click.clone()}
+                                                        alt={format!("Cover for {}", &podcast_info.podcastname)}
+                                                        class={"item-header-cover"}
+                                                    />
+                                                    <div class="item-header-info">
+                                                        <div class="title-button-container">
+                                                            <h2 class="item-header-title">{ &podcast_info.podcastname }</h2>
                                                             {
-                                                                if let Some(categories) = &podcast_info.categories {
+                                                                if search_state.podcast_added.unwrap() {
                                                                     html! {
-                                                                        for categories.values().map(|category_name| {
-                                                                            html! { <span class="category-box">{ category_name }</span> }
-                                                                        })
+                                                                        <button onclick={toggle_download} title="Click to download all episodes for this podcast" class="item-container-button font-bold rounded-full self-center mr-4">
+                                                                            { download_all }
+                                                                        </button>
+                                                                    }
+                                                                } else {
+                                                                    html! {}
+                                                                }
+                                                            }
+                                                            <button onclick={toggle_podcast} title="Click to add or remove podcast from feed" class={"item-container-button font-bold py-2 px-4 rounded-full self-center mr-4"} style="width: 60px; height: 60px;">
+                                                                { button_content }
+                                                            </button>
+                                                            {
+                                                                if search_state.podcast_added.unwrap() {
+                                                                    html! {
+                                                                        <button onclick={toggle_settings} title="Click to setup podcast specific settings" class="item-container-button font-bold rounded-full self-center mr-4">
+                                                                            { setting_content }
+                                                                        </button>
                                                                     }
                                                                 } else {
                                                                     html! {}
@@ -2578,549 +3378,709 @@ pub fn episode_layout() -> Html {
                                                             }
                                                         </div>
 
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        }
-                                    };
-
-                                    layout
-                                } else {
-                                    html! {}
-                                }
-                            }
-                            {
-                                // Modern mobile-friendly filter bar
-                                html! {
-                                    <div class="mb-6 space-y-4">
-                                        // Combined search and sort bar (seamless design)
-                                        <div class="flex gap-0 h-12">
-                                            // Search input (left half)
-                                            <div class="flex-1 relative">
-                                                <input
-                                                    type="text"
-                                                    class="search-input"
-                                                    placeholder={i18n_search_episodes_placeholder.clone()}
-                                                    value={(*episode_search_term).clone()}
-                                                    oninput={
-                                                        let episode_search_term = episode_search_term.clone();
-                                                        Callback::from(move |e: InputEvent| {
-                                                            if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
-                                                                episode_search_term.set(input.value());
-                                                            }
-                                                        })
-                                                    }
-                                                />
-                                                <i class="ph ph-magnifying-glass search-icon"></i>
-                                            </div>
-
-                                            // Sort dropdown (right half)
-                                            <div class="flex-shrink-0 relative min-w-[160px]">
-                                                <select
-                                                    class="sort-dropdown"
-                                                    onchange={
-                                                        let episode_sort_direction = episode_sort_direction.clone();
-                                                        Callback::from(move |e: Event| {
-                                                            let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
-                                                            let value = target.value();
-                                                            
-                                                            // Save preference to local storage
-                                                            set_filter_preference("episodes", &value);
-                                                            
-                                                            match value.as_str() {
-                                                                "newest" => episode_sort_direction.set(Some(EpisodeSortDirection::NewestFirst)),
-                                                                "oldest" => episode_sort_direction.set(Some(EpisodeSortDirection::OldestFirst)),
-                                                                "shortest" => episode_sort_direction.set(Some(EpisodeSortDirection::ShortestFirst)),
-                                                                "longest" => episode_sort_direction.set(Some(EpisodeSortDirection::LongestFirst)),
-                                                                "title_az" => episode_sort_direction.set(Some(EpisodeSortDirection::TitleAZ)),
-                                                                "title_za" => episode_sort_direction.set(Some(EpisodeSortDirection::TitleZA)),
-                                                                _ => episode_sort_direction.set(None),
-                                                            }
-                                                        })
-                                                    }
-                                                >
-                                                    <option value="newest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"}>{&i18n_newest_first}</option>
-                                                    <option value="oldest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"}>{&i18n_oldest_first}</option>
-                                                    <option value="shortest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"}>{&i18n_shortest_first}</option>
-                                                    <option value="longest" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"}>{&i18n_longest_first}</option>
-                                                    <option value="title_az" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"}>{&i18n_title_az}</option>
-                                                    <option value="title_za" selected={get_filter_preference("episodes").unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"}>{&i18n_title_za}</option>
-                                                </select>
-                                                <i class="ph ph-caret-down dropdown-arrow"></i>
-                                            </div>
-                                        </div>
-
-                                        // Filter chips (horizontal scroll on mobile)
-                                        <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
-                                            // Clear all filters
-                                            <button
-                                                onclick={
-                                                    let show_in_progress = show_in_progress.clone();
-                                                    let episode_search_term = episode_search_term.clone();
-                                                    let completed_filter_state = completed_filter_state.clone();
-                                                    Callback::from(move |_| {
-                                                        completed_filter_state.set(CompletedFilter::ShowAll);
-                                                        show_in_progress.set(false);
-                                                        episode_search_term.set(String::new());
-                                                    })
-                                                }
-                                                class="filter-chip"
-                                            >
-                                                <i class="ph ph-broom text-lg"></i>
-                                                <span class="text-sm font-medium">{&i18n_clear_all}</span>
-                                            </button>
-
-                                            // Completed filter chip (3-state)
-                                            <button
-                                                onclick={
-                                                    let completed_filter_state = completed_filter_state.clone();
-                                                    Callback::from(move |_| {
-                                                        completed_filter_state.set(match *completed_filter_state {
-                                                            CompletedFilter::ShowAll => CompletedFilter::ShowOnly,
-                                                            CompletedFilter::ShowOnly => CompletedFilter::Hide,
-                                                            CompletedFilter::Hide => CompletedFilter::ShowAll,
-                                                        });
-                                                    })
-                                                }
-                                                title={completed_title.clone()}
-                                                class={classes!(
-                                                    "filter-chip",
-                                                    match *completed_filter_state {
-                                                        CompletedFilter::ShowOnly => "filter-chip-active",
-                                                        CompletedFilter::Hide => "filter-chip-alert",
-                                                        CompletedFilter::ShowAll => ""
-                                                    }
-                                                )}
-                                            >
-                                                <i class={classes!("ph", completed_icon, "text-lg")}></i>
-                                                <span class="text-sm font-medium">{completed_text}</span>
-                                            </button>
-
-                                            // In progress filter chip
-                                            <button
-                                                onclick={
-                                                    let show_in_progress = show_in_progress.clone();
-                                                    Callback::from(move |_| {
-                                                        show_in_progress.set(!*show_in_progress);
-                                                    })
-                                                }
-                                                class={classes!(
-                                                    "filter-chip",
-                                                    if *show_in_progress { "filter-chip-active" } else { "" }
-                                                )}
-                                            >
-                                                <i class="ph ph-hourglass-medium text-lg"></i>
-                                                <span class="text-sm font-medium">{&i18n_in_progress}</span>
-                                            </button>
-                                            
-                                            // Selection mode toggle
-                                            <button
-                                                onclick={
-                                                    let is_selecting = is_selecting.clone();
-                                                    let selected_episodes = selected_episodes.clone();
-                                                    Callback::from(move |_| {
-                                                        if *is_selecting {
-                                                            // Exit selection mode and clear selections
-                                                            selected_episodes.set(HashSet::new());
-                                                        }
-                                                        is_selecting.set(!*is_selecting);
-                                                    })
-                                                }
-                                                class={classes!(
-                                                    "filter-chip",
-                                                    if *is_selecting { "filter-chip-active" } else { "" }
-                                                )}
-                                            >
-                                                <i class="ph ph-check-square text-lg"></i>
-                                                <span class="text-sm font-medium">
-                                                    {if *is_selecting { &i18n_exit_select } else { &i18n_select }}
-                                                </span>
-                                            </button>
-                                        </div>
-                                        
-                                        // Smart selection buttons when in selection mode
-                                        {
-                                            if *is_selecting {
-                                                let filtered_episodes_clone = filtered_episodes.clone();
-                                                let selected_episodes_clone = selected_episodes.clone();
-                                                
-                                                html! {
-                                                    <div class="flex gap-2 mt-4 flex-wrap">
-                                                        // Select All / Deselect All
-<button
-    onclick={
-        let filtered_episodes = filtered_episodes_clone.clone();
-        let selected_episodes = selected_episodes_clone.clone();
-        Callback::from(move |_| {
-            let all_ids: HashSet<i32> = filtered_episodes.iter()
-                .filter_map(|ep| ep.episode_id)
-                .collect();
-            
-            let current = (*selected_episodes).clone();
-            if current.len() == all_ids.len() && all_ids.iter().all(|id| current.contains(id)) {
-                // Deselect all
-                selected_episodes.set(HashSet::new());
-            } else {
-                // Select all
-                selected_episodes.set(all_ids);
-            }
-        })
-    }
-    class="bulk-select-button"
->
-    {
-        {
-            // this extra block is an expression, so valid
-            let all_ids: HashSet<i32> = filtered_episodes_clone.iter()
-                .filter_map(|ep| ep.episode_id)
-                .collect();
-            let current = (*selected_episodes_clone).clone();
-            if current.len() == all_ids.len() && all_ids.iter().all(|id| current.contains(id)) {
-                &i18n_deselect_all
-            } else {
-                &i18n_select_all
-            }
-        }
-    }
-</button>
-
-                                                        
-                                                        // Select Unplayed Only
+                                                        // <p class="item-header-description">{ &podcast_info.podcast_description }</p>
+                                                        <div class="item-header-description desc-collapsed" id={desc_id.clone()} onclick={toggle_description.clone()}>
+                                                            { sanitized_description }
+                                                            <button class="toggle-desc-btn" onclick={toggle_description}>{ "" }</button>
+                                                        </div>
                                                         <button
-                                                            onclick={
-                                                                let filtered_episodes = filtered_episodes_clone.clone();
-                                                                let selected_episodes = selected_episodes_clone.clone();
-                                                                Callback::from(move |_| {
-                                                                    let unplayed_ids: HashSet<i32> = filtered_episodes.iter()
-                                                                        .filter(|ep| !ep.completed.unwrap_or(false))
-                                                                        .filter_map(|ep| ep.episode_id)
-                                                                        .collect();
-                                                                    selected_episodes.set(unplayed_ids);
-                                                                })
-                                                            }
-                                                            class="bulk-filter-button"
-                                                        >
-                                                            {&i18n_select_unplayed}
+                                                            onclick={Callback::from(move |_| web_link.clone().emit(pod_link.to_string()))}
+                                                            title="Visit external podcast website" class={"item-container-button font-bold rounded-full self-center mr-4"} style="width: 30px; height: 30px;">
+                                                            { website_icon }
                                                         </button>
+                                                        {
+                                                            if let Some(funding_list) = &state.podcast_funding {
+                                                                if !funding_list.is_empty() {
+                                                                    let funding_list_clone = funding_list.clone();
+                                                                    html! {
+                                                                        <>
+                                                                        { for funding_list_clone.iter().map(|funding| {
+                                                                            let open_in_new_tab = open_in_new_tab.clone();
+                                                                            let payment_icon = payment_icon.clone();
+                                                                            let url = funding.url.clone();
+                                                                            html! {
+                                                                                <button
+                                                                                    onclick={Callback::from(move |_| open_in_new_tab.emit(url.clone()))}
+                                                                                    title={funding.description.clone()}
+                                                                                    class="item-container-button font-bold rounded-full self-center mr-4"
+                                                                                    style="width: 30px; height: 30px;"
+                                                                                >
+                                                                                    { payment_icon } // Replace with your payment_icon component
+                                                                                </button>
+                                                                            }
+                                                                        })}
+                                                                        </>
+                                                                    }
+                                                                } else {
+                                                                    html! {}
+                                                                }
+                                                            } else {
+                                                                html! {}
+                                                            }
+                                                        }
+                                                        {
+                                                            if search_state.podcast_added.unwrap_or(false) {
+                                                                html! {
+                                                                    <button
+                                                                        onclick={
+                                                                            let page_state = page_state.clone();
+                                                                            Callback::from(move |_| {
+                                                                                page_state.set(PageState::RSSFeed);
+                                                                            })
+                                                                        }
+                                                                        title="Get RSS Feed URL"
+                                                                        class={"item-container-button font-bold rounded-full self-center mr-4"}
+                                                                        style="width: 30px; height: 30px;">
+                                                                        { rss_icon }
+                                                                    </button>
+                                                                }
+                                                            } else {
+                                                                html! {}
+                                                            }
+                                                        }
+                                                        <div class="item-header-info">
+
+                                                            <p class="header-text">{ format!("{}{}", i18n_episode_count, &podcast_info.episodecount) }</p>
+                                                            <p class="header-text">{ format!("{}{}", i18n_authors, &podcast_info.author) }</p>
+                                                            <p class="header-text">{ format!("{}{}", i18n_explicit, if podcast_info.explicit { i18n_yes.clone() } else { i18n_no.clone() }) }</p>
+                                                        {
+                                                            if podcast_info.podcastindexid == 0 {
+                                                                html! {
+                                                                    <div class="import-box mt-2">
+                                                                        <p class="item_container-text text-sm">
+                                                                            {"⚠️ This podcast isn't matched to Podcast Index. "}
+                                                                            <a href="/settings#podcast-index-matching" class="item_container-text underline hover:opacity-80 font-semibold">
+                                                                                {&i18n.t("episodes_layout.match_it_here")}
+                                                                            </a>
+                                                                            {" to enable host and guest information."}
+                                                                        </p>
+                                                                    </div>
+                                                                }
+                                                            } else if let Some(people) = &state.podcast_people {
+                                                                if !people.is_empty() {
+                                                                    html! {
+                                                                        <div class="header-info relative" style="max-width: 100%; min-width: 0;">  // Added min-width: 0 to allow shrinking
+                                                                            <div class="max-w-full overflow-x-auto">
+                                                                                <HostDropdown
+                                                                                    title="Hosts"
+                                                                                    hosts={people.clone()}
+                                                                                    podcast_feed_url={podcast_info.feedurl}
+                                                                                    podcast_id={*podcast_id}
+                                                                                    podcast_index_id={podcast_info.podcastindexid}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    }
+                                                                } else {
+                                                                    html! {}
+                                                                }
+                                                            } else {
+                                                                html! {}
+                                                            }
+                                                        }
+                                                            <div>
+                                                                {
+                                                                    if let Some(categories) = &podcast_info.categories {
+                                                                        html! {
+                                                                            for categories.values().map(|category_name| {
+                                                                                html! { <span class="category-box">{ category_name }</span> }
+                                                                            })
+                                                                        }
+                                                                    } else {
+                                                                        html! {}
+                                                                    }
+                                                                }
+                                                            </div>
+
+                                                        </div>
                                                     </div>
-                                                }
-                                            } else {
-                                                html! {}
-                                            }
-                                        }
-                                    </div>
-                                }
-                            }
-                            
-                            
-                            // Bulk action toolbar
-                            {
-                                if *is_selecting && !selected_episodes.is_empty() {
-                                    let selected_count = selected_episodes.len();
-                                    let selected_ids: Vec<i32> = selected_episodes.iter().cloned().collect();
-                                    let user_id_value = user_id.unwrap_or(0);
-                                    
-                                    html! {
-                                        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                                            <div class="flex items-center justify-between">
-                                                <div class="text-sm text-blue-800 flex items-center">
-                                                    <i class="ph ph-check-circle text-lg mr-2"></i>
-                                                    {format!("{} episode{} selected", selected_count, if selected_count == 1 { "" } else { "s" })}
                                                 </div>
-                                                <div class="flex gap-2 flex-wrap">
-                                                    // Mark Complete button
-                                                    <button
-                                                        onclick={
-                                                            let selected_ids = selected_ids.clone();
-                                                            let api_key = api_key.clone();
-                                                            let server_name = server_name.clone();
-                                                            let dispatch = _search_dispatch.clone();
-                                                            let selected_episodes = selected_episodes.clone();
-                                                            Callback::from(move |_| {
-                                                                let selected_ids = selected_ids.clone();
-                                                                let api_key = api_key.clone();
-                                                                let server_name = server_name.clone();
-                                                                let dispatch = dispatch.clone();
-                                                                let selected_episodes = selected_episodes.clone();
-                                                                spawn_local(async move {
-                                                                    let request = BulkEpisodeActionRequest {
-                                                                        episode_ids: selected_ids,
-                                                                        user_id: user_id_value,
-                                                                        is_youtube: None,
-                                                                    };
-                                                                    match call_bulk_mark_episodes_completed(
-                                                                        &server_name.unwrap_or_default(),
-                                                                        &api_key.flatten(),
-                                                                        &request
-                                                                    ).await {
-                                                                        Ok(message) => {
-                                                                            dispatch.reduce_mut(|state| {
-                                                                                state.info_message = Some(message);
-                                                                            });
-                                                                            selected_episodes.set(HashSet::new());
-                                                                        }
-                                                                        Err(e) => {
-                                                                            dispatch.reduce_mut(|state| {
-                                                                                state.error_message = Some(format!("Error: {}", e));
-                                                                            });
-                                                                        }
-                                                                    }
-                                                                });
+                                            }
+                                        };
+
+                                        layout
+                                    } else {
+                                        html! {}
+                                    }
+                                }
+                                {
+                                    // Modern mobile-friendly filter bar
+                                    html! {
+                                        <div class="mb-6 space-y-4">
+                                            // Combined search and sort bar (seamless design)
+                                            <div class="flex gap-0 h-12">
+                                                // Search input (left half)
+                                                <div class="flex-1 relative">
+                                                    <input
+                                                        type="text"
+                                                        class="search-input"
+                                                        placeholder={i18n_search_episodes_placeholder.clone()}
+                                                        value={(*episode_search_term).clone()}
+                                                        oninput={
+                                                            let episode_search_term = episode_search_term.clone();
+                                                            Callback::from(move |e: InputEvent| {
+                                                                if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                                                                    episode_search_term.set(input.value());
+                                                                }
                                                             })
                                                         }
-                                                        class="bulk-action-success"
-                                                    >
-                                                        {&i18n_mark_complete}
-                                                    </button>
-                                                    
-                                                    // Save button
-                                                    <button
-                                                        onclick={
-                                                            let selected_ids = selected_ids.clone();
-                                                            let api_key = api_key.clone();
-                                                            let server_name = server_name.clone();
-                                                            let dispatch = _search_dispatch.clone();
-                                                            let selected_episodes = selected_episodes.clone();
-                                                            Callback::from(move |_| {
-                                                                let selected_ids = selected_ids.clone();
-                                                                let api_key = api_key.clone();
-                                                                let server_name = server_name.clone();
-                                                                let dispatch = dispatch.clone();
-                                                                let selected_episodes = selected_episodes.clone();
-                                                                spawn_local(async move {
-                                                                    let request = BulkEpisodeActionRequest {
-                                                                        episode_ids: selected_ids,
-                                                                        user_id: user_id_value,
-                                                                        is_youtube: None,
-                                                                    };
-                                                                    match call_bulk_save_episodes(
-                                                                        &server_name.unwrap_or_default(),
-                                                                        &api_key.flatten(),
-                                                                        &request
-                                                                    ).await {
-                                                                        Ok(message) => {
-                                                                            dispatch.reduce_mut(|state| {
-                                                                                state.info_message = Some(message);
-                                                                            });
-                                                                            selected_episodes.set(HashSet::new());
-                                                                        }
-                                                                        Err(e) => {
-                                                                            dispatch.reduce_mut(|state| {
-                                                                                state.error_message = Some(format!("Error: {}", e));
-                                                                            });
-                                                                        }
-                                                                    }
-                                                                });
+                                                    />
+                                                    <i class="ph ph-magnifying-glass search-icon"></i>
+                                                </div>
+
+                                                // Sort dropdown (right half)
+                                                <div class="flex-shrink-0 relative min-w-[160px]">
+                                                    <select
+                                                        class="sort-dropdown"
+                                                        onchange={
+                                                            let episode_sort_direction = episode_sort_direction.clone();
+                                                            let podcast_id_clone = podcast_id.clone();
+                                                            Callback::from(move |e: Event| {
+                                                                let target = e.target_dyn_into::<web_sys::HtmlSelectElement>().unwrap();
+                                                                let value = target.value();
+
+                                                                // Save preference to per-podcast local storage
+                                                                if *podcast_id_clone > 0 {
+                                                                    let preference_key = format!("podcast_{}", *podcast_id_clone);
+                                                                    set_filter_preference(&preference_key, &value);
+                                                                }
+
+                                                                match value.as_str() {
+                                                                    "newest" => episode_sort_direction.set(Some(EpisodeSortDirection::NewestFirst)),
+                                                                    "oldest" => episode_sort_direction.set(Some(EpisodeSortDirection::OldestFirst)),
+                                                                    "shortest" => episode_sort_direction.set(Some(EpisodeSortDirection::ShortestFirst)),
+                                                                    "longest" => episode_sort_direction.set(Some(EpisodeSortDirection::LongestFirst)),
+                                                                    "title_az" => episode_sort_direction.set(Some(EpisodeSortDirection::TitleAZ)),
+                                                                    "title_za" => episode_sort_direction.set(Some(EpisodeSortDirection::TitleZA)),
+                                                                    _ => episode_sort_direction.set(None),
+                                                                }
                                                             })
                                                         }
-                                                        class="bulk-action-primary"
                                                     >
-                                                        {&i18n.t("episodes_layout.save")}
-                                                    </button>
-                                                    
-                                                    // Queue button
-                                                    <button
-                                                        onclick={
-                                                            let selected_ids = selected_ids.clone();
-                                                            let api_key = api_key.clone();
-                                                            let server_name = server_name.clone();
-                                                            let dispatch = _search_dispatch.clone();
-                                                            let selected_episodes = selected_episodes.clone();
-                                                            Callback::from(move |_| {
-                                                                let selected_ids = selected_ids.clone();
-                                                                let api_key = api_key.clone();
-                                                                let server_name = server_name.clone();
-                                                                let dispatch = dispatch.clone();
-                                                                let selected_episodes = selected_episodes.clone();
-                                                                spawn_local(async move {
-                                                                    let request = BulkEpisodeActionRequest {
-                                                                        episode_ids: selected_ids,
-                                                                        user_id: user_id_value,
-                                                                        is_youtube: None,
-                                                                    };
-                                                                    match call_bulk_queue_episodes(
-                                                                        &server_name.unwrap_or_default(),
-                                                                        &api_key.flatten(),
-                                                                        &request
-                                                                    ).await {
-                                                                        Ok(message) => {
-                                                                            dispatch.reduce_mut(|state| {
-                                                                                state.info_message = Some(message);
-                                                                            });
-                                                                            selected_episodes.set(HashSet::new());
-                                                                        }
-                                                                        Err(e) => {
-                                                                            dispatch.reduce_mut(|state| {
-                                                                                state.error_message = Some(format!("Error: {}", e));
-                                                                            });
-                                                                        }
-                                                                    }
-                                                                });
-                                                            })
-                                                        }
-                                                        class="px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-md"
-                                                    >
-                                                        {&i18n_queue_episodes}
-                                                    </button>
-                                                    
-                                                    // Download button
-                                                    <button
-                                                        onclick={
-                                                            let selected_ids = selected_ids.clone();
-                                                            let api_key = api_key.clone();
-                                                            let server_name = server_name.clone();
-                                                            let dispatch = _search_dispatch.clone();
-                                                            let selected_episodes = selected_episodes.clone();
-                                                            Callback::from(move |_| {
-                                                                let selected_ids = selected_ids.clone();
-                                                                let api_key = api_key.clone();
-                                                                let server_name = server_name.clone();
-                                                                let dispatch = dispatch.clone();
-                                                                let selected_episodes = selected_episodes.clone();
-                                                                spawn_local(async move {
-                                                                    let request = BulkEpisodeActionRequest {
-                                                                        episode_ids: selected_ids,
-                                                                        user_id: user_id_value,
-                                                                        is_youtube: None,
-                                                                    };
-                                                                    match call_bulk_download_episodes(
-                                                                        &server_name.unwrap_or_default(),
-                                                                        &api_key.flatten(),
-                                                                        &request
-                                                                    ).await {
-                                                                        Ok(message) => {
-                                                                            dispatch.reduce_mut(|state| {
-                                                                                state.info_message = Some(message);
-                                                                            });
-                                                                            selected_episodes.set(HashSet::new());
-                                                                        }
-                                                                        Err(e) => {
-                                                                            dispatch.reduce_mut(|state| {
-                                                                                state.error_message = Some(format!("Error: {}", e));
-                                                                            });
-                                                                        }
-                                                                    }
-                                                                });
-                                                            })
-                                                        }
-                                                        class="px-3 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded-md"
-                                                    >
-                                                        {&i18n_download_episodes}
-                                                    </button>
+                                                        <option value="newest" selected={
+                                                            let preference_key = if *podcast_id > 0 {
+                                                                format!("podcast_{}", *podcast_id)
+                                                            } else {
+                                                                "episodes".to_string()
+                                                            };
+                                                            get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "newest"
+                                                        }>{&i18n_newest_first}</option>
+                                                        <option value="oldest" selected={
+                                                            let preference_key = if *podcast_id > 0 {
+                                                                format!("podcast_{}", *podcast_id)
+                                                            } else {
+                                                                "episodes".to_string()
+                                                            };
+                                                            get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "oldest"
+                                                        }>{&i18n_oldest_first}</option>
+                                                        <option value="shortest" selected={
+                                                            let preference_key = if *podcast_id > 0 {
+                                                                format!("podcast_{}", *podcast_id)
+                                                            } else {
+                                                                "episodes".to_string()
+                                                            };
+                                                            get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "shortest"
+                                                        }>{&i18n_shortest_first}</option>
+                                                        <option value="longest" selected={
+                                                            let preference_key = if *podcast_id > 0 {
+                                                                format!("podcast_{}", *podcast_id)
+                                                            } else {
+                                                                "episodes".to_string()
+                                                            };
+                                                            get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "longest"
+                                                        }>{&i18n_longest_first}</option>
+                                                        <option value="title_az" selected={
+                                                            let preference_key = if *podcast_id > 0 {
+                                                                format!("podcast_{}", *podcast_id)
+                                                            } else {
+                                                                "episodes".to_string()
+                                                            };
+                                                            get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_az"
+                                                        }>{&i18n_title_az}</option>
+                                                        <option value="title_za" selected={
+                                                            let preference_key = if *podcast_id > 0 {
+                                                                format!("podcast_{}", *podcast_id)
+                                                            } else {
+                                                                "episodes".to_string()
+                                                            };
+                                                            get_filter_preference(&preference_key).unwrap_or_else(|| get_default_sort_direction().to_string()) == "title_za"
+                                                        }>{&i18n_title_za}</option>
+                                                    </select>
+                                                    <i class="ph ph-caret-down dropdown-arrow"></i>
                                                 </div>
                                             </div>
-                                        </div>
-                                    }
-                                } else {
-                                    html! {}
-                                }
-                            }
-                            
-                            {
-                                if let (Some(_), Some(podcast_info)) = (podcast_feed_results, &clicked_podcast_info) {
-                                    let podcast_link_clone = podcast_info.feedurl.clone();
-                                    let podcast_title = podcast_info.podcastname.clone();
-                                    
-                                    // Episode selection callback
-                                    let selected_episodes_clone = selected_episodes.clone();
-                                    let on_episode_select = Callback::from(move |(episode_id, is_selected): (i32, bool)| {
-                                        selected_episodes_clone.set({
-                                            let mut current = (*selected_episodes_clone).clone();
-                                            if is_selected {
-                                                current.insert(episode_id);
-                                            } else {
-                                                current.remove(&episode_id);
-                                            }
-                                            current
-                                        });
-                                    });
 
-                                    // Select all older episodes callback
-                                    let filtered_episodes_older = filtered_episodes.clone();
-                                    let selected_episodes_older = selected_episodes.clone();
-                                    let on_select_older = Callback::from(move |cutoff_episode_id: i32| {
-                                        let cutoff_index = filtered_episodes_older.iter()
-                                            .position(|ep| ep.episode_id == Some(cutoff_episode_id))
-                                            .unwrap_or(0);
-                                        
-                                        let older_ids: HashSet<i32> = filtered_episodes_older.iter()
-                                            .skip(cutoff_index) // Include the cutoff episode and all after it (older in reverse chronological order)
-                                            .filter_map(|ep| ep.episode_id)
-                                            .collect();
-                                        
-                                        selected_episodes_older.set({
-                                            let mut current = (*selected_episodes_older).clone();
-                                            current.extend(older_ids);
-                                            current
-                                        });
-                                    });
+                                            // Filter chips (horizontal scroll on mobile)
+                                            <div class="flex gap-3 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+                                                // Clear all filters
+                                                <button
+                                                    onclick={
+                                                        let show_in_progress = show_in_progress.clone();
+                                                        let episode_search_term = episode_search_term.clone();
+                                                        let completed_filter_state = completed_filter_state.clone();
+                                                        Callback::from(move |_| {
+                                                            completed_filter_state.set(CompletedFilter::ShowAll);
+                                                            show_in_progress.set(false);
+                                                            episode_search_term.set(String::new());
+                                                        })
+                                                    }
+                                                    class="filter-chip"
+                                                >
+                                                    <i class="ph ph-broom text-lg"></i>
+                                                    <span class="text-sm font-medium">{&i18n_clear_all}</span>
+                                                </button>
 
-                                    // Select all newer episodes callback
-                                    let filtered_episodes_newer = filtered_episodes.clone();
-                                    let selected_episodes_newer = selected_episodes.clone();
-                                    let on_select_newer = Callback::from(move |cutoff_episode_id: i32| {
-                                        let cutoff_index = filtered_episodes_newer.iter()
-                                            .position(|ep| ep.episode_id == Some(cutoff_episode_id))
-                                            .unwrap_or(0);
-                                        
-                                        let newer_ids: HashSet<i32> = filtered_episodes_newer.iter()
-                                            .take(cutoff_index + 1) // Include episodes before the cutoff (newer in reverse chronological order)
-                                            .filter_map(|ep| ep.episode_id)
-                                            .collect();
-                                        
-                                        selected_episodes_newer.set({
-                                            let mut current = (*selected_episodes_newer).clone();
-                                            current.extend(newer_ids);
-                                            current
-                                        });
-                                    });
+                                                // Completed filter chip (3-state)
+                                                <button
+                                                    onclick={
+                                                        let completed_filter_state = completed_filter_state.clone();
+                                                        Callback::from(move |_| {
+                                                            completed_filter_state.set(match *completed_filter_state {
+                                                                CompletedFilter::ShowAll => CompletedFilter::ShowOnly,
+                                                                CompletedFilter::ShowOnly => CompletedFilter::Hide,
+                                                                CompletedFilter::Hide => CompletedFilter::ShowAll,
+                                                            });
+                                                        })
+                                                    }
+                                                    title={completed_title.clone()}
+                                                    class={classes!(
+                                                        "filter-chip",
+                                                        match *completed_filter_state {
+                                                            CompletedFilter::ShowOnly => "filter-chip-active",
+                                                            CompletedFilter::Hide => "filter-chip-alert",
+                                                            CompletedFilter::ShowAll => ""
+                                                        }
+                                                    )}
+                                                >
+                                                    <i class={classes!("ph", completed_icon, "text-lg")}></i>
+                                                    <span class="text-sm font-medium">{completed_text}</span>
+                                                </button>
 
-                                    html! {
-                                        <PodcastEpisodeVirtualList
-                                            episodes={(*filtered_episodes).clone()}
-                                            item_height={220.0} // Adjust this based on your actual episode item height
-                                            podcast_added={podcast_added}
-                                            search_state={search_state.clone()}
-                                            search_ui_state={state.clone()}
-                                            dispatch={_dispatch.clone()}
-                                            search_dispatch={_search_dispatch.clone()}
-                                            history={history.clone()}
-                                            server_name={server_name.clone()}
-                                            user_id={user_id}
-                                            api_key={api_key.clone()}
-                                            podcast_link={podcast_link_clone}
-                                            podcast_title={podcast_title}
-                                            selected_episodes={Some(Rc::new((*selected_episodes).clone()))}
-                                            is_selecting={Some(*is_selecting)}
-                                            on_episode_select={Some(on_episode_select)}
-                                            on_select_older={Some(on_select_older)}
-                                            on_select_newer={Some(on_select_newer)}
-                                        />
-                                    }
+                                                // In progress filter chip
+                                                <button
+                                                    onclick={
+                                                        let show_in_progress = show_in_progress.clone();
+                                                        Callback::from(move |_| {
+                                                            show_in_progress.set(!*show_in_progress);
+                                                        })
+                                                    }
+                                                    class={classes!(
+                                                        "filter-chip",
+                                                        if *show_in_progress { "filter-chip-active" } else { "" }
+                                                    )}
+                                                >
+                                                    <i class="ph ph-hourglass-medium text-lg"></i>
+                                                    <span class="text-sm font-medium">{&i18n_in_progress}</span>
+                                                </button>
 
-                                } else {
-                                    html! {
-                                        <div class="empty-episodes-container" id="episode-container">
-                                            <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
-                                            <h1 class="page-subtitles">{ &i18n_no_episodes_found }</h1>
-                                            <p class="page-paragraphs">{&i18n_no_episodes_description}</p>
-                                        </div>
-                                    }
-                                }
-                            }
-                        </>
-                    }
+                                                // Selection mode toggle
+                                                <button
+                                                    onclick={
+                                                        let is_selecting = is_selecting.clone();
+                                                        let selected_episodes = selected_episodes.clone();
+                                                        Callback::from(move |_| {
+                                                            if *is_selecting {
+                                                                // Exit selection mode and clear selections
+                                                                selected_episodes.set(HashSet::new());
+                                                            }
+                                                            is_selecting.set(!*is_selecting);
+                                                        })
+                                                    }
+                                                    class={classes!(
+                                                        "filter-chip",
+                                                        if *is_selecting { "filter-chip-active" } else { "" }
+                                                    )}
+                                                >
+                                                    <i class="ph ph-check-square text-lg"></i>
+                                                    <span class="text-sm font-medium">
+                                                        {if *is_selecting { &i18n_exit_select } else { &i18n_select }}
+                                                    </span>
+                                                </button>
+                                            </div>
+
+                                            // Smart selection buttons when in selection mode
+                                            {
+                                                if *is_selecting {
+                                                    let filtered_episodes_clone = filtered_episodes.clone();
+                                                    let selected_episodes_clone = selected_episodes.clone();
+
+                                                    html! {
+                                                        <div class="flex gap-2 mt-4 flex-wrap">
+                                                            // Select All / Deselect All
+    <button
+        onclick={
+            let filtered_episodes = filtered_episodes_clone.clone();
+            let selected_episodes = selected_episodes_clone.clone();
+            Callback::from(move |_| {
+                let all_ids: HashSet<i32> = filtered_episodes.iter()
+                    .filter_map(|ep| ep.episode_id)
+                    .collect();
+
+                let current = (*selected_episodes).clone();
+                if current.len() == all_ids.len() && all_ids.iter().all(|id| current.contains(id)) {
+                    // Deselect all
+                    selected_episodes.set(HashSet::new());
+                } else {
+                    // Select all
+                    selected_episodes.set(all_ids);
+                }
+            })
+        }
+        class="bulk-select-button"
+    >
+        {
+            {
+                // this extra block is an expression, so valid
+                let all_ids: HashSet<i32> = filtered_episodes_clone.iter()
+                    .filter_map(|ep| ep.episode_id)
+                    .collect();
+                let current = (*selected_episodes_clone).clone();
+                if current.len() == all_ids.len() && all_ids.iter().all(|id| current.contains(id)) {
+                    &i18n_deselect_all
+                } else {
+                    &i18n_select_all
                 }
             }
-        <App_drawer />
-        {
-            if let Some(audio_props) = &state.currently_playing {
-                html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
-            } else {
-                html! {}
-            }
         }
-        </div>
+    </button>
 
-    }
+
+                                                            // Select Unplayed Only
+                                                            <button
+                                                                onclick={
+                                                                    let filtered_episodes = filtered_episodes_clone.clone();
+                                                                    let selected_episodes = selected_episodes_clone.clone();
+                                                                    Callback::from(move |_| {
+                                                                        let unplayed_ids: HashSet<i32> = filtered_episodes.iter()
+                                                                            .filter(|ep| !ep.completed.unwrap_or(false))
+                                                                            .filter_map(|ep| ep.episode_id)
+                                                                            .collect();
+                                                                        selected_episodes.set(unplayed_ids);
+                                                                    })
+                                                                }
+                                                                class="bulk-filter-button"
+                                                            >
+                                                                {&i18n_select_unplayed}
+                                                            </button>
+                                                        </div>
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                }
+
+
+                                // Bulk action toolbar
+                                {
+                                    if *is_selecting && !selected_episodes.is_empty() {
+                                        let selected_count = selected_episodes.len();
+                                        let selected_ids: Vec<i32> = selected_episodes.iter().cloned().collect();
+                                        let user_id_value = user_id.unwrap_or(0);
+
+                                        html! {
+                                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                                                <div class="flex items-center justify-between">
+                                                    <div class="text-sm text-blue-800 flex items-center">
+                                                        <i class="ph ph-check-circle text-lg mr-2"></i>
+                                                        {format!("{} episode{} selected", selected_count, if selected_count == 1 { "" } else { "s" })}
+                                                    </div>
+                                                    <div class="flex gap-2 flex-wrap">
+                                                        // Mark Complete button
+                                                        <button
+                                                            onclick={
+                                                                let selected_ids = selected_ids.clone();
+                                                                let api_key = api_key.clone();
+                                                                let server_name = server_name.clone();
+                                                                let dispatch = _search_dispatch.clone();
+                                                                let selected_episodes = selected_episodes.clone();
+                                                                Callback::from(move |_| {
+                                                                    let selected_ids = selected_ids.clone();
+                                                                    let api_key = api_key.clone();
+                                                                    let server_name = server_name.clone();
+                                                                    let dispatch = dispatch.clone();
+                                                                    let selected_episodes = selected_episodes.clone();
+                                                                    spawn_local(async move {
+                                                                        let request = BulkEpisodeActionRequest {
+                                                                            episode_ids: selected_ids,
+                                                                            user_id: user_id_value,
+                                                                            is_youtube: None,
+                                                                        };
+                                                                        match call_bulk_mark_episodes_completed(
+                                                                            &server_name.unwrap_or_default(),
+                                                                            &api_key.flatten(),
+                                                                            &request
+                                                                        ).await {
+                                                                            Ok(message) => {
+                                                                                dispatch.reduce_mut(|state| {
+                                                                                    state.info_message = Some(message);
+                                                                                });
+                                                                                selected_episodes.set(HashSet::new());
+                                                                            }
+                                                                            Err(e) => {
+                                                                                dispatch.reduce_mut(|state| {
+                                                                                    state.error_message = Some(format!("Error: {}", e));
+                                                                                });
+                                                                            }
+                                                                        }
+                                                                    });
+                                                                })
+                                                            }
+                                                            class="bulk-action-success"
+                                                        >
+                                                            {&i18n_mark_complete}
+                                                        </button>
+
+                                                        // Save button
+                                                        <button
+                                                            onclick={
+                                                                let selected_ids = selected_ids.clone();
+                                                                let api_key = api_key.clone();
+                                                                let server_name = server_name.clone();
+                                                                let dispatch = _search_dispatch.clone();
+                                                                let selected_episodes = selected_episodes.clone();
+                                                                Callback::from(move |_| {
+                                                                    let selected_ids = selected_ids.clone();
+                                                                    let api_key = api_key.clone();
+                                                                    let server_name = server_name.clone();
+                                                                    let dispatch = dispatch.clone();
+                                                                    let selected_episodes = selected_episodes.clone();
+                                                                    spawn_local(async move {
+                                                                        let request = BulkEpisodeActionRequest {
+                                                                            episode_ids: selected_ids,
+                                                                            user_id: user_id_value,
+                                                                            is_youtube: None,
+                                                                        };
+                                                                        match call_bulk_save_episodes(
+                                                                            &server_name.unwrap_or_default(),
+                                                                            &api_key.flatten(),
+                                                                            &request
+                                                                        ).await {
+                                                                            Ok(message) => {
+                                                                                dispatch.reduce_mut(|state| {
+                                                                                    state.info_message = Some(message);
+                                                                                });
+                                                                                selected_episodes.set(HashSet::new());
+                                                                            }
+                                                                            Err(e) => {
+                                                                                dispatch.reduce_mut(|state| {
+                                                                                    state.error_message = Some(format!("Error: {}", e));
+                                                                                });
+                                                                            }
+                                                                        }
+                                                                    });
+                                                                })
+                                                            }
+                                                            class="bulk-action-primary"
+                                                        >
+                                                            {&i18n.t("episodes_layout.save")}
+                                                        </button>
+
+                                                        // Queue button
+                                                        <button
+                                                            onclick={
+                                                                let selected_ids = selected_ids.clone();
+                                                                let api_key = api_key.clone();
+                                                                let server_name = server_name.clone();
+                                                                let dispatch = _search_dispatch.clone();
+                                                                let selected_episodes = selected_episodes.clone();
+                                                                Callback::from(move |_| {
+                                                                    let selected_ids = selected_ids.clone();
+                                                                    let api_key = api_key.clone();
+                                                                    let server_name = server_name.clone();
+                                                                    let dispatch = dispatch.clone();
+                                                                    let selected_episodes = selected_episodes.clone();
+                                                                    spawn_local(async move {
+                                                                        let request = BulkEpisodeActionRequest {
+                                                                            episode_ids: selected_ids,
+                                                                            user_id: user_id_value,
+                                                                            is_youtube: None,
+                                                                        };
+                                                                        match call_bulk_queue_episodes(
+                                                                            &server_name.unwrap_or_default(),
+                                                                            &api_key.flatten(),
+                                                                            &request
+                                                                        ).await {
+                                                                            Ok(message) => {
+                                                                                dispatch.reduce_mut(|state| {
+                                                                                    state.info_message = Some(message);
+                                                                                });
+                                                                                selected_episodes.set(HashSet::new());
+                                                                            }
+                                                                            Err(e) => {
+                                                                                dispatch.reduce_mut(|state| {
+                                                                                    state.error_message = Some(format!("Error: {}", e));
+                                                                                });
+                                                                            }
+                                                                        }
+                                                                    });
+                                                                })
+                                                            }
+                                                            class="px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-md"
+                                                        >
+                                                            {&i18n_queue_episodes}
+                                                        </button>
+
+                                                        // Download button
+                                                        <button
+                                                            onclick={
+                                                                let selected_ids = selected_ids.clone();
+                                                                let api_key = api_key.clone();
+                                                                let server_name = server_name.clone();
+                                                                let dispatch = _search_dispatch.clone();
+                                                                let selected_episodes = selected_episodes.clone();
+                                                                Callback::from(move |_| {
+                                                                    let selected_ids = selected_ids.clone();
+                                                                    let api_key = api_key.clone();
+                                                                    let server_name = server_name.clone();
+                                                                    let dispatch = dispatch.clone();
+                                                                    let selected_episodes = selected_episodes.clone();
+                                                                    spawn_local(async move {
+                                                                        let request = BulkEpisodeActionRequest {
+                                                                            episode_ids: selected_ids,
+                                                                            user_id: user_id_value,
+                                                                            is_youtube: None,
+                                                                        };
+                                                                        match call_bulk_download_episodes(
+                                                                            &server_name.unwrap_or_default(),
+                                                                            &api_key.flatten(),
+                                                                            &request
+                                                                        ).await {
+                                                                            Ok(message) => {
+                                                                                dispatch.reduce_mut(|state| {
+                                                                                    state.info_message = Some(message);
+                                                                                });
+                                                                                selected_episodes.set(HashSet::new());
+                                                                            }
+                                                                            Err(e) => {
+                                                                                dispatch.reduce_mut(|state| {
+                                                                                    state.error_message = Some(format!("Error: {}", e));
+                                                                                });
+                                                                            }
+                                                                        }
+                                                                    });
+                                                                })
+                                                            }
+                                                            class="px-3 py-1 text-xs bg-orange-600 hover:bg-orange-700 text-white rounded-md"
+                                                        >
+                                                            {&i18n_download_episodes}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        }
+                                    } else {
+                                        html! {}
+                                    }
+                                }
+
+                                {
+                                    if let (Some(_), Some(podcast_info)) = (podcast_feed_results, &clicked_podcast_info) {
+                                        let podcast_link_clone = podcast_info.feedurl.clone();
+                                        let podcast_title = podcast_info.podcastname.clone();
+
+                                        // Episode selection callback
+                                        let selected_episodes_clone = selected_episodes.clone();
+                                        let on_episode_select = Callback::from(move |(episode_id, is_selected): (i32, bool)| {
+                                            selected_episodes_clone.set({
+                                                let mut current = (*selected_episodes_clone).clone();
+                                                if is_selected {
+                                                    current.insert(episode_id);
+                                                } else {
+                                                    current.remove(&episode_id);
+                                                }
+                                                current
+                                            });
+                                        });
+
+                                        // Select all older episodes callback
+                                        let filtered_episodes_older = filtered_episodes.clone();
+                                        let selected_episodes_older = selected_episodes.clone();
+                                        let on_select_older = Callback::from(move |cutoff_episode_id: i32| {
+                                            let cutoff_index = filtered_episodes_older.iter()
+                                                .position(|ep| ep.episode_id == Some(cutoff_episode_id))
+                                                .unwrap_or(0);
+
+                                            let older_ids: HashSet<i32> = filtered_episodes_older.iter()
+                                                .skip(cutoff_index) // Include the cutoff episode and all after it (older in reverse chronological order)
+                                                .filter_map(|ep| ep.episode_id)
+                                                .collect();
+
+                                            selected_episodes_older.set({
+                                                let mut current = (*selected_episodes_older).clone();
+                                                current.extend(older_ids);
+                                                current
+                                            });
+                                        });
+
+                                        // Select all newer episodes callback
+                                        let filtered_episodes_newer = filtered_episodes.clone();
+                                        let selected_episodes_newer = selected_episodes.clone();
+                                        let on_select_newer = Callback::from(move |cutoff_episode_id: i32| {
+                                            let cutoff_index = filtered_episodes_newer.iter()
+                                                .position(|ep| ep.episode_id == Some(cutoff_episode_id))
+                                                .unwrap_or(0);
+
+                                            let newer_ids: HashSet<i32> = filtered_episodes_newer.iter()
+                                                .take(cutoff_index + 1) // Include episodes before the cutoff (newer in reverse chronological order)
+                                                .filter_map(|ep| ep.episode_id)
+                                                .collect();
+
+                                            selected_episodes_newer.set({
+                                                let mut current = (*selected_episodes_newer).clone();
+                                                current.extend(newer_ids);
+                                                current
+                                            });
+                                        });
+
+                                        html! {
+                                            <PodcastEpisodeVirtualList
+                                                episodes={(*filtered_episodes).clone()}
+                                                item_height={220.0} // Adjust this based on your actual episode item height
+                                                podcast_added={podcast_added}
+                                                search_state={search_state.clone()}
+                                                search_ui_state={state.clone()}
+                                                dispatch={_dispatch.clone()}
+                                                search_dispatch={_search_dispatch.clone()}
+                                                history={history.clone()}
+                                                server_name={server_name.clone()}
+                                                user_id={user_id}
+                                                api_key={api_key.clone()}
+                                                podcast_link={podcast_link_clone}
+                                                podcast_title={podcast_title}
+                                                selected_episodes={Some(Rc::new((*selected_episodes).clone()))}
+                                                is_selecting={Some(*is_selecting)}
+                                                on_episode_select={Some(on_episode_select)}
+                                                on_select_older={Some(on_select_older)}
+                                                on_select_newer={Some(on_select_newer)}
+                                            />
+                                        }
+
+                                    } else {
+                                        html! {
+                                            <div class="empty-episodes-container" id="episode-container">
+                                                <img src="static/assets/favicon.png" alt="Logo" class="logo"/>
+                                                <h1 class="page-subtitles">{ &i18n_no_episodes_found }</h1>
+                                                <p class="page-paragraphs">{&i18n_no_episodes_description}</p>
+                                            </div>
+                                        }
+                                    }
+                                }
+                            </>
+                        }
+                    }
+                }
+            <App_drawer />
+            {
+                if let Some(audio_props) = &state.currently_playing {
+                    html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
+                } else {
+                    html! {}
+                }
+            }
+            </div>
+
+        }
 }

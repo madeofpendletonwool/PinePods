@@ -14,6 +14,8 @@ pub struct UserStats {
     pub GpodderUrl: String,
     pub Pod_Sync_Type: String,
 }
+
+#[allow(dead_code)]
 pub async fn call_get_stats(
     server_name: String,
     api_key: Option<String>,

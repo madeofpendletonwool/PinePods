@@ -3,32 +3,22 @@ use crate::components::gen_funcs::format_error_message;
 use crate::requests::setting_reqs::{
     call_list_backup_files, call_restore_backup_file, call_restore_server,
 };
+use i18nrs::yew::use_translation;
 use wasm_bindgen::JsValue;
 use web_sys::{Event, File, FormData, HtmlInputElement};
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
 
 #[function_component(RestoreServer)]
 pub fn restore_server() -> Html {
     let (i18n, _) = use_translation();
 
     // Capture i18n strings before they get moved
-    let i18n_failed_to_load_backup_files = i18n.t("restore_server.failed_to_load_backup_files").to_string();
+    let i18n_failed_to_load_backup_files = i18n
+        .t("restore_server.failed_to_load_backup_files")
+        .to_string();
     let i18n_file_size_too_large = i18n.t("restore_server.file_size_too_large").to_string();
-    let i18n_database_password_required = i18n.t("restore_server.database_password_required").to_string();
-    let i18n_restoration_success = i18n.t("restore_server.restoration_success").to_string();
-    let i18n_failed_to_restore_server = i18n.t("restore_server.failed_to_restore_server").to_string();
-    let i18n_restore_server = i18n.t("restore_server.restore_server").to_string();
-    let i18n_server_restore = i18n.t("restore_server.server_restore").to_string();
-    let i18n_restore_mode = i18n.t("restore_server.restore_mode").to_string();
-    let i18n_upload_backup_file = i18n.t("restore_server.upload_backup_file").to_string();
-    let i18n_select_existing_backup = i18n.t("restore_server.select_existing_backup").to_string();
-    let i18n_choose_backup_file = i18n.t("restore_server.choose_backup_file").to_string();
-    let i18n_database_password = i18n.t("restore_server.database_password").to_string();
-    let i18n_restoring = i18n.t("restore_server.restoring").to_string();
-
     let database_password = use_state(|| "".to_string());
     let selected_file = use_state(|| None::<File>);
     let is_loading = use_state(|| false);
@@ -106,8 +96,7 @@ pub fn restore_server() -> Html {
                     // Check file size (e.g., limit to 100MB)
                     if file.size() > 100.0 * 1024.0 * 1024.0 {
                         dispatch.reduce_mut(|state| {
-                            state.error_message =
-                                Some(i18n_file_size_too_large.clone());
+                            state.error_message = Some(i18n_file_size_too_large.clone());
                         });
                         return;
                     }
@@ -244,15 +233,15 @@ pub fn restore_server() -> Html {
             <p class="item_container-text text-md mb-4 text-red-600 font-bold">
                 {"WARNING: This will delete everything on your server and restore to the point that the backup contains."}
             </p>
-            
+
             // Mode Selection
             <div class="mb-6">
                 <label class="block text-sm font-medium item_container-text mb-3">{"Restore Method"}</label>
                 <div class="flex space-x-4">
                     <label class="flex items-center">
-                        <input 
-                            type="radio" 
-                            name="restore_mode" 
+                        <input
+                            type="radio"
+                            name="restore_mode"
                             value="upload"
                             checked={*restore_mode == "upload"}
                             onchange={Callback::from({
@@ -264,9 +253,9 @@ pub fn restore_server() -> Html {
                         <span class="item_container-text">{"Upload Backup File"}</span>
                     </label>
                     <label class="flex items-center">
-                        <input 
-                            type="radio" 
-                            name="restore_mode" 
+                        <input
+                            type="radio"
+                            name="restore_mode"
                             value="select"
                             checked={*restore_mode == "select"}
                             onchange={Callback::from({
@@ -354,7 +343,7 @@ pub fn restore_server() -> Html {
                             <p class="item_container-text text-md mb-4">
                                 {"Choose from existing backup files in the mounted backup directory."}
                             </p>
-                            
+
                             {
                                 if *files_loading {
                                     html! {
@@ -380,12 +369,12 @@ pub fn restore_server() -> Html {
                                                 let size = file.get("size").and_then(|s| s.as_u64()).unwrap_or(0);
                                                 let modified = file.get("modified").and_then(|m| m.as_u64()).unwrap_or(0);
                                                 let is_selected = selected_backup_file.as_ref() == Some(&filename.to_string());
-                                                
+
                                                 let filename_clone = filename.to_string();
                                                 let selected_backup_file_clone = selected_backup_file.clone();
-                                                
+
                                                 html! {
-                                                    <div 
+                                                    <div
                                                         class={if is_selected {
                                                             "backup-file-item p-3 border rounded-lg cursor-pointer transition-colors border-blue-500 bg-blue-50 dark:bg-blue-900/20"
                                                         } else {
@@ -438,7 +427,7 @@ pub fn restore_server() -> Html {
                                     }
                                 }
                             }
-                            
+
                             {
                                 if selected_backup_file.is_some() {
                                     html! {

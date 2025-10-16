@@ -73,6 +73,7 @@ pub struct ExpandedDescriptions {
 }
 
 #[derive(Default, Clone, PartialEq, Store)]
+#[allow(dead_code)]
 pub struct PlaylistState {
     pub include_unplayed: bool,
     pub include_partially_played: bool,
@@ -267,6 +268,7 @@ impl AppState {
 }
 
 #[derive(Default, Clone, PartialEq, Store, Debug)]
+#[allow(dead_code)]
 pub struct FilterState {
     pub selected_category: Option<String>,
     pub category_filter_list: Option<Vec<String>>,
@@ -274,6 +276,7 @@ pub struct FilterState {
 
 // Add this alongside your other state structs
 #[derive(Default, Clone, PartialEq, Store)]
+#[allow(dead_code)]
 pub struct PodcastState {
     pub added_podcast_urls: HashSet<String>,
 }

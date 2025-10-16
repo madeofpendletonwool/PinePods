@@ -1,13 +1,13 @@
 use super::routes::Route;
-use crate::components::context::AppState;
+use crate::components::context::{AppState, UserStatsStore};
 use crate::components::navigation::use_back_button;
-use crate::requests::pod_req::connect_to_episode_websocket;
+use crate::requests::pod_req::{call_get_pinepods_version, connect_to_episode_websocket};
+use i18nrs::yew::use_translation;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::window;
 use yew::prelude::*;
 use yew_router::prelude::Link;
 use yewdux::use_store;
-use i18nrs::yew::use_translation;
 
 #[function_component(BackButton)]
 pub fn back_button() -> Html {
@@ -32,11 +32,11 @@ pub fn back_button() -> Html {
 #[function_component(App_drawer)]
 pub fn app_drawer() -> Html {
     let (i18n, _) = use_translation();
+    let (stats_state, stats_dispatch) = use_store::<UserStatsStore>();
     // let selection = use_state(|| "".to_string());
     // let (state, _dispatch) = use_store::<AppState>();
 
     // Capture i18n strings before they get moved
-    let i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
     let i18n_pinepods = i18n.t("app_drawer.pinepods").to_string();
     let i18n_home = i18n.t("navigation.home").to_string();
     let i18n_feed = i18n.t("app_drawer.feed").to_string();
@@ -69,6 +69,31 @@ pub fn app_drawer() -> Html {
         .auth_details
         .as_ref()
         .map(|ud| ud.server_name.clone());
+
+    // Fetch version on component mount if authenticated
+    {
+        let stats_dispatch = stats_dispatch.clone();
+        let server_name_version = server_name.clone();
+        let api_key_version = api_key.clone();
+
+        use_effect_with((api_key.clone(), server_name.clone()), move |_| {
+            if let (Some(api_key), Some(server_name)) =
+                (api_key_version.clone(), server_name_version.clone())
+            {
+                let stats_dispatch = stats_dispatch.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(version) =
+                        call_get_pinepods_version(server_name.clone(), &api_key).await
+                    {
+                        stats_dispatch.reduce_mut(move |state| {
+                            state.pinepods_version = Some(version);
+                        });
+                    }
+                });
+            }
+            || ()
+        });
+    }
     // let session_state = state.clone();
     let username = state
         .user_details
@@ -417,6 +442,21 @@ pub fn app_drawer() -> Html {
                     }
                 }
             </div>
+
+            // Version display at bottom center
+            {
+                if let Some(version) = &stats_state.pinepods_version {
+                    html! {
+                        <div class="fixed bottom-0 left-1/2 transform -translate-x-1/2 z-10 pointer-events-none">
+                            <div class="text-xs opacity-60 py-1 px-2 drawer-text">
+                                { format!("v{}", version) }
+                            </div>
+                        </div>
+                    }
+                } else {
+                    html! {}
+                }
+            }
         </div>
         </div>
     }

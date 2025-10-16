@@ -3,13 +3,13 @@ use super::gen_components::{
     empty_message, on_shownotes_click, person_episode_item, Search_nav, UseScrollToTop,
 };
 use super::virtual_list::PersonEpisodeVirtualList;
-use i18nrs::yew::use_translation;
 use crate::components::audio::on_play_pause;
 use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, ExpandedDescriptions, UIState};
 use crate::components::gen_funcs::sanitize_html_with_blank_target;
 use crate::requests::people_req::PersonEpisode;
 use crate::requests::people_req::{self, PersonSubscription};
+use i18nrs::yew::use_translation;
 use yew::prelude::*;
 use yew::{function_component, html, Html};
 use yew_router::history::BrowserHistory;
@@ -32,7 +32,7 @@ struct PersonWithEpisodes {
 #[function_component(SubscribedPeople)]
 pub fn subscribed_people() -> Html {
     let (i18n, _) = use_translation();
-    
+
     let (desc_state, desc_dispatch) = use_store::<ExpandedDescriptions>();
     let active_modal = use_state(|| None::<i32>);
     let show_modal = use_state(|| false);
@@ -202,7 +202,7 @@ pub fn subscribed_people() -> Html {
         let episode_count_text = i18n.t("people_subs.episode_count").to_string();
         let shows_text = i18n.t("people_subs.shows").to_string();
         let avatar_alt_text = i18n.t("people_subs.avatar_alt").to_string();
-        
+
         move || {
             if people.is_empty() {
                 html! {
@@ -303,6 +303,7 @@ pub fn subscribed_people() -> Html {
     }
 }
 
+#[allow(dead_code)]
 fn get_proxied_image_url(server_name: &str, original_url: String) -> String {
     let proxied_url = format!(
         "{}/api/proxy/image?url={}",
@@ -313,6 +314,7 @@ fn get_proxied_image_url(server_name: &str, original_url: String) -> String {
     proxied_url
 }
 
+#[allow(dead_code)]
 fn render_host_with_episodes(
     person: &PersonSubscription,
     episodes: Vec<PersonEpisode>,
@@ -385,7 +387,7 @@ fn render_host_with_episodes(
                             api_key={api_key.clone()}
                         />
                         // Old episode rendering code (disabled for virtual scrolling)
-                        { if false { 
+                        { if false {
                             let _ = episodes.iter().map(|episode| {
                             let id_string = episode.episodeid.to_string();
                             let desc_expanded = desc_rc.expanded_descriptions.contains(&id_string);

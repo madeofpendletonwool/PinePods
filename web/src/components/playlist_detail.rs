@@ -21,11 +21,13 @@ pub fn playlist_detail(props: &Props) -> Html {
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let loading = use_state(|| true);
     let error = use_state(|| None::<String>);
+    let refreshing = use_state(|| false);
 
     // Fetch playlist episodes
     {
         let loading = loading.clone();
         let error = error.clone();
+        let dispatch = dispatch.clone();
         let playlist_id = props.id;
         let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
@@ -66,6 +68,52 @@ pub fn playlist_detail(props: &Props) -> Html {
         );
     }
 
+    // Refresh functionality
+    let on_refresh = {
+        let refreshing = refreshing.clone();
+        let error = error.clone();
+        let dispatch = dispatch.clone();
+        let playlist_id = props.id;
+        let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+        let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+        Callback::from(move |_| {
+            if let (Some(api_key), Some(user_id), Some(server_name)) =
+                (api_key.clone(), user_id.clone(), server_name.clone())
+            {
+                refreshing.set(true);
+                error.set(None);
+                let refreshing_clone = refreshing.clone();
+                let error_clone = error.clone();
+                let dispatch_clone = dispatch.clone();
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    match pod_req::call_get_playlist_episodes(
+                        &server_name,
+                        &api_key.unwrap(),
+                        &user_id,
+                        playlist_id,
+                    )
+                    .await
+                    {
+                        Ok(response) => {
+                            // Update state with playlist info and episodes
+                            dispatch_clone.reduce_mut(move |state| {
+                                state.current_playlist_episodes = Some(response.episodes);
+                                state.current_playlist_info = Some(response.playlist_info);
+                            });
+                        }
+                        Err(e) => {
+                            error_clone.set(Some(e.to_string()));
+                        }
+                    }
+                    refreshing_clone.set(false);
+                });
+            }
+        })
+    };
+
     html! {
         <>
             <div class="main-container">
@@ -91,17 +139,42 @@ pub fn playlist_detail(props: &Props) -> Html {
                             // Playlist header
                             if let Some(playlist_info) = &state.current_playlist_info {
                                 <div class="playlist-header mb-6">
-                                    <div class="flex items-center gap-4">
-                                        <i class={classes!("text-4xl", playlist_info.icon_name.clone())}></i>
-                                        <div>
-                                            <h1 class="text-2xl font-bold item_container-text">{&playlist_info.name}</h1>
-                                            if let Some(desc) = &playlist_info.description {
-                                                <p class="text-gray-600 dark:text-gray-400">{desc}</p>
-                                            }
-                                            <p class="text-sm item_container-text mt-1">
-                                                {format!("{} {}", playlist_info.episode_count.unwrap_or(0), &i18n.t("playlist_detail.episodes"))}
-                                            </p>
+                                    <div class="flex items-start justify-between gap-4">
+                                        <div class="flex items-center gap-4 flex-grow">
+                                            <i class={classes!("text-4xl", playlist_info.icon_name.clone())}></i>
+                                            <div>
+                                                <h1 class="text-2xl font-bold item_container-text">{&playlist_info.name}</h1>
+                                                if let Some(desc) = &playlist_info.description {
+                                                    <p class="text-gray-600 dark:text-gray-400">{desc}</p>
+                                                }
+                                                <p class="text-sm item_container-text mt-1">
+                                                    {format!("{} {}", playlist_info.episode_count.unwrap_or(0), &i18n.t("playlist_detail.episodes"))}
+                                                </p>
+                                            </div>
                                         </div>
+                                        <button
+                                            class="item-container-button py-2 px-3 rounded flex items-center gap-2 min-w-fit"
+                                            onclick={on_refresh.clone()}
+                                            disabled={*refreshing}
+                                        >
+                                            {
+                                                if *refreshing {
+                                                    html! {
+                                                        <>
+                                                            <i class="ph ph-circle-notch animate-spin text-lg"></i>
+                                                            <span class="hidden sm:inline">{&i18n.t("playlist_detail.refreshing")}</span>
+                                                        </>
+                                                    }
+                                                } else {
+                                                    html! {
+                                                        <>
+                                                            <i class="ph ph-arrows-clockwise text-lg"></i>
+                                                            <span class="hidden sm:inline">{&i18n.t("playlist_detail.refresh")}</span>
+                                                        </>
+                                                    }
+                                                }
+                                            }
+                                        </button>
                                     </div>
                                 </div>
                             }

@@ -2302,6 +2302,9 @@ pub struct NotificationSettingsRequest {
     pub ntfy_access_token: Option<String>,
     pub gotify_url: Option<String>,
     pub gotify_token: Option<String>,
+    pub http_url: Option<String>,
+    pub http_token: Option<String>,
+    pub http_method: Option<String>,
 }
 
 // Request struct for test_notification
@@ -2526,7 +2529,10 @@ pub async fn update_notification_settings(
         request.ntfy_password.as_deref(),
         request.ntfy_access_token.as_deref(),
         request.gotify_url.as_deref(),
-        request.gotify_token.as_deref()
+        request.gotify_token.as_deref(),
+        request.http_url.as_deref(),
+        request.http_token.as_deref(),
+        request.http_method.as_deref()
     ).await?;
     Ok(Json(serde_json::json!({ "detail": "Notification settings updated successfully" })))
 }
@@ -2599,9 +2605,56 @@ pub async fn add_oidc_provider(
         request.username_claim.as_deref().unwrap_or("username"),
         request.roles_claim.as_deref().unwrap_or(""),
         request.user_role.as_deref().unwrap_or(""),
-        request.admin_role.as_deref().unwrap_or("")
+        request.admin_role.as_deref().unwrap_or(""),
+        false // initialized_from_env = false (added via UI)
     ).await?;
     Ok(Json(serde_json::json!({ "provider_id": provider_id })))
+}
+
+// Update OIDC provider - updates an existing provider
+pub async fn update_oidc_provider(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(provider_id): Path<i32>,
+    Json(request): Json<OidcProviderRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin - OIDC provider management requires admin access
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(user_id).await?;
+
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required to update OIDC providers"));
+    }
+
+    let success = state.db_pool.update_oidc_provider(
+        provider_id,
+        &request.provider_name,
+        &request.client_id,
+        &request.client_secret,
+        &request.authorization_url,
+        &request.token_url,
+        &request.user_info_url,
+        &request.button_text,
+        &request.scope,
+        &request.button_color,
+        &request.button_text_color,
+        request.icon_svg.as_deref().unwrap_or(""),
+        request.name_claim.as_deref().unwrap_or("name"),
+        request.email_claim.as_deref().unwrap_or("email"),
+        request.username_claim.as_deref().unwrap_or("username"),
+        request.roles_claim.as_deref().unwrap_or(""),
+        request.user_role.as_deref().unwrap_or(""),
+        request.admin_role.as_deref().unwrap_or("")
+    ).await?;
+
+    if success {
+        Ok(Json(serde_json::json!({ "message": "OIDC provider updated successfully" })))
+    } else {
+        Err(AppError::not_found("OIDC provider not found"))
+    }
 }
 
 // List OIDC providers - matches Python list_oidc_providers function exactly
@@ -2614,6 +2667,38 @@ pub async fn list_oidc_providers(
 
     let providers = state.db_pool.list_oidc_providers().await?;
     Ok(Json(serde_json::json!({ "providers": providers })))
+}
+
+// Remove OIDC provider - matches Python remove_oidc_provider function exactly
+pub async fn remove_oidc_provider(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(provider_id): Json<i32>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check if user is admin - OIDC provider management requires admin access
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_admin = state.db_pool.user_admin_check(user_id).await?;
+
+    if !is_admin {
+        return Err(AppError::forbidden("Admin access required to remove OIDC providers"));
+    }
+
+    // Check if provider was initialized from environment variables
+    let is_env_initialized = state.db_pool.is_oidc_provider_env_initialized(provider_id).await?;
+    if is_env_initialized {
+        return Err(AppError::forbidden("Cannot remove OIDC provider that was initialized from environment variables. Providers created from docker-compose environment variables are protected from removal to prevent login issues."));
+    }
+
+    let success = state.db_pool.remove_oidc_provider(provider_id).await?;
+    
+    if success {
+        Ok(Json(serde_json::json!({ "message": "OIDC provider removed successfully" })))
+    } else {
+        Err(AppError::not_found("OIDC provider not found"))
+    }
 }
 
 // Get startpage - matches Python startpage GET function exactly
@@ -3769,6 +3854,143 @@ pub async fn get_server_default_language() -> Result<Json<serde_json::Value>, Ap
     
     Ok(Json(serde_json::json!({
         "default_language": default_language
+    })))
+}
+
+// Request struct for set_global_podcast_cover_preference - matches playback speed pattern
+#[derive(Deserialize)]
+pub struct SetGlobalPodcastCoverPreference {
+    pub user_id: i32,
+    pub use_podcast_covers: bool,
+    pub podcast_id: Option<i32>,
+}
+
+// Set global podcast cover preference - matches Python api_set_global_podcast_cover_preference function
+pub async fn set_global_podcast_cover_preference(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SetGlobalPodcastCoverPreference>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only set their own preference
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own settings."));
+    }
+
+    // If podcast_id is provided, set per-podcast preference; otherwise set global preference
+    if let Some(podcast_id) = request.podcast_id {
+        state.db_pool.set_podcast_cover_preference(request.user_id, podcast_id, request.use_podcast_covers).await?;
+        Ok(Json(serde_json::json!({ "detail": "Podcast cover preference updated." })))
+    } else {
+        state.db_pool.set_global_podcast_cover_preference(request.user_id, request.use_podcast_covers).await?;
+        Ok(Json(serde_json::json!({ "detail": "Global podcast cover preference updated." })))
+    }
+}
+
+// Request struct for set_podcast_cover_preference - matches podcast playback speed pattern
+#[derive(Deserialize)]
+pub struct SetPodcastCoverPreference {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub use_podcast_covers: bool,
+}
+
+// Set podcast cover preference - matches Python api_set_podcast_cover_preference function
+pub async fn set_podcast_cover_preference(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<SetPodcastCoverPreference>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only modify their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    state.db_pool.set_podcast_cover_preference(request.user_id, request.podcast_id, request.use_podcast_covers).await?;
+
+    Ok(Json(serde_json::json!({ "detail": "Podcast cover preference updated." })))
+}
+
+// Request struct for clear_podcast_cover_preference - matches clear playback speed pattern
+#[derive(Deserialize)]
+pub struct ClearPodcastCoverPreference {
+    pub user_id: i32,
+    pub podcast_id: i32,
+}
+
+// Clear podcast cover preference - matches Python api_clear_podcast_cover_preference function
+pub async fn clear_podcast_cover_preference(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ClearPodcastCoverPreference>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    // Check authorization - web key or user can only modify their own podcasts
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let is_web_key = state.db_pool.is_web_key(&api_key).await?;
+
+    if key_id != request.user_id && !is_web_key {
+        return Err(AppError::forbidden("You can only modify your own podcasts."));
+    }
+
+    state.db_pool.clear_podcast_cover_preference(request.user_id, request.podcast_id).await?;
+
+    Ok(Json(serde_json::json!({ "detail": "Podcast cover preference cleared." })))
+}
+
+// Get global podcast cover preference
+pub async fn get_global_podcast_cover_preference(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+    
+    let user_id: i32 = params
+        .get("user_id")
+        .ok_or_else(|| AppError::bad_request("Missing user_id parameter"))?
+        .parse()
+        .map_err(|_| AppError::bad_request("Invalid user_id format"))?;
+        
+    // Check authorization - users can only access their own settings
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if user_id_from_api_key != user_id {
+        return Err(AppError::forbidden("You can only access your own settings."));
+    }
+
+    // If podcast_id is provided, get per-podcast preference; otherwise get global preference
+    let use_podcast_covers = if let Some(podcast_id_str) = params.get("podcast_id") {
+        let podcast_id: i32 = podcast_id_str
+            .parse()
+            .map_err(|_| AppError::bad_request("Invalid podcast_id format"))?;
+            
+        let per_podcast_preference = state.db_pool.get_podcast_cover_preference(user_id, podcast_id).await?;
+        
+        // If no per-podcast preference is set, fall back to global preference
+        match per_podcast_preference {
+            Some(preference) => preference,
+            None => state.db_pool.get_global_podcast_cover_preference(user_id).await?,
+        }
+    } else {
+        state.db_pool.get_global_podcast_cover_preference(user_id).await?
+    };
+
+    Ok(Json(serde_json::json!({
+        "use_podcast_covers": use_podcast_covers
     })))
 }
 

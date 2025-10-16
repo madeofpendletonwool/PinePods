@@ -18,6 +18,7 @@ use yew_router::prelude::*;
 use yewdux::prelude::*;
 
 #[derive(Clone, PartialEq, Routable)]
+#[allow(dead_code)]
 pub enum Route {
     #[at("/shared_episode/:url_key")]
     Person { url_key: String },

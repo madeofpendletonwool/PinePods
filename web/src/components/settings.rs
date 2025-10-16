@@ -50,6 +50,7 @@ pub struct AccordionItemProps {
 
 // Enum to represent the position of the accordion item
 #[derive(PartialEq, Clone)]
+#[allow(dead_code)]
 pub enum AccordionItemPosition {
     First,
     Middle,
@@ -123,7 +124,7 @@ pub fn settings() -> Html {
 
     let is_admin = use_state(|| false);
     let audio_admin = _post_dispatch.clone();
-    
+
     // Pre-capture translation string for async block
     let admin_check_error_msg = i18n.t("settings.admin_check_error");
 
@@ -148,8 +149,7 @@ pub fn settings() -> Html {
                                 audio_admin.reduce_mut(|state| {
                                     state.error_message = Some(format!(
                                         "{}: {:?}",
-                                        admin_check_error_msg,
-                                        formatted_error
+                                        admin_check_error_msg, formatted_error
                                     ))
                                 });
                                 // console::log_1(&format!("Failed to check admin status: {:?}", e).into());
@@ -214,7 +214,7 @@ pub fn settings() -> Html {
                             <AccordionItem title={i18n.t("settings.mfa_settings")} content={html!{ <setting_components::mfa_settings::MFAOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.export_backup_podcasts")} content={html!{ <setting_components::export_settings::ExportOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.import_podcasts")} content={html!{ <setting_components::import_options::ImportOptions /> }} position={AccordionItemPosition::Middle}/>
-                            <AccordionItem title={i18n.t("settings.default_login_page")} content={html!{ <setting_components::start_page_options::StartPageOptions /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title={i18n.t("settings.display_settings")} content={html!{ <setting_components::start_page_options::StartPageOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.notification_settings")} content={html!{ <setting_components::notifications::NotificationOptions /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.add_custom_feed")} content={html!{ <setting_components::custom_feed::CustomFeed /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.podcast_sync")} content={html!{ <setting_components::nextcloud_options::SyncOptions /> }} position={AccordionItemPosition::Middle}/>

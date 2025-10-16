@@ -20,6 +20,7 @@ pub struct SubscribeResponse {
     pub person_id: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_subscribe_to_person(
     server_name: &str,
     api_key: &str,
@@ -58,6 +59,7 @@ pub async fn call_subscribe_to_person(
     Ok(subscribe_response)
 }
 
+#[allow(dead_code)]
 pub async fn call_unsubscribe_from_person(
     server_name: &str,
     api_key: &str,
@@ -90,10 +92,12 @@ pub async fn call_unsubscribe_from_person(
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct SubscriptionsResponse {
     subscriptions: Vec<PersonSubscription>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_person_subscriptions(
     server_name: &str,
     api_key: &str,
@@ -129,10 +133,12 @@ pub struct PersonEpisode {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct PersonEpisodesResponse {
     episodes: Vec<PersonEpisode>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_person_episodes(
     server_name: &str,
     api_key: &str,

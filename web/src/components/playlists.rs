@@ -4,8 +4,8 @@ use crate::components::audio::AudioPlayer;
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_funcs::format_error_message;
 use crate::requests::pod_req::{self, CreatePlaylistRequest, Playlist, Podcast};
-use i18nrs::yew::use_translation;
 use gloo_events::EventListener;
+use i18nrs::yew::use_translation;
 use std::collections::HashSet;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlElement, HtmlInputElement};
@@ -15,6 +15,7 @@ use yewdux::prelude::*;
 
 // Enum to track which modal should be shown
 #[derive(PartialEq)]
+#[allow(dead_code)]
 enum ModalState {
     Hidden,
     Create,
@@ -824,8 +825,7 @@ pub fn playlists() -> Html {
                                 });
                             }
                             dispatch.reduce_mut(|state| {
-                                state.info_message =
-                                    Some(delete_success_msg);
+                                state.info_message = Some(delete_success_msg);
                             });
                             modal_state.set(ModalState::Hidden);
                         }
@@ -919,7 +919,11 @@ pub fn playlists() -> Html {
                             state.info_message = Some(format!(
                                 "{} {} {}",
                                 success_count,
-                                if success_count == 1 { playlist_singular.clone() } else { playlists_plural.clone() },
+                                if success_count == 1 {
+                                    playlist_singular.clone()
+                                } else {
+                                    playlists_plural.clone()
+                                },
                                 deleted_successfully_msg
                             ));
                         });
@@ -932,7 +936,11 @@ pub fn playlists() -> Html {
                             state.info_message = Some(format!(
                                 "{} {} {}, {} {}",
                                 success_count,
-                                if success_count == 1 { playlist_singular.clone() } else { playlists_plural.clone() },
+                                if success_count == 1 {
+                                    playlist_singular.clone()
+                                } else {
+                                    playlists_plural.clone()
+                                },
                                 deleted_msg,
                                 error_count,
                                 failed_msg
@@ -1036,8 +1044,7 @@ pub fn playlists() -> Html {
                                 });
                             }
                             dispatch.reduce_mut(|state| {
-                                state.info_message =
-                                    Some(create_success_msg);
+                                state.info_message = Some(create_success_msg);
                             });
                             modal_state.set(ModalState::Hidden);
                         }

@@ -1,18 +1,17 @@
 use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
 use crate::components::gen_funcs::{encode_password, validate_email, validate_username};
-use crate::requests::setting_reqs::{call_get_my_user_info, MyUserInfo};
 use crate::requests::setting_reqs::{
-    call_set_email, call_set_fullname, call_set_password, call_set_username,
-    call_update_timezone, call_update_date_format, call_update_time_format,
-    call_get_user_language, call_update_user_language, call_get_available_languages,
-    AvailableLanguage,
+    call_get_available_languages, call_set_email, call_set_fullname, call_set_password,
+    call_set_username, call_update_date_format, call_update_time_format, call_update_timezone,
+    call_update_user_language, AvailableLanguage,
 };
+use crate::requests::setting_reqs::{call_get_my_user_info, MyUserInfo};
 use chrono_tz::{Tz, TZ_VARIANTS};
+use i18nrs::yew::use_translation;
 use web_sys::HtmlInputElement;
 use yew::prelude::*;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
 
 #[function_component(UserSelfSettings)]
 pub fn user_self_settings() -> Html {
@@ -34,12 +33,12 @@ pub fn user_self_settings() -> Html {
     let confirm_password = use_state(String::new);
     let email = use_state(|| "".to_string());
     let fullname = use_state(|| "".to_string());
-    
+
     // Time zone and format states
     let timezone = use_state(|| "".to_string());
     let date_format = use_state(|| "".to_string());
     let time_format = use_state(|| "".to_string()); // Default to empty string
-    
+
     // Language state
     let user_language = use_state(|| "en".to_string());
     let available_languages: UseStateHandle<Vec<AvailableLanguage>> = use_state(Vec::new);
@@ -72,48 +71,53 @@ pub fn user_self_settings() -> Html {
                 let time_format = time_format.clone();
                 let date_format = date_format.clone();
                 move |(api_key, server_name, _)| {
-                if let (Some(api_key), Some(server_name), Some(user_id)) =
-                    (api_key.clone(), server_name.clone(), user_id)
-                {
-                    let server_name = server_name.clone();
-                    let api_key = api_key.unwrap().clone();
+                    if let (Some(api_key), Some(server_name), Some(user_id)) =
+                        (api_key.clone(), server_name.clone(), user_id)
+                    {
+                        let server_name = server_name.clone();
+                        let api_key = api_key.unwrap().clone();
 
-                    wasm_bindgen_futures::spawn_local(async move {
-                        match call_get_my_user_info(&server_name, api_key.clone(), user_id).await {
-                            Ok(info) => {
-                                // Set all the preference fields from the user info
-                                timezone.set(info.timezone.clone());
-                                time_format.set(info.timeformat.to_string());
-                                date_format.set(info.dateformat.clone());
-                                user_language.set(info.language.clone());
-                                user_info.set(Some(info));
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match call_get_my_user_info(&server_name, api_key.clone(), user_id)
+                                .await
+                            {
+                                Ok(info) => {
+                                    // Set all the preference fields from the user info
+                                    timezone.set(info.timezone.clone());
+                                    time_format.set(info.timeformat.to_string());
+                                    date_format.set(info.dateformat.clone());
+                                    user_language.set(info.language.clone());
+                                    user_info.set(Some(info));
+                                }
+                                Err(e) => {
+                                    let formatted_error = format_error_message(&e.to_string());
+                                    _dispatch.reduce_mut(|state| {
+                                        state.error_message = Some(format!(
+                                            "Failed to fetch user info: {}",
+                                            formatted_error
+                                        ));
+                                    });
+                                }
                             }
-                            Err(e) => {
-                                let formatted_error = format_error_message(&e.to_string());
-                                _dispatch.reduce_mut(|state| {
-                                    state.error_message = Some(format!(
-                                        "Failed to fetch user info: {}",
-                                        formatted_error
-                                    ));
-                                });
+
+                            // Load available languages
+                            let available_languages_clone = available_languages.clone();
+                            match call_get_available_languages(server_name).await {
+                                Ok(languages) => {
+                                    available_languages_clone.set(languages);
+                                }
+                                Err(e) => {
+                                    web_sys::console::log_1(
+                                        &format!("Failed to fetch available languages: {}", e)
+                                            .into(),
+                                    );
+                                }
                             }
-                        }
-                        
-                        // Load available languages
-                        let available_languages_clone = available_languages.clone();
-                        match call_get_available_languages(server_name).await {
-                            Ok(languages) => {
-                                available_languages_clone.set(languages);
-                            }
-                            Err(e) => {
-                                web_sys::console::log_1(&format!("Failed to fetch available languages: {}", e).into());
-                            }
-                        }
-                    });
+                        });
+                    }
+                    || ()
                 }
-                || ()
-            }
-        },
+            },
         );
     }
 
@@ -217,14 +221,16 @@ pub fn user_self_settings() -> Html {
         let _dispatch = _dispatch.clone();
         let updated_fields_call = updated_fields.clone();
         // Capture translated message before move
-        let success_message_text = i18n.t("settings.successfully_updated_user_values").to_string();
+        let success_message_text = i18n
+            .t("settings.successfully_updated_user_values")
+            .to_string();
 
         Callback::from(move |e: SubmitEvent| {
             e.prevent_default();
             // let audio_dispatch_clone = audio_dispatch.clone();
             // let show_success_clone = show_success.clone();
             // let success_message_clone = success_message.clone();
-            
+
             // Create separate copies of the success message for each async block
             let success_msg_1 = success_message_text.clone();
             let success_msg_2 = success_message_text.clone();
@@ -450,7 +456,8 @@ pub fn user_self_settings() -> Html {
 
                 let timezone_clone = (*timezone).clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_update_timezone(server_name, api_key, user_id, timezone_clone).await {
+                    match call_update_timezone(server_name, api_key, user_id, timezone_clone).await
+                    {
                         Ok(_) => {
                             let mut fields = (*updated_user).clone();
                             fields.push("timezone");
@@ -462,10 +469,8 @@ pub fn user_self_settings() -> Html {
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
                             _dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!(
-                                    "Failed to update timezone: {}",
-                                    formatted_error
-                                ));
+                                state.error_message =
+                                    Some(format!("Failed to update timezone: {}", formatted_error));
                             });
                         }
                     }
@@ -484,7 +489,9 @@ pub fn user_self_settings() -> Html {
 
                 let date_format_clone = (*date_format).clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_update_date_format(server_name, api_key, user_id, date_format_clone).await {
+                    match call_update_date_format(server_name, api_key, user_id, date_format_clone)
+                        .await
+                    {
                         Ok(_) => {
                             let mut fields = (*updated_user).clone();
                             fields.push("date_format");
@@ -519,7 +526,14 @@ pub fn user_self_settings() -> Html {
                 // Parse string to integer for API call
                 if let Ok(time_format_int) = time_format.parse::<i32>() {
                     wasm_bindgen_futures::spawn_local(async move {
-                        match call_update_time_format(server_name, api_key, user_id, time_format_int).await {
+                        match call_update_time_format(
+                            server_name,
+                            api_key,
+                            user_id,
+                            time_format_int,
+                        )
+                        .await
+                        {
                             Ok(_) => {
                                 let mut fields = (*updated_user).clone();
                                 fields.push("time_format");
@@ -554,7 +568,14 @@ pub fn user_self_settings() -> Html {
                 let language_clone = (*user_language).clone();
                 let set_language_clone = set_language.clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_update_user_language(server_name, api_key, user_id, language_clone.clone()).await {
+                    match call_update_user_language(
+                        server_name,
+                        api_key,
+                        user_id,
+                        language_clone.clone(),
+                    )
+                    .await
+                    {
                         Ok(_) => {
                             let mut fields = (*updated_user).clone();
                             fields.push("language");
@@ -568,10 +589,8 @@ pub fn user_self_settings() -> Html {
                         Err(e) => {
                             let formatted_error = format_error_message(&e.to_string());
                             _dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!(
-                                    "Failed to update language: {}",
-                                    formatted_error
-                                ));
+                                state.error_message =
+                                    Some(format!("Failed to update language: {}", formatted_error));
                             });
                         }
                     }
@@ -581,7 +600,7 @@ pub fn user_self_settings() -> Html {
     };
 
     let available_languages_clone = available_languages.clone();
-    
+
     html! {
         <div class="user-settings-container">
             <div class="settings-header">
@@ -687,7 +706,7 @@ pub fn user_self_settings() -> Html {
 
                 <div class="timezone-section">
                     <h3 class="text-lg font-medium">{i18n.t("settings.regional_settings")}</h3>
-                    
+
                     <div class="form-group">
                         <label for="language" class="form-label">
                             <i class="ph ph-translate"></i>
@@ -706,7 +725,7 @@ pub fn user_self_settings() -> Html {
                             })}
                         </select>
                     </div>
-                    
+
                     <div class="form-group">
                         <label for="timezone" class="form-label">
                             <i class="ph ph-globe"></i>

@@ -10,6 +10,7 @@ use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::fmt;
+use wasm_bindgen::JsCast;
 use web_sys::console;
 use yewdux::Dispatch;
 
@@ -73,6 +74,7 @@ pub struct RecentEps {
     pub episodes: Option<Vec<Episode>>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_recent_eps(
     server_name: &String,
     api_key: &Option<String>,
@@ -142,6 +144,7 @@ pub struct PodcastStatusResponse {
     pub first_episode_id: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_add_podcast(
     server_name: &str,
     api_key: &Option<String>,
@@ -188,6 +191,82 @@ pub async fn call_add_podcast(
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UpdatePodcastInfoRequest {
+    pub user_id: i32,
+    pub podcast_id: i32,
+    pub feed_url: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub podcast_name: Option<String>,
+    pub description: Option<String>,
+    pub author: Option<String>,
+    pub artwork_url: Option<String>,
+    pub website_url: Option<String>,
+    pub podcast_index_id: Option<i64>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+pub struct UpdatePodcastInfoResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[allow(dead_code)]
+pub async fn call_update_podcast_info(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: i32,
+    podcast_id: i32,
+    feed_url: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
+    podcast_name: Option<String>,
+    description: Option<String>,
+    author: Option<String>,
+    artwork_url: Option<String>,
+    website_url: Option<String>,
+    podcast_index_id: Option<i64>,
+) -> Result<UpdatePodcastInfoResponse, Error> {
+    let url = format!("{}/api/data/update_podcast_info", server_name);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| Error::msg("API key is missing"))?;
+
+    let request_body = UpdatePodcastInfoRequest {
+        user_id,
+        podcast_id,
+        feed_url,
+        username,
+        password,
+        podcast_name,
+        description,
+        author,
+        artwork_url,
+        website_url,
+        podcast_index_id,
+    };
+
+    let json_body = serde_json::to_string(&request_body)?;
+
+    let response = Request::put(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(json_body)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let response_body = response.json::<UpdatePodcastInfoResponse>().await?;
+        Ok(response_body)
+    } else {
+        Err(Error::msg(format!(
+            "Error updating podcast info: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RemovePodcastValues {
     pub podcast_id: i32,
     pub user_id: i32,
@@ -199,6 +278,7 @@ pub struct RemovePodcastResponse {
     pub success: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_remove_podcasts(
     server_name: &String,
     api_key: &Option<String>,
@@ -245,6 +325,7 @@ pub struct RemovePodcastValuesName {
     pub podcast_url: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_remove_podcasts_name(
     server_name: &String,
     api_key: &Option<String>,
@@ -424,6 +505,7 @@ impl From<PodcastExtra> for Podcast {
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcasts_extra(
     server_name: &String,
     api_key: &Option<String>,
@@ -501,10 +583,12 @@ pub async fn call_get_time_info(
 }
 
 #[derive(Default, Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct CheckPodcastResponse {
     pub exists: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_check_podcast(
     server: &str,
     api_key: &str,
@@ -743,10 +827,12 @@ pub async fn call_get_queued_episodes(
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct ReorderPayload {
     episode_ids: Vec<i32>,
 }
 
+#[allow(dead_code)]
 pub async fn call_reorder_queue(
     server_name: &str,
     api_key: &Option<String>,
@@ -816,6 +902,7 @@ pub struct SavedDataResponse {
     pub saved_episodes: Vec<SavedEpisode>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_saved_episodes(
     server_name: &str,
     api_key: &Option<String>,
@@ -975,6 +1062,7 @@ pub struct HistoryDataResponse {
     pub data: Vec<HistoryEpisode>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_user_history(
     server_name: &str,
     api_key: &Option<String>,
@@ -1172,6 +1260,7 @@ pub struct DownloadAllPodcastRequest {
     pub user_id: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_download_all_podcast(
     server_name: &String,
     api_key: &Option<String>,
@@ -1310,6 +1399,7 @@ pub struct EpisodeMetadataResponse {
     pub episode: EpisodeInfo,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_episode_metadata(
     server_name: &str,
     api_key: Option<String>,
@@ -1538,6 +1628,7 @@ pub struct FetchPodcasting2PodDataRequest {
     pub user_id: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_fetch_podcasting_2_pod_data(
     server_name: &str,
     api_key: &Option<String>,
@@ -1675,6 +1766,7 @@ pub struct PodcastIdResponse {
     pub podcast_id: Option<i32>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcast_id(
     server_name: &str,
     api_key: &Option<String>,
@@ -1710,7 +1802,9 @@ pub async fn call_get_podcast_id(
     let response_text = response.text().await?;
 
     let response_data: PodcastIdResponse = serde_json::from_str(&response_text)?;
-    response_data.podcast_id.ok_or_else(|| anyhow::Error::msg("Podcast ID not found"))
+    response_data
+        .podcast_id
+        .ok_or_else(|| anyhow::Error::msg("Podcast ID not found"))
 }
 
 pub async fn call_get_episode_id(
@@ -1792,6 +1886,7 @@ pub async fn call_get_podcast_id_from_ep(
     Ok(response_data.podcast_id)
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcast_id_from_ep_name(
     server_name: &str,
     api_key: &Option<String>,
@@ -1849,10 +1944,12 @@ pub struct PodcastDetails {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct PodcastDetailsResponse {
     details: PodcastDetails,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcast_details(
     server_name: &str,
     api_key: &str,
@@ -1981,12 +2078,14 @@ pub struct BulkEpisodeActionRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct BulkEpisodeActionResponse {
     pub message: String,
     pub processed_count: i32,
     pub failed_count: Option<i32>,
 }
 
+#[allow(dead_code)]
 pub async fn call_bulk_mark_episodes_completed(
     server_name: &String,
     api_key: &Option<String>,
@@ -2024,6 +2123,7 @@ pub async fn call_bulk_mark_episodes_completed(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_bulk_save_episodes(
     server_name: &String,
     api_key: &Option<String>,
@@ -2061,6 +2161,7 @@ pub async fn call_bulk_save_episodes(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_bulk_queue_episodes(
     server_name: &String,
     api_key: &Option<String>,
@@ -2098,6 +2199,7 @@ pub async fn call_bulk_queue_episodes(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_bulk_download_episodes(
     server_name: &String,
     api_key: &Option<String>,
@@ -2172,6 +2274,38 @@ pub async fn call_bulk_delete_downloaded_episodes(
     }
 }
 
+#[allow(dead_code)]
+pub async fn call_download_episode_file(
+    server_name: &String,
+    api_key: &Option<String>,
+    episode_id: i32,
+) -> Result<(), Error> {
+    let url = format!("{}/api/episodes/{}/download", server_name, episode_id);
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    // Create a simple link and click it to trigger download
+    let window = web_sys::window().unwrap();
+    let document = window.document().unwrap();
+
+    let a_element = document.create_element("a").unwrap();
+    let a_element = a_element.dyn_into::<web_sys::HtmlAnchorElement>().unwrap();
+
+    // Set the URL with API key as query parameter for direct download
+    let download_url = format!("{}?api_key={}", url, api_key_ref);
+    a_element.set_href(&download_url);
+    a_element.set_download("episode.mp3");
+
+    // Append to body, click, and remove
+    let body = document.body().unwrap();
+    body.append_child(&a_element).unwrap();
+    a_element.click();
+    body.remove_child(&a_element).unwrap();
+
+    Ok(())
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AutoDownloadRequest {
     pub podcast_id: i32,
@@ -2180,10 +2314,12 @@ pub struct AutoDownloadRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct AutoDownloadResponse {
     detail: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_enable_auto_download(
     server_name: &String,
     api_key: &String,
@@ -2229,6 +2365,7 @@ pub struct AutoDownloadStatusResponse {
     pub auto_download: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_auto_download_status(
     server_name: &str,
     user_id: i32,
@@ -2278,10 +2415,12 @@ pub struct PlaybackSpeedRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct PlaybackSpeedResponse {
     detail: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_set_playback_speed(
     server_name: &String,
     api_key: &Option<String>,
@@ -2323,10 +2462,12 @@ pub struct ClearPlaybackSpeedRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct ClearPlaybackSpeedResponse {
     message: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_clear_playback_speed(
     server_name: &String,
     api_key: &Option<String>,
@@ -2368,10 +2509,12 @@ pub struct GetPlaybackSpeedRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct PlaybackSpeedGetResponse {
     playback_speed: f64,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcast_playback_speed(
     server_name: &String,
     api_key: &Option<String>,
@@ -2424,10 +2567,12 @@ pub struct SkipTimesRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct SkipTimesResponse {
     detail: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_adjust_skip_times(
     server_name: &String,
     api_key: &Option<String>,
@@ -2477,6 +2622,7 @@ pub struct AutoSkipTimesResponse {
     pub end_skip: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_auto_skip_times(
     server_name: &str,
     api_key: &Option<String>,
@@ -2722,8 +2868,9 @@ pub async fn connect_to_episode_websocket(
                         match serde_json::from_value::<RefreshProgress>(progress.clone()) {
                             Ok(progress_data) => {
                                 // Check if this is a completion message
-                                let is_complete = progress_data.current_podcast.contains("Refresh completed:");
-                                
+                                let is_complete =
+                                    progress_data.current_podcast.contains("Refresh completed:");
+
                                 // Update the state for the drawer display
                                 dispatch.reduce_mut(|state| {
                                     state.refresh_progress = Some(progress_data.clone());
@@ -2743,10 +2890,11 @@ pub async fn connect_to_episode_websocket(
                                             };
 
                                             task.progress = progress_percentage;
-                                            
+
                                             if is_complete {
                                                 task.status = "SUCCESS".to_string();
-                                                task.completed_at = Some(format!("{}", js_sys::Date::now()));
+                                                task.completed_at =
+                                                    Some(format!("{}", js_sys::Date::now()));
                                                 task.completion_time = Some(js_sys::Date::now());
                                             } else {
                                                 task.status = "PROGRESS".to_string();
@@ -2776,7 +2924,8 @@ pub async fn connect_to_episode_websocket(
                                                         progress_data.current_podcast
                                                     )
                                                 };
-                                                details.insert("status_text".to_string(), status_text);
+                                                details
+                                                    .insert("status_text".to_string(), status_text);
                                             }
                                         }
                                     }
@@ -2784,15 +2933,17 @@ pub async fn connect_to_episode_websocket(
 
                                 // Break out of the loop if refresh is complete
                                 if is_complete {
-                                    console::log_1(&"Refresh completed, closing websocket connection".into());
-                                    
+                                    console::log_1(
+                                        &"Refresh completed, closing websocket connection".into(),
+                                    );
+
                                     // Reset refreshing state when complete
                                     dispatch.reduce_mut(|state| {
                                         state.is_refreshing = Some(false);
                                         state.refresh_progress = None;
                                         state.clone()
                                     });
-                                    
+
                                     break;
                                 }
                             }
@@ -2893,10 +3044,12 @@ pub async fn connect_to_episode_websocket(
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 struct ShareLinkResponse {
     url_key: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_create_share_link(
     server_name: &String,
     api_key: &String,
@@ -2948,6 +3101,7 @@ pub struct SharedEpisodeResponse {
     pub episode: EpisodeMetadata,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_episode_by_url_key(
     server_name: &String,
     url_key: &str,
@@ -2973,12 +3127,14 @@ pub async fn call_get_episode_by_url_key(
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct AddCategoryRequest {
     pub(crate) podcast_id: i32,
     pub(crate) user_id: i32,
     pub(crate) category: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_add_category(
     server_name: &String,
     api_key: &Option<String>,
@@ -3021,6 +3177,7 @@ pub async fn call_add_category(
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct UpdateFeedCutoffDaysRequest {
     pub(crate) podcast_id: i32,
     pub(crate) user_id: i32,
@@ -3028,11 +3185,13 @@ pub struct UpdateFeedCutoffDaysRequest {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct GetFeedCutoffDaysRequest {
     pub(crate) podcast_id: i32,
     pub(crate) user_id: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_update_feed_cutoff_days(
     server_name: &String,
     api_key: &Option<String>,
@@ -3074,6 +3233,7 @@ pub async fn call_update_feed_cutoff_days(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_get_feed_cutoff_days(
     server_name: &String,
     api_key: &Option<String>,
@@ -3123,12 +3283,14 @@ pub async fn call_get_feed_cutoff_days(
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct RemoveCategoryRequest {
     pub(crate) podcast_id: i32,
     pub(crate) user_id: i32,
     pub(crate) category: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_remove_category(
     server_name: &String,
     api_key: &Option<String>,
@@ -3170,6 +3332,7 @@ pub async fn call_remove_category(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_toggle_podcast_notifications(
     server_name: String,
     api_key: String,
@@ -3207,6 +3370,7 @@ pub async fn call_toggle_podcast_notifications(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_get_podcast_notifications_status(
     server_name: String,
     api_key: String,
@@ -3230,6 +3394,7 @@ pub async fn call_get_podcast_notifications_status(
 
     if response.ok() {
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         struct NotificationResponse {
             enabled: bool,
         }
@@ -3256,6 +3421,7 @@ pub struct YouTubeSubscribeResponse {
     pub message: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_subscribe_to_channel(
     server: &str,
     api_key: &str,
@@ -3301,6 +3467,7 @@ pub struct YoutubeChannelResponse {
     pub success: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_remove_youtube_channel(
     server_name: &String,
     api_key: &Option<String>,
@@ -3335,10 +3502,12 @@ pub async fn call_remove_youtube_channel(
 }
 
 #[derive(Default, Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct CheckYouTubeChannelResponse {
     pub exists: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_check_youtube_channel(
     server: &str,
     api_key: &str,
@@ -3462,6 +3631,7 @@ pub struct HomeOverview {
     pub queue_count: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_home_overview(
     server: &str,
     api_key: &str,
@@ -3547,10 +3717,12 @@ pub struct Playlist {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct PlaylistResponse {
     pub playlists: Vec<Playlist>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_playlists(
     server: &str,
     api_key: &str,
@@ -3592,6 +3764,7 @@ pub async fn call_get_playlists(
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)]
 pub struct CreatePlaylistRequest {
     pub user_id: i32,
     pub name: String,
@@ -3618,6 +3791,7 @@ pub struct CreatePlaylistResponse {
     pub playlist_id: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_create_playlist(
     server: &str,
     api_key: &str,
@@ -3659,6 +3833,7 @@ pub async fn call_create_playlist(
     }
 }
 
+#[allow(dead_code)]
 pub async fn call_delete_playlist(
     server: &str,
     api_key: &str,
@@ -3689,6 +3864,7 @@ pub async fn call_delete_playlist(
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct PlaylistEpisodesResponse {
     pub episodes: Vec<Episode>,
     pub playlist_info: PlaylistInfo,
@@ -3702,6 +3878,7 @@ pub struct PlaylistInfo {
     pub icon_name: Option<String>,  // Changed from String to Option<String>
 }
 
+#[allow(dead_code)]
 pub async fn call_get_playlist_episodes(
     server: &str,
     api_key: &str,
@@ -3738,6 +3915,7 @@ pub async fn call_get_playlist_episodes(
             Err(_) => {
                 // If parse fails, try parsing as a more basic structure
                 #[derive(Deserialize)]
+                #[allow(dead_code)]
                 struct BasicResponse {
                     playlist_info: PlaylistInfo,
                     episodes: Vec<Episode>,
@@ -3759,17 +3937,19 @@ pub async fn call_get_playlist_episodes(
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct RssKeyResponse {
     pub rss_key: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_rss_key(
     server_name: &str,
     api_key: &Option<String>,
     user_id: i32,
 ) -> Result<String, anyhow::Error> {
     let url = format!("{}/api/data/get_rss_key?user_id={}", server_name, user_id);
-    
+
     let api_key_ref = api_key
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
@@ -3780,10 +3960,8 @@ pub async fn call_get_rss_key(
         .await?;
 
     if response.ok() {
-        let rss_key_response: RssKeyResponse = response
-            .json()
-            .await
-            .map_err(|e| anyhow::Error::new(e))?;
+        let rss_key_response: RssKeyResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
         Ok(rss_key_response.rss_key)
     } else {
         let error_text = response
@@ -3792,6 +3970,136 @@ pub async fn call_get_rss_key(
             .unwrap_or_else(|_| String::from("Failed to read error message"));
         Err(anyhow::Error::msg(format!(
             "Failed to get RSS key: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+// Merge podcasts request/response structures
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MergePodcastsRequest {
+    pub secondary_podcast_ids: Vec<i32>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MergePodcastsResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MergedPodcastsResponse {
+    pub merged_podcast_ids: Vec<i32>,
+}
+
+// Call to merge podcasts
+#[allow(dead_code)]
+pub async fn call_merge_podcasts(
+    server_name: &str,
+    api_key: &Option<String>,
+    primary_podcast_id: i32,
+    secondary_podcast_ids: &[i32],
+) -> Result<MergePodcastsResponse, anyhow::Error> {
+    let url = format!("{}/api/data/{}/merge", server_name, primary_podcast_id);
+
+    let request = MergePodcastsRequest {
+        secondary_podcast_ids: secondary_podcast_ids.to_vec(),
+    };
+
+    let response = Request::post(&url)
+        .header(
+            "Api-Key",
+            &api_key.as_ref().unwrap_or(&String::new()).clone(),
+        )
+        .header("Content-Type", "application/json")
+        .json(&request)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        let merge_response: MergePodcastsResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(merge_response)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to merge podcasts: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+// Call to unmerge a podcast
+#[allow(dead_code)]
+pub async fn call_unmerge_podcast(
+    server_name: &str,
+    api_key: &Option<String>,
+    primary_podcast_id: i32,
+    target_podcast_id: i32,
+) -> Result<MergePodcastsResponse, anyhow::Error> {
+    let url = format!(
+        "{}/api/data/{}/unmerge/{}",
+        server_name, primary_podcast_id, target_podcast_id
+    );
+
+    let response = Request::delete(&url)
+        .header(
+            "Api-Key",
+            &api_key.as_ref().unwrap_or(&String::new()).clone(),
+        )
+        .send()
+        .await?;
+
+    if response.ok() {
+        let unmerge_response: MergePodcastsResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(unmerge_response)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to unmerge podcast: {} - {}",
+            response.status_text(),
+            error_text
+        )))
+    }
+}
+
+// Call to get merged podcasts
+#[allow(dead_code)]
+pub async fn call_get_merged_podcasts(
+    server_name: &str,
+    api_key: &Option<String>,
+    podcast_id: i32,
+) -> Result<Vec<i32>, anyhow::Error> {
+    let url = format!("{}/api/data/{}/merged", server_name, podcast_id);
+
+    let response = Request::get(&url)
+        .header(
+            "Api-Key",
+            &api_key.as_ref().unwrap_or(&String::new()).clone(),
+        )
+        .send()
+        .await?;
+
+    if response.ok() {
+        let merged_response: MergedPodcastsResponse =
+            response.json().await.map_err(|e| anyhow::Error::new(e))?;
+        Ok(merged_response.merged_podcast_ids)
+    } else {
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| String::from("Failed to read error message"));
+        Err(anyhow::Error::msg(format!(
+            "Failed to get merged podcasts: {} - {}",
             response.status_text(),
             error_text
         )))

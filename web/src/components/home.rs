@@ -11,11 +11,11 @@ use crate::components::gen_components::EpisodeTrait;
 use crate::components::gen_funcs::{format_datetime, format_time, match_date_format, parse_date};
 use crate::requests::pod_req;
 use crate::requests::pod_req::{HomeEpisode, Playlist};
+use i18nrs::yew::use_translation;
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use yew_router::prelude::Link;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
 
 #[derive(Properties, PartialEq, Clone)]
 struct QuickLinkProps {
@@ -72,7 +72,7 @@ pub fn home() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
     let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
     let server_name = state.auth_details.as_ref().map(|ud| ud.server_name.clone());
-    
+
     // Capture i18n strings before they get moved
     let i18n_quick_links = i18n.t("home.quick_links").to_string();
     let i18n_saved = i18n.t("app_drawer.saved").to_string();
@@ -93,8 +93,6 @@ pub fn home() -> Html {
     let i18n_unknown_author = i18n.t("home.unknown_author").to_string();
     let i18n_no_categories_found = i18n.t("home.no_categories_found").to_string();
     let i18n_no_website_provided = i18n.t("home.no_website_provided").to_string();
-    let i18n_completed = i18n.t("downloads.completed").to_string();
-    let i18n_episodes = i18n.t("home.episodes").to_string();
 
     // Fetch home overview data
     let effect_dispatch = dispatch.clone();

@@ -1,18 +1,18 @@
 use crate::components::context::AppState;
 use crate::components::gen_components::FallbackImage;
-use crate::components::gen_funcs::format_error_message;
-use crate::requests::search_pods::{call_get_podcast_info, PodcastSearchResult, UnifiedPodcast};
+use crate::requests::search_pods::{call_get_podcast_info, UnifiedPodcast};
 use crate::requests::setting_reqs::{
     call_get_ignored_podcasts, call_get_unmatched_podcasts, call_ignore_podcast_index_id,
     call_update_podcast_index_id, UnmatchedPodcast,
 };
 use gloo_events::EventListener;
+use i18nrs::yew::use_translation;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::HtmlElement;
+use web_sys::{InputEvent, KeyboardEvent, MouseEvent};
 use yew::prelude::*;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
 
 #[function_component(PodcastIndexMatching)]
 pub fn podcast_index_matching() -> Html {
@@ -23,17 +23,9 @@ pub fn podcast_index_matching() -> Html {
     let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
 
     // Capture i18n strings before they get moved
-    let i18n_podcast_index_matching = i18n.t("podcast_index_matching.podcast_index_matching").to_string();
-    let i18n_unmatched_podcasts = i18n.t("podcast_index_matching.unmatched_podcasts").to_string();
-    let i18n_ignored_podcasts = i18n.t("podcast_index_matching.ignored_podcasts").to_string();
-    let i18n_show_ignored = i18n.t("podcast_index_matching.show_ignored").to_string();
-    let i18n_show_unmatched = i18n.t("podcast_index_matching.show_unmatched").to_string();
-    let i18n_no_unmatched_podcasts = i18n.t("podcast_index_matching.no_unmatched_podcasts").to_string();
-    let i18n_no_ignored_podcasts = i18n.t("podcast_index_matching.no_ignored_podcasts").to_string();
-    let i18n_search_results = i18n.t("podcast_index_matching.search_results").to_string();
-    let i18n_match = i18n.t("podcast_index_matching.match").to_string();
-    let i18n_ignore = i18n.t("podcast_index_matching.ignore").to_string();
-    let i18n_close = i18n.t("common.cancel").to_string();
+    let i18n_podcast_index_matching = i18n
+        .t("podcast_index_matching.podcast_index_matching")
+        .to_string();
 
     let unmatched_podcasts: UseStateHandle<Vec<UnmatchedPodcast>> = use_state(|| Vec::new());
     let ignored_podcasts: UseStateHandle<Vec<UnmatchedPodcast>> = use_state(|| Vec::new());
@@ -43,6 +35,8 @@ pub fn podcast_index_matching() -> Html {
     let loading = use_state(|| false);
     let show_ignored = use_state(|| false);
     let dropdown_ref = use_node_ref();
+    let manual_search_term = use_state(String::new);
+    let manual_podcast_id = use_state(String::new);
 
     let dispatch_effect = _dispatch.clone();
 
@@ -189,10 +183,14 @@ pub fn podcast_index_matching() -> Html {
         let search_results = search_results.clone();
         let search_podcast_index = search_podcast_index.clone();
         let unmatched_podcasts = unmatched_podcasts.clone();
+        let manual_search_term = manual_search_term.clone();
+        let manual_podcast_id = manual_podcast_id.clone();
 
         Callback::from(move |_: MouseEvent| {
-            // Clear previous search results
+            // Clear previous search results and manual input fields
             search_results.set(Vec::new());
+            manual_search_term.set(String::new());
+            manual_podcast_id.set(String::new());
 
             // Set selected podcast and trigger search
             selected_podcast_id.set(Some(podcast_id));
@@ -215,6 +213,8 @@ pub fn podcast_index_matching() -> Html {
         let selected_podcast_id = selected_podcast_id.clone();
         let search_results = search_results.clone();
         let dispatch_effect = dispatch_effect.clone();
+        let manual_search_term = manual_search_term.clone();
+        let manual_podcast_id = manual_podcast_id.clone();
 
         Callback::from(move |(podcast_id, index_id): (i32, i32)| {
             let server_name = server_name.clone();
@@ -224,6 +224,8 @@ pub fn podcast_index_matching() -> Html {
             let selected_podcast_id = selected_podcast_id.clone();
             let search_results = search_results.clone();
             let dispatch_effect = dispatch_effect.clone();
+            let manual_search_term = manual_search_term.clone();
+            let manual_podcast_id = manual_podcast_id.clone();
 
             spawn_local(async move {
                 if let (Some(server_name), Some(api_key), Some(user_id)) =
@@ -247,9 +249,11 @@ pub fn podcast_index_matching() -> Html {
                                 .collect();
                             unmatched_podcasts.set(updated_podcasts);
 
-                            // Clear selection and search results
+                            // Clear selection, search results, and manual input fields
                             selected_podcast_id.set(None);
                             search_results.set(Vec::new());
+                            manual_search_term.set(String::new());
+                            manual_podcast_id.set(String::new());
 
                             // Show success message
                             dispatch_effect.reduce_mut(|state| {
@@ -369,6 +373,72 @@ pub fn podcast_index_matching() -> Html {
         })
     };
 
+    let handle_manual_search = {
+        let manual_search_term = manual_search_term.clone();
+        let search_podcast_index = search_podcast_index.clone();
+        let search_results = search_results.clone();
+
+        Callback::from(move |_: MouseEvent| {
+            let search_term = (*manual_search_term).trim();
+            if !search_term.is_empty() {
+                search_results.set(Vec::new());
+                search_podcast_index.emit(search_term.to_string());
+            }
+        })
+    };
+
+    let handle_manual_id_select = {
+        let manual_podcast_id = manual_podcast_id.clone();
+        let selected_podcast_id = selected_podcast_id.clone();
+        let handle_match_selection = handle_match_selection.clone();
+
+        Callback::from(move |_: MouseEvent| {
+            let id_str = (*manual_podcast_id).trim();
+            if let (Ok(index_id), Some(podcast_id)) = (id_str.parse::<i32>(), *selected_podcast_id)
+            {
+                handle_match_selection.emit((podcast_id, index_id));
+            }
+        })
+    };
+
+    let on_manual_search_input = {
+        let manual_search_term = manual_search_term.clone();
+        Callback::from(move |e: InputEvent| {
+            let input = e.target_unchecked_into::<web_sys::HtmlInputElement>();
+            manual_search_term.set(input.value());
+        })
+    };
+
+    let on_manual_search_keydown = {
+        let handle_manual_search = handle_manual_search.clone();
+        Callback::from(move |e: KeyboardEvent| {
+            if e.key() == "Enter" {
+                handle_manual_search.emit(MouseEvent::new("click").unwrap());
+            }
+        })
+    };
+
+    let on_manual_id_input = {
+        let manual_podcast_id = manual_podcast_id.clone();
+        Callback::from(move |e: InputEvent| {
+            let input = e.target_unchecked_into::<web_sys::HtmlInputElement>();
+            manual_podcast_id.set(input.value());
+        })
+    };
+
+    let on_manual_id_keydown = {
+        let handle_manual_id_select = handle_manual_id_select.clone();
+        let manual_podcast_id = manual_podcast_id.clone();
+        Callback::from(move |e: KeyboardEvent| {
+            if e.key() == "Enter" {
+                let id_str = (*manual_podcast_id).trim();
+                if !id_str.is_empty() && id_str.parse::<i32>().is_ok() {
+                    handle_manual_id_select.emit(MouseEvent::new("click").unwrap());
+                }
+            }
+        })
+    };
+
     html! {
         <div class="settings_container" ref={dropdown_ref}>
             <h2 class="text_color_main font-bold text-lg mb-4">{&i18n_podcast_index_matching}</h2>
@@ -443,7 +513,54 @@ pub fn podcast_index_matching() -> Html {
                                     </div>
 
                                     if is_selected {
-                                        <div class="absolute z-50 mt-1 w-full rounded-lg shadow-lg modal-container">
+                                        <div class="mt-4 w-full max-w-full rounded-lg shadow-lg modal-container border relative z-50 overflow-hidden">
+                                            <div class="p-4 border-b">
+                                                <h4 class="text_color_main font-medium text-sm mb-3">{"Manual Search Options"}</h4>
+
+                                                // Manual search by term
+                                                <div class="mb-3">
+                                                    <label class="text_color_accent text-xs mb-1 block">{"Search by custom terms:"}</label>
+                                                    <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Enter search terms (e.g., 'Skeptoid')"
+                                                            value={(*manual_search_term).clone()}
+                                                            oninput={on_manual_search_input.clone()}
+                                                            onkeydown={on_manual_search_keydown.clone()}
+                                                            class="flex-1 px-3 py-2 text-sm rounded border text_color_main modal-container w-full"
+                                                        />
+                                                        <button
+                                                            onclick={handle_manual_search.clone()}
+                                                            class="px-3 py-2 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors whitespace-nowrap"
+                                                        >
+                                                            {"Search"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                // Manual ID input
+                                                <div>
+                                                    <label class="text_color_accent text-xs mb-1 block">{"Or enter Podcast Index ID directly:"}</label>
+                                                    <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                                                        <input
+                                                            type="text"
+                                                            placeholder="Enter Podcast Index ID (e.g., 920666)"
+                                                            value={(*manual_podcast_id).clone()}
+                                                            oninput={on_manual_id_input.clone()}
+                                                            onkeydown={on_manual_id_keydown.clone()}
+                                                            class="flex-1 px-3 py-2 text-sm rounded border text_color_main modal-container w-full"
+                                                        />
+                                                        <button
+                                                            onclick={handle_manual_id_select.clone()}
+                                                            disabled={manual_podcast_id.trim().is_empty() || manual_podcast_id.parse::<i32>().is_err()}
+                                                            class="px-3 py-2 text-xs bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white rounded transition-colors whitespace-nowrap"
+                                                        >
+                                                            {"Match"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+
                                             if *is_searching {
                                                 <div class="flex justify-center items-center p-4">
                                                     <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mr-3"></div>
@@ -452,53 +569,61 @@ pub fn podcast_index_matching() -> Html {
                                             } else if search_results.is_empty() {
                                                 <div class="text-center p-4">
                                                     <p class="text_color_accent">{"No matches found in Podcast Index"}</p>
+                                                    <p class="text_color_accent text-xs mt-1">{"Try using the manual search options above"}</p>
                                                 </div>
                                             } else {
-                                                <div class="max-h-[400px] overflow-y-auto p-2 space-y-1">
-                                                    {
-                                                        search_results.iter().map(|result| {
-                                                            let podcast_id = podcast_id;
-                                                            let index_id = result.index_id as i32;
-                                                            let match_handler = {
-                                                                let handle_match_selection = handle_match_selection.clone();
-                                                                Callback::from(move |_: MouseEvent| {
-                                                                    handle_match_selection.emit((podcast_id, index_id));
-                                                                })
-                                                            };
+                                                <div>
+                                                    <div class="p-3 border-b">
+                                                        <h5 class="text_color_main font-medium text-sm">{"Search Results:"}</h5>
+                                                    </div>
+                                                    <div class="max-h-[300px] overflow-y-auto p-2 space-y-1 w-full">
+                                                        {
+                                                            search_results.iter().map(|result| {
+                                                                let podcast_id = podcast_id;
+                                                                let index_id = result.index_id as i32;
+                                                                let match_handler = {
+                                                                    let handle_match_selection = handle_match_selection.clone();
+                                                                    Callback::from(move |_: MouseEvent| {
+                                                                        handle_match_selection.emit((podcast_id, index_id));
+                                                                    })
+                                                                };
 
-                                                            html! {
-                                                                <div
-                                                                    key={result.id}
-                                                                    onclick={match_handler}
-                                                                    class={classes!(
-                                                                        "flex",
-                                                                        "items-center",
-                                                                        "p-2",
-                                                                        "rounded-lg",
-                                                                        "cursor-pointer",
-                                                                        "hover:bg-gray-700",
-                                                                        "transition-colors"
-                                                                    )}
-                                                                >
-                                                                    <FallbackImage
-                                                                        src={result.image.clone()}
-                                                                        alt={format!("Cover for {}", result.title)}
-                                                                        class="w-12 h-12 rounded object-cover"
-                                                                    />
-                                                                    <div class="ml-3 flex-grow min-w-0">
-                                                                        <div class="truncate text_color_main font-medium text-sm">
-                                                                            {&result.title}
+                                                                html! {
+                                                                    <div
+                                                                        key={result.id}
+                                                                        onclick={match_handler}
+                                                                        class={classes!(
+                                                                            "flex",
+                                                                            "items-center",
+                                                                            "p-2",
+                                                                            "rounded-lg",
+                                                                            "cursor-pointer",
+                                                                            "hover:bg-gray-700",
+                                                                            "transition-colors",
+                                                                            "w-full",
+                                                                            "min-w-0"
+                                                                        )}
+                                                                    >
+                                                                        <FallbackImage
+                                                                            src={result.image.clone()}
+                                                                            alt={format!("Cover for {}", result.title)}
+                                                                            class="w-12 h-12 rounded object-cover"
+                                                                        />
+                                                                        <div class="ml-3 flex-grow min-w-0">
+                                                                            <div class="truncate text_color_main font-medium text-sm">
+                                                                                {&result.title}
+                                                                            </div>
+                                                                            <div class="text_color_accent text-xs">{&result.author}</div>
+                                                                            <div class="text_color_accent text-xs">
+                                                                                {format!("Index ID: {}", result.index_id)}
+                                                                            </div>
                                                                         </div>
-                                                                        <div class="text_color_accent text-xs">{&result.author}</div>
-                                                                        <div class="text_color_accent text-xs">
-                                                                            {format!("Index ID: {}", result.index_id)}
-                                                                        </div>
+                                                                        <i class="ph ph-check text-green-500 text-xl"></i>
                                                                     </div>
-                                                                    <i class="ph ph-check text-green-500 text-xl"></i>
-                                                                </div>
-                                                            }
-                                                        }).collect::<Html>()
-                                                    }
+                                                                }
+                                                            }).collect::<Html>()
+                                                        }
+                                                    </div>
                                                 </div>
                                             }
                                         </div>

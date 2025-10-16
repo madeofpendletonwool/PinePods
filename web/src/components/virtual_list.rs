@@ -9,8 +9,8 @@ use crate::components::gen_funcs::{
 };
 use crate::components::gen_funcs::{format_time, strip_images_from_html};
 use crate::components::safehtml::SafeHtml;
-use crate::requests::search_pods::Episode;
 use crate::requests::people_req::PersonEpisode;
+use crate::requests::search_pods::Episode;
 use gloo::events::EventListener;
 use i18nrs::yew::use_translation;
 use std::rc::Rc;
@@ -204,7 +204,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
 
                     // If it's YouTube content, prioritize ID and title match over URL
                     if episode.is_youtube.unwrap_or(false) {
-                        (id_match || title_match)
+                        id_match || title_match
                     } else {
                         // For regular podcasts, use the original logic
                         title_match && url_match
@@ -265,7 +265,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                                     callback.emit((episode_id, !is_selected));
                                 }
                             });
-                            
+
                             html! {
                                 <div class="flex flex-col items-center justify-center pl-4" style={format!("height: {}px;", *container_item_height)}>
                                     {
@@ -546,7 +546,7 @@ pub struct PersonEpisodeVirtualListProps {
 pub fn person_episode_virtual_list(props: &PersonEpisodeVirtualListProps) -> Html {
     let scroll_pos = use_state(|| 0.0);
     let container_ref = use_node_ref();
-    let container_height = use_state(|| 600.0); // Fixed height for person episodes  
+    let container_height = use_state(|| 600.0); // Fixed height for person episodes
     let item_height = use_state(|| 234.0); // Match existing episode item height
 
     // Effect for scroll handling
@@ -574,12 +574,12 @@ pub fn person_episode_virtual_list(props: &PersonEpisodeVirtualListProps) -> Htm
     let visible_start = ((*scroll_pos as f64) / (*item_height as f64)).floor() as usize;
     let visible_count = ((*container_height as f64) / (*item_height as f64)).ceil() as usize + 1;
     let visible_end = (visible_start + visible_count).min(props.episodes.len());
-    
+
     let total_height = props.episodes.len() as f64 * *item_height;
     let offset_y = visible_start as f64 * *item_height;
 
     html! {
-        <div 
+        <div
             ref={container_ref}
             class="virtual-list-container"
             style={format!("height: {}px; overflow-y: auto;", *container_height)}
@@ -624,9 +624,9 @@ pub struct PersonEpisodeComponentProps {
 
 #[function_component(PersonEpisodeComponent)]
 pub fn person_episode_component(props: &PersonEpisodeComponentProps) -> Html {
-    use crate::components::gen_components::{person_episode_item, on_shownotes_click};
+    use crate::components::gen_components::{on_shownotes_click, person_episode_item};
     use crate::components::gen_funcs::sanitize_html_with_blank_target;
-    
+
     let state = props.search_state.clone();
     let audio_state = props.search_ui_state.clone();
     let audio_dispatch = props.dispatch.clone();
@@ -689,7 +689,7 @@ pub fn person_episode_component(props: &PersonEpisodeComponentProps) -> Html {
         false,
         episode.episodeurl.clone(),
         false,
-        false, // show_modal
+        false,            // show_modal
         Callback::noop(), // on_modal_open
         Callback::noop(), // on_modal_close
         is_current_episode,

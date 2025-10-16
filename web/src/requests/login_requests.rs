@@ -12,6 +12,7 @@ use crate::components::context::AppState;
 use anyhow::{Context, Error};
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct LoginRequest {
     username: String,
     password: String,
@@ -39,6 +40,7 @@ pub struct LoginResponse {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct PinepodsCheckResponse {
     status_code: u16,
     pinepods_instance: bool,
@@ -169,6 +171,7 @@ pub async fn call_get_api_config(
 
 // New enum to represent the different states of login
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum LoginResult {
     Success(GetUserDetails, LoginServerRequest, GetApiDetails),
     MfaRequired {
@@ -180,6 +183,7 @@ pub enum LoginResult {
 }
 
 // Updated login function that handles secure MFA flow
+#[allow(dead_code)]
 pub async fn login_new_server_secure(
     server_name: String,
     username: String,
@@ -197,7 +201,7 @@ pub async fn login_new_server_secure(
                     "Pinepods instance not found at specified server",
                 ));
             }
-            
+
             // Step 2: Get API key or MFA session token
             let response = Request::get(&url)
                 .header("Authorization", &auth_header)
@@ -211,9 +215,11 @@ pub async fn login_new_server_secure(
             }
 
             let login_response = response.json::<LoginResponse>().await?;
-            
+
             // Check if MFA is required
-            if login_response.status == "mfa_required" && login_response.mfa_required.unwrap_or(false) {
+            if login_response.status == "mfa_required"
+                && login_response.mfa_required.unwrap_or(false)
+            {
                 return Ok(LoginResult::MfaRequired {
                     server_name,
                     username,
@@ -221,11 +227,11 @@ pub async fn login_new_server_secure(
                     mfa_session_token: login_response.mfa_session_token.unwrap(),
                 });
             }
-            
+
             // Normal flow - MFA not required, proceed with existing logic
-            let api_key = login_response.retrieved_key.ok_or_else(|| {
-                anyhow::Error::msg("No API key returned from server")
-            })?;
+            let api_key = login_response
+                .retrieved_key
+                .ok_or_else(|| anyhow::Error::msg("No API key returned from server"))?;
 
             // Continue with existing verification steps
             let result = complete_login_flow(server_name, username, password, api_key).await?;
@@ -238,6 +244,7 @@ pub async fn login_new_server_secure(
 }
 
 // Complete MFA verification during login and get full login data
+#[allow(dead_code)]
 pub async fn complete_mfa_login(
     server_name: String,
     username: String,
@@ -245,21 +252,23 @@ pub async fn complete_mfa_login(
     mfa_code: String,
 ) -> Result<(GetUserDetails, LoginServerRequest, GetApiDetails), anyhow::Error> {
     // Verify MFA and get API key
-    let mfa_response = call_verify_mfa_and_get_key(&server_name, mfa_session_token, mfa_code).await?;
-    
+    let mfa_response =
+        call_verify_mfa_and_get_key(&server_name, mfa_session_token, mfa_code).await?;
+
     if !mfa_response.verified || mfa_response.status != "success" {
         return Err(anyhow::Error::msg("MFA verification failed"));
     }
-    
-    let api_key = mfa_response.retrieved_key.ok_or_else(|| {
-        anyhow::Error::msg("No API key returned after MFA verification")
-    })?;
-    
+
+    let api_key = mfa_response
+        .retrieved_key
+        .ok_or_else(|| anyhow::Error::msg("No API key returned after MFA verification"))?;
+
     // Complete the login flow with the verified API key
     complete_login_flow(server_name, username, "".to_string(), api_key).await
 }
 
 // Extracted common login completion logic
+#[allow(dead_code)]
 async fn complete_login_flow(
     server_name: String,
     username: String,
@@ -281,7 +290,11 @@ async fn complete_login_flow(
     let login_request = LoginServerRequest {
         server_name: server_name.clone(),
         username: Some(username.clone()),
-        password: if password.is_empty() { None } else { Some(password) },
+        password: if password.is_empty() {
+            None
+        } else {
+            Some(password)
+        },
         api_key: Some(api_key.clone()),
     };
 
@@ -306,6 +319,7 @@ async fn complete_login_flow(
 }
 
 // Legacy function for backward compatibility
+#[allow(dead_code)]
 pub async fn login_new_server(
     server_name: String,
     username: String,
@@ -336,17 +350,17 @@ pub async fn login_new_server(
             }
 
             let login_response = response.json::<LoginResponse>().await?;
-            
+
             // Legacy function fails if MFA is required - use login_new_server_secure for MFA support
             if login_response.status == "mfa_required" {
                 return Err(anyhow::Error::msg(
                     "MFA is required for this account. Please use the MFA-enabled login flow.",
                 ));
             }
-            
-            let api_key = login_response.retrieved_key.ok_or_else(|| {
-                anyhow::Error::msg("No API key returned from server")
-            })?;
+
+            let api_key = login_response
+                .retrieved_key
+                .ok_or_else(|| anyhow::Error::msg("No API key returned from server"))?;
 
             // Step 2: Verify the API key
             let verify_response = call_verify_key(&server_name, &api_key).await?;
@@ -393,6 +407,7 @@ pub async fn login_new_server(
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn use_check_authentication(_dispatch: Dispatch<AppState>, current_route: &str) {
     let window = web_sys::window().expect("no global `window` exists");
     let session_storage = window.session_storage().unwrap().unwrap();
@@ -496,10 +511,12 @@ pub async fn call_add_login_user(
 
 #[derive(Deserialize, Debug)]
 #[allow(non_snake_case)]
+#[allow(dead_code)]
 struct FirstLoginResponse {
     FirstLogin: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_first_login_done(
     server_name: String,
     api_key: String,
@@ -533,10 +550,12 @@ pub struct TimeZoneInfo {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct SetupTimeZoneInfoResponse {
     pub success: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_setup_timezone_info(
     server_name: String,
     api_key: String,
@@ -568,12 +587,14 @@ pub async fn call_setup_timezone_info(
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct TimeInfoResponse {
     pub timezone: String,
     pub hour_pref: i16,
     pub date_format: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_time_info(
     server_name: String,
     api_key: String,
@@ -602,10 +623,12 @@ pub async fn call_get_time_info(
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct CheckMfaEnabledResponse {
     pub(crate) mfa_enabled: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_check_mfa_enabled(
     server_name: String,
     api_key: String,
@@ -639,29 +662,34 @@ pub async fn call_check_mfa_enabled(
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct VerifyMFABody {
     pub(crate) user_id: i32,
     pub(crate) mfa_code: String,
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct VerifyMFAResponse {
     pub(crate) verified: bool,
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct VerifyMfaLoginRequest {
     pub mfa_session_token: String,
     pub mfa_code: String,
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct VerifyMfaLoginResponse {
     pub status: String,
     pub retrieved_key: Option<String>,
     pub verified: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_verify_mfa(
     server_name: &String,
     api_key: &String,
@@ -691,13 +719,17 @@ pub async fn call_verify_mfa(
 }
 
 // NEW SECURE MFA ENDPOINT: Verify MFA code during login and get API key
+#[allow(dead_code)]
 pub async fn call_verify_mfa_and_get_key(
     server_name: &String,
     mfa_session_token: String,
     mfa_code: String,
 ) -> Result<VerifyMfaLoginResponse, Error> {
     let url = format!("{}/api/data/verify_mfa_and_get_key", server_name);
-    let body = VerifyMfaLoginRequest { mfa_session_token, mfa_code };
+    let body = VerifyMfaLoginRequest {
+        mfa_session_token,
+        mfa_code,
+    };
     let request_body = serde_json::to_string(&body)?;
 
     let response = Request::post(&url)
@@ -723,6 +755,7 @@ pub struct SelfServiceStatusResponse {
     pub first_admin_created: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_self_service_login_status(server_name: String) -> Result<(bool, bool), Error> {
     let server_name = server_name.trim_end_matches('/');
     let url = format!("{}/api/data/self_service_status", server_name);
@@ -748,6 +781,7 @@ pub async fn call_self_service_login_status(server_name: String) -> Result<(bool
 }
 
 #[derive(Serialize, Debug)]
+#[allow(dead_code)]
 pub struct CreateFirstAdminRequest {
     pub username: String,
     pub password: String,
@@ -762,6 +796,7 @@ pub struct CreateFirstAdminResponse {
     pub user_id: i32,
 }
 
+#[allow(dead_code)]
 pub async fn call_create_first_admin(
     server_name: &str,
     request: AdminSetupData,
@@ -903,6 +938,7 @@ pub struct PublicOIDCProvidersResponse {
     pub providers: Vec<OIDCProvider>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_public_oidc_providers(
     server_name: String,
 ) -> Result<PublicOIDCProvidersResponse, Error> {
@@ -922,6 +958,7 @@ pub async fn call_get_public_oidc_providers(
 
 // First, create the request struct
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct StoreStateRequest {
     pub state: String,
     pub client_id: String,
@@ -929,6 +966,7 @@ pub struct StoreStateRequest {
 }
 
 // Then create the function to make the request
+#[allow(dead_code)]
 pub async fn call_store_oidc_state(
     server_name: String,
     state: String,
@@ -936,7 +974,11 @@ pub async fn call_store_oidc_state(
     origin_url: Option<String>,
 ) -> Result<(), Error> {
     let url = format!("{}/api/auth/store_state", server_name);
-    let request_body = StoreStateRequest { state, client_id, origin_url };
+    let request_body = StoreStateRequest {
+        state,
+        client_id,
+        origin_url,
+    };
 
     let response = Request::post(&url).json(&request_body)?.send().await?;
 

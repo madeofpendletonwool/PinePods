@@ -193,6 +193,10 @@ fn create_data_routes() -> Router<AppState> {
         .route("/increment_listen_time/{user_id}", put(handlers::podcasts::increment_listen_time))
         .route("/get_playback_speed", post(handlers::podcasts::get_playback_speed))
         .route("/add_podcast", post(handlers::podcasts::add_podcast))
+        .route("/update_podcast_info", put(handlers::podcasts::update_podcast_info))
+        .route("/merge_podcasts", post(handlers::podcasts::merge_podcasts))
+        .route("/unmerge_podcast", post(handlers::podcasts::unmerge_podcast))
+        .route("/get_merged_podcasts", post(handlers::podcasts::get_merged_podcasts))
         .route("/remove_podcast", post(handlers::podcasts::remove_podcast))
         .route("/remove_podcast_id", post(handlers::podcasts::remove_podcast_id))
         .route("/remove_podcast_name", post(handlers::podcasts::remove_podcast_by_name))
@@ -313,9 +317,13 @@ fn create_data_routes() -> Router<AppState> {
         .route("/user/notification_settings", get(handlers::settings::get_notification_settings))
         .route("/user/notification_settings", put(handlers::settings::update_notification_settings))
         .route("/user/set_playback_speed", post(handlers::settings::set_playback_speed_user))
+        .route("/user/set_global_podcast_cover_preference", post(handlers::settings::set_global_podcast_cover_preference))
+        .route("/user/get_podcast_cover_preference", get(handlers::settings::get_global_podcast_cover_preference))
         .route("/user/test_notification", post(handlers::settings::test_notification))
         .route("/add_oidc_provider", post(handlers::settings::add_oidc_provider))
+        .route("/update_oidc_provider/{provider_id}", put(handlers::settings::update_oidc_provider))
         .route("/list_oidc_providers", get(handlers::settings::list_oidc_providers))
+        .route("/remove_oidc_provider", post(handlers::settings::remove_oidc_provider))
         .route("/startpage", get(handlers::settings::get_startpage))
         .route("/startpage", post(handlers::settings::update_startpage))
         .route("/person/subscribe/{user_id}/{person_id}", post(handlers::settings::subscribe_to_person))
@@ -330,6 +338,8 @@ fn create_data_routes() -> Router<AppState> {
         .route("/remove_category", post(handlers::settings::remove_category))
         .route("/add_category", post(handlers::settings::add_category))
         .route("/podcast/set_playback_speed", post(handlers::settings::set_podcast_playback_speed))
+        .route("/podcast/set_cover_preference", post(handlers::settings::set_podcast_cover_preference))
+        .route("/podcast/clear_cover_preference", post(handlers::settings::clear_podcast_cover_preference))
         .route("/podcast/toggle_notifications", put(handlers::settings::toggle_podcast_notifications))
         .route("/podcast/notification_status", post(handlers::podcasts::get_notification_status))
         .route("/rss_key", get(handlers::settings::get_user_rss_key))
@@ -358,7 +368,7 @@ fn create_podcast_routes() -> Router<AppState> {
 
 fn create_episode_routes() -> Router<AppState> {
     Router::new()
-        // Add episode routes as needed
+        .route("/{episode_id}/download", get(handlers::episodes::download_episode_file))
 }
 
 fn create_playlist_routes() -> Router<AppState> {

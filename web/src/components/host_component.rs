@@ -10,6 +10,7 @@ use crate::requests::pod_req::{
 use crate::requests::search_pods::call_get_person_info;
 use crate::requests::search_pods::{call_get_podcast_details_dynamic, call_get_podpeople_podcasts};
 use futures::future::join_all;
+use i18nrs::yew::use_translation;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use wasm_bindgen_futures::spawn_local;
@@ -19,9 +20,9 @@ use yew::Properties;
 use yew::{function_component, html, use_effect_with, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
 
 #[derive(Clone, PartialEq, Debug)]
+#[allow(dead_code)]
 pub struct Host {
     pub name: String,
     pub role: Option<String>,
@@ -41,6 +42,7 @@ pub struct HostDropdownProps {
     pub podcast_index_id: i64,
 }
 
+#[allow(dead_code)]
 fn map_podcast_details_to_podcast(details: PodcastDetails) -> Podcast {
     Podcast {
         podcastid: details.podcastid,
@@ -74,13 +76,13 @@ fn host_item(props: &HostItemProps) -> Html {
     let HostItemProps {
         host,
         server_name,
-        podcast_feed_url,
+        podcast_feed_url: _,
         subscribed_hosts,
         podcast_id,
         on_subscribe_toggle,
         on_host_click,
     } = props;
-    
+
     // Capture i18n strings before they get moved
     let i18n_subscribe = i18n.t("host_component.subscribe").to_string();
     let i18n_unsubscribe = i18n.t("host_component.unsubscribe").to_string();
@@ -143,11 +145,13 @@ pub fn host_dropdown(
 ) -> Html {
     let (i18n, _) = use_translation();
     let (search_state, _search_dispatch) = use_store::<AppState>();
-    
+
     // Capture i18n strings before they get moved
     let i18n_no_hosts_found = i18n.t("host_component.no_hosts_found").to_string();
     let i18n_add_hosts_here = i18n.t("host_component.add_hosts_here").to_string();
-    let i18n_failed_to_fetch_person_info = i18n.t("host_component.failed_to_fetch_person_info").to_string();
+    let i18n_failed_to_fetch_person_info = i18n
+        .t("host_component.failed_to_fetch_person_info")
+        .to_string();
     let subscribed_hosts = use_state(|| HashMap::<String, Vec<i32>>::new());
     let person_ids = use_state(|| HashMap::<String, i32>::new()); // Store person IDs separately
     let api_key = search_state
@@ -207,7 +211,9 @@ pub fn host_dropdown(
                                 let mut sub_map = HashMap::new();
                                 let mut pid_map = HashMap::new();
                                 for sub in subs {
-                                    let associated_podcasts = sub.associatedpodcasts.to_string()
+                                    let associated_podcasts = sub
+                                        .associatedpodcasts
+                                        .to_string()
                                         .split(',')
                                         .filter_map(|s| s.parse::<i32>().ok())
                                         .collect::<Vec<i32>>();
@@ -449,8 +455,7 @@ pub fn host_dropdown(
                         } else {
                             // Handle error
                             dispatch.reduce_mut(|state| {
-                                state.error_message =
-                                    Some(error_msg.clone());
+                                state.error_message = Some(error_msg.clone());
                                 state.is_loading = Some(false);
                             });
                         }

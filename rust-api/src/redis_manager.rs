@@ -83,6 +83,7 @@ impl NotificationManager {
         match platform {
             "ntfy" => self.send_ntfy_notification(settings).await,
             "gotify" => self.send_gotify_notification(settings).await,
+            "http" => self.send_http_notification(settings).await,
             _ => {
                 println!("Unsupported notification platform: {}", platform);
                 Ok(false)
@@ -157,5 +158,92 @@ impl NotificationManager {
             .await?;
 
         Ok(response.status().is_success())
+    }
+
+    async fn send_http_notification(&self, settings: &serde_json::Value) -> AppResult<bool> {
+        let http_url = settings.get("http_url").and_then(|v| v.as_str()).unwrap_or("");
+        let http_token = settings.get("http_token").and_then(|v| v.as_str()).unwrap_or("");
+        let http_method = settings.get("http_method").and_then(|v| v.as_str()).unwrap_or("POST");
+        
+        if http_url.is_empty() {
+            println!("HTTP URL is empty, cannot send notification");
+            return Ok(false);
+        }
+
+        let client = reqwest::Client::new();
+        
+        // Build the request based on method
+        let request_builder = match http_method.to_uppercase().as_str() {
+            "GET" => {
+                // For GET requests, add message as query parameter
+                let url_with_params = if http_url.contains('?') {
+                    format!("{}&message={}", http_url, urlencoding::encode("Test notification from PinePods"))
+                } else {
+                    format!("{}?message={}", http_url, urlencoding::encode("Test notification from PinePods"))
+                };
+                client.get(&url_with_params)
+            },
+            "POST" | _ => {
+                // For POST requests, send JSON payload
+                let payload = if http_url.contains("api.telegram.org") {
+                    // Special handling for Telegram Bot API
+                    let chat_id = if let Some(chat_id_str) = http_token.split(':').nth(1) {
+                        // Extract chat_id from token if it contains chat_id (format: bot_token:chat_id)
+                        chat_id_str
+                    } else {
+                        // Default chat_id - user needs to configure this properly
+                        "YOUR_CHAT_ID"
+                    };
+                    
+                    serde_json::json!({
+                        "chat_id": chat_id,
+                        "text": "Test notification from PinePods"
+                    })
+                } else {
+                    // Generic JSON payload
+                    serde_json::json!({
+                        "title": "PinePods Test",
+                        "message": "Test notification from PinePods",
+                        "text": "Test notification from PinePods"
+                    })
+                };
+                
+                client.post(http_url)
+                    .header("Content-Type", "application/json")
+                    .json(&payload)
+            }
+        };
+
+        // Add authorization header if token is provided
+        let request_builder = if !http_token.is_empty() {
+            if http_url.contains("api.telegram.org") {
+                // For Telegram, token goes in URL path, not header
+                request_builder
+            } else {
+                // For other services, add as Bearer token
+                request_builder.header("Authorization", format!("Bearer {}", http_token))
+            }
+        } else {
+            request_builder
+        };
+
+        match request_builder.send().await {
+            Ok(response) => {
+                let status = response.status();
+                let is_success = status.is_success();
+                
+                if !is_success {
+                    let response_text = response.text().await.unwrap_or_default();
+                    println!("HTTP notification failed with status: {} - Response: {}", 
+                             status, response_text);
+                }
+                
+                Ok(is_success)
+            },
+            Err(e) => {
+                println!("HTTP notification request failed: {}", e);
+                Ok(false)
+            }
+        }
     }
 }

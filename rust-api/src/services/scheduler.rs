@@ -91,9 +91,9 @@ impl BackgroundScheduler {
                     warn!("⚠️ Nextcloud sync failed during scheduled refresh: {}", e);
                 }
                 
-                // Also run playlist updates
-                if let Err(e) = tasks::update_playlists_internal(&state).await {
-                    warn!("⚠️ Playlist update failed during scheduled refresh: {}", e);
+                // Update playlist episode counts (replaces complex playlist content updates)
+                if let Err(e) = state.db_pool.update_playlist_episode_counts().await {
+                    warn!("⚠️ Playlist episode count update failed during scheduled refresh: {}", e);
                 }
             }
             Err(e) => {
@@ -135,6 +135,16 @@ impl BackgroundScheduler {
     // Run initial startup tasks immediately
     pub async fn run_startup_tasks(state: Arc<AppState>) -> AppResult<()> {
         info!("🚀 Running initial startup tasks...");
+        
+        // Initialize OIDC provider from environment variables if configured
+        if let Err(e) = state.db_pool.init_oidc_from_env(&state.config.oidc).await {
+            warn!("⚠️ OIDC initialization failed: {}", e);
+        }
+        
+        // Create missing default playlists for existing users
+        if let Err(e) = state.db_pool.create_missing_default_playlists().await {
+            warn!("⚠️ Creating missing default playlists failed: {}", e);
+        }
         
         // Run an immediate refresh to ensure data is current on startup
         if let Err(e) = Self::run_refresh_pods(state.clone()).await {

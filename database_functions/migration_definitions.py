@@ -2616,6 +2616,285 @@ def migration_030_add_user_language_preference(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("031", "add_oidc_env_initialized_column", "Add InitializedFromEnv column to OIDCProviders table to track env-initialized providers", requires=["001"])
+def migration_031_add_oidc_env_initialized_column(conn, db_type: str):
+    """Add InitializedFromEnv column to OIDCProviders table to track providers created from environment variables"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Adding InitializedFromEnv column to OIDCProviders table")
+        
+        if db_type == 'postgresql':
+            # Add InitializedFromEnv column (defaults to false for existing providers)
+            safe_execute_sql(cursor, '''
+                ALTER TABLE "OIDCProviders" 
+                ADD COLUMN IF NOT EXISTS InitializedFromEnv BOOLEAN DEFAULT false
+            ''', conn=conn)
+            
+            # Add comment to document the column
+            safe_execute_sql(cursor, '''
+                COMMENT ON COLUMN "OIDCProviders".InitializedFromEnv IS 'Indicates if this provider was created from environment variables and should not be removable via UI'
+            ''', conn=conn)
+            
+        else:  # mysql/mariadb
+            # Check if column exists first
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM INFORMATION_SCHEMA.COLUMNS 
+                WHERE TABLE_SCHEMA = DATABASE() 
+                AND TABLE_NAME = 'OIDCProviders' 
+                AND COLUMN_NAME = 'InitializedFromEnv'
+            """)
+            
+            if cursor.fetchone()[0] == 0:
+                safe_execute_sql(cursor, '''
+                    ALTER TABLE OIDCProviders 
+                    ADD COLUMN InitializedFromEnv TINYINT(1) DEFAULT 0 
+                    COMMENT 'Indicates if this provider was created from environment variables and should not be removable via UI'
+                ''', conn=conn)
+        
+        logger.info("Successfully added InitializedFromEnv column to OIDCProviders table")
+    except Exception as e:
+        logger.error(f"Error in migration 031: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
+@register_migration("032", "create_user_default_playlists", "Create default playlists for all existing users", requires=["012"])
+def migration_032_create_user_default_playlists(conn, db_type: str):
+    """Create default playlists for all existing users, eliminating system playlists"""
+    cursor = conn.cursor()
+    
+    try:
+        logger.info("Starting user default playlists migration")
+        
+        # First, add the episode_count column to Playlists table if it doesn't exist
+        if db_type == "postgresql":
+            # Check if episode_count column exists
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'Playlists' 
+                AND column_name = 'episodecount'
+            """)
+            column_exists = len(cursor.fetchall()) > 0
+            
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE "Playlists"
+                    ADD COLUMN episodecount INTEGER DEFAULT 0
+                """)
+                logger.info("Added episode_count column to Playlists table (PostgreSQL)")
+            else:
+                logger.info("episode_count column already exists in Playlists table (PostgreSQL)")
+        else:
+            # Check if episode_count column exists (MySQL)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Playlists' 
+                AND COLUMN_NAME = 'EpisodeCount'
+                AND TABLE_SCHEMA = DATABASE()
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+            
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE Playlists
+                    ADD COLUMN EpisodeCount INT DEFAULT 0
+                """)
+                logger.info("Added EpisodeCount column to Playlists table (MySQL)")
+            else:
+                logger.info("EpisodeCount column already exists in Playlists table (MySQL)")
+        
+        # Define default playlists (same as migration 012 but will be assigned to each user)
+        default_playlists = [
+            {
+                'name': 'Quick Listens',
+                'description': 'Short episodes under 15 minutes, perfect for quick breaks',
+                'min_duration': 1,  # Exclude 0-duration episodes
+                'max_duration': 900,  # 15 minutes
+                'sort_order': 'duration_asc',
+                'icon_name': 'ph-fast-forward',
+                'max_episodes': 1000
+            },
+            {
+                'name': 'Longform',
+                'description': 'Extended episodes over 1 hour, ideal for long drives or deep dives',
+                'min_duration': 3600,  # 1 hour
+                'max_duration': None,
+                'sort_order': 'duration_desc',
+                'icon_name': 'ph-car',
+                'max_episodes': 1000
+            },
+            {
+                'name': 'Currently Listening',
+                'description': 'Episodes you\'ve started but haven\'t finished',
+                'min_duration': None,
+                'max_duration': None,
+                'sort_order': 'date_desc',
+                'include_unplayed': False,
+                'include_partially_played': True,
+                'include_played': False,
+                'icon_name': 'ph-play'
+            },
+            {
+                'name': 'Fresh Releases',
+                'description': 'Latest episodes from the last 24 hours',
+                'min_duration': None,
+                'max_duration': None,
+                'sort_order': 'date_desc',
+                'include_unplayed': True,
+                'include_partially_played': False,
+                'include_played': False,
+                'time_filter_hours': 24,
+                'icon_name': 'ph-sparkle'
+            },
+            {
+                'name': 'Weekend Marathon',
+                'description': 'Longer episodes (30+ minutes) perfect for weekend listening',
+                'min_duration': 1800,  # 30 minutes
+                'max_duration': None,
+                'sort_order': 'duration_desc',
+                'group_by_podcast': True,
+                'icon_name': 'ph-couch',
+                'max_episodes': 1000
+            },
+            {
+                'name': 'Commuter Mix',
+                'description': 'Perfect-length episodes (15-45 minutes) for your daily commute',
+                'min_duration': 900,   # 15 minutes
+                'max_duration': 2700,  # 45 minutes
+                'sort_order': 'random',
+                'icon_name': 'ph-car-simple',
+                'max_episodes': 1000
+            }
+        ]
+        
+        # Get all existing users (excluding background user if present)
+        if db_type == "postgresql":
+            cursor.execute('SELECT userid FROM "Users" WHERE userid > 1')
+        else:
+            cursor.execute('SELECT UserID FROM Users WHERE UserID > 1')
+        
+        users = cursor.fetchall()
+        logger.info(f"Found {len(users)} users to create default playlists for")
+        
+        # Create default playlists for each user
+        for user_row in users:
+            user_id = user_row[0] if isinstance(user_row, tuple) else user_row['userid' if db_type == "postgresql" else 'UserID']
+            logger.info(f"Creating default playlists for user {user_id}")
+            
+            for playlist in default_playlists:
+                try:
+                    # Check if this playlist already exists for this user
+                    if db_type == "postgresql":
+                        cursor.execute("""
+                            SELECT COUNT(*)
+                            FROM "Playlists"
+                            WHERE userid = %s AND name = %s
+                        """, (user_id, playlist['name']))
+                    else:
+                        cursor.execute("""
+                            SELECT COUNT(*)
+                            FROM Playlists
+                            WHERE UserID = %s AND Name = %s
+                        """, (user_id, playlist['name']))
+                    
+                    if cursor.fetchone()[0] == 0:
+                        # Create the playlist for this user
+                        if db_type == "postgresql":
+                            cursor.execute("""
+                                INSERT INTO "Playlists" (
+                                    userid,
+                                    name,
+                                    description,
+                                    issystemplaylist,
+                                    minduration,
+                                    maxduration,
+                                    sortorder,
+                                    includeunplayed,
+                                    includepartiallyplayed,
+                                    includeplayed,
+                                    timefilterhours,
+                                    groupbypodcast,
+                                    maxepisodes,
+                                    iconname,
+                                    episodecount
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            """, (
+                                user_id,
+                                playlist['name'],
+                                playlist['description'],
+                                False,  # No longer system playlists
+                                playlist.get('min_duration'),
+                                playlist.get('max_duration'),
+                                playlist['sort_order'],
+                                playlist.get('include_unplayed', True),
+                                playlist.get('include_partially_played', True),
+                                playlist.get('include_played', True),
+                                playlist.get('time_filter_hours'),
+                                playlist.get('group_by_podcast', False),
+                                playlist.get('max_episodes'),
+                                playlist['icon_name'],
+                                0  # Will be updated by scheduled count update
+                            ))
+                        else:
+                            cursor.execute("""
+                                INSERT INTO Playlists (
+                                    UserID,
+                                    Name,
+                                    Description,
+                                    IsSystemPlaylist,
+                                    MinDuration,
+                                    MaxDuration,
+                                    SortOrder,
+                                    IncludeUnplayed,
+                                    IncludePartiallyPlayed,
+                                    IncludePlayed,
+                                    TimeFilterHours,
+                                    GroupByPodcast,
+                                    MaxEpisodes,
+                                    IconName,
+                                    EpisodeCount
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            """, (
+                                user_id,
+                                playlist['name'],
+                                playlist['description'],
+                                False,  # No longer system playlists
+                                playlist.get('min_duration'),
+                                playlist.get('max_duration'),
+                                playlist['sort_order'],
+                                playlist.get('include_unplayed', True),
+                                playlist.get('include_partially_played', True),
+                                playlist.get('include_played', True),
+                                playlist.get('time_filter_hours'),
+                                playlist.get('group_by_podcast', False),
+                                playlist.get('max_episodes'),
+                                playlist['icon_name'],
+                                0  # Will be updated by scheduled count update
+                            ))
+                        
+                        logger.info(f"Created playlist '{playlist['name']}' for user {user_id}")
+                    else:
+                        logger.info(f"Playlist '{playlist['name']}' already exists for user {user_id}")
+                        
+                except Exception as e:
+                    logger.error(f"Failed to create playlist '{playlist['name']}' for user {user_id}: {e}")
+                    # Continue with other playlists even if one fails
+        
+        # Commit all changes
+        conn.commit()
+        logger.info("Successfully created default playlists for all existing users")
+        
+    except Exception as e:
+        logger.error(f"Error in user default playlists migration: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 # ============================================================================
 # GPODDER SYNC MIGRATIONS
 # These migrations match the gpodder-api service migrations from Go code
@@ -3163,6 +3442,282 @@ def migration_106_optimize_subscription_sync_performance(conn, db_type: str):
     except Exception as e:
         logger.error(f"Error in gpodder migration 106: {e}")
         raise
+    finally:
+        cursor.close()
+
+
+@register_migration("033", "add_http_notification_columns", "Add generic HTTP notification columns to UserNotificationSettings table", requires=["011"])
+def migration_033_add_http_notification_columns(conn, db_type: str):
+    """Add generic HTTP notification columns for platforms like Telegram"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            # Check if columns already exist (PostgreSQL - lowercase column names)
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name IN ('httpurl', 'httptoken', 'httpmethod')
+            """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'httpurl' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "UserNotificationSettings"
+                    ADD COLUMN HttpUrl VARCHAR(500)
+                """)
+                logger.info("Added HttpUrl column to UserNotificationSettings table (PostgreSQL)")
+            
+            if 'httptoken' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "UserNotificationSettings"
+                    ADD COLUMN HttpToken VARCHAR(255)
+                """)
+                logger.info("Added HttpToken column to UserNotificationSettings table (PostgreSQL)")
+            
+            if 'httpmethod' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "UserNotificationSettings"
+                    ADD COLUMN HttpMethod VARCHAR(10) DEFAULT 'POST'
+                """)
+                logger.info("Added HttpMethod column to UserNotificationSettings table (PostgreSQL)")
+        
+        else:
+            # Check if columns already exist (MySQL)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name = 'HttpUrl'
+                AND table_schema = DATABASE()
+            """)
+            url_exists = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name = 'HttpToken'
+                AND table_schema = DATABASE()
+            """)
+            token_exists = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'UserNotificationSettings' 
+                AND column_name = 'HttpMethod'
+                AND table_schema = DATABASE()
+            """)
+            method_exists = cursor.fetchone()[0] > 0
+            
+            if not url_exists:
+                cursor.execute("""
+                    ALTER TABLE UserNotificationSettings
+                    ADD COLUMN HttpUrl VARCHAR(500)
+                """)
+                logger.info("Added HttpUrl column to UserNotificationSettings table (MySQL)")
+            
+            if not token_exists:
+                cursor.execute("""
+                    ALTER TABLE UserNotificationSettings
+                    ADD COLUMN HttpToken VARCHAR(255)
+                """)
+                logger.info("Added HttpToken column to UserNotificationSettings table (MySQL)")
+            
+            if not method_exists:
+                cursor.execute("""
+                    ALTER TABLE UserNotificationSettings
+                    ADD COLUMN HttpMethod VARCHAR(10) DEFAULT 'POST'
+                """)
+                logger.info("Added HttpMethod column to UserNotificationSettings table (MySQL)")
+        
+        logger.info("HTTP notification columns migration completed successfully")
+        
+    finally:
+        cursor.close()
+
+
+@register_migration("034", "add_podcast_merge_columns", "Add podcast merge columns to support merging podcasts", requires=["033"])
+def migration_034_add_podcast_merge_columns(conn, db_type: str):
+    """Add DisplayPodcast, RefreshPodcast, and MergedPodcastIDs columns to Podcasts table"""
+    cursor = conn.cursor()
+    
+    try:
+        if db_type == "postgresql":
+            # Check if columns already exist (PostgreSQL)
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'Podcasts' 
+                AND column_name IN ('displaypodcast', 'refreshpodcast', 'mergedpodcastids')
+            """)
+            existing_columns = [row[0] for row in cursor.fetchall()]
+            
+            if 'displaypodcast' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN DisplayPodcast BOOLEAN DEFAULT TRUE
+                """)
+                logger.info("Added DisplayPodcast column to Podcasts table (PostgreSQL)")
+            
+            if 'refreshpodcast' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN RefreshPodcast BOOLEAN DEFAULT TRUE
+                """)
+                logger.info("Added RefreshPodcast column to Podcasts table (PostgreSQL)")
+            
+            if 'mergedpodcastids' not in existing_columns:
+                cursor.execute("""
+                    ALTER TABLE "Podcasts"
+                    ADD COLUMN MergedPodcastIDs TEXT
+                """)
+                logger.info("Added MergedPodcastIDs column to Podcasts table (PostgreSQL)")
+        
+        else:  # MySQL
+            # Check if columns already exist (MySQL)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'Podcasts' 
+                AND column_name = 'DisplayPodcast'
+                AND table_schema = DATABASE()
+            """)
+            display_exists = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'Podcasts' 
+                AND column_name = 'RefreshPodcast'
+                AND table_schema = DATABASE()
+            """)
+            refresh_exists = cursor.fetchone()[0] > 0
+            
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM information_schema.columns
+                WHERE table_name = 'Podcasts' 
+                AND column_name = 'MergedPodcastIDs'
+                AND table_schema = DATABASE()
+            """)
+            merged_exists = cursor.fetchone()[0] > 0
+            
+            if not display_exists:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN DisplayPodcast TINYINT(1) DEFAULT 1
+                """)
+                logger.info("Added DisplayPodcast column to Podcasts table (MySQL)")
+            
+            if not refresh_exists:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN RefreshPodcast TINYINT(1) DEFAULT 1
+                """)
+                logger.info("Added RefreshPodcast column to Podcasts table (MySQL)")
+            
+            if not merged_exists:
+                cursor.execute("""
+                    ALTER TABLE Podcasts
+                    ADD COLUMN MergedPodcastIDs TEXT
+                """)
+                logger.info("Added MergedPodcastIDs column to Podcasts table (MySQL)")
+        
+        # Add index on DisplayPodcast for performance
+        table_quote = "`" if db_type != "postgresql" else '"'
+        safe_add_index(cursor, db_type, 
+            f'CREATE INDEX idx_podcasts_displaypodcast ON {table_quote}Podcasts{table_quote} (DisplayPodcast)', 
+            'idx_podcasts_displaypodcast')
+        
+        logger.info("Podcast merge columns migration completed successfully")
+        
+    finally:
+        cursor.close()
+
+
+@register_migration("035", "add_podcast_cover_preference_columns", "Add podcast cover preference columns to Users and Podcasts tables", requires=["034"])
+def migration_035_add_podcast_cover_preference_columns(conn, db_type: str):
+    """Add podcast cover preference columns to Users and Podcasts tables for existing installations"""
+    cursor = conn.cursor()
+    
+    try:
+        # Add UsePodcastCovers to Users table if it doesn't exist
+        try:
+            if db_type == "postgresql":
+                cursor.execute("""
+                    ALTER TABLE "Users" 
+                    ADD COLUMN IF NOT EXISTS UsePodcastCovers BOOLEAN DEFAULT FALSE
+                """)
+            else:  # MySQL/MariaDB
+                # Check if column exists first
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'Users' 
+                    AND COLUMN_NAME = 'UsePodcastCovers'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        ALTER TABLE Users 
+                        ADD COLUMN UsePodcastCovers TINYINT(1) DEFAULT 0
+                    """)
+                    logger.info("Added UsePodcastCovers column to Users table")
+                else:
+                    logger.info("UsePodcastCovers column already exists in Users table")
+                    
+        except Exception as e:
+            logger.error(f"Error adding UsePodcastCovers to Users table: {e}")
+    
+        # Add UsePodcastCovers columns to Podcasts table if they don't exist
+        try:
+            if db_type == "postgresql":
+                cursor.execute("""
+                    ALTER TABLE "Podcasts" 
+                    ADD COLUMN IF NOT EXISTS UsePodcastCovers BOOLEAN DEFAULT FALSE,
+                    ADD COLUMN IF NOT EXISTS UsePodcastCoversCustomized BOOLEAN DEFAULT FALSE
+                """)
+            else:  # MySQL/MariaDB
+                # Check if UsePodcastCovers column exists
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'Podcasts' 
+                    AND COLUMN_NAME = 'UsePodcastCovers'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        ALTER TABLE Podcasts 
+                        ADD COLUMN UsePodcastCovers TINYINT(1) DEFAULT 0
+                    """)
+                    logger.info("Added UsePodcastCovers column to Podcasts table")
+                else:
+                    logger.info("UsePodcastCovers column already exists in Podcasts table")
+                
+                # Check if UsePodcastCoversCustomized column exists
+                cursor.execute("""
+                    SELECT COUNT(*) 
+                    FROM INFORMATION_SCHEMA.COLUMNS 
+                    WHERE TABLE_SCHEMA = DATABASE() 
+                    AND TABLE_NAME = 'Podcasts' 
+                    AND COLUMN_NAME = 'UsePodcastCoversCustomized'
+                """)
+                if cursor.fetchone()[0] == 0:
+                    cursor.execute("""
+                        ALTER TABLE Podcasts 
+                        ADD COLUMN UsePodcastCoversCustomized TINYINT(1) DEFAULT 0
+                    """)
+                    logger.info("Added UsePodcastCoversCustomized column to Podcasts table")
+                else:
+                    logger.info("UsePodcastCoversCustomized column already exists in Podcasts table")
+                    
+        except Exception as e:
+            logger.error(f"Error adding UsePodcastCovers columns to Podcasts table: {e}")
+    
+        logger.info("Podcast cover preference columns migration completed successfully")
+        
     finally:
         cursor.close()
 

@@ -1,12 +1,15 @@
 use crate::components::context::AppState;
 use crate::components::gen_funcs::format_error_message;
-use crate::requests::setting_reqs::{call_backup_server, call_schedule_backup, call_get_scheduled_backup, call_manual_backup_to_directory};
+use crate::requests::setting_reqs::{
+    call_backup_server, call_get_scheduled_backup, call_manual_backup_to_directory,
+    call_schedule_backup,
+};
+use i18nrs::yew::use_translation;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
-use web_sys::{window, Blob, BlobPropertyBag, Url, HtmlInputElement, HtmlSelectElement};
+use web_sys::{window, Blob, BlobPropertyBag, HtmlSelectElement, Url};
 use yew::prelude::*;
 use yewdux::prelude::*;
-use i18nrs::yew::use_translation;
 
 #[function_component(BackupServer)]
 pub fn backup_server() -> Html {
@@ -34,32 +37,44 @@ pub fn backup_server() -> Html {
         let server_name = server_name.clone();
         let _dispatch = _dispatch.clone();
         // Capture error message before move
-        let error_prefix = i18n.t("backup_server.failed_to_load_backup_schedule").to_string();
+        let error_prefix = i18n
+            .t("backup_server.failed_to_load_backup_schedule")
+            .to_string();
 
         use_effect_with((), move |_| {
-                if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key.clone(), server_name.clone(), user_id) {
-                    wasm_bindgen_futures::spawn_local(async move {
-                        match call_get_scheduled_backup(&server_name, &api_key.unwrap(), user_id).await {
-                            Ok(schedule_info) => {
-                                current_schedule.set(Some(schedule_info.clone()));
-                                if let Some(enabled) = schedule_info.get("enabled").and_then(|v| v.as_bool()) {
-                                    schedule_enabled.set(enabled);
-                                }
-                                if let Some(schedule) = schedule_info.get("schedule").and_then(|v| v.as_str()) {
-                                    cron_schedule.set(schedule.to_string());
-                                }
+            if let (Some(api_key), Some(server_name), Some(user_id)) =
+                (api_key.clone(), server_name.clone(), user_id)
+            {
+                wasm_bindgen_futures::spawn_local(async move {
+                    match call_get_scheduled_backup(&server_name, &api_key.unwrap(), user_id).await
+                    {
+                        Ok(schedule_info) => {
+                            current_schedule.set(Some(schedule_info.clone()));
+                            if let Some(enabled) =
+                                schedule_info.get("enabled").and_then(|v| v.as_bool())
+                            {
+                                schedule_enabled.set(enabled);
                             }
-                            Err(e) => {
-                                _dispatch.reduce_mut(|state| {
-                                    state.error_message = Some(format!("{}{}", error_prefix, format_error_message(&e.to_string())));
-                                });
+                            if let Some(schedule) =
+                                schedule_info.get("schedule").and_then(|v| v.as_str())
+                            {
+                                cron_schedule.set(schedule.to_string());
                             }
                         }
-                    });
-                }
-                || ()
-            },
-        );
+                        Err(e) => {
+                            _dispatch.reduce_mut(|state| {
+                                state.error_message = Some(format!(
+                                    "{}{}",
+                                    error_prefix,
+                                    format_error_message(&e.to_string())
+                                ));
+                            });
+                        }
+                    }
+                });
+            }
+            || ()
+        });
     }
 
     let on_download_click = {
@@ -119,9 +134,11 @@ pub fn backup_server() -> Html {
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
                         dispatch_call.reduce_mut(|audio_state| {
-                            audio_state.error_message = Option::from(
-                                format!("{}{}", backup_error_prefix.clone(), formatted_error)
-                            )
+                            audio_state.error_message = Option::from(format!(
+                                "{}{}",
+                                backup_error_prefix.clone(),
+                                formatted_error
+                            ))
                         });
                         is_loading_clone.set(false);
                     }
@@ -148,35 +165,55 @@ pub fn backup_server() -> Html {
         let _dispatch = _dispatch.clone();
         // Capture translated messages before move
         let enabled_msg = i18n.t("backup_server.scheduled_backup_enabled").to_string();
-        let disabled_msg = i18n.t("backup_server.scheduled_backup_disabled").to_string();
-        let error_prefix = i18n.t("backup_server.failed_to_update_backup_schedule").to_string();
-        
+        let disabled_msg = i18n
+            .t("backup_server.scheduled_backup_disabled")
+            .to_string();
+        let error_prefix = i18n
+            .t("backup_server.failed_to_update_backup_schedule")
+            .to_string();
+
         Callback::from(move |_| {
             let enabled_msg = enabled_msg.clone();
             let disabled_msg = disabled_msg.clone();
             let error_prefix = error_prefix.clone();
-            if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key.clone(), server_name.clone(), user_id) {
+            if let (Some(api_key), Some(server_name), Some(user_id)) =
+                (api_key.clone(), server_name.clone(), user_id)
+            {
                 schedule_loading.set(true);
                 let new_enabled = !*schedule_enabled;
                 schedule_enabled.set(new_enabled);
-                
+
                 let schedule = (*cron_schedule).clone();
                 let schedule_loading = schedule_loading.clone();
                 let schedule_enabled_for_async = schedule_enabled.clone();
                 let _dispatch = _dispatch.clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_schedule_backup(&server_name, &api_key.unwrap(), user_id, &schedule, new_enabled).await {
+                    match call_schedule_backup(
+                        &server_name,
+                        &api_key.unwrap(),
+                        user_id,
+                        &schedule,
+                        new_enabled,
+                    )
+                    .await
+                    {
                         Ok(_) => {
                             _dispatch.reduce_mut(|state| {
-                                state.info_message = Some(
-                                    if new_enabled { enabled_msg.clone() } else { disabled_msg.clone() }
-                                );
+                                state.info_message = Some(if new_enabled {
+                                    enabled_msg.clone()
+                                } else {
+                                    disabled_msg.clone()
+                                });
                             });
                         }
                         Err(e) => {
                             schedule_enabled_for_async.set(!new_enabled); // Revert on error
                             _dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!("{}{}", error_prefix.clone(), format_error_message(&e.to_string())));
+                                state.error_message = Some(format!(
+                                    "{}{}",
+                                    error_prefix.clone(),
+                                    format_error_message(&e.to_string())
+                                ));
                             });
                         }
                     }
@@ -193,26 +230,40 @@ pub fn backup_server() -> Html {
         let is_loading = is_loading.clone();
         // Capture translated messages before move
         let success_template = i18n.t("backup_server.manual_backup_started").to_string();
-        let error_prefix = i18n.t("backup_server.failed_to_start_manual_backup").to_string();
-        
+        let error_prefix = i18n
+            .t("backup_server.failed_to_start_manual_backup")
+            .to_string();
+
         Callback::from(move |_: MouseEvent| {
             let success_template = success_template.clone();
             let error_prefix = error_prefix.clone();
-            if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key.clone(), server_name.clone(), user_id) {
+            if let (Some(api_key), Some(server_name), Some(user_id)) =
+                (api_key.clone(), server_name.clone(), user_id)
+            {
                 is_loading.set(true);
                 let _dispatch = _dispatch.clone();
                 let is_loading = is_loading.clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    match call_manual_backup_to_directory(&server_name, &api_key.unwrap(), user_id).await {
+                    match call_manual_backup_to_directory(&server_name, &api_key.unwrap(), user_id)
+                        .await
+                    {
                         Ok(response) => {
-                            let filename = response.get("filename").and_then(|f| f.as_str()).unwrap_or("backup file");
+                            let filename = response
+                                .get("filename")
+                                .and_then(|f| f.as_str())
+                                .unwrap_or("backup file");
                             _dispatch.reduce_mut(|state| {
-                                state.info_message = Some(success_template.clone().replace("{}", filename));
+                                state.info_message =
+                                    Some(success_template.clone().replace("{}", filename));
                             });
                         }
                         Err(e) => {
                             _dispatch.reduce_mut(|state| {
-                                state.error_message = Some(format!("{}{}", error_prefix.clone(), format_error_message(&e.to_string())));
+                                state.error_message = Some(format!(
+                                    "{}{}",
+                                    error_prefix.clone(),
+                                    format_error_message(&e.to_string())
+                                ));
                             });
                         }
                     }
@@ -232,7 +283,7 @@ pub fn backup_server() -> Html {
                 <p class="item_container-text text-md mb-4">
                     {i18n.t("backup_server.scheduled_backups_description")}
                 </p>
-                
+
                 <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-4">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -253,18 +304,18 @@ pub fn backup_server() -> Html {
                                 <option value="0 0 */12 * * *" selected={*cron_schedule == "0 0 */12 * * *"}>{i18n.t("backup_server.every_12_hours")}</option>
                             </select>
                         </div>
-                        
+
                         <div>
                             <label class="block text-sm font-medium item_container-text mb-2">
                                 {i18n.t("backup_server.status")}
                             </label>
                             <label class="relative inline-flex items-center cursor-pointer">
-                                <input 
-                                    type="checkbox" 
-                                    checked={*schedule_enabled} 
+                                <input
+                                    type="checkbox"
+                                    checked={*schedule_enabled}
                                     disabled={*schedule_loading}
                                     onclick={on_schedule_toggle}
-                                    class="sr-only peer" 
+                                    class="sr-only peer"
                                 />
                                 <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                 <span class="ms-3 text-sm font-medium item_container-text">
@@ -273,7 +324,7 @@ pub fn backup_server() -> Html {
                             </label>
                         </div>
                     </div>
-                    
+
                     if let Some(schedule_info) = &*current_schedule {
                         if let Some(updated_at) = schedule_info.get("updated_at").and_then(|v| v.as_str()) {
                             <div class="mt-4 text-sm text-gray-600 dark:text-gray-400">
@@ -291,7 +342,7 @@ pub fn backup_server() -> Html {
                     <h2 class="item_container-text text-lg font-bold">{i18n.t("backup_server.manual_backup")}</h2>
                 </div>
                 <p class="item_container-text text-md mb-4">{i18n.t("backup_server.manual_backup_description")}</p>
-            
+
             <div class="space-y-4">
                 // Download backup section
                 <div class="backup-option">
@@ -350,7 +401,7 @@ pub fn backup_server() -> Html {
                 </button>
                     </div>
                 </div>
-                
+
                 // Backup to directory section
                 <div class="backup-option">
                     <h4 class="item_container-text font-semibold mb-2">{i18n.t("backup_server.save_to_backup_directory")}</h4>

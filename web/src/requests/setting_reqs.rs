@@ -458,32 +458,6 @@ pub struct RssToggleResponse {
     pub(crate) enabled: bool,
 }
 
-pub async fn call_enable_disable_guest(
-    server_name: String,
-    api_key: String,
-) -> Result<SuccessResponse, Error> {
-    let url = format!("{}/api/data/enable_disable_guest", server_name);
-
-    let response = Request::post(&url)
-        .header("Api-Key", &api_key)
-        .header("Content-Type", "application/json")
-        .send()
-        .await
-        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
-
-    if response.ok() {
-        response
-            .json::<SuccessResponse>()
-            .await
-            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
-    } else {
-        Err(Error::msg(format!(
-            "Error enabling/disabling guest access: {}",
-            response.status_text()
-        )))
-    }
-}
-
 pub async fn call_enable_disable_downloads(
     server_name: String,
     api_key: String,
@@ -531,33 +505,6 @@ pub async fn call_enable_disable_self_service(
     } else {
         Err(Error::msg(format!(
             "Error enabling/disabling self service: {}",
-            response.status_text()
-        )))
-    }
-}
-
-#[derive(Deserialize, Debug, PartialEq, Clone)]
-pub struct GuestStatusResponse {
-    pub guest_status: bool,
-}
-
-pub async fn call_guest_status(server_name: String, api_key: String) -> Result<bool, Error> {
-    let url = format!("{}/api/data/guest_status", server_name);
-
-    let response = Request::get(&url)
-        .header("Api-Key", &api_key)
-        .send()
-        .await
-        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
-
-    if response.ok() {
-        response
-            .json::<bool>()
-            .await
-            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
-    } else {
-        Err(Error::msg(format!(
-            "Error fetching guest status: {}",
             response.status_text()
         )))
     }
@@ -768,6 +715,7 @@ pub struct SendEmailSettings {
     pub(crate) message: String,
 }
 
+#[allow(dead_code)]
 pub async fn call_send_email(
     server_name: String,
     api_key: String,
@@ -894,7 +842,7 @@ pub async fn call_create_api_key(
     api_key: &str,
 ) -> Result<CreateAPIKeyResponse, anyhow::Error> {
     let url = format!("{}/api/data/create_api_key", server_name);
-    let request_body = serde_json::json!({ 
+    let request_body = serde_json::json!({
         "user_id": user_id,
         "rssonly": false
     });
@@ -1473,7 +1421,7 @@ pub async fn call_set_default_gpodder_device(
 // API structures
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GpodderDevice {
-    pub id: String,  // GPodder API uses string device IDs, not integers
+    pub id: String, // GPodder API uses string device IDs, not integers
     pub name: String,
     pub r#type: String, // Using r# prefix because "type" is a reserved keyword
     pub caption: Option<String>,
@@ -1816,10 +1764,12 @@ pub async fn call_remove_podcast_sync(
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct AdminCheckResponse {
     pub is_admin: bool,
 }
 
+#[allow(dead_code)]
 pub async fn call_user_admin_check(
     server_name: &String,
     api_key: &String,
@@ -1978,6 +1928,9 @@ pub struct NotificationSettings {
     pub ntfy_access_token: Option<String>,
     pub gotify_url: Option<String>,
     pub gotify_token: Option<String>,
+    pub http_url: Option<String>,
+    pub http_token: Option<String>,
+    pub http_method: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -2145,6 +2098,7 @@ pub struct OIDCProvider {
     pub user_role: Option<String>,
     pub admin_role: Option<String>,
     pub enabled: bool,
+    pub initialized_from_env: bool,
 }
 
 pub async fn call_add_oidc_provider(
@@ -2168,6 +2122,32 @@ pub async fn call_add_oidc_provider(
     } else {
         Err(Error::msg(format!(
             "Failed to add OIDC provider: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_update_oidc_provider(
+    server_name: String,
+    api_key: String,
+    provider_id: i32,
+    provider: AddOIDCProviderRequest,
+) -> Result<(), Error> {
+    let url = format!(
+        "{}/api/data/update_oidc_provider/{}",
+        server_name, provider_id
+    );
+    let response = Request::post(&url)
+        .header("Api-Key", &api_key)
+        .json(&provider)?
+        .send()
+        .await?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(Error::msg(format!(
+            "Failed to update OIDC provider: {}",
             response.status_text()
         )))
     }
@@ -2354,6 +2334,7 @@ pub struct AutoCompleteSecondsResponse {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct UpdateSettingResponse {
     pub success: bool,
     pub message: String,
@@ -2366,11 +2347,8 @@ pub async fn call_update_timezone(
     timezone: String,
 ) -> Result<bool, Error> {
     let url = format!("{}/api/data/update_timezone", server_name);
-    
-    let request_body = UpdateTimezoneRequest {
-        user_id,
-        timezone,
-    };
+
+    let request_body = UpdateTimezoneRequest { user_id, timezone };
 
     let response = Request::put(&url)
         .header("Api-Key", &api_key)
@@ -2399,7 +2377,7 @@ pub async fn call_update_date_format(
     date_format: String,
 ) -> Result<bool, Error> {
     let url = format!("{}/api/data/update_date_format", server_name);
-    
+
     let request_body = UpdateDateFormatRequest {
         user_id,
         date_format,
@@ -2432,11 +2410,8 @@ pub async fn call_update_time_format(
     hour_pref: i32,
 ) -> Result<bool, Error> {
     let url = format!("{}/api/data/update_time_format", server_name);
-    
-    let request_body = UpdateTimeFormatRequest {
-        user_id,
-        hour_pref,
-    };
+
+    let request_body = UpdateTimeFormatRequest { user_id, hour_pref };
 
     let response = Request::put(&url)
         .header("Api-Key", &api_key)
@@ -2463,7 +2438,10 @@ pub async fn call_get_auto_complete_seconds(
     api_key: String,
     user_id: i32,
 ) -> Result<i32, Error> {
-    let url = format!("{}/api/data/get_auto_complete_seconds/{}", server_name, user_id);
+    let url = format!(
+        "{}/api/data/get_auto_complete_seconds/{}",
+        server_name, user_id
+    );
 
     let response = Request::get(&url)
         .header("Api-Key", &api_key)
@@ -2489,11 +2467,8 @@ pub async fn call_update_auto_complete_seconds(
     seconds: i32,
 ) -> Result<bool, Error> {
     let url = format!("{}/api/data/update_auto_complete_seconds", server_name);
-    
-    let request_body = UpdateAutoCompleteSecondsRequest {
-        user_id,
-        seconds,
-    };
+
+    let request_body = UpdateAutoCompleteSecondsRequest { user_id, seconds };
 
     let response = Request::put(&url)
         .header("Api-Key", &api_key)
@@ -2517,6 +2492,7 @@ pub async fn call_update_auto_complete_seconds(
 
 // GPodder Statistics
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct GpodderStatistics {
     pub server_url: String,
     pub sync_type: String,
@@ -2533,6 +2509,7 @@ pub struct GpodderStatistics {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct ServerDevice {
     pub id: String,
     pub caption: String,
@@ -2541,6 +2518,7 @@ pub struct ServerDevice {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct ServerSubscription {
     pub url: String,
     pub title: Option<String>,
@@ -2548,6 +2526,7 @@ pub struct ServerSubscription {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct ServerEpisodeAction {
     pub podcast: String,
     pub episode: String,
@@ -2558,6 +2537,7 @@ pub struct ServerEpisodeAction {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct EndpointTest {
     pub endpoint: String,
     pub status: String,
@@ -2765,6 +2745,7 @@ struct GetUnmatchedPodcastsRequest {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
 pub struct UnmatchedPodcast {
     pub podcast_id: i32,
     pub podcast_name: String,
@@ -2813,6 +2794,7 @@ struct UpdatePodcastIndexIdRequest {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct UpdatePodcastIndexIdResponse {
     pub detail: String,
 }
@@ -2859,6 +2841,7 @@ pub struct IgnorePodcastIndexIdRequest {
 
 // Response struct for ignoring podcast index ID
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct IgnorePodcastIndexIdResponse {
     pub detail: String,
 }
@@ -2948,6 +2931,7 @@ pub struct UserLanguageResponse {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(dead_code)]
 pub struct UpdateUserLanguageResponse {
     pub language: String,
     pub success: bool,
@@ -2964,12 +2948,16 @@ pub struct AvailableLanguagesResponse {
     pub languages: Vec<AvailableLanguage>,
 }
 
+#[allow(dead_code)]
 pub async fn call_get_user_language(
     server_name: String,
     api_key: String,
     user_id: i32,
 ) -> Result<String, Error> {
-    let url = format!("{}/api/data/get_user_language?user_id={}", server_name, user_id);
+    let url = format!(
+        "{}/api/data/get_user_language?user_id={}",
+        server_name, user_id
+    );
 
     let response = Request::get(&url)
         .header("Api-Key", &api_key)
@@ -2996,11 +2984,8 @@ pub async fn call_update_user_language(
     language: String,
 ) -> Result<bool, Error> {
     let url = format!("{}/api/data/update_user_language", server_name);
-    
-    let request_body = UpdateUserLanguageRequest {
-        user_id,
-        language,
-    };
+
+    let request_body = UpdateUserLanguageRequest { user_id, language };
 
     let response = Request::put(&url)
         .header("Api-Key", &api_key)
@@ -3045,13 +3030,14 @@ pub async fn call_get_available_languages(
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 pub struct ServerDefaultLanguageResponse {
+    #[allow(dead_code)]
     pub default_language: String,
 }
 
-pub async fn call_get_server_default_language(
-    server_name: String,
-) -> Result<String, Error> {
+#[allow(dead_code)]
+pub async fn call_get_server_default_language(server_name: String) -> Result<String, Error> {
     let url = format!("{}/api/data/get_server_default_language", server_name);
 
     let response = Request::get(&url)
@@ -3065,6 +3051,98 @@ pub async fn call_get_server_default_language(
     } else {
         Err(Error::msg(format!(
             "Error getting server default language: {}",
+            response.status_text()
+        )))
+    }
+}
+
+// Podcast Cover Preference Requests
+
+#[derive(Serialize, Debug)]
+pub struct SetGlobalPodcastCoverPreferenceRequest {
+    pub user_id: i32,
+    pub use_podcast_covers: bool,
+    pub podcast_id: Option<i32>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct SetGlobalPodcastCoverPreferenceResponse {
+    pub detail: String,
+}
+
+pub async fn call_set_global_podcast_cover_preference(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    use_podcast_covers: bool,
+    podcast_id: Option<i32>,
+) -> Result<String, Error> {
+    let url = format!(
+        "{}/api/data/user/set_global_podcast_cover_preference",
+        server_name
+    );
+
+    let request_body = SetGlobalPodcastCoverPreferenceRequest {
+        user_id,
+        use_podcast_covers,
+        podcast_id,
+    };
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .map_err(|e| Error::msg(format!("Failed to serialize request: {}", e)))?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: SetGlobalPodcastCoverPreferenceResponse = response.json().await?;
+        Ok(response_data.detail)
+    } else {
+        Err(Error::msg(format!(
+            "Error setting global podcast cover preference: {}",
+            response.status_text()
+        )))
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct GetPodcastCoverPreferenceResponse {
+    pub use_podcast_covers: bool,
+}
+
+pub async fn call_get_podcast_cover_preference(
+    server_name: &str,
+    api_key: &str,
+    user_id: i32,
+    podcast_id: Option<i32>,
+) -> Result<bool, Error> {
+    let url = if let Some(podcast_id) = podcast_id {
+        format!(
+            "{}/api/data/user/get_podcast_cover_preference?user_id={}&podcast_id={}",
+            server_name, user_id, podcast_id
+        )
+    } else {
+        format!(
+            "{}/api/data/user/get_podcast_cover_preference?user_id={}",
+            server_name, user_id
+        )
+    };
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        let response_data: GetPodcastCoverPreferenceResponse = response.json().await?;
+        Ok(response_data.use_podcast_covers)
+    } else {
+        Err(Error::msg(format!(
+            "Error getting podcast cover preference: {}",
             response.status_text()
         )))
     }

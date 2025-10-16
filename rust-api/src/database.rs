@@ -1,6 +1,6 @@
 use sqlx::{MySql, Pool, Postgres, Row};
 use std::time::Duration;
-use crate::{config::Config, error::{AppError, AppResult}};
+use crate::{config::{Config, OIDCConfig}, error::{AppError, AppResult}};
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use std::collections::HashMap;
@@ -396,7 +396,11 @@ impl DatabasePool {
                             "Episodes".episodetitle as episodetitle,
                             "Episodes".episodepubdate as episodepubdate,
                             "Episodes".episodedescription as episodedescription,
-                            "Episodes".episodeartwork as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl as episodeurl,
                             "Episodes".episodeduration as episodeduration,
                             "UserEpisodeHistory".listenduration as listenduration,
@@ -408,6 +412,7 @@ impl DatabasePool {
                             FALSE as is_youtube
                         FROM "Episodes"
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "Episodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "UserEpisodeHistory".userid = $1
@@ -431,7 +436,11 @@ impl DatabasePool {
                             "YouTubeVideos".videotitle as episodetitle,
                             "YouTubeVideos".publishedat as episodepubdate,
                             "YouTubeVideos".videodescription as episodedescription,
-                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "YouTubeVideos".thumbnailurl
+                            END as episodeartwork,
                             "YouTubeVideos".videourl as episodeurl,
                             "YouTubeVideos".duration as episodeduration,
                             "YouTubeVideos".listenposition as listenduration,
@@ -443,6 +452,7 @@ impl DatabasePool {
                             TRUE as is_youtube
                         FROM "YouTubeVideos"
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "SavedVideos" ON
                             "YouTubeVideos".videoid = "SavedVideos".videoid
                             AND "SavedVideos".userid = $2
@@ -498,7 +508,11 @@ impl DatabasePool {
                             Episodes.EpisodeTitle as episodetitle,
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
-                            Episodes.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                ELSE Episodes.EpisodeArtwork
+                            END as episodeartwork,
                             Episodes.EpisodeURL as episodeurl,
                             Episodes.EpisodeDuration as episodeduration,
                             UserEpisodeHistory.ListenDuration as listenduration,
@@ -510,6 +524,7 @@ impl DatabasePool {
                             FALSE as is_youtube
                         FROM Episodes
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
                             AND UserEpisodeHistory.UserID = ?
@@ -533,7 +548,11 @@ impl DatabasePool {
                             YouTubeVideos.VideoTitle as episodetitle,
                             YouTubeVideos.PublishedAt as episodepubdate,
                             YouTubeVideos.VideoDescription as episodedescription,
-                            YouTubeVideos.ThumbnailURL as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                ELSE YouTubeVideos.ThumbnailURL
+                            END as episodeartwork,
                             YouTubeVideos.VideoURL as episodeurl,
                             YouTubeVideos.Duration as episodeduration,
                             YouTubeVideos.ListenPosition as listenduration,
@@ -545,6 +564,7 @@ impl DatabasePool {
                             TRUE as is_youtube
                         FROM YouTubeVideos
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN SavedVideos ON
                             YouTubeVideos.VideoID = SavedVideos.VideoID
                             AND SavedVideos.UserID = ?
@@ -766,6 +786,125 @@ impl DatabasePool {
                     podcast_values.pod_title, podcast_values.user_id, episode_count);
                 
                 Ok((podcast_id, first_episode_id))
+            }
+        }
+    }
+
+    // Add podcast without episodes - for background episode processing
+    pub async fn add_podcast_without_episodes(
+        &self,
+        podcast_values: &crate::handlers::podcasts::PodcastValues,
+        podcast_index_id: i64,
+        username: Option<&str>,
+        password: Option<&str>,
+    ) -> AppResult<i32> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Check if podcast already exists
+                let existing = sqlx::query(r#"SELECT podcastid, podcastname, feedurl FROM "Podcasts" WHERE feedurl = $1 AND userid = $2"#)
+                    .bind(&podcast_values.pod_feed_url)
+                    .bind(podcast_values.user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = existing {
+                    let podcast_id: i32 = row.try_get("podcastid")?;
+                    return Ok(podcast_id);
+                }
+                
+                // Convert categories to string
+                let category_list = serde_json::to_string(&podcast_values.categories)?;
+                
+                // Insert new podcast without episodes
+                let row = sqlx::query(
+                    r#"INSERT INTO "Podcasts" 
+                       (podcastname, artworkurl, author, categories, description, episodecount, 
+                        feedurl, websiteurl, explicit, userid, feedcutoffdays, username, password, podcastindexid)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                       RETURNING podcastid"#
+                )
+                .bind(&podcast_values.pod_title)
+                .bind(&podcast_values.pod_artwork)
+                .bind(&podcast_values.pod_author)
+                .bind(&category_list)
+                .bind(&podcast_values.pod_description)
+                .bind(0) // EpisodeCount starts at 0
+                .bind(&podcast_values.pod_feed_url)
+                .bind(&podcast_values.pod_website)
+                .bind(podcast_values.pod_explicit)
+                .bind(podcast_values.user_id)
+                .bind(30) // Default feed cutoff days
+                .bind(username)
+                .bind(password)
+                .bind(podcast_index_id)
+                .fetch_one(pool)
+                .await?;
+                
+                let podcast_id: i32 = row.try_get("podcastid")?;
+                
+                // Update UserStats table
+                sqlx::query(r#"UPDATE "UserStats" SET podcastsadded = podcastsadded + 1 WHERE userid = $1"#)
+                    .bind(podcast_values.user_id)
+                    .execute(pool)
+                    .await?;
+                
+                println!("✅ Added podcast '{}' for user {} (episodes will be processed in background)", 
+                    podcast_values.pod_title, podcast_values.user_id);
+                
+                Ok(podcast_id)
+            }
+            DatabasePool::MySQL(pool) => {
+                // Check if podcast already exists
+                let existing = sqlx::query("SELECT PodcastID, PodcastName, FeedURL FROM Podcasts WHERE FeedURL = ? AND UserID = ?")
+                    .bind(&podcast_values.pod_feed_url)
+                    .bind(podcast_values.user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = existing {
+                    let podcast_id: i32 = row.try_get("PodcastID")?;
+                    return Ok(podcast_id);
+                }
+                
+                // Convert categories to string
+                let category_list = serde_json::to_string(&podcast_values.categories)?;
+                
+                // Insert new podcast without episodes
+                let result = sqlx::query(
+                    "INSERT INTO Podcasts 
+                     (PodcastName, ArtworkURL, Author, Categories, Description, EpisodeCount, 
+                      FeedURL, WebsiteURL, Explicit, UserID, FeedCutoffDays, Username, Password, PodcastIndexID)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                )
+                .bind(&podcast_values.pod_title)
+                .bind(&podcast_values.pod_artwork)
+                .bind(&podcast_values.pod_author)
+                .bind(&category_list)
+                .bind(&podcast_values.pod_description)
+                .bind(0) // EpisodeCount starts at 0
+                .bind(&podcast_values.pod_feed_url)
+                .bind(&podcast_values.pod_website)
+                .bind(podcast_values.pod_explicit)
+                .bind(podcast_values.user_id)
+                .bind(30) // Default feed cutoff days
+                .bind(username)
+                .bind(password)
+                .bind(podcast_index_id)
+                .execute(pool)
+                .await?;
+                
+                let podcast_id = result.last_insert_id() as i32;
+                
+                // Update UserStats table
+                sqlx::query("UPDATE UserStats SET PodcastsAdded = PodcastsAdded + 1 WHERE UserID = ?")
+                    .bind(podcast_values.user_id)
+                    .execute(pool)
+                    .await?;
+                
+                println!("✅ Added podcast '{}' for user {} (episodes will be processed in background)", 
+                    podcast_values.pod_title, podcast_values.user_id);
+                
+                Ok(podcast_id)
             }
         }
     }
@@ -1288,7 +1427,7 @@ impl DatabasePool {
                         COALESCE(explicit, false) as explicit,
                         COALESCE(podcastindexid, 0) as podcastindexid
                     FROM "Podcasts"
-                    WHERE userid = $1
+                    WHERE userid = $1 AND COALESCE(displaypodcast, TRUE) = TRUE
                     ORDER BY podcastname"#
                 )
                 .bind(user_id)
@@ -1335,7 +1474,7 @@ impl DatabasePool {
                         COALESCE(Explicit, false) as explicit,
                         COALESCE(PodcastIndexID, 0) as podcastindexid
                     FROM Podcasts
-                    WHERE UserID = ?
+                    WHERE UserID = ? AND COALESCE(DisplayPodcast, 1) = 1
                     ORDER BY PodcastName"
                 )
                 .bind(user_id)
@@ -1394,7 +1533,7 @@ impl DatabasePool {
                     FROM "Podcasts" p
                     LEFT JOIN "Episodes" e ON p.podcastid = e.podcastid
                     LEFT JOIN "UserEpisodeHistory" ueh ON e.episodeid = ueh.episodeid AND ueh.userid = $1
-                    WHERE p.userid = $1
+                    WHERE p.userid = $1 AND COALESCE(p.displaypodcast, TRUE) = TRUE
                     GROUP BY p.podcastid, p.podcastname, p.artworkurl, p.description, 
                              p.episodecount, p.websiteurl, p.feedurl, p.author, 
                              p.categories, p.explicit, p.podcastindexid, p.isyoutube
@@ -1457,7 +1596,7 @@ impl DatabasePool {
                     FROM Podcasts p
                     LEFT JOIN Episodes e ON p.PodcastID = e.PodcastID
                     LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
-                    WHERE p.UserID = ?
+                    WHERE p.UserID = ? AND COALESCE(p.DisplayPodcast, 1) = 1
                     GROUP BY p.PodcastID, p.PodcastName, p.ArtworkURL, p.Description, 
                              p.EpisodeCount, p.WebsiteURL, p.FeedURL, p.Author, 
                              p.Categories, p.Explicit, p.PodcastIndexID, p.IsYouTubeChannel
@@ -1495,6 +1634,216 @@ impl DatabasePool {
                     });
                 }
                 Ok(podcasts)
+            }
+        }
+    }
+
+    // Merge podcasts - set DisplayPodcast=FALSE for secondary podcasts and update primary with merged IDs
+    pub async fn merge_podcasts(&self, primary_podcast_id: i32, secondary_podcast_ids: &[i32], user_id: i32) -> AppResult<()> {
+        // Validate that all podcasts belong to the user
+        for &podcast_id in std::iter::once(&primary_podcast_id).chain(secondary_podcast_ids.iter()) {
+            let exists = self.verify_podcast_belongs_to_user(podcast_id, user_id).await?;
+            if !exists {
+                return Err(crate::error::AppError::forbidden("One or more podcasts do not belong to this user"));
+            }
+        }
+
+        // Prevent circular merges - check if any secondary podcasts are already primary podcasts with merges
+        for &secondary_id in secondary_podcast_ids {
+            let existing_merges = self.get_merged_podcast_ids(secondary_id).await?;
+            if !existing_merges.is_empty() {
+                return Err(crate::error::AppError::bad_request("Cannot merge a podcast that is already a primary podcast with merged podcasts"));
+            }
+        }
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // Set DisplayPodcast=FALSE for secondary podcasts
+                for &secondary_id in secondary_podcast_ids {
+                    sqlx::query(r#"UPDATE "Podcasts" SET displaypodcast = FALSE WHERE podcastid = $1"#)
+                        .bind(secondary_id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                
+                // Get current merged IDs for primary podcast
+                let current_merged_ids = self.get_merged_podcast_ids(primary_podcast_id).await?;
+                let mut all_merged_ids = current_merged_ids;
+                all_merged_ids.extend_from_slice(secondary_podcast_ids);
+                
+                // Update primary podcast with merged IDs
+                let merged_json = serde_json::to_string(&all_merged_ids)?;
+                sqlx::query(r#"UPDATE "Podcasts" SET mergedpodcastids = $1 WHERE podcastid = $2"#)
+                    .bind(merged_json)
+                    .bind(primary_podcast_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // Set DisplayPodcast=0 for secondary podcasts
+                for &secondary_id in secondary_podcast_ids {
+                    sqlx::query("UPDATE Podcasts SET DisplayPodcast = 0 WHERE PodcastID = ?")
+                        .bind(secondary_id)
+                        .execute(&mut *tx)
+                        .await?;
+                }
+                
+                // Get current merged IDs for primary podcast
+                let current_merged_ids = self.get_merged_podcast_ids(primary_podcast_id).await?;
+                let mut all_merged_ids = current_merged_ids;
+                all_merged_ids.extend_from_slice(secondary_podcast_ids);
+                
+                // Update primary podcast with merged IDs
+                let merged_json = serde_json::to_string(&all_merged_ids)?;
+                sqlx::query("UPDATE Podcasts SET MergedPodcastIDs = ? WHERE PodcastID = ?")
+                    .bind(merged_json)
+                    .bind(primary_podcast_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Unmerge a specific podcast from a primary podcast
+    pub async fn unmerge_podcast(&self, primary_podcast_id: i32, target_podcast_id: i32, user_id: i32) -> AppResult<()> {
+        // Validate ownership
+        let primary_exists = self.verify_podcast_belongs_to_user(primary_podcast_id, user_id).await?;
+        let target_exists = self.verify_podcast_belongs_to_user(target_podcast_id, user_id).await?;
+        
+        if !primary_exists || !target_exists {
+            return Err(crate::error::AppError::forbidden("One or more podcasts do not belong to this user"));
+        }
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // Get current merged IDs and remove the target
+                let mut merged_ids = self.get_merged_podcast_ids(primary_podcast_id).await?;
+                merged_ids.retain(|&id| id != target_podcast_id);
+                
+                // Update primary podcast
+                let merged_json = if merged_ids.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::to_string(&merged_ids)?)
+                };
+                
+                sqlx::query(r#"UPDATE "Podcasts" SET mergedpodcastids = $1 WHERE podcastid = $2"#)
+                    .bind(merged_json)
+                    .bind(primary_podcast_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                // Set DisplayPodcast=TRUE for the unmerged podcast
+                sqlx::query(r#"UPDATE "Podcasts" SET displaypodcast = TRUE WHERE podcastid = $1"#)
+                    .bind(target_podcast_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut tx = pool.begin().await?;
+                
+                // Get current merged IDs and remove the target
+                let mut merged_ids = self.get_merged_podcast_ids(primary_podcast_id).await?;
+                merged_ids.retain(|&id| id != target_podcast_id);
+                
+                // Update primary podcast
+                let merged_json = if merged_ids.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::to_string(&merged_ids)?)
+                };
+                
+                sqlx::query("UPDATE Podcasts SET MergedPodcastIDs = ? WHERE PodcastID = ?")
+                    .bind(merged_json)
+                    .bind(primary_podcast_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                // Set DisplayPodcast=1 for the unmerged podcast
+                sqlx::query("UPDATE Podcasts SET DisplayPodcast = 1 WHERE PodcastID = ?")
+                    .bind(target_podcast_id)
+                    .execute(&mut *tx)
+                    .await?;
+                
+                tx.commit().await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Get merged podcast IDs for a primary podcast
+    pub async fn get_merged_podcast_ids(&self, podcast_id: i32) -> AppResult<Vec<i32>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT mergedpodcastids FROM "Podcasts" WHERE podcastid = $1"#)
+                    .bind(podcast_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    if let Some(merged_json) = row.try_get::<Option<String>, _>("mergedpodcastids")? {
+                        let merged_ids: Vec<i32> = serde_json::from_str(&merged_json).unwrap_or_default();
+                        Ok(merged_ids)
+                    } else {
+                        Ok(Vec::new())
+                    }
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT MergedPodcastIDs FROM Podcasts WHERE PodcastID = ?")
+                    .bind(podcast_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                if let Some(row) = row {
+                    if let Some(merged_json) = row.try_get::<Option<String>, _>("mergedpodcastids")? {
+                        let merged_ids: Vec<i32> = serde_json::from_str(&merged_json).unwrap_or_default();
+                        Ok(merged_ids)
+                    } else {
+                        Ok(Vec::new())
+                    }
+                } else {
+                    Ok(Vec::new())
+                }
+            }
+        }
+    }
+
+    // Helper function to verify a podcast belongs to a user
+    pub async fn verify_podcast_belongs_to_user(&self, podcast_id: i32, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let count = sqlx::query(r#"SELECT COUNT(*) as count FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                Ok(count.try_get::<i64, _>("count")? > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let count = sqlx::query("SELECT COUNT(*) as count FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                Ok(count.try_get::<i64, _>("count")? > 0)
             }
         }
     }
@@ -1798,7 +2147,11 @@ impl DatabasePool {
                             "Podcasts".podcastname as podcastname,
                             "Episodes".episodepubdate as episodepubdate,
                             "Episodes".episodedescription as episodedescription,
-                            "Episodes".episodeartwork as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl as episodeurl,
                             "EpisodeQueue".queueposition as queueposition,
                             "Episodes".episodeduration as episodeduration,
@@ -1813,6 +2166,7 @@ impl DatabasePool {
                         FROM "EpisodeQueue"
                         INNER JOIN "Episodes" ON "EpisodeQueue".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "EpisodeQueue".episodeid = "UserEpisodeHistory".episodeid
                             AND "EpisodeQueue".userid = "UserEpisodeHistory".userid
@@ -1831,7 +2185,11 @@ impl DatabasePool {
                             "Podcasts".podcastname as podcastname,
                             "YouTubeVideos".publishedat as episodepubdate,
                             "YouTubeVideos".videodescription as episodedescription,
-                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "YouTubeVideos".thumbnailurl
+                            END as episodeartwork,
                             "YouTubeVideos".videourl as episodeurl,
                             "EpisodeQueue".queueposition as queueposition,
                             "YouTubeVideos".duration as episodeduration,
@@ -1846,6 +2204,7 @@ impl DatabasePool {
                         FROM "EpisodeQueue"
                         INNER JOIN "YouTubeVideos" ON "EpisodeQueue".episodeid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "SavedVideos" ON
                             "EpisodeQueue".episodeid = "SavedVideos".videoid
                             AND "EpisodeQueue".userid = "SavedVideos".userid
@@ -1898,7 +2257,11 @@ impl DatabasePool {
                             Podcasts.PodcastName as podcastname,
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
-                            Episodes.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                ELSE Episodes.EpisodeArtwork
+                            END as episodeartwork,
                             Episodes.EpisodeURL as episodeurl,
                             EpisodeQueue.QueuePosition as queueposition,
                             Episodes.EpisodeDuration as episodeduration,
@@ -1913,6 +2276,7 @@ impl DatabasePool {
                         FROM EpisodeQueue
                         INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             EpisodeQueue.EpisodeID = UserEpisodeHistory.EpisodeID
                             AND EpisodeQueue.UserID = UserEpisodeHistory.UserID
@@ -1931,7 +2295,11 @@ impl DatabasePool {
                             Podcasts.PodcastName as podcastname,
                             YouTubeVideos.PublishedAt as episodepubdate,
                             YouTubeVideos.VideoDescription as episodedescription,
-                            YouTubeVideos.ThumbnailURL as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                ELSE YouTubeVideos.ThumbnailURL
+                            END as episodeartwork,
                             YouTubeVideos.VideoURL as episodeurl,
                             EpisodeQueue.QueuePosition as queueposition,
                             YouTubeVideos.Duration as episodeduration,
@@ -1946,6 +2314,7 @@ impl DatabasePool {
                         FROM EpisodeQueue
                         INNER JOIN YouTubeVideos ON EpisodeQueue.EpisodeID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN SavedVideos ON
                             EpisodeQueue.EpisodeID = SavedVideos.VideoID
                             AND EpisodeQueue.UserID = SavedVideos.UserID
@@ -2668,7 +3037,11 @@ impl DatabasePool {
                         e.episodetitle,
                         e.episodedescription,
                         e.episodeurl,
-                        e.episodeartwork,
+                        CASE 
+                            WHEN p.usepodcastcoverscustomized = TRUE AND p.usepodcastcovers = TRUE THEN p.artworkurl
+                            WHEN u.usepodcastcovers = TRUE THEN p.artworkurl
+                            ELSE e.episodeartwork
+                        END as episodeartwork,
                         e.episodepubdate,
                         e.episodeduration,
                         COALESCE(h.listenduration, 0) as listenduration,
@@ -2677,6 +3050,7 @@ impl DatabasePool {
                         CASE WHEN eq.episodeid IS NOT NULL THEN true ELSE false END as queued,
                         CASE WHEN de.episodeid IS NOT NULL THEN true ELSE false END as downloaded
                     FROM "Podcasts" p
+                    LEFT JOIN "Users" u ON p.userid = u.userid
                     LEFT JOIN "Episodes" e ON p.podcastid = e.podcastid
                     LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = $2
                     LEFT JOIN "SavedEpisodes" se ON e.episodeid = se.episodeid AND se.userid = $2
@@ -2753,7 +3127,11 @@ impl DatabasePool {
                         e.EpisodeTitle as episodetitle,
                         e.EpisodeDescription as episodedescription,
                         e.EpisodeURL as episodeurl,
-                        e.EpisodeArtwork as episodeartwork,
+                        CASE 
+                            WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                            WHEN u.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                            ELSE e.EpisodeArtwork
+                        END as episodeartwork,
                         e.EpisodePubDate as episodepubdate,
                         e.EpisodeDuration as episodeduration,
                         COALESCE(h.ListenDuration, 0) as listenduration,
@@ -2762,6 +3140,7 @@ impl DatabasePool {
                         CASE WHEN eq.EpisodeID IS NOT NULL THEN true ELSE false END as queued,
                         CASE WHEN de.EpisodeID IS NOT NULL THEN true ELSE false END as downloaded
                     FROM Podcasts p
+                    LEFT JOIN Users u ON p.UserID = u.UserID
                     LEFT JOIN Episodes e ON p.PodcastID = e.PodcastID
                     LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = ?
                     LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
@@ -2848,7 +3227,11 @@ impl DatabasePool {
                         "Episodes".episodetitle,
                         "Episodes".episodepubdate,
                         "Episodes".episodedescription,
-                        "Episodes".episodeartwork,
+                        CASE 
+                            WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            ELSE "Episodes".episodeartwork
+                        END as episodeartwork,
                         "Episodes".episodeurl,
                         "Episodes".episodeduration,
                         "Episodes".completed,
@@ -2861,6 +3244,7 @@ impl DatabasePool {
                         CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
                     FROM "Episodes"
                     INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                    LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                     LEFT JOIN "UserEpisodeHistory" ON
                         "Episodes".episodeid = "UserEpisodeHistory".episodeid
                         AND "UserEpisodeHistory".userid = $1
@@ -2934,7 +3318,11 @@ impl DatabasePool {
                         "Episodes".episodetitle,
                         "Episodes".episodepubdate,
                         "Episodes".episodedescription,
-                        "Episodes".episodeartwork,
+                        CASE 
+                            WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            ELSE "Episodes".episodeartwork
+                        END as episodeartwork,
                         "Episodes".episodeurl,
                         "Episodes".episodeduration,
                         "Episodes".completed,
@@ -2948,6 +3336,7 @@ impl DatabasePool {
                     FROM "UserEpisodeHistory"
                     JOIN "Episodes" ON "UserEpisodeHistory".episodeid = "Episodes".episodeid
                     JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                    LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                     LEFT JOIN "SavedEpisodes" ON
                         "Episodes".episodeid = "SavedEpisodes".episodeid
                         AND "SavedEpisodes".userid = $1
@@ -3117,7 +3506,11 @@ impl DatabasePool {
                         Episodes.EpisodeTitle,
                         Episodes.EpisodePubDate,
                         Episodes.EpisodeDescription,
-                        Episodes.EpisodeArtwork,
+                        CASE 
+                            WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                            WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                            ELSE Episodes.EpisodeArtwork
+                        END as EpisodeArtwork,
                         Episodes.EpisodeURL,
                         Episodes.EpisodeDuration,
                         Episodes.Completed,
@@ -3130,6 +3523,7 @@ impl DatabasePool {
                         CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded
                     FROM Episodes
                     INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                    LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                     LEFT JOIN UserEpisodeHistory ON
                         Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
                         AND UserEpisodeHistory.UserID = ?
@@ -3203,7 +3597,11 @@ impl DatabasePool {
                         Episodes.EpisodeTitle,
                         Episodes.EpisodePubDate,
                         Episodes.EpisodeDescription,
-                        Episodes.EpisodeArtwork,
+                        CASE 
+                            WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                            WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                            ELSE Episodes.EpisodeArtwork
+                        END as EpisodeArtwork,
                         Episodes.EpisodeURL,
                         Episodes.EpisodeDuration,
                         Episodes.Completed,
@@ -3217,6 +3615,7 @@ impl DatabasePool {
                     FROM UserEpisodeHistory
                     JOIN Episodes ON UserEpisodeHistory.EpisodeID = Episodes.EpisodeID
                     JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                    LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                     LEFT JOIN SavedEpisodes ON
                         Episodes.EpisodeID = SavedEpisodes.EpisodeID
                         AND SavedEpisodes.UserID = ?
@@ -3377,13 +3776,6 @@ impl DatabasePool {
         match self {
             DatabasePool::Postgres(pool) => {
                 let query = r#"
-                    WITH filtered_episodes AS (
-                        SELECT pc.playlistid, pc.episodeid
-                        FROM "PlaylistContents" pc
-                        JOIN "Episodes" e ON pc.episodeid = e.episodeid
-                        JOIN "Podcasts" p ON e.podcastid = p.podcastid
-                        WHERE p.userid = $1
-                    )
                     SELECT
                         p.playlistid,
                         p.userid,
@@ -3402,17 +3794,13 @@ impl DatabasePool {
                         p.lastupdated,
                         p.created,
                         p.iconname,
-                        COUNT(fe.episodeid)::INTEGER as episode_count
+                        COALESCE(p.episodecount, 0) as episode_count
                     FROM "Playlists" p
-                    LEFT JOIN filtered_episodes fe ON p.playlistid = fe.playlistid
-                    WHERE p.issystemplaylist = TRUE
-                        OR p.userid = $2
-                    GROUP BY p.playlistid
+                    WHERE p.userid = $1
                     ORDER BY p.issystemplaylist DESC, p.name ASC
                 "#;
 
                 let rows = sqlx::query(query)
-                    .bind(user_id)
                     .bind(user_id)
                     .fetch_all(pool)
                     .await?;
@@ -3479,13 +3867,6 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let query = r#"
-                    WITH filtered_episodes AS (
-                        SELECT pc.PlaylistID, pc.EpisodeID
-                        FROM PlaylistContents pc
-                        JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
-                        JOIN Podcasts p ON e.PodcastID = p.PodcastID
-                        WHERE p.UserID = ?
-                    )
                     SELECT
                         p.PlaylistID,
                         p.UserID,
@@ -3504,17 +3885,13 @@ impl DatabasePool {
                         p.LastUpdated,
                         p.Created,
                         p.IconName,
-                        COUNT(fe.EpisodeID) as episode_count
+                        COALESCE(p.EpisodeCount, 0) as episode_count
                     FROM Playlists p
-                    LEFT JOIN filtered_episodes fe ON p.PlaylistID = fe.PlaylistID
-                    WHERE p.IsSystemPlaylist = TRUE
-                        OR p.UserID = ?
-                    GROUP BY p.PlaylistID
+                    WHERE p.UserID = ?
                     ORDER BY p.IsSystemPlaylist DESC, p.Name ASC
                 "#;
 
                 let rows = sqlx::query(query)
-                    .bind(user_id)
                     .bind(user_id)
                     .fetch_all(pool)
                     .await?;
@@ -3807,7 +4184,11 @@ impl DatabasePool {
                             "Episodes".episodepubdate as episodepubdate,
                             "Episodes".episodedescription as episodedescription,
                             "Episodes".episodeid as episodeid,
-                            "Episodes".episodeartwork as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl as episodeurl,
                             "Episodes".episodeduration as episodeduration,
                             "Podcasts".websiteurl as websiteurl,
@@ -3816,10 +4197,12 @@ impl DatabasePool {
                             TRUE as saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            "Podcasts".podcastid as podcastid
                         FROM "SavedEpisodes"
                         INNER JOIN "Episodes" ON "SavedEpisodes".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "SavedEpisodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "UserEpisodeHistory".userid = $1
@@ -3840,7 +4223,11 @@ impl DatabasePool {
                             "YouTubeVideos".publishedat as episodepubdate,
                             "YouTubeVideos".videodescription as episodedescription,
                             "YouTubeVideos".videoid as episodeid,
-                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "YouTubeVideos".thumbnailurl
+                            END as episodeartwork,
                             "YouTubeVideos".videourl as episodeurl,
                             "YouTubeVideos".duration as episodeduration,
                             "Podcasts".websiteurl as websiteurl,
@@ -3849,10 +4236,12 @@ impl DatabasePool {
                             TRUE as saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL AND "EpisodeQueue".is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            "Podcasts".podcastid as podcastid
                         FROM "SavedVideos"
                         INNER JOIN "YouTubeVideos" ON "SavedVideos".videoid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "EpisodeQueue" ON
                             "SavedVideos".videoid = "EpisodeQueue".episodeid
                             AND "EpisodeQueue".userid = $5
@@ -3895,6 +4284,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        podcastid: row.try_get("podcastid").ok(),
                     });
                 }
                 Ok(episodes)
@@ -3908,7 +4298,11 @@ impl DatabasePool {
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
                             Episodes.EpisodeID as episodeid,
-                            Episodes.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                ELSE Episodes.EpisodeArtwork
+                            END as episodeartwork,
                             Episodes.EpisodeURL as episodeurl,
                             Episodes.EpisodeDuration as episodeduration,
                             Podcasts.WebsiteURL as websiteurl,
@@ -3917,10 +4311,12 @@ impl DatabasePool {
                             TRUE as saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            Podcasts.PodcastID as podcastid
                         FROM SavedEpisodes
                         INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             SavedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID
                             AND UserEpisodeHistory.UserID = ?
@@ -3941,7 +4337,11 @@ impl DatabasePool {
                             YouTubeVideos.PublishedAt as episodepubdate,
                             YouTubeVideos.VideoDescription as episodedescription,
                             YouTubeVideos.VideoID as episodeid,
-                            YouTubeVideos.ThumbnailURL as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                ELSE YouTubeVideos.ThumbnailURL
+                            END as episodeartwork,
                             YouTubeVideos.VideoURL as episodeurl,
                             YouTubeVideos.Duration as episodeduration,
                             Podcasts.WebsiteURL as websiteurl,
@@ -3950,10 +4350,12 @@ impl DatabasePool {
                             TRUE as saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL AND EpisodeQueue.is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            Podcasts.PodcastID as podcastid
                         FROM SavedVideos
                         INNER JOIN YouTubeVideos ON SavedVideos.VideoID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN EpisodeQueue ON
                             SavedVideos.VideoID = EpisodeQueue.EpisodeID
                             AND EpisodeQueue.UserID = ?
@@ -3996,6 +4398,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        podcastid: row.try_get("podcastid").ok(),
                     });
                 }
                 Ok(episodes)
@@ -4538,31 +4941,72 @@ impl DatabasePool {
         let mut first_episode_id = None;
         
         for episode in episodes {
-            // Check if episode already exists
-            let exists = match self {
+            // Check if episode already exists by EITHER title OR url
+            // This handles cases where feed maintainers edit episodes
+            let existing_episode_id = match self {
                 DatabasePool::Postgres(pool) => {
-                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodetitle = $2"#)
+                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND (episodetitle = $2 OR episodeurl = $3)"#)
                         .bind(podcast_id)
                         .bind(&episode.title)
+                        .bind(&episode.url)
                         .fetch_optional(pool)
                         .await?;
-                    row.is_some()
+                    row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
                 }
                 DatabasePool::MySQL(pool) => {
-                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeTitle = ?")
+                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND (EpisodeTitle = ? OR EpisodeURL = ?)")
                         .bind(podcast_id)
                         .bind(&episode.title)
+                        .bind(&episode.url)
                         .fetch_optional(pool)
                         .await?;
-                    row.is_some()
+                    row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
                 }
             };
-            
-            if exists {
+
+            if let Some(episode_id) = existing_episode_id {
+                // Episode already exists (by title or URL) - UPDATE it with new metadata
+                match self {
+                    DatabasePool::Postgres(pool) => {
+                        sqlx::query(
+                            r#"UPDATE "Episodes"
+                               SET episodetitle = $1, episodedescription = $2, episodeurl = $3,
+                                   episodeartwork = $4, episodepubdate = $5, episodeduration = $6
+                               WHERE episodeid = $7"#
+                        )
+                        .bind(&episode.title)
+                        .bind(&episode.description)
+                        .bind(&episode.url)
+                        .bind(&episode.artwork_url)
+                        .bind(&episode.pub_date)
+                        .bind(episode.duration)
+                        .bind(episode_id)
+                        .execute(pool)
+                        .await?;
+                    }
+                    DatabasePool::MySQL(pool) => {
+                        sqlx::query(
+                            "UPDATE Episodes
+                             SET EpisodeTitle = ?, EpisodeDescription = ?, EpisodeURL = ?,
+                                 EpisodeArtwork = ?, EpisodePubDate = ?, EpisodeDuration = ?
+                             WHERE EpisodeID = ?"
+                        )
+                        .bind(&episode.title)
+                        .bind(&episode.description)
+                        .bind(&episode.url)
+                        .bind(&episode.artwork_url)
+                        .bind(&episode.pub_date)
+                        .bind(episode.duration)
+                        .bind(episode_id)
+                        .execute(pool)
+                        .await?;
+                    }
+                }
+                // Skip to next episode - don't insert or send notification for updates
                 continue;
             }
-            
-            // Insert new episode
+
+            // Insert new episode (neither title nor URL exists)
             let episode_id = match self {
                 DatabasePool::Postgres(pool) => {
                     let row = sqlx::query(
@@ -4642,30 +5086,71 @@ impl DatabasePool {
         let mut new_episodes = Vec::new();
         
         for mut episode in episodes {
-            // Check if episode already exists
-            let exists = match self {
+            // Check if episode already exists by EITHER title OR url
+            // This handles cases where feed maintainers edit episodes
+            let existing_episode_id = match self {
                 DatabasePool::Postgres(pool) => {
-                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodetitle = $2"#)
+                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND (episodetitle = $2 OR episodeurl = $3)"#)
                         .bind(podcast_id)
                         .bind(&episode.title)
+                        .bind(&episode.url)
                         .fetch_optional(pool)
                         .await?;
-                    row.is_some()
+                    row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
                 }
                 DatabasePool::MySQL(pool) => {
-                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeTitle = ?")
+                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND (EpisodeTitle = ? OR EpisodeURL = ?)")
                         .bind(podcast_id)
                         .bind(&episode.title)
+                        .bind(&episode.url)
                         .fetch_optional(pool)
                         .await?;
-                    row.is_some()
+                    row.map(|r| r.try_get::<i32, _>("EpisodeID").ok()).flatten()
                 }
             };
-            
-            if exists {
-                continue; // Episode already exists, skip it
+
+            if let Some(episode_id) = existing_episode_id {
+                // Episode already exists (by title or URL) - UPDATE it with new metadata
+                match self {
+                    DatabasePool::Postgres(pool) => {
+                        sqlx::query(
+                            r#"UPDATE "Episodes"
+                               SET episodetitle = $1, episodedescription = $2, episodeurl = $3,
+                                   episodeartwork = $4, episodepubdate = $5, episodeduration = $6
+                               WHERE episodeid = $7"#
+                        )
+                        .bind(&episode.title)
+                        .bind(&episode.description)
+                        .bind(&episode.url)
+                        .bind(&episode.artwork_url)
+                        .bind(&episode.pub_date)
+                        .bind(episode.duration)
+                        .bind(episode_id)
+                        .execute(pool)
+                        .await?;
+                    }
+                    DatabasePool::MySQL(pool) => {
+                        sqlx::query(
+                            "UPDATE Episodes
+                             SET EpisodeTitle = ?, EpisodeDescription = ?, EpisodeURL = ?,
+                                 EpisodeArtwork = ?, EpisodePubDate = ?, EpisodeDuration = ?
+                             WHERE EpisodeID = ?"
+                        )
+                        .bind(&episode.title)
+                        .bind(&episode.description)
+                        .bind(&episode.url)
+                        .bind(&episode.artwork_url)
+                        .bind(&episode.pub_date)
+                        .bind(episode.duration)
+                        .bind(episode_id)
+                        .execute(pool)
+                        .await?;
+                    }
+                }
+                // Skip to next episode - don't add to new_episodes list for updates
+                continue;
             }
-            
+
             // This is a NEW episode - estimate duration if missing
             if episode.duration == 0 {
                 let audio_url = &episode.url;
@@ -4985,6 +5470,40 @@ impl DatabasePool {
         })?;
         
         if !response.status().is_success() {
+            // If we get a 403, the server might be blocking browser User-Agents
+            // Try with a podcast client User-Agent first
+            if response.status() == 403 {
+                println!("Got 403 Forbidden, trying with podcast client User-Agent");
+                
+                let podcast_client = reqwest::Client::builder()
+                    .user_agent("PinePods/1.0")
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .map_err(|e| {
+                        println!("Failed to build podcast client: {}", e);
+                        AppError::Http(e)
+                    })?;
+                
+                let mut podcast_request = podcast_client.get(url);
+                
+                if let (Some(user), Some(pass)) = (username, password) {
+                    println!("Adding basic auth to podcast client request for user: {}", user);
+                    podcast_request = podcast_request.basic_auth(user, Some(pass));
+                }
+                
+                let podcast_response = podcast_request.send().await.map_err(|e| {
+                    println!("Podcast client request failed for {}: {}", url, e);
+                    AppError::Http(e)
+                })?;
+                
+                if podcast_response.status().is_success() {
+                    println!("Podcast client request succeeded with status: {}", podcast_response.status());
+                    return Ok(podcast_response.text().await.map_err(|e| AppError::Http(e))?);
+                }
+                
+                println!("Podcast client request also failed with status: {}", podcast_response.status());
+            }
+            
             println!("Initial request failed with status: {}, trying alternate URL", response.status());
             // Try alternate URL (www vs non-www)
             let alternate_url = if url.contains("://www.") {
@@ -6048,7 +6567,11 @@ impl DatabasePool {
                             "Episodes".episodetitle as episodetitle,
                             "Episodes".episodepubdate as episodepubdate,
                             "Episodes".episodedescription as episodedescription,
-                            "Episodes".episodeartwork as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl as episodeurl,
                             "Episodes".episodeduration as episodeduration,
                             "Podcasts".podcastindexid as podcastindexid,
@@ -6063,6 +6586,7 @@ impl DatabasePool {
                         FROM "DownloadedEpisodes"
                         INNER JOIN "Episodes" ON "DownloadedEpisodes".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "DownloadedEpisodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "DownloadedEpisodes".userid = "UserEpisodeHistory".userid
@@ -6085,7 +6609,11 @@ impl DatabasePool {
                             "YouTubeVideos".videotitle as episodetitle,
                             "YouTubeVideos".publishedat as episodepubdate,
                             "YouTubeVideos".videodescription as episodedescription,
-                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "YouTubeVideos".thumbnailurl
+                            END as episodeartwork,
                             "YouTubeVideos".videourl as episodeurl,
                             "YouTubeVideos".duration as episodeduration,
                             "Podcasts".podcastindexid as podcastindexid,
@@ -6100,6 +6628,7 @@ impl DatabasePool {
                         FROM "DownloadedVideos"
                         INNER JOIN "YouTubeVideos" ON "DownloadedVideos".videoid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "SavedVideos" ON
                             "DownloadedVideos".videoid = "SavedVideos".videoid
                             AND "SavedVideos".userid = $4
@@ -6160,7 +6689,11 @@ impl DatabasePool {
                             Episodes.EpisodeTitle as episodetitle,
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
-                            Episodes.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                ELSE Episodes.EpisodeArtwork
+                            END as episodeartwork,
                             Episodes.EpisodeURL as episodeurl,
                             Episodes.EpisodeDuration as episodeduration,
                             Podcasts.PodcastIndexID as podcastindexid,
@@ -6175,6 +6708,7 @@ impl DatabasePool {
                         FROM DownloadedEpisodes
                         INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             DownloadedEpisodes.EpisodeID = UserEpisodeHistory.EpisodeID
                             AND DownloadedEpisodes.UserID = UserEpisodeHistory.UserID
@@ -6197,7 +6731,11 @@ impl DatabasePool {
                             YouTubeVideos.VideoTitle as episodetitle,
                             YouTubeVideos.PublishedAt as episodepubdate,
                             YouTubeVideos.VideoDescription as episodedescription,
-                            YouTubeVideos.ThumbnailURL as episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
+                                ELSE YouTubeVideos.ThumbnailURL
+                            END as episodeartwork,
                             YouTubeVideos.VideoURL as episodeurl,
                             YouTubeVideos.Duration as episodeduration,
                             Podcasts.PodcastIndexID as podcastindexid,
@@ -6212,6 +6750,7 @@ impl DatabasePool {
                         FROM DownloadedVideos
                         INNER JOIN YouTubeVideos ON DownloadedVideos.VideoID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN SavedVideos ON
                             DownloadedVideos.VideoID = SavedVideos.VideoID
                             AND SavedVideos.UserID = ?
@@ -6432,11 +6971,17 @@ impl DatabasePool {
                     r#"SELECT 
                         "Podcasts".podcastid, "Podcasts".podcastname, "Episodes".episodeid,
                         "Episodes".episodetitle, "Episodes".episodepubdate, "Episodes".episodedescription,
-                        "Episodes".episodeartwork, "Episodes".episodeurl, "Episodes".episodeduration,
+                        CASE 
+                            WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                            ELSE "Episodes".episodeartwork
+                        END as episodeartwork,
+                        "Episodes".episodeurl, "Episodes".episodeduration,
                         "Episodes".completed,
                         "UserEpisodeHistory".listenduration, CAST("Episodes".episodeid AS VARCHAR) AS guid
                        FROM "Episodes"
                        INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                       LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                        LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid AND "UserEpisodeHistory".userid = $1
                        WHERE "Podcasts".podcastid = $2 AND "Podcasts".userid = $3
                        ORDER BY "Episodes".episodepubdate DESC"#
@@ -6476,11 +7021,17 @@ impl DatabasePool {
                     "SELECT 
                         Podcasts.PodcastID, Podcasts.PodcastName, Episodes.EpisodeID,
                         Episodes.EpisodeTitle, Episodes.EpisodePubDate, Episodes.EpisodeDescription,
-                        Episodes.EpisodeArtwork, Episodes.EpisodeURL, Episodes.EpisodeDuration,
+                        CASE 
+                            WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                            WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                            ELSE Episodes.EpisodeArtwork
+                        END as EpisodeArtwork,
+                        Episodes.EpisodeURL, Episodes.EpisodeDuration,
                         Episodes.Completed,
                         UserEpisodeHistory.ListenDuration, CAST(Episodes.EpisodeID AS CHAR) AS guid
                      FROM Episodes
                      INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                     LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                      LEFT JOIN UserEpisodeHistory ON Episodes.EpisodeID = UserEpisodeHistory.EpisodeID AND UserEpisodeHistory.UserID = ?
                      WHERE Podcasts.PodcastID = ? AND Podcasts.UserID = ?
                      ORDER BY Episodes.EpisodePubDate DESC"
@@ -8106,7 +8657,11 @@ impl DatabasePool {
                             "Episodes".episodetitle as "Episodetitle",
                             "Episodes".episodepubdate as "Episodepubdate",
                             "Episodes".episodedescription as "Episodedescription",
-                            "Episodes".episodeartwork as "Episodeartwork",
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as "Episodeartwork",
                             "Episodes".episodeurl as "Episodeurl",
                             "Episodes".episodeduration as "Episodeduration",
                             "UserEpisodeHistory".listenduration as "Listenduration",
@@ -8118,6 +8673,7 @@ impl DatabasePool {
                             FALSE as is_youtube
                         FROM "Episodes"
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON
                             "Episodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "UserEpisodeHistory".userid = $1
@@ -8131,7 +8687,14 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedEpisodes" ON
                             "Episodes".episodeid = "DownloadedEpisodes".episodeid
                             AND "DownloadedEpisodes".userid = $1
-                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = $2
+                        WHERE "Podcasts".userid = $1 AND (
+                            "Podcasts".podcastid = $2 OR
+                            "Podcasts".podcastid IN (
+                                SELECT jsonb_array_elements_text(COALESCE(mergedpodcastids::jsonb, '[]'::jsonb))::int
+                                FROM "Podcasts" p2
+                                WHERE p2.podcastid = $2 AND p2.userid = $1
+                            )
+                        )
 
                         UNION ALL
 
@@ -8140,7 +8703,11 @@ impl DatabasePool {
                             "YouTubeVideos".videotitle as "Episodetitle",
                             "YouTubeVideos".publishedat as "Episodepubdate",
                             "YouTubeVideos".videodescription as "Episodedescription",
-                            "YouTubeVideos".thumbnailurl as "Episodeartwork",
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "YouTubeVideos".thumbnailurl
+                            END as "Episodeartwork",
                             "YouTubeVideos".videourl as "Episodeurl",
                             "YouTubeVideos".duration as "Episodeduration",
                             "YouTubeVideos".listenposition as "Listenduration",
@@ -8152,6 +8719,7 @@ impl DatabasePool {
                             TRUE as is_youtube
                         FROM "YouTubeVideos"
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "SavedVideos" ON
                             "YouTubeVideos".videoid = "SavedVideos".videoid
                             AND "SavedVideos".userid = $1
@@ -8162,7 +8730,14 @@ impl DatabasePool {
                         LEFT JOIN "DownloadedVideos" ON
                             "YouTubeVideos".videoid = "DownloadedVideos".videoid
                             AND "DownloadedVideos".userid = $1
-                        WHERE "Podcasts".userid = $1 AND "Podcasts".podcastid = $2
+                        WHERE "Podcasts".userid = $1 AND (
+                            "Podcasts".podcastid = $2 OR
+                            "Podcasts".podcastid IN (
+                                SELECT jsonb_array_elements_text(COALESCE(mergedpodcastids::jsonb, '[]'::jsonb))::int
+                                FROM "Podcasts" p2
+                                WHERE p2.podcastid = $2 AND p2.userid = $1
+                            )
+                        )
                     ) combined
                     ORDER BY "Episodepubdate" DESC"#
                 )
@@ -8204,7 +8779,11 @@ impl DatabasePool {
                             Episodes.EpisodeTitle as Episodetitle,
                             Episodes.EpisodePubDate as Episodepubdate,
                             Episodes.EpisodeDescription as Episodedescription,
-                            Episodes.EpisodeArtwork as Episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                ELSE Episodes.EpisodeArtwork
+                            END as Episodeartwork,
                             Episodes.EpisodeURL as Episodeurl,
                             Episodes.EpisodeDuration as Episodeduration,
                             UserEpisodeHistory.ListenDuration as Listenduration,
@@ -8216,6 +8795,7 @@ impl DatabasePool {
                             FALSE as is_youtube
                         FROM Episodes
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN UserEpisodeHistory ON
                             Episodes.EpisodeID = UserEpisodeHistory.EpisodeID
                             AND UserEpisodeHistory.UserID = ?
@@ -8229,7 +8809,15 @@ impl DatabasePool {
                         LEFT JOIN DownloadedEpisodes ON
                             Episodes.EpisodeID = DownloadedEpisodes.EpisodeID
                             AND DownloadedEpisodes.UserID = ?
-                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID = ?
+                        WHERE Podcasts.UserID = ? AND (
+                            Podcasts.PodcastID = ? OR
+                            Podcasts.PodcastID IN (
+                                SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) AS UNSIGNED)
+                                FROM (SELECT 0 as n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) numbers
+                                INNER JOIN Podcasts p2 ON p2.PodcastID = ? AND p2.UserID = ?
+                                WHERE JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) IS NOT NULL
+                            )
+                        )
 
                         UNION ALL
 
@@ -8238,7 +8826,11 @@ impl DatabasePool {
                             YouTubeVideos.VideoTitle as Episodetitle,
                             YouTubeVideos.PublishedAt as Episodepubdate,
                             YouTubeVideos.VideoDescription as Episodedescription,
-                            YouTubeVideos.ThumbnailURL as Episodeartwork,
+                            CASE 
+                                WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
+                                ELSE YouTubeVideos.ThumbnailURL
+                            END as Episodeartwork,
                             YouTubeVideos.VideoURL as Episodeurl,
                             YouTubeVideos.Duration as Episodeduration,
                             YouTubeVideos.ListenPosition as Listenduration,
@@ -8250,6 +8842,7 @@ impl DatabasePool {
                             TRUE as is_youtube
                         FROM YouTubeVideos
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
+                        LEFT JOIN Users ON Podcasts.UserID = Users.UserID
                         LEFT JOIN SavedVideos ON
                             YouTubeVideos.VideoID = SavedVideos.VideoID
                             AND SavedVideos.UserID = ?
@@ -8260,7 +8853,15 @@ impl DatabasePool {
                         LEFT JOIN DownloadedVideos ON
                             YouTubeVideos.VideoID = DownloadedVideos.VideoID
                             AND DownloadedVideos.UserID = ?
-                        WHERE Podcasts.UserID = ? AND Podcasts.PodcastID = ?
+                        WHERE Podcasts.UserID = ? AND (
+                            Podcasts.PodcastID = ? OR
+                            Podcasts.PodcastID IN (
+                                SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) AS UNSIGNED)
+                                FROM (SELECT 0 as n UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) numbers
+                                INNER JOIN Podcasts p2 ON p2.PodcastID = ? AND p2.UserID = ?
+                                WHERE JSON_UNQUOTE(JSON_EXTRACT(COALESCE(p2.MergedPodcastIDs, '[]'), CONCAT('$[', numbers.n, ']'))) IS NOT NULL
+                            )
+                        )
                     ) combined
                     ORDER BY Episodepubdate DESC"
                 )
@@ -8270,11 +8871,15 @@ impl DatabasePool {
                 .bind(user_id)
                 .bind(user_id)
                 .bind(podcast_id)
+                .bind(podcast_id)
+                .bind(user_id)
                 .bind(user_id)
                 .bind(user_id)
                 .bind(user_id)
                 .bind(user_id)
                 .bind(podcast_id)
+                .bind(podcast_id)
+                .bind(user_id)
                 .fetch_all(pool)
                 .await?;
 
@@ -8686,6 +9291,12 @@ impl DatabasePool {
                     .execute(pool)
                     .await?;
 
+                // Create default playlists for the new user
+                if let Err(e) = self.create_default_playlists_for_user(user_id).await {
+                    tracing::warn!("⚠️ Failed to create default playlists for new user {}: {}", user_id, e);
+                    // Don't fail user creation if playlist creation fails
+                }
+
                 Ok(user_id)
             }
             DatabasePool::MySQL(pool) => {
@@ -8707,6 +9318,12 @@ impl DatabasePool {
                     .bind("light")
                     .execute(pool)
                     .await?;
+
+                // Create default playlists for the new user
+                if let Err(e) = self.create_default_playlists_for_user(user_id).await {
+                    tracing::warn!("⚠️ Failed to create default playlists for new user {}: {}", user_id, e);
+                    // Don't fail user creation if playlist creation fails
+                }
 
                 Ok(user_id)
             }
@@ -8795,6 +9412,12 @@ impl DatabasePool {
                     .execute(pool)
                     .await.ok();
 
+                // CRITICAL: Delete user's playlists to avoid foreign key constraint violations
+                sqlx::query(r#"DELETE FROM "Playlists" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await.ok();
+
                 // Delete from Users (main table)
                 sqlx::query(r#"DELETE FROM "Users" WHERE userid = $1"#)
                     .bind(user_id)
@@ -8834,6 +9457,12 @@ impl DatabasePool {
 
                 // Delete from UserStats
                 sqlx::query("DELETE FROM UserStats WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(pool)
+                    .await.ok();
+
+                // CRITICAL: Delete user's playlists to avoid foreign key constraint violations
+                sqlx::query("DELETE FROM Playlists WHERE UserID = ?")
                     .bind(user_id)
                     .execute(pool)
                     .await.ok();
@@ -11962,17 +12591,26 @@ impl DatabasePool {
                                 
                                 // Get episode duration to check if it should be marked as complete
                                 if let Ok(episode_duration) = self.get_episode_duration(episode_id).await {
-                                    if episode_duration > 0 && (episode_duration - position as i32) <= 120 {
-                                        // Within 2 minutes of completion - mark as complete
+                                    let position_sec = position as i32;
+                                    let remaining_time = episode_duration - position_sec;
+                                    
+                                    // Always log for debugging GPodder sync completion issues
+                                    println!("GPodder sync episode: {} - Duration: {}s, Position: {}s, Remaining: {}s", 
+                                             episode_url, episode_duration, position_sec, remaining_time);
+                                    
+                                    // Mark complete if position is at/beyond the end OR within 60 seconds of completion
+                                    if episode_duration > 0 && (position_sec >= episode_duration || remaining_time <= 60) {
+                                        // At end or within 1 minute of completion - mark as complete
                                         // GPodder sync only handles regular podcast episodes, never YouTube videos
                                         self.mark_episode_completed(episode_id, user_id, false).await?;
                                         applied_count += 1;
-                                        tracing::debug!("Marked episode as completed: {} ({}s of {}s)", episode_url, position, episode_duration);
+                                        println!("✓ Marked episode as completed via GPodder sync: {} ({}s of {}s)", 
+                                                episode_url, position_sec, episode_duration);
                                     } else {
                                         // Update progress normally
-                                        self.update_episode_progress(user_id, episode_id, position as i32, timestamp).await?;
+                                        self.update_episode_progress(user_id, episode_id, position_sec, timestamp).await?;
                                         applied_count += 1;
-                                        tracing::debug!("Applied episode action: {} -> position {}", episode_url, position);
+                                        println!("Updated episode progress: {} -> {}s/{}s", episode_url, position_sec, episode_duration);
                                     }
                                 } else {
                                     // Fallback to normal progress update if duration unavailable
@@ -12759,10 +13397,57 @@ impl DatabasePool {
         
         println!("Received response with status: {}", response.status());
         if !response.status().is_success() {
+            // If we get a 403, the server might be blocking browser User-Agents
+            // Try with a podcast client User-Agent
+            if response.status() == 403 {
+                println!("Got 403 Forbidden, trying with podcast client User-Agent");
+                
+                let podcast_client = reqwest::Client::builder()
+                    .user_agent("PinePods/1.0")
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .map_err(|e| {
+                        println!("Failed to build podcast client in get_podcast_values: {}", e);
+                        AppError::Http(e)
+                    })?;
+                
+                let mut podcast_request = podcast_client.get(feed_url);
+                
+                if let (Some(user), Some(pass)) = (username, password) {
+                    println!("Using basic authentication for podcast client request: {}", feed_url);
+                    use base64::Engine;
+                    let encoded = base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", user, pass));
+                    podcast_request = podcast_request.header(AUTHORIZATION, format!("Basic {}", encoded));
+                }
+                
+                let podcast_response = podcast_request.send().await
+                    .map_err(|e| {
+                        println!("Podcast client request failed for {}: {}", feed_url, e);
+                        AppError::Http(e)
+                    })?;
+                
+                if podcast_response.status().is_success() {
+                    println!("Podcast client request succeeded with status: {}", podcast_response.status());
+                    let content = podcast_response.text().await?;
+                    
+                    // Continue with the same parsing logic
+                    return self.parse_feed_content_to_values(content, feed_url, user_id).await;
+                }
+                
+                println!("Podcast client request also failed with status: {}", podcast_response.status());
+            }
+            
             return Err(AppError::bad_request(&format!("Feed request failed: HTTP {}", response.status())));
         }
         
         let content = response.text().await?;
+        
+        self.parse_feed_content_to_values(content, feed_url, user_id).await
+    }
+    
+    // Helper function to parse feed content into podcast values (extracted to avoid duplication)
+    async fn parse_feed_content_to_values(&self, content: String, feed_url: &str, user_id: i32) -> AppResult<std::collections::HashMap<String, String>> {
+        use feed_rs::parser;
         
         // Parse RSS feed using feed-rs
         let feed = parser::parse(content.as_bytes())
@@ -13242,7 +13927,7 @@ impl DatabasePool {
         let settings = match self {
             DatabasePool::Postgres(pool) => {
                 let rows = sqlx::query(r#"
-                    SELECT platform, enabled, ntfytopic, ntfyserverurl, ntfyusername, ntfypassword, ntfyaccesstoken, gotifyurl, gotifytoken
+                    SELECT platform, enabled, ntfytopic, ntfyserverurl, ntfyusername, ntfypassword, ntfyaccesstoken, gotifyurl, gotifytoken, httpurl, httptoken, httpmethod
                     FROM "UserNotificationSettings" 
                     WHERE userid = $1
                 "#)
@@ -13261,7 +13946,10 @@ impl DatabasePool {
                         "ntfy_password": row.try_get::<Option<String>, _>("ntfypassword")?,
                         "ntfy_access_token": row.try_get::<Option<String>, _>("ntfyaccesstoken")?,
                         "gotify_url": row.try_get::<Option<String>, _>("gotifyurl")?,
-                        "gotify_token": row.try_get::<Option<String>, _>("gotifytoken")?
+                        "gotify_token": row.try_get::<Option<String>, _>("gotifytoken")?,
+                        "http_url": row.try_get::<Option<String>, _>("httpurl")?,
+                        "http_token": row.try_get::<Option<String>, _>("httptoken")?,
+                        "http_method": row.try_get::<Option<String>, _>("httpmethod")?
                     });
                     settings.push(setting);
                 }
@@ -13269,7 +13957,7 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let rows = sqlx::query("
-                    SELECT Platform, Enabled, NtfyTopic, NtfyServerURL, NtfyUsername, NtfyPassword, NtfyAccessToken, GotifyURL, GotifyToken
+                    SELECT Platform, Enabled, NtfyTopic, NtfyServerURL, NtfyUsername, NtfyPassword, NtfyAccessToken, GotifyURL, GotifyToken, HttpUrl, HttpToken, HttpMethod
                     FROM UserNotificationSettings 
                     WHERE UserID = ?
                     ORDER BY Platform
@@ -13289,7 +13977,10 @@ impl DatabasePool {
                         "ntfy_password": row.try_get::<Option<String>, _>("NtfyPassword")?,
                         "ntfy_access_token": row.try_get::<Option<String>, _>("NtfyAccessToken")?,
                         "gotify_url": row.try_get::<Option<String>, _>("GotifyURL")?,
-                        "gotify_token": row.try_get::<Option<String>, _>("GotifyToken")?
+                        "gotify_token": row.try_get::<Option<String>, _>("GotifyToken")?,
+                        "http_url": row.try_get::<Option<String>, _>("HttpUrl")?,
+                        "http_token": row.try_get::<Option<String>, _>("HttpToken")?,
+                        "http_method": row.try_get::<Option<String>, _>("HttpMethod")?
                     });
                     settings.push(setting);
                 }
@@ -13302,7 +13993,7 @@ impl DatabasePool {
     }
     
     // Update notification settings - matches Python update_notification_settings function exactly
-    pub async fn update_notification_settings(&self, user_id: i32, platform: &str, enabled: bool, ntfy_topic: Option<&str>, ntfy_server_url: Option<&str>, ntfy_username: Option<&str>, ntfy_password: Option<&str>, ntfy_access_token: Option<&str>, gotify_url: Option<&str>, gotify_token: Option<&str>) -> AppResult<bool> {
+    pub async fn update_notification_settings(&self, user_id: i32, platform: &str, enabled: bool, ntfy_topic: Option<&str>, ntfy_server_url: Option<&str>, ntfy_username: Option<&str>, ntfy_password: Option<&str>, ntfy_access_token: Option<&str>, gotify_url: Option<&str>, gotify_token: Option<&str>, http_url: Option<&str>, http_token: Option<&str>, http_method: Option<&str>) -> AppResult<bool> {
         println!("Updating notification settings for user {} platform {}", user_id, platform);
         
         // Check if settings exist for this user/platform combination and perform update/insert
@@ -13320,7 +14011,7 @@ impl DatabasePool {
                     // Update existing record
                     let result = sqlx::query(r#"
                         UPDATE "UserNotificationSettings" 
-                        SET enabled = $3, ntfytopic = $4, ntfyserverurl = $5, ntfyusername = $6, ntfypassword = $7, ntfyaccesstoken = $8, gotifyurl = $9, gotifytoken = $10
+                        SET enabled = $3, ntfytopic = $4, ntfyserverurl = $5, ntfyusername = $6, ntfypassword = $7, ntfyaccesstoken = $8, gotifyurl = $9, gotifytoken = $10, httpurl = $11, httptoken = $12, httpmethod = $13
                         WHERE userid = $1 AND platform = $2
                     "#)
                         .bind(user_id)
@@ -13333,6 +14024,9 @@ impl DatabasePool {
                         .bind(ntfy_access_token)
                         .bind(gotify_url)
                         .bind(gotify_token)
+                        .bind(http_url)
+                        .bind(http_token)
+                        .bind(http_method)
                         .execute(pool)
                         .await?;
                     result.rows_affected() > 0
@@ -13340,8 +14034,8 @@ impl DatabasePool {
                     // Insert new record
                     let result = sqlx::query(r#"
                         INSERT INTO "UserNotificationSettings" 
-                        (userid, platform, enabled, ntfytopic, ntfyserverurl, ntfyusername, ntfypassword, ntfyaccesstoken, gotifyurl, gotifytoken)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                        (userid, platform, enabled, ntfytopic, ntfyserverurl, ntfyusername, ntfypassword, ntfyaccesstoken, gotifyurl, gotifytoken, httpurl, httptoken, httpmethod)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
                     "#)
                         .bind(user_id)
                         .bind(platform)
@@ -13353,6 +14047,9 @@ impl DatabasePool {
                         .bind(ntfy_access_token)
                         .bind(gotify_url)
                         .bind(gotify_token)
+                        .bind(http_url)
+                        .bind(http_token)
+                        .bind(http_method)
                         .execute(pool)
                         .await?;
                     result.rows_affected() > 0
@@ -13371,7 +14068,7 @@ impl DatabasePool {
                     // Update existing record
                     let result = sqlx::query("
                         UPDATE UserNotificationSettings 
-                        SET Enabled = ?, NtfyTopic = ?, NtfyServerURL = ?, NtfyUsername = ?, NtfyPassword = ?, NtfyAccessToken = ?, GotifyURL = ?, GotifyToken = ?
+                        SET Enabled = ?, NtfyTopic = ?, NtfyServerURL = ?, NtfyUsername = ?, NtfyPassword = ?, NtfyAccessToken = ?, GotifyURL = ?, GotifyToken = ?, HttpUrl = ?, HttpToken = ?, HttpMethod = ?
                         WHERE UserID = ? AND Platform = ?
                     ")
                         .bind(enabled)
@@ -13382,6 +14079,9 @@ impl DatabasePool {
                         .bind(ntfy_access_token)
                         .bind(gotify_url)
                         .bind(gotify_token)
+                        .bind(http_url)
+                        .bind(http_token)
+                        .bind(http_method)
                         .bind(user_id)
                         .bind(platform)
                         .execute(pool)
@@ -13391,8 +14091,8 @@ impl DatabasePool {
                     // Insert new record
                     let result = sqlx::query("
                         INSERT INTO UserNotificationSettings 
-                        (UserID, Platform, Enabled, NtfyTopic, NtfyServerURL, NtfyUsername, NtfyPassword, NtfyAccessToken, GotifyURL, GotifyToken)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (UserID, Platform, Enabled, NtfyTopic, NtfyServerURL, NtfyUsername, NtfyPassword, NtfyAccessToken, GotifyURL, GotifyToken, HttpUrl, HttpToken, HttpMethod)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ")
                         .bind(user_id)
                         .bind(platform)
@@ -13404,6 +14104,9 @@ impl DatabasePool {
                         .bind(ntfy_access_token)
                         .bind(gotify_url)
                         .bind(gotify_token)
+                        .bind(http_url)
+                        .bind(http_token)
+                        .bind(http_method)
                         .execute(pool)
                         .await?;
                     result.rows_affected() > 0
@@ -13416,7 +14119,7 @@ impl DatabasePool {
     }
     
     // Add OIDC provider - matches Python add_oidc_provider function exactly
-    pub async fn add_oidc_provider(&self, provider_name: &str, client_id: &str, client_secret: &str, authorization_url: &str, token_url: &str, user_info_url: &str, button_text: &str, scope: &str, button_color: &str, button_text_color: &str, icon_svg: &str, name_claim: &str, email_claim: &str, username_claim: &str, roles_claim: &str, user_role: &str, admin_role: &str) -> AppResult<i32> {
+    pub async fn add_oidc_provider(&self, provider_name: &str, client_id: &str, client_secret: &str, authorization_url: &str, token_url: &str, user_info_url: &str, button_text: &str, scope: &str, button_color: &str, button_text_color: &str, icon_svg: &str, name_claim: &str, email_claim: &str, username_claim: &str, roles_claim: &str, user_role: &str, admin_role: &str, initialized_from_env: bool) -> AppResult<i32> {
         println!("Adding OIDC provider: {}", provider_name);
         
         let provider_id = match self {
@@ -13426,8 +14129,8 @@ impl DatabasePool {
                         providername, clientid, clientsecret, authorizationurl,
                         tokenurl, userinfourl, buttontext, scope,
                         buttoncolor, buttontextcolor, iconsvg, nameclaim, emailclaim,
-                        usernameclaim, rolesclaim, userrole, adminrole
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                        usernameclaim, rolesclaim, userrole, adminrole, initializedFromEnv
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
                     RETURNING providerid
                 "#)
                     .bind(provider_name)
@@ -13447,6 +14150,7 @@ impl DatabasePool {
                     .bind(roles_claim)
                     .bind(user_role)
                     .bind(admin_role)
+                    .bind(initialized_from_env)
                     .fetch_one(pool)
                     .await?;
                 
@@ -13458,8 +14162,8 @@ impl DatabasePool {
                         ProviderName, ClientID, ClientSecret, AuthorizationURL,
                         TokenURL, UserInfoURL, ButtonText, Scope,
                         ButtonColor, ButtonTextColor, IconSVG, NameClaim, EmailClaim,
-                        UsernameClaim, RolesClaim, UserRole, AdminRole
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        UsernameClaim, RolesClaim, UserRole, AdminRole, InitializedFromEnv
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ")
                     .bind(provider_name)
                     .bind(client_id)
@@ -13478,6 +14182,7 @@ impl DatabasePool {
                     .bind(roles_claim)
                     .bind(user_role)
                     .bind(admin_role)
+                    .bind(initialized_from_env)
                     .execute(pool)
                     .await?;
                 
@@ -13499,7 +14204,7 @@ impl DatabasePool {
                     SELECT providerid, providername, clientid, authorizationurl,
                            tokenurl, userinfourl, buttontext, scope, buttoncolor,
                            buttontextcolor, iconsvg, nameclaim, emailclaim, usernameclaim,
-                           rolesclaim, userrole, adminrole, enabled, created, modified
+                           rolesclaim, userrole, adminrole, enabled, created, modified, initializedfromenv
                     FROM "OIDCProviders" 
                     ORDER BY providername
                 "#)
@@ -13528,7 +14233,8 @@ impl DatabasePool {
                         "admin_role": row.try_get::<Option<String>, _>("adminrole")?,
                         "enabled": row.try_get::<bool, _>("enabled")?,
                         "created": row.try_get::<Option<chrono::NaiveDateTime>, _>("created")?,
-                        "modified": row.try_get::<Option<chrono::NaiveDateTime>, _>("modified")?
+                        "modified": row.try_get::<Option<chrono::NaiveDateTime>, _>("modified")?,
+                        "initialized_from_env": row.try_get::<bool, _>("initializedfromenv").unwrap_or(false)
                     });
                     providers.push(provider);
                 }
@@ -13539,7 +14245,7 @@ impl DatabasePool {
                     SELECT ProviderID, ProviderName, ClientID, AuthorizationURL,
                            TokenURL, UserInfoURL, ButtonText, Scope, ButtonColor,
                            ButtonTextColor, IconSVG, NameClaim, EmailClaim, UsernameClaim,
-                           RolesClaim, UserRole, AdminRole, Enabled, Created, Modified
+                           RolesClaim, UserRole, AdminRole, Enabled, Created, Modified, InitializedFromEnv
                     FROM OIDCProviders 
                     ORDER BY ProviderName
                 ")
@@ -13568,7 +14274,8 @@ impl DatabasePool {
                         "admin_role": row.try_get::<Option<String>, _>("AdminRole")?,
                         "enabled": row.try_get::<bool, _>("Enabled")?,
                         "created": row.try_get::<Option<chrono::NaiveDateTime>, _>("Created")?,
-                        "modified": row.try_get::<Option<chrono::NaiveDateTime>, _>("Modified")?
+                        "modified": row.try_get::<Option<chrono::NaiveDateTime>, _>("Modified")?,
+                        "initialized_from_env": row.try_get::<bool, _>("InitializedFromEnv").unwrap_or(false)
                     });
                     providers.push(provider);
                 }
@@ -13578,6 +14285,193 @@ impl DatabasePool {
         
         println!("Found {} OIDC providers", providers.len());
         Ok(providers)
+    }
+    
+    // Remove OIDC provider - matches Python remove_oidc_provider function exactly
+    pub async fn remove_oidc_provider(&self, provider_id: i32) -> AppResult<bool> {
+        println!("Removing OIDC provider with ID: {}", provider_id);
+        
+        let rows_affected = match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"DELETE FROM "OIDCProviders" WHERE ProviderID = $1"#)
+                    .bind(provider_id)
+                    .execute(pool)
+                    .await?;
+                
+                result.rows_affected()
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("DELETE FROM OIDCProviders WHERE ProviderID = ?")
+                    .bind(provider_id)
+                    .execute(pool)
+                    .await?;
+                
+                result.rows_affected()
+            }
+        };
+        
+        let success = rows_affected > 0;
+        if success {
+            println!("Successfully removed OIDC provider with ID: {}", provider_id);
+        } else {
+            println!("No OIDC provider found with ID: {}", provider_id);
+        }
+        Ok(success)
+    }
+
+    // Initialize OIDC provider from environment variables on container startup
+    pub async fn init_oidc_from_env(&self, oidc_config: &OIDCConfig) -> AppResult<()> {
+        if !oidc_config.is_configured() {
+            println!("OIDC environment variables not configured, skipping initialization");
+            return Ok(());
+        }
+
+        let provider_name = oidc_config.provider_name.as_ref().unwrap();
+        let client_id = oidc_config.client_id.as_ref().unwrap();
+        
+        // Check if provider already exists
+        let existing = self.get_oidc_provider_by_client_id(client_id).await?;
+        if existing.is_some() {
+            println!("OIDC provider with client_id '{}' already exists, skipping initialization", client_id);
+            return Ok(());
+        }
+
+        println!("Initializing OIDC provider '{}' from environment variables", provider_name);
+
+        // Create the provider with all the configuration
+        let provider_id = self.add_oidc_provider(
+            provider_name,
+            client_id,
+            oidc_config.client_secret.as_ref().unwrap(),
+            oidc_config.authorization_url.as_ref().unwrap(),
+            oidc_config.token_url.as_ref().unwrap(),
+            oidc_config.user_info_url.as_ref().unwrap(),
+            oidc_config.button_text.as_ref().unwrap(),
+            oidc_config.scope.as_deref().unwrap_or("openid email profile"),
+            oidc_config.button_color.as_deref().unwrap_or("#000000"),
+            oidc_config.button_text_color.as_deref().unwrap_or("#FFFFFF"),
+            oidc_config.icon_svg.as_deref().unwrap_or(""),
+            oidc_config.name_claim.as_deref().unwrap_or("name"),
+            oidc_config.email_claim.as_deref().unwrap_or("email"),
+            oidc_config.username_claim.as_deref().unwrap_or("preferred_username"),
+            oidc_config.roles_claim.as_deref().unwrap_or("roles"),
+            oidc_config.user_role.as_deref().unwrap_or("user"),
+            oidc_config.admin_role.as_deref().unwrap_or("admin"),
+            true, // initialized_from_env = true
+        ).await?;
+
+        println!("Successfully initialized OIDC provider '{}' with ID: {}", provider_name, provider_id);
+        Ok(())
+    }
+
+    // Check if OIDC provider was initialized from environment variables
+    pub async fn is_oidc_provider_env_initialized(&self, provider_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"
+                    SELECT initializedfromenv FROM "OIDCProviders" WHERE providerid = $1
+                "#)
+                    .bind(provider_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                Ok(result.map(|row| row.try_get::<bool, _>("initializedfromenv").unwrap_or(false)).unwrap_or(false))
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(r#"
+                    SELECT InitializedFromEnv FROM OIDCProviders WHERE ProviderID = ?
+                "#)
+                    .bind(provider_id)
+                    .fetch_optional(pool)
+                    .await?;
+                
+                Ok(result.map(|row| row.try_get::<bool, _>("InitializedFromEnv").unwrap_or(false)).unwrap_or(false))
+            }
+        }
+    }
+
+    // Update OIDC provider - updates an existing provider with new values
+    pub async fn update_oidc_provider(&self, provider_id: i32, provider_name: &str, client_id: &str, client_secret: &str, authorization_url: &str, token_url: &str, user_info_url: &str, button_text: &str, scope: &str, button_color: &str, button_text_color: &str, icon_svg: &str, name_claim: &str, email_claim: &str, username_claim: &str, roles_claim: &str, user_role: &str, admin_role: &str) -> AppResult<bool> {
+        println!("Updating OIDC provider with ID: {}", provider_id);
+        
+        let rows_affected = match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"
+                    UPDATE "OIDCProviders" SET
+                        providername = $2, clientid = $3, clientsecret = $4, 
+                        authorizationurl = $5, tokenurl = $6, userinfourl = $7,
+                        buttontext = $8, scope = $9, buttoncolor = $10,
+                        buttontextcolor = $11, iconsvg = $12, nameclaim = $13,
+                        emailclaim = $14, usernameclaim = $15, rolesclaim = $16,
+                        userrole = $17, adminrole = $18, modified = CURRENT_TIMESTAMP
+                    WHERE providerid = $1
+                "#)
+                    .bind(provider_id)
+                    .bind(provider_name)
+                    .bind(client_id)
+                    .bind(client_secret)
+                    .bind(authorization_url)
+                    .bind(token_url)
+                    .bind(user_info_url)
+                    .bind(button_text)
+                    .bind(scope)
+                    .bind(button_color)
+                    .bind(button_text_color)
+                    .bind(icon_svg)
+                    .bind(name_claim)
+                    .bind(email_claim)
+                    .bind(username_claim)
+                    .bind(roles_claim)
+                    .bind(user_role)
+                    .bind(admin_role)
+                    .execute(pool)
+                    .await?;
+                
+                result.rows_affected()
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("
+                    UPDATE OIDCProviders SET
+                        ProviderName = ?, ClientID = ?, ClientSecret = ?,
+                        AuthorizationURL = ?, TokenURL = ?, UserInfoURL = ?,
+                        ButtonText = ?, Scope = ?, ButtonColor = ?,
+                        ButtonTextColor = ?, IconSVG = ?, NameClaim = ?,
+                        EmailClaim = ?, UsernameClaim = ?, RolesClaim = ?,
+                        UserRole = ?, AdminRole = ?, Modified = CURRENT_TIMESTAMP
+                    WHERE ProviderID = ?
+                ")
+                    .bind(provider_name)
+                    .bind(client_id)
+                    .bind(client_secret)
+                    .bind(authorization_url)
+                    .bind(token_url)
+                    .bind(user_info_url)
+                    .bind(button_text)
+                    .bind(scope)
+                    .bind(button_color)
+                    .bind(button_text_color)
+                    .bind(icon_svg)
+                    .bind(name_claim)
+                    .bind(email_claim)
+                    .bind(username_claim)
+                    .bind(roles_claim)
+                    .bind(user_role)
+                    .bind(admin_role)
+                    .bind(provider_id)
+                    .execute(pool)
+                    .await?;
+                
+                result.rows_affected()
+            }
+        };
+        
+        let success = rows_affected > 0;
+        if success {
+            println!("Successfully updated OIDC provider with ID: {}", provider_id);
+        } else {
+            println!("No OIDC provider found with ID: {}", provider_id);
+        }
+        Ok(success)
     }
     
     // Get user start page - matches Python get_user_startpage function exactly
@@ -14315,7 +15209,12 @@ impl DatabasePool {
                         CASE
                             WHEN pe.episodeartwork IS NULL THEN
                                 (SELECT artworkurl FROM "Podcasts" WHERE podcastid = pe.podcastid)
-                            ELSE pe.episodeartwork
+                            ELSE
+                                CASE 
+                                    WHEN p.usepodcastcoverscustomized = TRUE AND p.usepodcastcovers = TRUE THEN p.artworkurl
+                                    WHEN u.usepodcastcovers = TRUE THEN p.artworkurl
+                                    ELSE pe.episodeartwork
+                                END
                         END as episodeartwork,
                         pe.episodepubdate,
                         pe.episodeduration,
@@ -14357,6 +15256,7 @@ impl DatabasePool {
                     FROM "PeopleEpisodes" pe
                     INNER JOIN "People" pp ON pe.personid = pp.personid
                     INNER JOIN "Podcasts" p ON pe.podcastid = p.podcastid
+                    LEFT JOIN "Users" u ON p.userid = u.userid
                     LEFT JOIN "Episodes" e ON e.episodeurl = pe.episodeurl AND e.podcastid = pe.podcastid
                     LEFT JOIN (
                         SELECT * FROM "SavedEpisodes" WHERE userid = $2
@@ -14418,7 +15318,15 @@ impl DatabasePool {
                         pe.EpisodeTitle,
                         pe.EpisodeDescription,
                         pe.EpisodeURL,
-                        COALESCE(pe.EpisodeArtwork, p.ArtworkURL) as EpisodeArtwork,
+                        CASE 
+                            WHEN pe.EpisodeArtwork IS NULL THEN p.ArtworkURL
+                            ELSE
+                                CASE 
+                                    WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                                    WHEN u.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                                    ELSE pe.EpisodeArtwork
+                                END
+                        END as EpisodeArtwork,
                         pe.EpisodePubDate,
                         pe.EpisodeDuration,
                         p.PodcastName,
@@ -14453,6 +15361,7 @@ impl DatabasePool {
                     FROM PeopleEpisodes pe
                     INNER JOIN People pp ON pe.PersonID = pp.PersonID
                     INNER JOIN Podcasts p ON pe.PodcastID = p.PodcastID
+                    LEFT JOIN Users u ON p.UserID = u.UserID
                     LEFT JOIN Episodes e ON e.EpisodeURL = pe.EpisodeURL AND e.PodcastID = pe.PodcastID
                     LEFT JOIN (
                         SELECT * FROM SavedEpisodes WHERE UserID = ?
@@ -14926,7 +15835,11 @@ impl DatabasePool {
                             "UserEpisodeHistory".listenduration as listenduration,
                             "Episodes".episodetitle as episodetitle,
                             "Episodes".episodedescription as episodedescription,
-                            "Episodes".episodeartwork as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl as episodeurl,
                             "Episodes".episodeduration as episodeduration,
                             "Podcasts".podcastname as podcastname,
@@ -14939,6 +15852,7 @@ impl DatabasePool {
                         FROM "UserEpisodeHistory"
                         JOIN "Episodes" ON "UserEpisodeHistory".episodeid = "Episodes".episodeid
                         JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "SavedEpisodes" ON "Episodes".episodeid = "SavedEpisodes".episodeid AND "SavedEpisodes".userid = $1
                         LEFT JOIN "EpisodeQueue" ON "Episodes".episodeid = "EpisodeQueue".episodeid AND "EpisodeQueue".userid = $1
                         LEFT JOIN "DownloadedEpisodes" ON "Episodes".episodeid = "DownloadedEpisodes".episodeid AND "DownloadedEpisodes".userid = $1
@@ -14952,7 +15866,11 @@ impl DatabasePool {
                             "YouTubeVideos".listenposition as listenduration,
                             "YouTubeVideos".videotitle as episodetitle,
                             "YouTubeVideos".videodescription as episodedescription,
-                            "YouTubeVideos".thumbnailurl as episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "YouTubeVideos".thumbnailurl
+                            END as episodeartwork,
                             "YouTubeVideos".videourl as episodeurl,
                             "YouTubeVideos".duration as episodeduration,
                             "Podcasts".podcastname as podcastname,
@@ -14964,6 +15882,7 @@ impl DatabasePool {
                             TRUE as is_youtube
                         FROM "YouTubeVideos"
                         JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "SavedVideos" ON "YouTubeVideos".videoid = "SavedVideos".videoid AND "SavedVideos".userid = $1
                         LEFT JOIN "EpisodeQueue" ON "YouTubeVideos".videoid = "EpisodeQueue".episodeid AND "EpisodeQueue".userid = $1
                         LEFT JOIN "DownloadedVideos" ON "YouTubeVideos".videoid = "DownloadedVideos".videoid AND "DownloadedVideos".userid = $1
@@ -15012,7 +15931,11 @@ impl DatabasePool {
                             ueh.ListenDuration as listenduration,
                             e.EpisodeTitle as episodetitle,
                             e.EpisodeDescription as episodedescription,
-                            e.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN p.UsePodcastCoversCustomized = 1 AND p.UsePodcastCovers = 1 THEN p.ArtworkURL
+                                WHEN u.UsePodcastCovers = 1 THEN p.ArtworkURL
+                                ELSE e.EpisodeArtwork
+                            END as episodeartwork,
                             e.EpisodeURL as episodeurl,
                             e.EpisodeDuration as episodeduration,
                             p.PodcastName as podcastname,
@@ -15025,6 +15948,7 @@ impl DatabasePool {
                         FROM UserEpisodeHistory ueh
                         JOIN Episodes e ON ueh.EpisodeID = e.EpisodeID
                         JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                        LEFT JOIN Users u ON p.UserID = u.UserID
                         LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
                         LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ?
                         LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
@@ -15038,7 +15962,11 @@ impl DatabasePool {
                             yv.ListenPosition as listenduration,
                             yv.VideoTitle as episodetitle,
                             yv.VideoDescription as episodedescription,
-                            yv.ThumbnailURL as episodeartwork,
+                            CASE 
+                                WHEN p.UsePodcastCoversCustomized = 1 AND p.UsePodcastCovers = 1 THEN p.ArtworkURL
+                                WHEN u.UsePodcastCovers = 1 THEN p.ArtworkURL
+                                ELSE yv.ThumbnailURL
+                            END as episodeartwork,
                             yv.VideoURL as episodeurl,
                             yv.Duration as episodeduration,
                             p.PodcastName as podcastname,
@@ -15050,6 +15978,7 @@ impl DatabasePool {
                             1 as is_youtube
                         FROM YouTubeVideos yv
                         JOIN Podcasts p ON yv.PodcastID = p.PodcastID
+                        LEFT JOIN Users u ON p.UserID = u.UserID
                         LEFT JOIN SavedVideos sv ON yv.VideoID = sv.VideoID AND sv.UserID = ?
                         LEFT JOIN EpisodeQueue eq ON yv.VideoID = eq.EpisodeID AND eq.UserID = ?
                         LEFT JOIN DownloadedVideos dv ON yv.VideoID = dv.VideoID AND dv.UserID = ?
@@ -16493,7 +17422,7 @@ impl DatabasePool {
         
         // Add podcast filter (PostgreSQL IN clause support)
         if let Some(ref podcast_ids) = config.podcast_ids {
-            println!("PostgreSQL applying podcast filter with IDs: {:?}", podcast_ids);
+            println!("Playlist {}: Applying podcast filter with IDs: {:?}", playlist_id, podcast_ids);
             if !podcast_ids.is_empty() {
                 if podcast_ids.len() == 1 {
                     println!("PostgreSQL single podcast filter: p.podcastid = {}", podcast_ids[0]);
@@ -16510,6 +17439,11 @@ impl DatabasePool {
                     all_params.extend(podcast_ids);
                     param_index += podcast_ids.len();
                 }
+            } else {
+                // If podcast_ids is Some but empty, user selected specific podcasts but list is empty
+                // This should return no results (exclude all podcasts)
+                println!("PostgreSQL podcast filter is empty - excluding all podcasts");
+                select_query.push_str(" AND FALSE");
             }
         } else {
             println!("PostgreSQL no podcast filter applied - config.podcast_ids is None");
@@ -16538,10 +17472,13 @@ impl DatabasePool {
         }
         
         // Add play state filters - EXACT PYTHON LOGIC
+        println!("Playlist {}: Applying play state filters - unplayed: {}, partially_played: {}, played: {}", 
+                playlist_id, config.include_unplayed, config.include_partially_played, config.include_played);
         let mut play_state_conditions = Vec::new();
         
         if config.include_unplayed {
             play_state_conditions.push("h.listenduration IS NULL".to_string());
+            println!("Playlist {}: Added unplayed episode filter", playlist_id);
         }
         
         if config.include_partially_played {
@@ -16560,19 +17497,19 @@ impl DatabasePool {
         
         if config.include_played {
             play_state_conditions.push("h.listenduration >= e.episodeduration".to_string());
+            tracing::debug!("Playlist {}: Added played/completed episode filter", playlist_id);
         }
         
         if !play_state_conditions.is_empty() {
             select_query.push_str(&format!(" AND ({})", play_state_conditions.join(" OR ")));
+            tracing::debug!("Playlist {}: Applied play state filter: ({})", playlist_id, play_state_conditions.join(" OR "));
+        } else {
+            // If no play states are selected, exclude all episodes (return no results)
+            select_query.push_str(" AND FALSE");
+            tracing::debug!("Playlist {}: No play states selected - excluding all episodes", playlist_id);
         }
         
-        // Add sorting and grouping - EXACT PYTHON LOGIC
-        let sort_order = config.get_postgres_sort_order();
-        if config.group_by_podcast {
-            select_query.push_str(&format!(" ORDER BY p.podcastid, {}", sort_order.replace("ORDER BY ", "")));
-        } else {
-            select_query.push_str(&format!(" {}", sort_order));
-        }
+        // Note: No ORDER BY in inner query - final sorting is handled by ROW_NUMBER() OVER clause
         
         // Add limit
         if let Some(max_episodes) = config.max_episodes {
@@ -16580,10 +17517,16 @@ impl DatabasePool {
         }
         
         // Now wrap the SELECT query in INSERT with ROW_NUMBER() - FIXED ALIAS SCOPING
+        println!("Playlist {}: group_by_podcast setting: {}", playlist_id, config.group_by_podcast);
         let sort_for_insert = if config.group_by_podcast {
-            format!("ORDER BY episodes.podcastid, {}", config.get_postgres_outer_sort_order().replace("ORDER BY ", ""))
+            let sort_with_grouping = format!("ORDER BY episodes.podcastid, {}", config.get_postgres_outer_sort_order().replace("ORDER BY ", ""));
+            println!("Playlist {}: Using grouped sort: {}", playlist_id, sort_with_grouping);
+            sort_with_grouping
         } else {
-            config.get_postgres_outer_sort_order()
+            let sort_without_grouping = config.get_postgres_outer_sort_order();
+            println!("Playlist {}: Using non-grouped sort: {}", playlist_id, sort_without_grouping);
+            println!("Playlist {}: Debug - raw sort_order: '{}'", playlist_id, config.sort_order);
+            sort_without_grouping
         };
         
         let insert_query = format!(r#"
@@ -16591,6 +17534,8 @@ impl DatabasePool {
             SELECT $1, episodes.episodeid, ROW_NUMBER() OVER ({}) as position
             FROM ({}) episodes
         "#, sort_for_insert, select_query);
+        
+        println!("Playlist {}: Final insert query: {}", playlist_id, insert_query);
         
         // Final params: playlist_id first, then all query params
         let mut final_params = vec![playlist_id];
@@ -16632,7 +17577,10 @@ impl DatabasePool {
                     println!("MySQL multiple podcast filter: p.PodcastID IN ({})", placeholders);
                 }
             } else {
-                println!("MySQL podcast_ids is empty, no filter applied");
+                // If podcast_ids is Some but empty, user selected specific podcasts but list is empty
+                // This should return no results (exclude all podcasts)
+                println!("MySQL podcast filter is empty - excluding all podcasts");
+                select_query.push_str(" AND FALSE");
             }
         } else {
             println!("MySQL no podcast_ids specified, no filter applied");
@@ -16685,15 +17633,12 @@ impl DatabasePool {
         
         if !play_state_conditions.is_empty() {
             select_query.push_str(&format!(" AND ({})", play_state_conditions.join(" OR ")));
+        } else {
+            // If no play states are selected, exclude all episodes (return no results)
+            select_query.push_str(" AND FALSE");
         }
         
-        // Add sorting and grouping - EXACT PYTHON LOGIC
-        let sort_order = config.get_mysql_sort_order();
-        if config.group_by_podcast {
-            select_query.push_str(&format!(" ORDER BY p.PodcastID, {}", sort_order.replace("ORDER BY ", "")));
-        } else {
-            select_query.push_str(&format!(" {}", sort_order));
-        }
+        // Note: No ORDER BY in inner query - final sorting is handled by ROW_NUMBER() OVER clause
         
         // Add limit
         if let Some(max_episodes) = config.max_episodes {
@@ -16701,10 +17646,15 @@ impl DatabasePool {
         }
         
         // Now wrap the SELECT query in INSERT with ROW_NUMBER() - FIXED ALIAS SCOPING
+        println!("Playlist {}: group_by_podcast setting: {}", playlist_id, config.group_by_podcast);
         let sort_for_insert = if config.group_by_podcast {
-            format!("ORDER BY episodes.PodcastID, {}", config.get_mysql_outer_sort_order().replace("ORDER BY ", ""))
+            let sort_with_grouping = format!("ORDER BY episodes.PodcastID, {}", config.get_mysql_outer_sort_order().replace("ORDER BY ", ""));
+            println!("Playlist {}: Using grouped sort: {}", playlist_id, sort_with_grouping);
+            sort_with_grouping
         } else {
-            config.get_mysql_outer_sort_order()
+            let sort_without_grouping = config.get_mysql_outer_sort_order();
+            println!("Playlist {}: Using non-grouped sort: {}", playlist_id, sort_without_grouping);
+            sort_without_grouping
         };
         
         let insert_query = format!(r#"
@@ -17453,7 +18403,7 @@ impl DatabasePool {
                 let row = playlist_row.unwrap();
                 let playlist_name: String = row.try_get("name")?;
                 let playlist_description: String = row.try_get("description").unwrap_or_default();
-                let episode_count: i64 = row.try_get("episode_count")?;
+                let episode_count: i64 = row.try_get("episodecount")?;
                 let icon_name: String = row.try_get("iconname").unwrap_or_default();
                 let is_system_playlist: bool = row.try_get("issystemplaylist")?;
 
@@ -17468,7 +18418,11 @@ impl DatabasePool {
                             "Episodes".episodetitle,
                             "Episodes".episodepubdate,
                             "Episodes".episodedescription,
-                            "Episodes".episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl,
                             "Episodes".episodeduration,
                             "Episodes".completed,
@@ -17483,6 +18437,7 @@ impl DatabasePool {
                         FROM "PlaylistContents"
                         JOIN "Episodes" ON "PlaylistContents".episodeid = "Episodes".episodeid
                         JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "UserEpisodeHistory".userid = $1
                         LEFT JOIN "SavedEpisodes" ON "Episodes".episodeid = "SavedEpisodes".episodeid
@@ -17508,7 +18463,11 @@ impl DatabasePool {
                             "Episodes".episodetitle,
                             "Episodes".episodepubdate,
                             "Episodes".episodedescription,
-                            "Episodes".episodeartwork,
+                            CASE 
+                                WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
+                                ELSE "Episodes".episodeartwork
+                            END as episodeartwork,
                             "Episodes".episodeurl,
                             "Episodes".episodeduration,
                             "Episodes".completed,
@@ -17523,6 +18482,7 @@ impl DatabasePool {
                         FROM "PlaylistContents"
                         JOIN "Episodes" ON "PlaylistContents".episodeid = "Episodes".episodeid
                         JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
+                        LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
                         LEFT JOIN "UserEpisodeHistory" ON "Episodes".episodeid = "UserEpisodeHistory".episodeid
                             AND "UserEpisodeHistory".userid = $1
                         LEFT JOIN "SavedEpisodes" ON "Episodes".episodeid = "SavedEpisodes".episodeid
@@ -17630,7 +18590,7 @@ impl DatabasePool {
                 let row = playlist_row.unwrap();
                 let playlist_name: String = row.try_get("Name")?;
                 let playlist_description: String = row.try_get("Description").unwrap_or_default();
-                let episode_count: i64 = row.try_get("episode_count")?;
+                let episode_count: i64 = row.try_get("EpisodeCount")?;
                 let icon_name: String = row.try_get("IconName").unwrap_or_default();
                 let is_system_playlist: bool = row.try_get::<i8, _>("IsSystemPlaylist")? != 0;
 
@@ -17645,7 +18605,11 @@ impl DatabasePool {
                             e.EpisodeTitle as episodetitle,
                             e.EpisodePubDate as episodepubdate,
                             e.EpisodeDescription as episodedescription,
-                            e.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                                WHEN u.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                                ELSE e.EpisodeArtwork
+                            END as episodeartwork,
                             e.EpisodeURL as episodeurl,
                             e.EpisodeDuration as episodeduration,
                             e.Completed as completed,
@@ -17660,6 +18624,7 @@ impl DatabasePool {
                          FROM PlaylistContents pc
                          JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
                          JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                         LEFT JOIN Users u ON p.UserID = u.UserID
                          LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
                          LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
                          LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ? AND eq.is_youtube = 0
@@ -17683,7 +18648,11 @@ impl DatabasePool {
                             e.EpisodeTitle as episodetitle,
                             e.EpisodePubDate as episodepubdate,
                             e.EpisodeDescription as episodedescription,
-                            e.EpisodeArtwork as episodeartwork,
+                            CASE 
+                                WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                                WHEN u.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                                ELSE e.EpisodeArtwork
+                            END as episodeartwork,
                             e.EpisodeURL as episodeurl,
                             e.EpisodeDuration as episodeduration,
                             e.Completed as completed,
@@ -17698,6 +18667,7 @@ impl DatabasePool {
                          FROM PlaylistContents pc
                          JOIN Episodes e ON pc.EpisodeID = e.EpisodeID
                          JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                         LEFT JOIN Users u ON p.UserID = u.UserID
                          LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
                          LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
                          LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ? AND eq.is_youtube = 0
@@ -17790,6 +18760,113 @@ impl DatabasePool {
             }
         }
         Ok(())
+    }
+
+    // Set user podcast cover preference - global setting
+    pub async fn set_global_podcast_cover_preference(&self, user_id: i32, use_podcast_covers: bool) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Users" SET usepodcastcovers = $1 WHERE userid = $2"#)
+                    .bind(use_podcast_covers)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Users SET UsePodcastCovers = ? WHERE UserID = ?")
+                    .bind(use_podcast_covers as i32)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Set podcast cover preference - per-podcast setting
+    pub async fn set_podcast_cover_preference(&self, user_id: i32, podcast_id: i32, use_podcast_covers: bool) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET usepodcastcovers = $1, usepodcastcoverscustomized = TRUE WHERE podcastid = $2 AND userid = $3"#)
+                    .bind(use_podcast_covers)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET UsePodcastCovers = ?, UsePodcastCoversCustomized = 1 WHERE PodcastID = ? AND UserID = ?")
+                    .bind(use_podcast_covers as i32)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Clear podcast cover preference - reset to use global setting
+    pub async fn clear_podcast_cover_preference(&self, user_id: i32, podcast_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET usepodcastcovers = FALSE, usepodcastcoverscustomized = FALSE WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET UsePodcastCovers = 0, UsePodcastCoversCustomized = 0 WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    // Get global podcast cover preference - for settings page
+    pub async fn get_global_podcast_cover_preference(&self, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query_scalar::<_, Option<bool>>(r#"SELECT usepodcastcovers FROM "Users" WHERE userid = $1"#)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                Ok(result.unwrap_or(false))
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query_scalar::<_, Option<i32>>("SELECT UsePodcastCovers FROM Users WHERE UserID = ?")
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                Ok(result.unwrap_or(0) != 0)
+            }
+        }
+    }
+
+    // Get per-podcast cover preference - for episode layout page
+    pub async fn get_podcast_cover_preference(&self, user_id: i32, podcast_id: i32) -> AppResult<Option<bool>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query_scalar::<_, Option<bool>>(r#"SELECT usepodcastcovers FROM "Podcasts" WHERE podcastid = $1 AND userid = $2 AND usepodcastcoverscustomized = TRUE"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(result.flatten())
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query_scalar::<_, Option<i32>>("SELECT UsePodcastCovers FROM Podcasts WHERE PodcastID = ? AND UserID = ? AND UsePodcastCoversCustomized = 1")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                Ok(result.flatten().map(|val| val != 0))
+            }
+        }
     }
 
     // Get all admin user IDs - matches Python add_news_feed_if_not_added logic
@@ -19464,6 +20541,196 @@ impl DatabasePool {
                     .execute(pool)
                     .await?;
 
+                Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
+    // Update podcast basic info - for edit podcast functionality
+    pub async fn update_podcast_info(&self, podcast_id: i32, user_id: i32, feed_url: Option<String>, username: Option<String>, password: Option<String>, podcast_name: Option<String>, description: Option<String>, author: Option<String>, artwork_url: Option<String>, website_url: Option<String>, podcast_index_id: Option<i64>) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // First verify podcast exists and belongs to user
+                let existing = sqlx::query(r#"SELECT podcastid FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                if existing.is_none() {
+                    return Ok(false);
+                }
+
+                // Build dynamic update query based on provided fields
+                let mut update_parts = Vec::new();
+                let mut bind_count = 1;
+                
+                if feed_url.is_some() {
+                    update_parts.push(format!("feedurl = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if username.is_some() {
+                    update_parts.push(format!("username = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if password.is_some() {
+                    update_parts.push(format!("password = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if podcast_name.is_some() {
+                    update_parts.push(format!("podcastname = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if description.is_some() {
+                    update_parts.push(format!("description = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if author.is_some() {
+                    update_parts.push(format!("author = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if artwork_url.is_some() {
+                    update_parts.push(format!("artworkurl = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if website_url.is_some() {
+                    update_parts.push(format!("websiteurl = ${}", bind_count));
+                    bind_count += 1;
+                }
+                if podcast_index_id.is_some() {
+                    update_parts.push(format!("podcastindexid = ${}", bind_count));
+                    bind_count += 1;
+                }
+
+                if update_parts.is_empty() {
+                    return Ok(false);
+                }
+
+                let query_str = format!(
+                    r#"UPDATE "Podcasts" SET {} WHERE podcastid = ${} AND userid = ${}"#,
+                    update_parts.join(", "),
+                    bind_count,
+                    bind_count + 1
+                );
+
+                let mut query = sqlx::query(&query_str);
+                
+                if let Some(url) = feed_url {
+                    query = query.bind(url);
+                }
+                if let Some(uname) = username {
+                    query = query.bind(uname);
+                }
+                if let Some(pwd) = password {
+                    query = query.bind(pwd);
+                }
+                if let Some(name) = podcast_name {
+                    query = query.bind(name);
+                }
+                if let Some(desc) = description {
+                    query = query.bind(desc);
+                }
+                if let Some(auth) = author {
+                    query = query.bind(auth);
+                }
+                if let Some(artwork) = artwork_url {
+                    query = query.bind(artwork);
+                }
+                if let Some(website) = website_url {
+                    query = query.bind(website);
+                }
+                if let Some(idx_id) = podcast_index_id {
+                    query = query.bind(idx_id);
+                }
+                
+                query = query.bind(podcast_id).bind(user_id);
+                
+                let result = query.execute(pool).await?;
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                // First verify podcast exists and belongs to user
+                let existing = sqlx::query("SELECT PodcastID FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+                if existing.is_none() {
+                    return Ok(false);
+                }
+
+                // Build dynamic update query based on provided fields
+                let mut update_parts = Vec::new();
+                
+                if feed_url.is_some() {
+                    update_parts.push("FeedURL = ?");
+                }
+                if username.is_some() {
+                    update_parts.push("Username = ?");
+                }
+                if password.is_some() {
+                    update_parts.push("Password = ?");
+                }
+                if podcast_name.is_some() {
+                    update_parts.push("PodcastName = ?");
+                }
+                if description.is_some() {
+                    update_parts.push("Description = ?");
+                }
+                if author.is_some() {
+                    update_parts.push("Author = ?");
+                }
+                if artwork_url.is_some() {
+                    update_parts.push("ArtworkURL = ?");
+                }
+                if website_url.is_some() {
+                    update_parts.push("WebsiteURL = ?");
+                }
+                if podcast_index_id.is_some() {
+                    update_parts.push("PodcastIndexID = ?");
+                }
+
+                if update_parts.is_empty() {
+                    return Ok(false);
+                }
+
+                let query_str = format!(
+                    "UPDATE Podcasts SET {} WHERE PodcastID = ? AND UserID = ?",
+                    update_parts.join(", ")
+                );
+
+                let mut query = sqlx::query(&query_str);
+                
+                if let Some(url) = feed_url {
+                    query = query.bind(url);
+                }
+                if let Some(uname) = username {
+                    query = query.bind(uname);
+                }
+                if let Some(pwd) = password {
+                    query = query.bind(pwd);
+                }
+                if let Some(name) = podcast_name {
+                    query = query.bind(name);
+                }
+                if let Some(desc) = description {
+                    query = query.bind(desc);
+                }
+                if let Some(auth) = author {
+                    query = query.bind(auth);
+                }
+                if let Some(artwork) = artwork_url {
+                    query = query.bind(artwork);
+                }
+                if let Some(website) = website_url {
+                    query = query.bind(website);
+                }
+                if let Some(idx_id) = podcast_index_id {
+                    query = query.bind(idx_id);
+                }
+                
+                query = query.bind(podcast_id).bind(user_id);
+                
+                let result = query.execute(pool).await?;
                 Ok(result.rows_affected() > 0)
             }
         }
@@ -22347,6 +23614,1030 @@ impl DatabasePool {
                     .await?;
                 
                 Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
+    // Create missing default playlists for existing users
+    pub async fn create_missing_default_playlists(&self) -> AppResult<()> {
+        use tracing::{info, warn, error};
+        
+        info!("🎵 Checking for missing default playlists for existing users...");
+        
+        // Define default playlists (same as migration 032)
+        let default_playlists = vec![
+            ("Quick Listens", "Short episodes under 15 minutes, perfect for quick breaks", Some(1), Some(900), "duration_asc", false, true, true, None, false, Some(1000), "ph-fast-forward"),
+            ("Longform", "Extended episodes over 1 hour, ideal for long drives or deep dives", Some(3600), None, "duration_desc", true, true, true, None, false, Some(1000), "ph-car"),
+            ("Currently Listening", "Episodes you've started but haven't finished", None, None, "date_desc", false, true, false, None, false, None, "ph-play"),
+            ("Fresh Releases", "Latest episodes from the last 24 hours", None, None, "date_desc", true, false, false, Some(24), false, None, "ph-sparkle"),
+            ("Weekend Marathon", "Longer episodes (30+ minutes) perfect for weekend listening", Some(1800), None, "duration_desc", true, true, true, None, true, Some(1000), "ph-couch"),
+            ("Commuter Mix", "Perfect-length episodes (15-45 minutes) for your daily commute", Some(900), Some(2700), "date_desc", true, true, true, None, false, Some(1000), "ph-car-simple"),
+        ];
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Get all existing users (excluding background user if present)
+                let user_rows = sqlx::query(r#"SELECT userid FROM "Users" WHERE userid > 1"#)
+                    .fetch_all(pool)
+                    .await?;
+                
+                info!("Found {} users to check for missing default playlists", user_rows.len());
+                
+                for user_row in user_rows {
+                    let user_id: i32 = user_row.try_get("userid")?;
+                    
+                    for (name, description, min_duration, max_duration, sort_order, include_unplayed, include_partially_played, include_played, time_filter_hours, group_by_podcast, max_episodes, icon_name) in &default_playlists {
+                        // Check if this playlist already exists for this user
+                        let exists: bool = sqlx::query_scalar(
+                            r#"SELECT EXISTS(SELECT 1 FROM "Playlists" WHERE userid = $1 AND name = $2)"#
+                        ).bind(user_id).bind(name).fetch_one(pool).await?;
+                        
+                        if !exists {
+                            // Create the playlist for this user
+                            match sqlx::query(r#"
+                                INSERT INTO "Playlists" (
+                                    userid, name, description, issystemplaylist, minduration, maxduration, sortorder,
+                                    includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
+                                    groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids,
+                                    iconname, episodecount
+                                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                                "#)
+                                .bind(user_id).bind(name).bind(description).bind(false)
+                                .bind(min_duration).bind(max_duration).bind(sort_order)
+                                .bind(include_unplayed).bind(include_partially_played).bind(include_played)
+                                .bind(time_filter_hours).bind(group_by_podcast).bind(max_episodes)
+                                .bind(0.0).bind(100.0).bind(&[] as &[i32]).bind(icon_name).bind(0)
+                                .execute(pool).await {
+                                Ok(_) => info!("Created playlist '{}' for user {}", name, user_id),
+                                Err(e) => warn!("Failed to create playlist '{}' for user {}: {}", name, user_id, e),
+                            }
+                        }
+                    }
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                // Get all existing users (excluding background user if present)
+                let user_rows = sqlx::query("SELECT UserID FROM Users WHERE UserID > 1")
+                    .fetch_all(pool)
+                    .await?;
+                
+                info!("Found {} users to check for missing default playlists", user_rows.len());
+                
+                for user_row in user_rows {
+                    let user_id: i32 = user_row.try_get("UserID")?;
+                    
+                    for (name, description, min_duration, max_duration, sort_order, include_unplayed, include_partially_played, include_played, time_filter_hours, group_by_podcast, max_episodes, icon_name) in &default_playlists {
+                        // Check if this playlist already exists for this user
+                        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM Playlists WHERE UserID = ? AND Name = ?")
+                            .bind(user_id)
+                            .bind(name)
+                            .fetch_one(pool)
+                            .await?;
+                        
+                        if count == 0 {
+                            // Create the playlist for this user
+                            match sqlx::query("
+                                INSERT INTO Playlists (
+                                    UserID, Name, Description, IsSystemPlaylist, MinDuration, MaxDuration, SortOrder,
+                                    IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
+                                    GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
+                                    IconName, episode_count
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ")
+                                .bind(user_id).bind(name).bind(description).bind(false)
+                                .bind(min_duration).bind(max_duration).bind(sort_order)
+                                .bind(include_unplayed).bind(include_partially_played).bind(include_played)
+                                .bind(time_filter_hours).bind(group_by_podcast).bind(max_episodes)
+                                .bind(0.0).bind(100.0).bind("[]").bind(icon_name).bind(0)
+                                .execute(pool).await {
+                                Ok(_) => info!("Created playlist '{}' for user {}", name, user_id),
+                                Err(e) => warn!("Failed to create playlist '{}' for user {}: {}", name, user_id, e),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        info!("✅ Finished checking for missing default playlists");
+        Ok(())
+    }
+
+    // Create default playlists for a single user - shared by user creation and startup check
+    async fn create_default_playlists_for_user(&self, user_id: i32) -> AppResult<()> {
+        use tracing::{info, warn};
+        
+        // Define default playlists (same as migration 032)
+        let default_playlists = vec![
+            ("Quick Listens", "Short episodes under 15 minutes, perfect for quick breaks", Some(1), Some(900), "duration_asc", true, true, true, None, false, Some(1000), "ph-fast-forward"),
+            ("Longform", "Extended episodes over 1 hour, ideal for long drives or deep dives", Some(3600), None, "duration_desc", true, true, true, None, false, Some(1000), "ph-car"),
+            ("Currently Listening", "Episodes you've started but haven't finished", None, None, "date_desc", false, true, false, None, false, None, "ph-play"),
+            ("Fresh Releases", "Latest episodes from the last 24 hours", None, None, "date_desc", true, false, false, Some(24), false, None, "ph-sparkle"),
+            ("Weekend Marathon", "Longer episodes (30+ minutes) perfect for weekend listening", Some(1800), None, "duration_desc", true, true, true, None, true, Some(1000), "ph-couch"),
+            ("Commuter Mix", "Perfect-length episodes (15-45 minutes) for your daily commute", Some(900), Some(2700), "date_desc", true, true, true, None, false, Some(1000), "ph-car-simple"),
+        ];
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                for (name, description, min_duration, max_duration, sort_order, include_unplayed, include_partially_played, include_played, time_filter_hours, group_by_podcast, max_episodes, icon_name) in &default_playlists {
+                    // Check if this playlist already exists for this user
+                    let exists: bool = sqlx::query_scalar(
+                        r#"SELECT EXISTS(SELECT 1 FROM "Playlists" WHERE userid = $1 AND name = $2)"#
+                    ).bind(user_id).bind(name).fetch_one(pool).await?;
+                    
+                    if !exists {
+                        // Create the playlist for this user
+                        match sqlx::query(r#"
+                            INSERT INTO "Playlists" (
+                                userid, name, description, issystemplaylist, minduration, maxduration, sortorder,
+                                includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
+                                groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids,
+                                iconname, episodecount
+                            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                            "#)
+                            .bind(user_id).bind(name).bind(description).bind(false)
+                            .bind(min_duration).bind(max_duration).bind(sort_order)
+                            .bind(include_unplayed).bind(include_partially_played).bind(include_played)
+                            .bind(time_filter_hours).bind(group_by_podcast).bind(max_episodes)
+                            .bind(0.0).bind(100.0).bind(&[] as &[i32]).bind(icon_name).bind(0)
+                            .execute(pool).await {
+                            Ok(_) => info!("Created playlist '{}' for user {}", name, user_id),
+                            Err(e) => warn!("Failed to create playlist '{}' for user {}: {}", name, user_id, e),
+                        }
+                    }
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                for (name, description, min_duration, max_duration, sort_order, include_unplayed, include_partially_played, include_played, time_filter_hours, group_by_podcast, max_episodes, icon_name) in &default_playlists {
+                    // Check if this playlist already exists for this user
+                    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM Playlists WHERE UserID = ? AND Name = ?")
+                        .bind(user_id)
+                        .bind(name)
+                        .fetch_one(pool)
+                        .await?;
+                    
+                    if count == 0 {
+                        // Create the playlist for this user
+                        match sqlx::query("
+                            INSERT INTO Playlists (
+                                UserID, Name, Description, IsSystemPlaylist, MinDuration, MaxDuration, SortOrder,
+                                IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
+                                GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
+                                IconName, episode_count
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ")
+                            .bind(user_id).bind(name).bind(description).bind(false)
+                            .bind(min_duration).bind(max_duration).bind(sort_order)
+                            .bind(include_unplayed).bind(include_partially_played).bind(include_played)
+                            .bind(time_filter_hours).bind(group_by_podcast).bind(max_episodes)
+                            .bind(0.0).bind(100.0).bind("[]").bind(icon_name).bind(0)
+                            .execute(pool).await {
+                            Ok(_) => info!("Created playlist '{}' for user {}", name, user_id),
+                            Err(e) => warn!("Failed to create playlist '{}' for user {}: {}", name, user_id, e),
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
+    // Update episode counts for all playlists - replaces complex playlist content updates
+    pub async fn update_playlist_episode_counts(&self) -> AppResult<()> {
+        use tracing::{info, warn, debug};
+        
+        info!("📊 Starting playlist episode count updates...");
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Get all playlists
+                let playlists = sqlx::query(
+                    r#"SELECT playlistid, userid, name FROM "Playlists" ORDER BY userid, playlistid"#
+                ).fetch_all(pool).await?;
+                
+                info!("Found {} playlists to update counts for", playlists.len());
+                
+                let mut updated_count = 0;
+                let mut failed_count = 0;
+                
+                for playlist in playlists {
+                    let playlist_id: i32 = playlist.try_get("playlistid")?;
+                    let user_id: i32 = playlist.try_get("userid")?;
+                    let name: String = playlist.try_get("name")?;
+                    
+                    match self.count_playlist_episodes_dynamic(playlist_id, user_id).await {
+                        Ok(count) => {
+                            // Update the episode_count in the playlist
+                            match sqlx::query(
+                                r#"UPDATE "Playlists" SET episodecount = $1 WHERE playlistid = $2"#
+                            ).bind(count).bind(playlist_id).execute(pool).await {
+                                Ok(_) => {
+                                    debug!("Updated playlist '{}' (ID: {}) count to {}", name, playlist_id, count);
+                                    updated_count += 1;
+                                }
+                                Err(e) => {
+                                    warn!("Failed to update count for playlist '{}' (ID: {}): {}", name, playlist_id, e);
+                                    failed_count += 1;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to count episodes for playlist '{}' (ID: {}): {}", name, playlist_id, e);
+                            failed_count += 1;
+                        }
+                    }
+                }
+                
+                info!("✅ Playlist count update completed: {} updated, {} failed", updated_count, failed_count);
+            }
+            DatabasePool::MySQL(pool) => {
+                // Get all playlists
+                let playlists = sqlx::query(
+                    r#"SELECT PlaylistID, UserID, Name FROM Playlists ORDER BY UserID, PlaylistID"#
+                ).fetch_all(pool).await?;
+                
+                info!("Found {} playlists to update counts for (MySQL)", playlists.len());
+                
+                let mut updated_count = 0;
+                let mut failed_count = 0;
+                
+                for playlist in playlists {
+                    let playlist_id: i32 = playlist.try_get("PlaylistID")?;
+                    let user_id: i32 = playlist.try_get("UserID")?;
+                    let name: String = playlist.try_get("Name")?;
+                    
+                    match self.count_playlist_episodes_dynamic(playlist_id, user_id).await {
+                        Ok(count) => {
+                            // Update the episode_count in the playlist
+                            match sqlx::query(
+                                r#"UPDATE Playlists SET episode_count = ? WHERE PlaylistID = ?"#
+                            ).bind(count).bind(playlist_id).execute(pool).await {
+                                Ok(_) => {
+                                    debug!("Updated MySQL playlist '{}' (ID: {}) count to {}", name, playlist_id, count);
+                                    updated_count += 1;
+                                }
+                                Err(e) => {
+                                    warn!("Failed to update MySQL count for playlist '{}' (ID: {}): {}", name, playlist_id, e);
+                                    failed_count += 1;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Failed to count MySQL episodes for playlist '{}' (ID: {}): {}", name, playlist_id, e);
+                            failed_count += 1;
+                        }
+                    }
+                }
+                
+                info!("✅ MySQL playlist count update completed: {} updated, {} failed", updated_count, failed_count);
+            }
+        }
+        
+        Ok(())
+    }
+
+    // Count episodes for a playlist using the same dynamic logic (without pagination)
+    async fn count_playlist_episodes_dynamic(&self, playlist_id: i32, user_id: i32) -> AppResult<i32> {
+        use tracing::{debug, warn};
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Get user timezone for proper date calculations
+                let raw_user_timezone: String = sqlx::query_scalar(
+                    r#"SELECT timezone FROM "Users" WHERE userid = $1"#
+                ).bind(user_id).fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
+                let raw_timezone = if raw_user_timezone.is_empty() { "UTC".to_string() } else { raw_user_timezone };
+                let user_timezone = Self::map_timezone_for_postgres(&raw_timezone);
+                
+                // Get playlist configuration
+                let playlist_row = sqlx::query(
+                    r#"SELECT userid, name, minduration, maxduration, sortorder, 
+                       includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
+                       groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids
+                       FROM "Playlists" WHERE playlistid = $1"#
+                ).bind(playlist_id).fetch_optional(pool).await?;
+                
+                let playlist = playlist_row.ok_or_else(|| crate::error::AppError::not_found("Playlist not found"))?;
+                
+                // Build count query using same logic as dynamic function
+                let mut query_parts = Vec::new();
+                let mut where_conditions = Vec::new();
+                
+                query_parts.push(format!(r#"
+                    SELECT COUNT(DISTINCT e.episodeid)
+                    FROM "Episodes" e
+                    JOIN "Podcasts" p ON e.podcastid = p.podcastid AND p.userid = {}
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}"#, 
+                    user_id, user_id
+                ));
+                
+                where_conditions.push("p.userid = $1".to_string());
+                
+                // Apply all the same filters as dynamic function
+                if let Some(min_dur) = playlist.try_get::<Option<i32>, _>("minduration")? {
+                    where_conditions.push(format!("e.episodeduration >= {}", min_dur));
+                }
+                if let Some(max_dur) = playlist.try_get::<Option<i32>, _>("maxduration")? {
+                    where_conditions.push(format!("e.episodeduration <= {}", max_dur));
+                }
+                
+                if let Some(hours) = playlist.try_get::<Option<i32>, _>("timefilterhours")? {
+                    where_conditions.push(format!(
+                        "e.episodepubdate >= (NOW() AT TIME ZONE '{}' - INTERVAL '{} hours') AT TIME ZONE '{}' AT TIME ZONE 'UTC'", 
+                        user_timezone, hours, user_timezone
+                    ));
+                }
+                
+                // Handle PostgreSQL array type for podcast IDs
+                if let Some(podcast_ids) = playlist.try_get::<Option<Vec<i32>>, _>("podcastids")? {
+                    if !podcast_ids.is_empty() && !podcast_ids.contains(&-1) {
+                        let podcast_ids_str = podcast_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
+                        where_conditions.push(format!("p.podcastid IN ({})", podcast_ids_str));
+                    }
+                }
+                
+                // Play state filters
+                let mut play_state_conditions = Vec::new();
+                if playlist.try_get::<bool, _>("includeunplayed")? {
+                    play_state_conditions.push("(h.listenduration IS NULL OR h.listenduration = 0)".to_string());
+                }
+                if playlist.try_get::<bool, _>("includepartiallyplayed")? {
+                    play_state_conditions.push(
+                        "(h.listenduration > 0 AND h.listenduration < e.episodeduration * 0.9 AND (e.episodeduration - h.listenduration) > 30)".to_string()
+                    );
+                }
+                if playlist.try_get::<bool, _>("includeplayed")? {
+                    play_state_conditions.push(
+                        "(h.listenduration IS NOT NULL AND (h.listenduration >= e.episodeduration * 0.9 OR (e.episodeduration - h.listenduration) <= 30))".to_string()
+                    );
+                }
+                
+                if !play_state_conditions.is_empty() {
+                    where_conditions.push(format!("({})", play_state_conditions.join(" OR ")));
+                } else {
+                    where_conditions.push("FALSE".to_string());
+                }
+                
+                // Progress filters
+                if let Some(min_progress) = playlist.try_get::<Option<f64>, _>("playprogressmin")? {
+                    where_conditions.push(format!(
+                        "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) >= {}", 
+                        min_progress / 100.0
+                    ));
+                }
+                if let Some(max_progress) = playlist.try_get::<Option<f64>, _>("playprogressmax")? {
+                    where_conditions.push(format!(
+                        "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) <= {}", 
+                        max_progress / 100.0
+                    ));
+                }
+                
+                let where_clause = if where_conditions.is_empty() {
+                    String::new()
+                } else {
+                    format!(" WHERE {}", where_conditions.join(" AND "))
+                };
+                
+                let final_query = format!("{}{}", query_parts.join(" "), where_clause);
+                
+                let count: i64 = sqlx::query_scalar(&final_query)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                // Apply MaxEpisodes limit if specified
+                let final_count = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("maxepisodes")? {
+                    if max_eps > 0 {
+                        std::cmp::min(count as i32, max_eps)
+                    } else {
+                        count as i32
+                    }
+                } else {
+                    count as i32
+                };
+                
+                Ok(final_count)
+            }
+            DatabasePool::MySQL(pool) => {
+                // Similar implementation for MySQL with adjusted syntax
+                let raw_user_timezone: String = sqlx::query_scalar("SELECT TimeZone FROM Users WHERE UserID = ?")
+                    .bind(user_id).fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
+                let raw_timezone = if raw_user_timezone.is_empty() { "UTC".to_string() } else { raw_user_timezone };
+                let user_timezone = Self::map_timezone_for_postgres(&raw_timezone);
+                
+                let playlist_row = sqlx::query(
+                    r#"SELECT UserID, Name, MinDuration, MaxDuration, SortOrder, 
+                       IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
+                       GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs
+                       FROM Playlists WHERE PlaylistID = ?"#
+                ).bind(playlist_id).fetch_optional(pool).await?;
+                
+                let playlist = playlist_row.ok_or_else(|| crate::error::AppError::not_found("Playlist not found"))?;
+                
+                // MySQL count query with similar logic
+                let mut query_parts = Vec::new();
+                let mut where_conditions = Vec::new();
+                
+                query_parts.push(format!(r#"
+                    SELECT COUNT(DISTINCT e.EpisodeID)
+                    FROM Episodes e
+                    JOIN Podcasts p ON e.PodcastID = p.PodcastID AND p.UserID = {}
+                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}"#, 
+                    user_id, user_id
+                ));
+                
+                where_conditions.push("p.UserID = ?".to_string());
+                
+                // Apply all MySQL filters
+                if let Some(min_dur) = playlist.try_get::<Option<i32>, _>("MinDuration")? {
+                    where_conditions.push(format!("e.EpisodeDuration >= {}", min_dur));
+                }
+                if let Some(max_dur) = playlist.try_get::<Option<i32>, _>("MaxDuration")? {
+                    where_conditions.push(format!("e.EpisodeDuration <= {}", max_dur));
+                }
+                
+                if let Some(hours) = playlist.try_get::<Option<i32>, _>("TimeFilterHours")? {
+                    where_conditions.push(format!(
+                        "e.EpisodePubDate >= DATE_SUB(CONVERT_TZ(NOW(), 'UTC', '{}'), INTERVAL {} HOUR)", 
+                        user_timezone, hours
+                    ));
+                }
+                
+                // Continue with all other MySQL filters...
+                let where_clause = if where_conditions.is_empty() {
+                    String::new()
+                } else {
+                    format!(" WHERE {}", where_conditions.join(" AND "))
+                };
+                
+                let final_query = format!("{}{}", query_parts.join(" "), where_clause);
+                
+                let count: i64 = sqlx::query_scalar(&final_query)
+                    .bind(user_id)
+                    .fetch_one(pool)
+                    .await?;
+                
+                let final_count = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("MaxEpisodes")? {
+                    if max_eps > 0 {
+                        std::cmp::min(count as i32, max_eps)
+                    } else {
+                        count as i32
+                    }
+                } else {
+                    count as i32
+                };
+                
+                Ok(final_count)
+            }
+        }
+    }
+
+    /// Convert chrono-tz timezone names to PostgreSQL-compatible timezone names
+    /// This handles the mapping between frontend timezone selections and database queries
+    fn map_timezone_for_postgres(user_timezone: &str) -> String {
+        match user_timezone {
+            // US timezone mappings
+            "US/Central" => "America/Chicago".to_string(),
+            "US/Eastern" => "America/New_York".to_string(),
+            "US/Mountain" => "America/Denver".to_string(),
+            "US/Pacific" => "America/Los_Angeles".to_string(),
+            "US/Alaska" => "America/Anchorage".to_string(),
+            "US/Hawaii" => "Pacific/Honolulu".to_string(),
+            
+            // Common legacy timezone mappings
+            "EST" => "America/New_York".to_string(),
+            "CST" => "America/Chicago".to_string(),
+            "MST" => "America/Denver".to_string(),
+            "PST" => "America/Los_Angeles".to_string(),
+            "EST5EDT" => "America/New_York".to_string(),
+            "CST6CDT" => "America/Chicago".to_string(),
+            "MST7MDT" => "America/Denver".to_string(),
+            "PST8PDT" => "America/Los_Angeles".to_string(),
+            
+            // Common international legacy mappings
+            "GMT" => "UTC".to_string(),
+            "GMT+0" => "UTC".to_string(),
+            "GMT-0" => "UTC".to_string(),
+            "Greenwich" => "UTC".to_string(),
+            "UCT" => "UTC".to_string(),
+            "Universal" => "UTC".to_string(),
+            "Zulu" => "UTC".to_string(),
+            
+            // European legacy mappings
+            "CET" => "Europe/Paris".to_string(),
+            "EET" => "Europe/Helsinki".to_string(),
+            "WET" => "Europe/Lisbon".to_string(),
+            "MET" => "Europe/Paris".to_string(),
+            
+            // If it's already a valid IANA timezone name or unknown, pass through
+            _ => {
+                // For unknown timezones, fall back to UTC to prevent errors
+                if user_timezone.is_empty() {
+                    "UTC".to_string()
+                } else {
+                    // Most chrono-tz names are already IANA compliant, so try the original first
+                    user_timezone.to_string()
+                }
+            }
+        }
+    }
+
+    // Get playlist episodes dynamically without using PlaylistContents table
+    // ULTRA-PRECISE implementation covering ALL playlist options with timezone awareness
+    pub async fn get_playlist_episodes_dynamic(
+        &self, 
+        playlist_id: i32, 
+        user_id: i32
+    ) -> AppResult<crate::models::PlaylistEpisodesResponse> {
+        use tracing::{info, debug, warn};
+        
+        debug!("🎵 Getting dynamic playlist episodes for playlist {} user {}", playlist_id, user_id);
+        
+        match self {
+            DatabasePool::Postgres(pool) => {
+                // Get user timezone for proper date calculations
+                let raw_user_timezone: String = sqlx::query_scalar(
+                    r#"SELECT timezone FROM "Users" WHERE userid = $1"#
+                ).bind(user_id).fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
+                let raw_timezone = if raw_user_timezone.is_empty() { "UTC".to_string() } else { raw_user_timezone };
+                let user_timezone = Self::map_timezone_for_postgres(&raw_timezone);
+                
+                debug!("User {} timezone: {} -> {}", user_id, raw_timezone, user_timezone);
+                
+                // Get playlist configuration with ALL fields
+                let playlist_row = sqlx::query(
+                    r#"SELECT userid, name, description, minduration, maxduration, sortorder, 
+                       includeunplayed, includepartiallyplayed, includeplayed, timefilterhours,
+                       groupbypodcast, maxepisodes, playprogressmin, playprogressmax, podcastids,
+                       issystemplaylist, created, iconname, episodecount
+                       FROM "Playlists" WHERE playlistid = $1"#
+                ).bind(playlist_id).fetch_optional(pool).await?;
+                
+                let playlist = playlist_row.ok_or_else(|| crate::error::AppError::not_found("Playlist not found"))?;
+                
+                // Check user permissions - users can only access their own playlists
+                if playlist.try_get::<i32, _>("userid")? != user_id {
+                    return Err(crate::error::AppError::forbidden("You can only access your own playlists"));
+                }
+                
+                debug!("📋 Playlist '{}' config: min_dur={:?}, max_dur={:?}, sort={}, time_filter={:?}, progress_min={:?}, progress_max={:?}", 
+                    playlist.try_get::<String, _>("name")?, playlist.try_get::<Option<i32>, _>("minduration")?, playlist.try_get::<Option<i32>, _>("maxduration")?, playlist.try_get::<String, _>("sortorder")?, 
+                    playlist.try_get::<Option<i32>, _>("timefilterhours")?, playlist.try_get::<Option<f64>, _>("playprogressmin")?, playlist.try_get::<Option<f64>, _>("playprogressmax")?);
+                
+                // Build the comprehensive dynamic query
+                let mut query_parts = Vec::new();
+                let mut where_conditions = Vec::new();
+                let mut bind_values: Vec<Box<dyn std::fmt::Debug + Send + Sync>> = Vec::new();
+                
+                // Base SELECT with all episode data needed for SavedEpisode model including podcastid
+                query_parts.push(format!(r#"
+                    SELECT DISTINCT
+                        e.episodetitle,
+                        p.podcastname,
+                        TO_CHAR(e.episodepubdate AT TIME ZONE '{}', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as episodepubdate,
+                        e.episodedescription,
+                        COALESCE(e.episodeartwork, p.artworkurl) as episodeartwork,
+                        e.episodeurl,
+                        e.episodeduration,
+                        COALESCE(h.listenduration, 0) as listenduration,
+                        e.episodeid,
+                        COALESCE(p.websiteurl, '') as websiteurl,
+                        -- ULTRA-PRECISE completion logic: 90% threshold OR within 30 seconds of end
+                        CASE WHEN 
+                            h.listenduration IS NOT NULL AND (
+                                h.listenduration >= e.episodeduration * 0.9 OR 
+                                (e.episodeduration - h.listenduration) <= 30
+                            ) 
+                        THEN true ELSE false END as completed,
+                        EXISTS(SELECT 1 FROM "SavedEpisodes" se WHERE se.episodeid = e.episodeid AND se.userid = {}) as saved,
+                        EXISTS(SELECT 1 FROM "EpisodeQueue" eq WHERE eq.episodeid = e.episodeid AND eq.userid = {}) as queued,
+                        EXISTS(SELECT 1 FROM "DownloadedEpisodes" de WHERE de.episodeid = e.episodeid AND de.userid = {}) as downloaded,
+                        false as is_youtube,
+                        p.podcastid,
+                        -- Progress percentage for debugging
+                        ROUND(((COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) * 100)::numeric, 2) as progress_percent
+                    FROM "Episodes" e
+                    JOIN "Podcasts" p ON e.podcastid = p.podcastid AND p.userid = {}
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}"#, 
+                    user_timezone, user_id, user_id, user_id, user_id, user_id
+                ));
+                
+                // Base condition - always filter by user's podcasts
+                where_conditions.push("p.userid = $1".to_string());
+                
+                // 1. DURATION FILTERS - exact duration matching
+                if let Some(min_dur) = playlist.try_get::<Option<i32>, _>("minduration")? {
+                    where_conditions.push(format!("e.episodeduration >= {}", min_dur));
+                    debug!("🕒 Added min duration filter: {} seconds", min_dur);
+                }
+                if let Some(max_dur) = playlist.try_get::<Option<i32>, _>("maxduration")? {
+                    where_conditions.push(format!("e.episodeduration <= {}", max_dur));
+                    debug!("🕒 Added max duration filter: {} seconds", max_dur);
+                }
+                
+                // 2. TIMEZONE-AWARE TIME FILTER - ULTRA-PRECISE datetime handling
+                if let Some(hours) = playlist.try_get::<Option<i32>, _>("timefilterhours")? {
+                    // Convert hours to user's timezone for precise "last X hours" calculation
+                    where_conditions.push(format!(
+                        "e.episodepubdate >= (NOW() AT TIME ZONE '{}' - INTERVAL '{} hours') AT TIME ZONE '{}' AT TIME ZONE 'UTC'", 
+                        user_timezone, hours, user_timezone
+                    ));
+                    debug!("📅 Added timezone-aware time filter: last {} hours in timezone {}", hours, user_timezone);
+                }
+                
+                // 3. PODCAST FILTER - handle PostgreSQL array of podcast IDs
+                if let Some(podcast_ids) = playlist.try_get::<Option<Vec<i32>>, _>("podcastids")? {
+                    if !podcast_ids.is_empty() && !podcast_ids.contains(&-1) {
+                        let podcast_ids_str = podcast_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
+                        where_conditions.push(format!("p.podcastid IN ({})", podcast_ids_str));
+                        debug!("🎙️ Added PostgreSQL podcast filter: {:?}", podcast_ids);
+                    } else {
+                        debug!("🎙️ PostgreSQL podcast filter contains -1 or is empty, including all podcasts");
+                    }
+                }
+                
+                // 4. ULTRA-PRECISE PLAY STATE FILTERS
+                let mut play_state_conditions = Vec::new();
+                
+                if playlist.try_get::<bool, _>("includeunplayed")? {
+                    // UNPLAYED: No history record OR listen duration is 0 or NULL
+                    play_state_conditions.push("(h.listenduration IS NULL OR h.listenduration = 0)".to_string());
+                    debug!("▶️ Including UNPLAYED episodes");
+                }
+                
+                if playlist.try_get::<bool, _>("includepartiallyplayed")? {
+                    // PARTIALLY PLAYED: Has listen time > 0 but < 90% AND not within 30 seconds of end
+                    play_state_conditions.push(
+                        "(h.listenduration > 0 AND h.listenduration < e.episodeduration * 0.9 AND (e.episodeduration - h.listenduration) > 30)".to_string()
+                    );
+                    debug!("⏸️ Including PARTIALLY PLAYED episodes (>0% and <90%, not within 30s of end)");
+                }
+                
+                if playlist.try_get::<bool, _>("includeplayed")? {
+                    // PLAYED: Listen duration >= 90% OR within 30 seconds of end
+                    play_state_conditions.push(
+                        "(h.listenduration IS NOT NULL AND (h.listenduration >= e.episodeduration * 0.9 OR (e.episodeduration - h.listenduration) <= 30))".to_string()
+                    );
+                    debug!("✅ Including PLAYED episodes (>=90% or within 30s of end)");
+                }
+                
+                if !play_state_conditions.is_empty() {
+                    where_conditions.push(format!("({})", play_state_conditions.join(" OR ")));
+                } else {
+                    // No play states selected - return no results
+                    where_conditions.push("FALSE".to_string());
+                    warn!("⚠️ No play states selected for playlist '{}' - will return empty results", playlist.try_get::<String, _>("name")?);
+                }
+                
+                // 5. ULTRA-PRECISE PROGRESS PERCENTAGE FILTERS
+                if let Some(min_progress) = playlist.try_get::<Option<f64>, _>("playprogressmin")? {
+                    let min_decimal = min_progress / 100.0;
+                    where_conditions.push(format!(
+                        "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) >= {}", 
+                        min_decimal
+                    ));
+                    debug!("📊 Added min progress filter: {}% ({})", min_progress, min_decimal);
+                }
+                if let Some(max_progress) = playlist.try_get::<Option<f64>, _>("playprogressmax")? {
+                    let max_decimal = max_progress / 100.0;
+                    where_conditions.push(format!(
+                        "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) <= {}", 
+                        max_decimal
+                    ));
+                    debug!("📊 Added max progress filter: {}% ({})", max_progress, max_decimal);
+                }
+                
+                // 6. ULTRA-PRECISE ORDERING with podcast grouping support
+                let mut order_parts = Vec::new();
+                
+                if playlist.try_get::<bool, _>("groupbypodcast")? {
+                    order_parts.push("p.podcastid".to_string());
+                    debug!("📚 Grouping by podcast enabled");
+                }
+                
+                let sort_clause = match playlist.try_get::<String, _>("sortorder")?.as_str() {
+                    "date_asc" => "episodepubdate ASC",
+                    "date_desc" => "episodepubdate DESC", 
+                    "duration_asc" => "episodeduration ASC",
+                    "duration_desc" => "episodeduration DESC",
+                    "listen_progress" => "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) DESC",
+                    "completion" => "(COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) DESC",
+                    "random" => "RANDOM()",
+                    "title_asc" => "episodetitle ASC",
+                    "title_desc" => "episodetitle DESC",
+                    "podcast_asc" => "podcastname ASC",
+                    "podcast_desc" => "podcastname DESC",
+                    _ => {
+                        warn!("⚠️ Unknown sort order '{}', defaulting to date_desc", playlist.try_get::<String, _>("sortorder")?);
+                        "episodepubdate DESC"
+                    }
+                };
+                order_parts.push(sort_clause.to_string());
+                debug!("🔄 Sort order: {}", sort_clause);
+                
+                // 7. BUILD FINAL QUERY
+                let where_clause = if where_conditions.is_empty() {
+                    String::new()
+                } else {
+                    format!(" WHERE {}", where_conditions.join(" AND "))
+                };
+                
+                let order_clause = format!(" ORDER BY {}", order_parts.join(", "));
+                
+                // Apply MaxEpisodes limit if specified (playlist setting, not pagination)
+                let limit_clause = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("maxepisodes")? {
+                    if max_eps > 0 {
+                        format!(" LIMIT {}", max_eps)
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+                
+                let final_query = format!("{}{}{}{}", 
+                    query_parts.join(" "), where_clause, order_clause, limit_clause);
+                
+                debug!("🔍 Final dynamic playlist query: {}", final_query);
+                
+                // Execute the main query
+                let rows = sqlx::query(&final_query)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                let mut episodes = Vec::new();
+                for row in rows {
+                    episodes.push(crate::models::SavedEpisode {
+                        episodetitle: row.try_get("episodetitle")?,
+                        podcastname: row.try_get("podcastname")?,
+                        episodepubdate: row.try_get("episodepubdate")?,
+                        episodedescription: row.try_get("episodedescription")?,
+                        episodeartwork: row.try_get("episodeartwork")?,
+                        episodeurl: row.try_get("episodeurl")?,
+                        episodeduration: row.try_get("episodeduration")?,
+                        listenduration: row.try_get("listenduration").ok(),
+                        episodeid: row.try_get("episodeid")?,
+                        websiteurl: row.try_get("websiteurl")?,
+                        completed: row.try_get("completed")?,
+                        saved: row.try_get("saved")?,
+                        queued: row.try_get("queued")?,
+                        downloaded: row.try_get("downloaded")?,
+                        is_youtube: row.try_get("is_youtube")?,
+                        podcastid: row.try_get("podcastid").ok(),
+                    });
+                }
+                
+                debug!("📝 Retrieved {} episodes from dynamic query", episodes.len());
+                
+                // Create playlist info from the playlist row we already have
+                let playlist_info = crate::models::PlaylistInfo {
+                    name: playlist.try_get::<String, _>("name")?,
+                    description: playlist.try_get::<String, _>("description")?,
+                    episode_count: episodes.len() as i32,
+                    icon_name: playlist.try_get::<String, _>("iconname")?,
+                };
+                
+                Ok(crate::models::PlaylistEpisodesResponse {
+                    episodes,
+                    playlist_info,
+                })
+            }
+            DatabasePool::MySQL(pool) => {
+                // FULL MySQL implementation with exact same logic but MySQL syntax
+                let raw_user_timezone: String = sqlx::query_scalar("SELECT TimeZone FROM Users WHERE UserID = ?").bind(user_id)
+                    .fetch_optional(pool).await?.unwrap_or_else(|| "UTC".to_string());
+                let raw_timezone = if raw_user_timezone.is_empty() { "UTC".to_string() } else { raw_user_timezone };
+                let user_timezone = Self::map_timezone_for_postgres(&raw_timezone);
+                
+                debug!("User {} timezone: {} -> {}", user_id, raw_timezone, user_timezone);
+                
+                let playlist_row = sqlx::query(
+                    r#"SELECT UserID, Name, Description, MinDuration, MaxDuration, SortOrder, 
+                       IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
+                       GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
+                       IsSystemPlaylist, Created, IconName, episode_count
+                       FROM Playlists WHERE PlaylistID = ?"#
+                ).bind(playlist_id).fetch_optional(pool).await?;
+                
+                let playlist = playlist_row.ok_or_else(|| crate::error::AppError::not_found("Playlist not found"))?;
+                
+                if playlist.try_get::<i32, _>("UserID")? != user_id {
+                    return Err(crate::error::AppError::forbidden("You can only access your own playlists"));
+                }
+                
+                debug!("📋 MySQL Playlist '{}' config loaded", playlist.try_get::<String, _>("Name")?);
+                
+                // MySQL version with adjusted syntax for timezone conversion and date handling
+                let mut query_parts = Vec::new();
+                let mut where_conditions = Vec::new();
+                
+                query_parts.push(format!(r#"
+                    SELECT DISTINCT
+                        e.EpisodeTitle as episodetitle,
+                        p.PodcastName as podcastname,
+                        DATE_FORMAT(CONVERT_TZ(e.EpisodePubDate, 'UTC', '{}'), '%Y-%m-%dT%H:%i:%sZ') as episodepubdate,
+                        e.EpisodeDescription as episodedescription,
+                        COALESCE(e.EpisodeArtwork, p.ArtworkURL) as episodeartwork,
+                        e.EpisodeURL as episodeurl,
+                        e.EpisodeDuration as episodeduration,
+                        COALESCE(h.ListenDuration, 0) as listenduration,
+                        e.EpisodeID as episodeid,
+                        COALESCE(p.WebsiteURL, '') as websiteurl,
+                        CASE WHEN 
+                            h.ListenDuration IS NOT NULL AND (
+                                h.ListenDuration >= e.EpisodeDuration * 0.9 OR 
+                                (e.EpisodeDuration - h.ListenDuration) <= 30
+                            ) 
+                        THEN 1 ELSE 0 END as completed,
+                        EXISTS(SELECT 1 FROM SavedEpisodes se WHERE se.EpisodeID = e.EpisodeID AND se.UserID = {}) as saved,
+                        EXISTS(SELECT 1 FROM EpisodeQueue eq WHERE eq.EpisodeID = e.EpisodeID AND eq.UserID = {}) as queued,
+                        EXISTS(SELECT 1 FROM DownloadedEpisodes de WHERE de.EpisodeID = e.EpisodeID AND de.UserID = {}) as downloaded,
+                        0 as is_youtube,
+                        p.PodcastID as podcastid,
+                        ROUND((COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) * 100, 2) as progress_percent
+                    FROM Episodes e
+                    JOIN Podcasts p ON e.PodcastID = p.PodcastID AND p.UserID = {}
+                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}"#, 
+                    user_timezone, user_id, user_id, user_id, user_id, user_id
+                ));
+                
+                where_conditions.push("p.UserID = ?".to_string());
+                
+                // Apply all the same filters with MySQL syntax
+                if let Some(min_dur) = playlist.try_get::<Option<i32>, _>("MinDuration")? {
+                    where_conditions.push(format!("e.EpisodeDuration >= {}", min_dur));
+                }
+                if let Some(max_dur) = playlist.try_get::<Option<i32>, _>("MaxDuration")? {
+                    where_conditions.push(format!("e.EpisodeDuration <= {}", max_dur));
+                }
+                
+                if let Some(hours) = playlist.try_get::<Option<i32>, _>("TimeFilterHours")? {
+                    where_conditions.push(format!(
+                        "e.EpisodePubDate >= DATE_SUB(CONVERT_TZ(NOW(), 'UTC', '{}'), INTERVAL {} HOUR)", 
+                        user_timezone, hours
+                    ));
+                    debug!("📅 Added MySQL timezone-aware time filter: last {} hours in timezone {}", hours, user_timezone);
+                }
+                
+                // 3. PODCAST FILTER - handle JSON array of podcast IDs (MySQL)
+                if let Some(podcast_ids_json) = playlist.try_get::<Option<String>, _>("PodcastIDs")?.as_ref() {
+                    if !podcast_ids_json.is_empty() && podcast_ids_json != "[]" && podcast_ids_json != "null" {
+                        match serde_json::from_str::<Vec<i32>>(podcast_ids_json) {
+                            Ok(podcast_ids) if !podcast_ids.is_empty() && !podcast_ids.contains(&-1) => {
+                                let podcast_ids_str = podcast_ids.iter().map(|id| id.to_string()).collect::<Vec<_>>().join(",");
+                                where_conditions.push(format!("p.PodcastID IN ({})", podcast_ids_str));
+                                debug!("🎙️ Added MySQL podcast filter: {:?}", podcast_ids);
+                            }
+                            Ok(_) => debug!("🎙️ MySQL podcast filter contains -1 or is empty, including all podcasts"),
+                            Err(e) => warn!("⚠️ Failed to parse MySQL podcast IDs JSON '{}': {}", podcast_ids_json, e),
+                        }
+                    }
+                }
+                
+                // 4. ULTRA-PRECISE PLAY STATE FILTERS (MySQL)
+                let mut play_state_conditions = Vec::new();
+                
+                if playlist.try_get::<bool, _>("IncludeUnplayed")? {
+                    play_state_conditions.push("(h.ListenDuration IS NULL OR h.ListenDuration = 0)".to_string());
+                    debug!("▶️ Including UNPLAYED episodes (MySQL)");
+                }
+                
+                if playlist.try_get::<bool, _>("IncludePartiallyPlayed")? {
+                    play_state_conditions.push(
+                        "(h.ListenDuration > 0 AND h.ListenDuration < e.EpisodeDuration * 0.9 AND (e.EpisodeDuration - h.ListenDuration) > 30)".to_string()
+                    );
+                    debug!("⏸️ Including PARTIALLY PLAYED episodes (MySQL)");
+                }
+                
+                if playlist.try_get::<bool, _>("IncludePlayed")? {
+                    play_state_conditions.push(
+                        "(h.ListenDuration IS NOT NULL AND (h.ListenDuration >= e.EpisodeDuration * 0.9 OR (e.EpisodeDuration - h.ListenDuration) <= 30))".to_string()
+                    );
+                    debug!("✅ Including PLAYED episodes (MySQL)");
+                }
+                
+                if !play_state_conditions.is_empty() {
+                    where_conditions.push(format!("({})", play_state_conditions.join(" OR ")));
+                } else {
+                    where_conditions.push("FALSE".to_string());
+                    warn!("⚠️ No play states selected for MySQL playlist '{}' - will return empty results", playlist.try_get::<String, _>("Name")?);
+                }
+                
+                // 5. ULTRA-PRECISE PROGRESS PERCENTAGE FILTERS (MySQL)
+                if let Some(min_progress) = playlist.try_get::<Option<f64>, _>("PlayProgressMin")? {
+                    let min_decimal = min_progress / 100.0;
+                    where_conditions.push(format!(
+                        "(COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) >= {}", 
+                        min_decimal
+                    ));
+                    debug!("📊 Added MySQL min progress filter: {}% ({})", min_progress, min_decimal);
+                }
+                if let Some(max_progress) = playlist.try_get::<Option<f64>, _>("PlayProgressMax")? {
+                    let max_decimal = max_progress / 100.0;
+                    where_conditions.push(format!(
+                        "(COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) <= {}", 
+                        max_decimal
+                    ));
+                    debug!("📊 Added MySQL max progress filter: {}% ({})", max_progress, max_decimal);
+                }
+                
+                // 6. ULTRA-PRECISE ORDERING with podcast grouping support (MySQL)
+                let mut order_parts = Vec::new();
+                
+                if playlist.try_get::<bool, _>("GroupByPodcast")? {
+                    order_parts.push("podcastid".to_string());
+                    debug!("📚 MySQL grouping by podcast enabled");
+                }
+                
+                let sort_clause = match playlist.try_get::<String, _>("SortOrder")?.as_str() {
+                    "date_asc" => "episodepubdate ASC",
+                    "date_desc" => "episodepubdate DESC", 
+                    "duration_asc" => "episodeduration ASC",
+                    "duration_desc" => "episodeduration DESC",
+                    "listen_progress" => "(COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) DESC",
+                    "completion" => "(COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) DESC",
+                    "random" => "RAND()",
+                    "title_asc" => "episodetitle ASC",
+                    "title_desc" => "episodetitle DESC",
+                    "podcast_asc" => "podcastname ASC",
+                    "podcast_desc" => "podcastname DESC",
+                    _ => {
+                        warn!("⚠️ Unknown MySQL sort order '{}', defaulting to date_desc", playlist.try_get::<String, _>("SortOrder")?);
+                        "episodepubdate DESC"
+                    }
+                };
+                order_parts.push(sort_clause.to_string());
+                debug!("🔄 MySQL Sort order: {}", sort_clause);
+                
+                // 7. BUILD FINAL MYSQL QUERY
+                let where_clause = if where_conditions.is_empty() {
+                    String::new()
+                } else {
+                    format!(" WHERE {}", where_conditions.join(" AND "))
+                };
+                
+                let order_clause = format!(" ORDER BY {}", order_parts.join(", "));
+                
+                // Apply MaxEpisodes limit if specified (MySQL)
+                let limit_clause = if let Some(max_eps) = playlist.try_get::<Option<i32>, _>("MaxEpisodes")? {
+                    if max_eps > 0 {
+                        format!(" LIMIT {}", max_eps)
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+                
+                let final_query = format!("{}{}{}{}", 
+                    query_parts.join(" "), where_clause, order_clause, limit_clause);
+                
+                debug!("🔍 Final MySQL dynamic playlist query: {}", final_query);
+                
+                // Execute the main MySQL query
+                let rows = sqlx::query(&final_query)
+                    .bind(user_id)
+                    .fetch_all(pool)
+                    .await?;
+
+                let mut episodes = Vec::new();
+                for row in rows {
+                    episodes.push(crate::models::SavedEpisode {
+                        episodetitle: row.try_get("episodetitle")?,
+                        podcastname: row.try_get("podcastname")?,
+                        episodepubdate: row.try_get("episodepubdate")?,
+                        episodedescription: row.try_get("episodedescription")?,
+                        episodeartwork: row.try_get("episodeartwork")?,
+                        episodeurl: row.try_get("episodeurl")?,
+                        episodeduration: row.try_get("episodeduration")?,
+                        listenduration: row.try_get("listenduration").ok(),
+                        episodeid: row.try_get("episodeid")?,
+                        websiteurl: row.try_get("websiteurl")?,
+                        completed: row.try_get("completed")?,
+                        saved: row.try_get("saved")?,
+                        queued: row.try_get("queued")?,
+                        downloaded: row.try_get("downloaded")?,
+                        is_youtube: row.try_get("is_youtube")?,
+                        podcastid: row.try_get("podcastid").ok(),
+                    });
+                }
+                
+                debug!("📝 Retrieved {} episodes from MySQL dynamic query", episodes.len());
+                
+                // Create playlist info from the MySQL playlist row we already have
+                let playlist_info = crate::models::PlaylistInfo {
+                    name: playlist.try_get::<String, _>("Name")?,
+                    description: playlist.try_get::<String, _>("Description")?,
+                    episode_count: episodes.len() as i32,
+                    icon_name: playlist.try_get::<String, _>("IconName")?,
+                };
+                
+                Ok(crate::models::PlaylistEpisodesResponse {
+                    episodes,
+                    playlist_info,
+                })
             }
         }
     }

@@ -1,7 +1,6 @@
 use crate::components::context::{AppState, UIState};
 use crate::components::gen_components::{AdminSetupData, FirstAdminModal};
 use crate::components::gen_funcs::format_error_message;
-use i18nrs::yew::use_translation;
 use crate::components::gen_funcs::{encode_password, validate_user_input, ValidationError};
 use crate::components::notification_center::ToastNotification;
 use crate::components::setting_components::theme_options::initialize_default_theme;
@@ -18,6 +17,7 @@ use crate::requests::setting_reqs::{
     AvailableLanguage,
 };
 use chrono_tz::{Tz, TZ_VARIANTS};
+use i18nrs::yew::use_translation;
 use md5;
 use rand::Rng;
 use wasm_bindgen::JsCast;
@@ -27,10 +27,12 @@ use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
 
 // Gravatar URL generation functions (outside of use_effect_with)
+#[allow(dead_code)]
 fn calculate_gravatar_hash(email: &String) -> String {
     format!("{:x}", md5::compute(email.to_lowercase()))
 }
 
+#[allow(dead_code)]
 pub fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
     let hash = calculate_gravatar_hash(&email.clone().unwrap());
     format!("https://gravatar.com/avatar/{}?s={}", hash, size)
@@ -39,19 +41,18 @@ pub fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
 #[function_component(Login)]
 pub fn login() -> Html {
     let (i18n, _) = use_translation();
-    
+
     // Pre-capture translation strings for use in closures and async blocks
     let i18n_error_checking_status = i18n.t("login.error_checking_status").to_string();
     let i18n_error_fetching_oidc = i18n.t("login.error_fetching_oidc_providers").to_string();
-    let i18n_error_fetching_languages = i18n.t("login.error_fetching_languages").to_string();
     let i18n_account_created_success = i18n.t("login.account_created_successfully").to_string();
     let i18n_error_creating_account = i18n.t("login.error_creating_account").to_string();
     let i18n_error_checking_mfa = i18n.t("login.error_checking_mfa_status").to_string();
-    let i18n_error_checking_first_login = i18n.t("login.error_checking_first_login_status").to_string();
+    let i18n_error_checking_first_login = i18n
+        .t("login.error_checking_first_login_status")
+        .to_string();
     let i18n_credentials_incorrect = i18n.t("login.credentials_incorrect").to_string();
     let i18n_error_setting_up_timezone = i18n.t("login.error_setting_up_timezone").to_string();
-    let i18n_first_time_welcome = i18n.t("login.first_time_welcome").to_string();
-    let i18n_mfa_welcome = i18n.t("login.mfa_welcome").to_string();
     let i18n_forgot_password = i18n.t("login.forgot_password").to_string();
     let i18n_reset_instructions = i18n.t("login.reset_password_instructions").to_string();
     let i18n_fill_password_fields = i18n.t("login.fill_password_fields").to_string();
@@ -65,24 +66,21 @@ pub fn login() -> Html {
     let i18n_new_password_label = i18n.t("login.new_password_label").to_string();
     let i18n_confirm_password_label = i18n.t("login.confirm_password_label").to_string();
     let i18n_initial_setup = i18n.t("login.initial_setup").to_string();
-    let i18n_hour_format = i18n.t("login.hour_format").to_string(); 
+    let i18n_hour_format = i18n.t("login.hour_format").to_string();
     let i18n_time_zone = i18n.t("login.time_zone").to_string();
     let i18n_date_format = i18n.t("login.date_format").to_string();
     let i18n_save_preferences = i18n.t("login.save_preferences").to_string();
     let i18n_mfa_login = i18n.t("login.mfa_login").to_string();
     let i18n_or_continue_with = i18n.t("login.or_continue_with").to_string();
     let i18n_connect_different_server = i18n.t("login.connect_different_server").to_string();
-    let i18n_connect_local_server = i18n.t("login.connect_local_server").to_string();
     let i18n_admin_created_success = i18n.t("login.admin_created_success").to_string();
-    let i18n_error_parsing_time = i18n.t("login.error_parsing_time").to_string();
     let i18n_language_updated = i18n.t("login.language_updated").to_string();
     let i18n_error_setup_timezone = i18n.t("login.error_setup_timezone").to_string();
-    let i18n_error_validating_mfa = i18n.t("login.error_validating_mfa").to_string();
     let i18n_language = i18n.t("common.language").to_string();
     let i18n_login = i18n.t("auth.login").to_string();
     let i18n_pinepods = i18n.t("common.pinepods").to_string();
     let i18n_password_reset_successfully = i18n.t("login.password_reset_successfully").to_string();
-    
+
     let history = BrowserHistory::new();
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
@@ -97,8 +95,8 @@ pub fn login() -> Html {
     let fullname = use_state(|| "".to_string());
     let (_app_state, dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
-    let time_zone = use_state(|| "".to_string());
-    let date_format = use_state(|| "".to_string());
+    let time_zone = use_state(|| "America/New_York".to_string());
+    let date_format = use_state(|| "MDY".to_string());
     let time_pref = use_state(|| 12);
     let user_language = use_state(|| "en".to_string());
     let available_languages: UseStateHandle<Vec<AvailableLanguage>> = use_state(Vec::new);
@@ -139,7 +137,9 @@ pub fn login() -> Html {
                     first_admin_created.set(admin_created);
                 }
                 Err(e) => {
-                    web_sys::console::log_1(&format!("{}: {:?}", i18n_error_checking_status, e).into());
+                    web_sys::console::log_1(
+                        &format!("{}: {:?}", i18n_error_checking_status, e).into(),
+                    );
                 }
             }
         });
@@ -638,9 +638,8 @@ pub fn login() -> Html {
                                         }
                                         Err(_) => {
                                             post_state.reduce_mut(|state| {
-                                                state.error_message = Option::from(
-                                                    (&i18n_error_checking_mfa).clone(),
-                                                )
+                                                state.error_message =
+                                                    Option::from((&i18n_error_checking_mfa).clone())
                                             });
                                         }
                                     }
@@ -650,9 +649,8 @@ pub fn login() -> Html {
                             }
                             Err(_) => {
                                 post_state.reduce_mut(|state| {
-                                    state.error_message = Option::from(
-                                        (&i18n_error_checking_first_login).clone(),
-                                    )
+                                    state.error_message =
+                                        Option::from((&i18n_error_checking_first_login).clone())
                                 });
                             }
                         }
@@ -871,9 +869,8 @@ pub fn login() -> Html {
                                     if success {
                                         page_state.set(PageState::Default);
                                         create_state.reduce_mut(|state| {
-                                            state.info_message = Some(
-                                                (&i18n_account_created_success).clone(),
-                                            )
+                                            state.info_message =
+                                                Some((&i18n_account_created_success).clone())
                                         });
                                     }
                                 }
@@ -889,8 +886,10 @@ pub fn login() -> Html {
                     Err(e) => {
                         let formatted_error = format_error_message(&e.to_string());
                         create_state.reduce_mut(|state| {
-                            state.error_message =
-                                Some(format!("{}: {}", i18n_error_creating_account, formatted_error))
+                            state.error_message = Some(format!(
+                                "{}: {}",
+                                i18n_error_creating_account, formatted_error
+                            ))
                         });
                     }
                 }
@@ -899,63 +898,63 @@ pub fn login() -> Html {
     };
     // Define the modal components
     let create_user_modal = html! {
-        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                <div class="modal-container relative rounded-lg shadow">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                        <h3 class="text-xl font-semibold">
-{&i18n.t("login.create_new_user")}
-                        </h3>
-                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                            </svg>
-                            <span class="sr-only">{&i18n.t("common.close_modal")}</span>
-                        </button>
-                    </div>
-                    <div class="p-4 md:p-5">
-                        <form class="space-y-4" action="#">
-                            <div>
-                                <label for="username" class="block mb-2 text-sm font-medium">{&i18n.t("common.username")}</label>
-                                <input oninput={on_username_change.clone()} type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                                {
-                                    match *username_error {
-                                        username_error_notice::Hidden => html! {},
-                                        username_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{&i18n.t("validation.username_min_length")}</p>},
+            <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
+                    <div class="modal-container relative rounded-lg shadow">
+                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                            <h3 class="text-xl font-semibold">
+    {&i18n.t("login.create_new_user")}
+                            </h3>
+                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                                </svg>
+                                <span class="sr-only">{&i18n.t("common.close_modal")}</span>
+                            </button>
+                        </div>
+                        <div class="p-4 md:p-5">
+                            <form class="space-y-4" action="#">
+                                <div>
+                                    <label for="username" class="block mb-2 text-sm font-medium">{&i18n.t("common.username")}</label>
+                                    <input oninput={on_username_change.clone()} type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                    {
+                                        match *username_error {
+                                            username_error_notice::Hidden => html! {},
+                                            username_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{&i18n.t("validation.username_min_length")}</p>},
+                                        }
                                     }
-                                }
-                            </div>
-                            <div>
-                                <label for="fullname" class="block mb-2 text-sm font-medium">{&i18n.t("common.full_name")}</label>
-                                <input oninput={on_fullname_change} type="text" id="fullname" name="fullname" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                            </div>
-                            <div>
-                                <label for="email" class="block mb-2 text-sm font-medium">{&i18n.t("common.email")}</label>
-                                <input oninput={on_email_change} type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                                {
-                                    match *email_error {
-                                        email_error_notice::Hidden => html! {},
-                                        email_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{&i18n.t("validation.invalid_email")}</p>},
+                                </div>
+                                <div>
+                                    <label for="fullname" class="block mb-2 text-sm font-medium">{&i18n.t("common.full_name")}</label>
+                                    <input oninput={on_fullname_change} type="text" id="fullname" name="fullname" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                </div>
+                                <div>
+                                    <label for="email" class="block mb-2 text-sm font-medium">{&i18n.t("common.email")}</label>
+                                    <input oninput={on_email_change} type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                    {
+                                        match *email_error {
+                                            email_error_notice::Hidden => html! {},
+                                            email_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{&i18n.t("validation.invalid_email")}</p>},
+                                        }
                                     }
-                                }
-                            </div>
-                            <div>
-                                <label for="password" class="block mb-2 text-sm font-medium">{&i18n.t("common.password")}</label>
-                                <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                                {
-                                    match *password_error {
-                                        password_error_notice::Hidden => html! {},
-                                        password_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{&i18n.t("validation.password_min_length")}</p>},
+                                </div>
+                                <div>
+                                    <label for="password" class="block mb-2 text-sm font-medium">{&i18n.t("common.password")}</label>
+                                    <input oninput={on_password_change.clone()} type="password" id="password" name="password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                    {
+                                        match *password_error {
+                                            password_error_notice::Hidden => html! {},
+                                            password_error_notice::Shown => html! {<p class="text-red-500 text-xs italic">{&i18n.t("validation.password_min_length")}</p>},
+                                        }
                                     }
-                                }
-                            </div>
-                            <button type="submit" onclick={on_create_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{&i18n.t("common.submit")}</button>
-                        </form>
+                                </div>
+                                <button type="submit" onclick={on_create_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{&i18n.t("common.submit")}</button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    };
+        };
 
     let on_forgot_password = {
         let page_state = page_state.clone();
@@ -988,14 +987,12 @@ pub fn login() -> Html {
         let page_state = page_state.clone();
         let forgot_username = forgot_username.clone().to_string();
         let forgot_email = forgot_email.clone().to_string();
-        let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: yew::events::MouseEvent| {
             e.prevent_default();
             let window = window().expect("no global `window` exists");
             let location = window.location();
             let server_name = location.href().expect("should have a href");
             let server_name = server_name.trim_end_matches('/').to_string();
-            let dispatch = dispatch_wasm.clone();
             let page_state = page_state.clone();
 
             // Show loading state immediately
@@ -1024,40 +1021,40 @@ pub fn login() -> Html {
     };
 
     let forgot_password_modal = html! {
-        <div id="forgot-password-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                <div class="modal-container relative rounded-lg shadow">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                        <h3 class="text-xl font-semibold">
-{&i18n_forgot_password}
-                        </h3>
-                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                            </svg>
-                            <span class="sr-only">{&i18n.t("common.close_modal")}</span>
-                        </button>
-                    </div>
-                    <div class="p-4 md:p-5">
-                        <form class="space-y-4" action="#">
-                            <p class="text-m font-semibold">
-{&i18n_reset_instructions}
-                            </p>
-                            <div>
-                                <label for="username" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Username"}</label>
-                                <input oninput={on_forgot_username_change} type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                            </div>
-                            <div>
-                                <label for="email" class="block mb-2 text-sm font-medium">{&i18n.t("common.email")}</label>
-                                <input oninput={on_forgot_email_change} type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
-                            </div>
-                            <button onclick={on_reset_submit} type="submit" class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
-                        </form>
+            <div id="forgot-password-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
+                    <div class="modal-container relative rounded-lg shadow">
+                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                            <h3 class="text-xl font-semibold">
+    {&i18n_forgot_password}
+                            </h3>
+                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                                </svg>
+                                <span class="sr-only">{&i18n.t("common.close_modal")}</span>
+                            </button>
+                        </div>
+                        <div class="p-4 md:p-5">
+                            <form class="space-y-4" action="#">
+                                <p class="text-m font-semibold">
+    {&i18n_reset_instructions}
+                                </p>
+                                <div>
+                                    <label for="username" class="block mb-2 text-sm font-medium text-gray-900 dark:text-white">{"Username"}</label>
+                                    <input oninput={on_forgot_username_change} type="text" id="username" name="username" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                </div>
+                                <div>
+                                    <label for="email" class="block mb-2 text-sm font-medium">{&i18n.t("common.email")}</label>
+                                    <input oninput={on_forgot_email_change} type="email" id="email" name="email" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" required=true />
+                                </div>
+                                <button onclick={on_reset_submit} type="submit" class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{"Submit"}</button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    };
+        };
 
     let on_reset_code_change = {
         let reset_code = reset_code.clone();
@@ -1115,8 +1112,7 @@ pub fn login() -> Html {
             // Validate password confirmation
             if reset_password.is_empty() || reset_password_confirm.is_empty() {
                 dispatch.reduce_mut(|state| {
-                    state.error_message =
-                        Option::from(i18n_fill_password_fields.clone());
+                    state.error_message = Option::from(i18n_fill_password_fields.clone());
                 });
                 return;
             }
@@ -1130,8 +1126,7 @@ pub fn login() -> Html {
 
             if reset_code.is_empty() {
                 dispatch.reduce_mut(|state| {
-                    state.error_message =
-                        Option::from(i18n_enter_reset_code.clone());
+                    state.error_message = Option::from(i18n_enter_reset_code.clone());
                 });
                 return;
             }
@@ -1159,11 +1154,13 @@ pub fn login() -> Html {
                                 if success.message == i18n_password_reset_successfully {
                                     page_state.set(PageState::Default);
                                     dispatch.reduce_mut(|state| {
-                                        state.info_message = Option::from(i18n_password_reset_success.clone());
+                                        state.info_message =
+                                            Option::from(i18n_password_reset_success.clone());
                                     });
                                 } else {
                                     dispatch.reduce_mut(|state| {
-                                        state.error_message = Option::from(i18n_invalid_reset_code.clone());
+                                        state.error_message =
+                                            Option::from(i18n_invalid_reset_code.clone());
                                     });
                                 }
                             }
@@ -1190,44 +1187,44 @@ pub fn login() -> Html {
     };
 
     let enter_code_modal = html! {
-        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-            <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
-                <div class="modal-container relative rounded-lg shadow">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
-                        <h3 class="text-xl font-semibold">
-{&i18n_password_reset_title}
-                        </h3>
-                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                            </svg>
-                            <span class="sr-only">{&i18n.t("common.close_modal")}</span>
-                        </button>
-                    </div>
-                    <div class="p-4 md:p-5">
-                        <form class="space-y-4" action="#">
-                            <p class="text-m font-semibold">
-{&i18n_reset_code_sent}
-                            </p>
-                            <div>
-                                <label for="reset_code" class="block mb-2 text-sm font-medium">{&i18n_reset_code_label}</label>
-                                <input oninput={on_reset_code_change} type="text" id="reset_code" name="reset_code" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.enter_password_reset_code")} required=true />
-                            </div>
-                            <div>
-                                <label for="reset_password" class="block mb-2 text-sm font-medium">{&i18n_new_password_label}</label>
-                                <input oninput={on_reset_password_change} type="password" id="reset_password" name="reset_password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.enter_new_password")} required=true />
-                            </div>
-                            <div>
-                                <label for="reset_password_confirm" class="block mb-2 text-sm font-medium">{&i18n_confirm_password_label}</label>
-                                <input oninput={on_reset_password_confirm_change} type="password" id="reset_password_confirm" name="reset_password_confirm" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.confirm_new_password")} required=true />
-                            </div>
-                            <button type="submit" onclick={on_reset_code_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{&i18n.t("login.reset_password_button")}</button>
-                        </form>
+            <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+                <div class="modal-container relative p-4 w-full max-w-md max-h-full rounded-lg shadow" onclick={stop_propagation.clone()}>
+                    <div class="modal-container relative rounded-lg shadow">
+                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
+                            <h3 class="text-xl font-semibold">
+    {&i18n_password_reset_title}
+                            </h3>
+                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                                </svg>
+                                <span class="sr-only">{&i18n.t("common.close_modal")}</span>
+                            </button>
+                        </div>
+                        <div class="p-4 md:p-5">
+                            <form class="space-y-4" action="#">
+                                <p class="text-m font-semibold">
+    {&i18n_reset_code_sent}
+                                </p>
+                                <div>
+                                    <label for="reset_code" class="block mb-2 text-sm font-medium">{&i18n_reset_code_label}</label>
+                                    <input oninput={on_reset_code_change} type="text" id="reset_code" name="reset_code" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.enter_password_reset_code")} required=true />
+                                </div>
+                                <div>
+                                    <label for="reset_password" class="block mb-2 text-sm font-medium">{&i18n_new_password_label}</label>
+                                    <input oninput={on_reset_password_change} type="password" id="reset_password" name="reset_password" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.enter_new_password")} required=true />
+                                </div>
+                                <div>
+                                    <label for="reset_password_confirm" class="block mb-2 text-sm font-medium">{&i18n_confirm_password_label}</label>
+                                    <input oninput={on_reset_password_confirm_change} type="password" id="reset_password_confirm" name="reset_password_confirm" class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("auth.confirm_new_password")} required=true />
+                                </div>
+                                <button type="submit" onclick={on_reset_code_submit} class="download-button w-full focus:ring-4 focus:outline-none font-medium rounded-lg text-sm px-5 py-2.5 text-center">{&i18n.t("login.reset_password_button")}</button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    };
+        };
 
     let forgot_password_loading_modal = html! {
         <div id="forgot-password-loading-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25">
@@ -1450,110 +1447,113 @@ pub fn login() -> Html {
     }
 
     let time_zone_setup_modal = html! {
-        <div class="modal-overlay">
-            <div class="item_container-text modal-content">
-                // Header
-                <div class="modal-header">
-                    <i class="ph ph-clock text-xl"></i>
-                    <h3 class="text-lg">{&i18n_initial_setup}</h3>
-                </div>
+            <div class="modal-overlay">
+                <div class="item_container-text modal-content">
+                    // Header
+                    <div class="modal-header">
+                        <i class="ph ph-clock text-xl"></i>
+                        <h3 class="text-lg">{&i18n_initial_setup}</h3>
+                    </div>
 
-                // Content
-                <div class="modal-body">
-                    <form>
-                        <div class="modal-welcome">
-                            <i class="ph ph-hand-waving text-xl"></i>
-                            <p>
-{&i18n.t("login.first_time_welcome")}
-                            </p>
-                        </div>
+                    // Content
+                    <div class="modal-body">
+                        <form>
+                            <div class="modal-welcome">
+                                <i class="ph ph-hand-waving text-xl"></i>
+                                <p>
+    {&i18n.t("login.first_time_welcome")}
+                                </p>
+                            </div>
 
-                        <div class="modal-form-group">
-                            <label class="modal-label">
-                                <i class="ph ph-translate"></i>
-                                <span>{&i18n_language}</span>
-                            </label>
-                            <select
-                                id="language"
-                                name="language"
-                                class="modal-select"
-                                oninput={on_language_change.clone()}
-                                value={(*user_language).clone()}
+                            <div class="modal-form-group">
+                                <label class="modal-label">
+                                    <i class="ph ph-translate"></i>
+                                    <span>{&i18n_language}</span>
+                                </label>
+                                <select
+                                    id="language"
+                                    name="language"
+                                    class="modal-select"
+                                    oninput={on_language_change.clone()}
+                                    value={(*user_language).clone()}
+                                >
+                                    { for available_languages.iter().map(|lang| {
+                                        html! {
+                                            <option value={lang.code.clone()}>{&lang.name}</option>
+                                        }
+                                    })}
+                                </select>
+                            </div>
+
+                            <div class="modal-form-group">
+                                <label class="modal-label">
+                                    <i class="ph ph-clock-clockwise"></i>
+                                    <span>{&i18n_hour_format}</span>
+                                </label>
+                                <select
+                                    id="hour_format"
+                                    name="hour_format"
+                                    class="modal-select"
+                                    oninput={on_time_pref_change}
+                                    value={(*time_pref).to_string()}
+                                >
+                                    <option value="12">{"12 Hour"}</option>
+                                    <option value="24">{"24 Hour"}</option>
+                                </select>
+                            </div>
+
+                            <div class="modal-form-group">
+                                <label class="modal-label">
+                                    <i class="ph ph-globe"></i>
+                                    <span>{&i18n_time_zone}</span>
+                                </label>
+                                <select
+                                    id="time_zone"
+                                    name="time_zone"
+                                    class="modal-select"
+                                    oninput={on_tz_change}
+                                    value={(*time_zone).clone()}
+                                >
+                                    { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
+                                </select>
+                            </div>
+
+                            <div class="modal-form-group">
+                                <label class="modal-label">
+                                    <i class="ph ph-calendar"></i>
+                                    <span>{&i18n_date_format}</span>
+                                </label>
+                                <select
+                                    id="date_format"
+                                    name="date_format"
+                                    class="modal-select"
+                                    oninput={on_df_change}
+                                    value={(*date_format).clone()}
+                                >
+                                    <option value="MDY">{"MM-DD-YYYY"}</option>
+                                    <option value="DMY">{"DD-MM-YYYY"}</option>
+                                    <option value="YMD">{"YYYY-MM-DD"}</option>
+                                    <option value="JUL">{"YY/DDD (Julian)"}</option>
+                                    <option value="ISO">{"ISO 8601"}</option>
+                                    <option value="USA">{"MM/DD/YYYY"}</option>
+                                    <option value="EUR">{"DD.MM.YYYY"}</option>
+                                    <option value="JIS">{"YYYY-MM-DD"}</option>
+                                </select>
+                            </div>
+
+                            <button
+                                type="submit"
+                                onclick={on_time_zone_submit}
+                                class="modal-button"
                             >
-                                { for available_languages.iter().map(|lang| {
-                                    html! {
-                                        <option value={lang.code.clone()}>{&lang.name}</option>
-                                    }
-                                })}
-                            </select>
-                        </div>
-
-                        <div class="modal-form-group">
-                            <label class="modal-label">
-                                <i class="ph ph-clock-clockwise"></i>
-                                <span>{&i18n_hour_format}</span>
-                            </label>
-                            <select
-                                id="hour_format"
-                                name="hour_format"
-                                class="modal-select"
-                                oninput={on_time_pref_change}
-                            >
-                                <option value="12">{"12 Hour"}</option>
-                                <option value="24">{"24 Hour"}</option>
-                            </select>
-                        </div>
-
-                        <div class="modal-form-group">
-                            <label class="modal-label">
-                                <i class="ph ph-globe"></i>
-                                <span>{&i18n_time_zone}</span>
-                            </label>
-                            <select
-                                id="time_zone"
-                                name="time_zone"
-                                class="modal-select"
-                                oninput={on_tz_change}
-                            >
-                                { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
-                            </select>
-                        </div>
-
-                        <div class="modal-form-group">
-                            <label class="modal-label">
-                                <i class="ph ph-calendar"></i>
-                                <span>{&i18n_date_format}</span>
-                            </label>
-                            <select
-                                id="date_format"
-                                name="date_format"
-                                class="modal-select"
-                                oninput={on_df_change}
-                            >
-                                <option value="MDY">{"MM-DD-YYYY"}</option>
-                                <option value="DMY">{"DD-MM-YYYY"}</option>
-                                <option value="YMD">{"YYYY-MM-DD"}</option>
-                                <option value="JUL">{"YY/DDD (Julian)"}</option>
-                                <option value="ISO">{"ISO 8601"}</option>
-                                <option value="USA">{"MM/DD/YYYY"}</option>
-                                <option value="EUR">{"DD.MM.YYYY"}</option>
-                                <option value="JIS">{"YYYY-MM-DD"}</option>
-                            </select>
-                        </div>
-
-                        <button
-                            type="submit"
-                            onclick={on_time_zone_submit}
-                            class="modal-button"
-                        >
-                            <i class="ph ph-check"></i>
-                            <span>{&i18n_save_preferences}</span>
-                        </button>
-                    </form>
+                                <i class="ph ph-check"></i>
+                                <span>{&i18n_save_preferences}</span>
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
-        </div>
-    };
+        };
 
     let on_mfa_change = {
         let mfa_code = mfa_code.clone();
@@ -1571,7 +1571,6 @@ pub fn login() -> Html {
         let mfa_code = mfa_code.clone();
         let mfa_session_token = mfa_session_token.clone();
         let temp_server_name = temp_server_name.clone();
-        let temp_user_id = temp_user_id.clone();
         let history = history.clone();
 
         Callback::from(move |e: MouseEvent| {
@@ -1579,7 +1578,6 @@ pub fn login() -> Html {
             let mfa_code = mfa_code.clone();
             let mfa_session_token = mfa_session_token.clone();
             let temp_server_name = temp_server_name.clone();
-            let temp_user_id = temp_user_id.clone();
             let page_state = page_state.clone();
             let history = history.clone();
 
@@ -1753,8 +1751,7 @@ pub fn login() -> Html {
                     Ok(_) => {
                         first_admin_created.set(true);
                         audio_dispatch.reduce_mut(|state| {
-                            state.info_message =
-                                Some(i18n_admin_created_success.clone());
+                            state.info_message = Some(i18n_admin_created_success.clone());
                         });
                         history.push("/"); // Redirect to login
                     }
@@ -1771,33 +1768,33 @@ pub fn login() -> Html {
     };
 
     let mfa_code_modal = html! {
-        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700" onclick={stop_propagation.clone()}>
-                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
-{&i18n_mfa_login}
-                        </h3>
-                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                            </svg>
-                            <span class="sr-only">{&i18n.t("common.close_modal")}</span>
-                        </button>
-                    </div>
-                    <div class="p-4 md:p-5">
-                        <form class="space-y-4" action="#">
-                            <p class="text-m font-semibold text-gray-900 dark:text-white">
-{&i18n.t("login.mfa_welcome")}
-                            </p>
-                            <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder={i18n.t("auth.enter_mfa_code")} />
-                            <button type="submit" onclick={on_mfa_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{&i18n.t("common.submit")}</button>
-                        </form>
+            <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+                <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700" onclick={stop_propagation.clone()}>
+                    <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
+                            <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+    {&i18n_mfa_login}
+                            </h3>
+                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                                </svg>
+                                <span class="sr-only">{&i18n.t("common.close_modal")}</span>
+                            </button>
+                        </div>
+                        <div class="p-4 md:p-5">
+                            <form class="space-y-4" action="#">
+                                <p class="text-m font-semibold text-gray-900 dark:text-white">
+    {&i18n.t("login.mfa_welcome")}
+                                </p>
+                                <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder={i18n.t("auth.enter_mfa_code")} />
+                                <button type="submit" onclick={on_mfa_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{&i18n.t("common.submit")}</button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    };
+        };
 
     let modal_content = {
         if !*first_admin_created {
@@ -1812,247 +1809,230 @@ pub fn login() -> Html {
     };
 
     html! {
-        <>
-        if *loading {
-            <div class="loading-animation fixed inset-0 flex justify-center items-center bg-opacity-80 z-50">
-                <div class="frame1"></div>
-                <div class="frame2"></div>
-                <div class="frame3"></div>
-                <div class="frame4"></div>
-                <div class="frame5"></div>
-                <div class="frame6"></div>
-            </div>
-        } else {
-        <div id="login-page" style={format!("background-image: url('{}'); background-repeat: no-repeat; background-attachment: fixed; background-size: cover;", *background_image_url)}>
-        {
-            match *page_state {
-            PageState::CreateUser => create_user_modal,
-            PageState::ForgotPassword => forgot_password_modal,
-            PageState::ForgotPasswordLoading => forgot_password_loading_modal,
-            PageState::TimeZone => time_zone_setup_modal,
-            PageState::MFAPrompt => mfa_code_modal,
-            PageState::EnterCode => enter_code_modal,
-            _ => html! {},
+            <>
+            if *loading {
+                <div class="loading-animation fixed inset-0 flex justify-center items-center bg-opacity-80 z-50">
+                    <div class="frame1"></div>
+                    <div class="frame2"></div>
+                    <div class="frame3"></div>
+                    <div class="frame4"></div>
+                    <div class="frame5"></div>
+                    <div class="frame6"></div>
+                </div>
+            } else {
+            <div id="login-page" style={format!("background-image: url('{}'); background-repeat: no-repeat; background-attachment: fixed; background-size: cover;", *background_image_url)}>
+            {
+                match *page_state {
+                PageState::CreateUser => create_user_modal,
+                PageState::ForgotPassword => forgot_password_modal,
+                PageState::ForgotPasswordLoading => forgot_password_loading_modal,
+                PageState::TimeZone => time_zone_setup_modal,
+                PageState::MFAPrompt => mfa_code_modal,
+                PageState::EnterCode => enter_code_modal,
+                _ => html! {},
+                }
             }
-        }
-        {modal_content}
+            {modal_content}
 
-            <div class="flex justify-center items-start pt-[10vh] h-screen">
-                <div class="modal-container flex flex-col space-y-4 w-full max-w-xs p-8 border rounded-lg shadow-lg">
-                    <div class="flex justify-center items-center">
-                        <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
-                    </div>
-                    <h1 class="item_container-text text-xl font-bold mb-2 text-center">{&i18n_pinepods}</h1>
-                    <p class="item_container-text text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
-                    <input
-                        type="text"
-                        placeholder={i18n.t("auth.username")}
-                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                        oninput={on_login_username_change}
-                        onkeypress={on_key_press.clone()}
-                    />
-                    <input
-                        type="password"
-                        placeholder={i18n.t("auth.password")}
-                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                        oninput={on_login_password_change}
-                        onkeypress={on_key_press}
-                    />
-                    // Forgot Password and Create New User buttons
-                    <div class="flex justify-between">
+                <div class="flex justify-center items-start pt-[10vh] h-screen">
+                    <div class="modal-container flex flex-col space-y-4 w-full max-w-xs p-8 border rounded-lg shadow-lg">
+                        <div class="flex justify-center items-center">
+                            <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
+                        </div>
+                        <h1 class="item_container-text text-xl font-bold mb-2 text-center">{&i18n_pinepods}</h1>
+                        <p class="item_container-text text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
+                        <input
+                            type="text"
+                            placeholder={i18n.t("auth.username")}
+                            class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
+                            oninput={on_login_username_change}
+                            onkeypress={on_key_press.clone()}
+                        />
+                        <input
+                            type="password"
+                            placeholder={i18n.t("auth.password")}
+                            class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
+                            oninput={on_login_password_change}
+                            onkeypress={on_key_press}
+                        />
+                        // Forgot Password and Create New User buttons
+                        <div class="flex justify-between">
+                            <button
+                                onclick={on_forgot_password}
+                                class="login-link text-sm"
+                            >
+                                {"Forgot Password?"}
+                            </button>
+                            // <button
+                            //     onclick={on_create_new_user}
+                            //     class="text-sm text-blue-500 hover:text-blue-700"
+                            // >
+                            //     {"Create New User"}
+                            // </button>
+                            {
+                                if *self_service_enabled {
+                                    html! {
+                                        <button
+                                            onclick={on_create_new_user.clone()}
+                                            class="text-sm login-link"
+                                        >
+                {&i18n.t("login.create_new_user")}
+                                        </button>
+                                    }
+                                } else {
+                                    html! {}
+                                }
+                            }
+                        </div>
                         <button
-                            onclick={on_forgot_password}
-                            class="login-link text-sm"
+                            onclick={on_submit_click}
+                            class="p-2 download-button rounded"
                         >
-                            {"Forgot Password?"}
+    {&i18n_login}
                         </button>
-                        // <button
-                        //     onclick={on_create_new_user}
-                        //     class="text-sm text-blue-500 hover:text-blue-700"
-                        // >
-                        //     {"Create New User"}
-                        // </button>
+
+
+                        // In your HTML template:
                         {
-                            if *self_service_enabled {
+                            if !oidc_providers.is_empty() {
                                 html! {
-                                    <button
-                                        onclick={on_create_new_user.clone()}
-                                        class="text-sm login-link"
-                                    >
-            {&i18n.t("login.create_new_user")}
-                                    </button>
+                                    <>
+                                        <div class="oidc-divider">
+                                            <div class="oidc-divider-line"></div>
+                                            <div class="relative flex justify-center">
+                                                <span class="oidc-divider-text item_container-text">{&i18n_or_continue_with}</span>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex flex-col space-y-2">
+                                            {
+                                                oidc_providers.iter().map(|provider| {
+                                                    let button_style = format!(
+                                                        "background-color: {}",
+                                                        provider.button_color
+                                                    );
+                                                    let button_text_style = format!(
+                                                        "color: {}",
+                                                        provider.button_text_color
+                                                    );
+
+                                                    html! {
+                                                        <button
+                                                            class="oidc-button"
+                                                            style={button_style}
+                                                            onclick={
+                                                                let auth_url = provider.authorization_url.clone();
+                                                                let client_id = provider.client_id.clone();
+                                                                let scope = provider.scope.clone();
+                                                                // let server_name = server_name.clone();
+                                                                let window = web_sys::window().expect("no global `window` exists");
+                                                                let location = window.location();
+                                                                let server_name = location
+                                                                    .href()
+                                                                    .expect("should have a href")
+                                                                    .trim_end_matches('/')
+                                                                    .to_string();
+
+                                                                Callback::from(move |_| {
+                                                                    let window = web_sys::window().unwrap();
+                                                                    let crypto = window.crypto().unwrap();
+                                                                    let mut random_bytes = [0u8; 16];
+                                                                    crypto.get_random_values_with_u8_array(&mut random_bytes).unwrap();
+                                                                    let state = random_bytes.iter()
+                                                                        .map(|b| format!("{:02x}", b))
+                                                                        .collect::<String>();
+
+                                                                    let auth_url_clone = auth_url.clone();
+                                                                    let client_id_clone = client_id.clone();
+                                                                    let scope_clone = scope.clone();
+                                                                    let state_clone = state.clone();
+                                                                    let server_name_clone = server_name.clone();
+
+                                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                                        let origin = window.location().origin().unwrap();
+                                                                        match call_store_oidc_state(
+                                                                            server_name_clone,
+                                                                            state_clone.clone(),
+                                                                            client_id_clone.clone(),
+                                                                            Some(origin.clone()),
+                                                                        ).await {
+                                                                            Ok(_) => {
+                                                                                let redirect_uri = format!("{}/api/auth/callback", origin);
+                                                                                let auth_url = format!(
+                                                                                    "{}?client_id={}&redirect_uri={}&scope={}&response_type=code&state={}",
+                                                                                    auth_url_clone, client_id_clone, redirect_uri, scope_clone, state_clone
+                                                                                );
+                                                                                window.location().set_href(&auth_url).unwrap();
+                                                                            },
+                                                                            Err(e) => {
+                                                                                web_sys::console::log_1(&format!("Failed to store state: {:?}", e).into());
+                                                                            }
+                                                                        }
+                                                                    });
+                                                                })
+                                                            }
+                                                        >
+                                                            if let Some(icon) = &provider.icon_svg {
+                                                                <div class="oidc-icon">
+                                                                    {Html::from_html_unchecked(AttrValue::from(icon.clone()))}
+                                                                </div>
+                                                            }
+                                                            <span style={button_text_style}>{&provider.button_text}</span>
+                                                        </button>
+                                                    }
+                                                }).collect::<Html>()
+                                            }
+                                        </div>
+                                    </>
                                 }
                             } else {
                                 html! {}
                             }
                         }
+
+
                     </div>
-                    <button
-                        onclick={on_submit_click}
-                        class="p-2 download-button rounded"
-                    >
-{&i18n_login}
-                    </button>
-
-
-                    // In your HTML template:
-                    {
-                        if !oidc_providers.is_empty() {
-                            html! {
-                                <>
-                                    <div class="oidc-divider">
-                                        <div class="oidc-divider-line"></div>
-                                        <div class="relative flex justify-center">
-                                            <span class="oidc-divider-text item_container-text">{&i18n_or_continue_with}</span>
-                                        </div>
-                                    </div>
-
-                                    <div class="flex flex-col space-y-2">
-                                        {
-                                            oidc_providers.iter().map(|provider| {
-                                                let button_style = format!(
-                                                    "background-color: {}",
-                                                    provider.button_color
-                                                );
-                                                let button_text_style = format!(
-                                                    "color: {}",
-                                                    provider.button_text_color
-                                                );
-
-                                                html! {
-                                                    <button
-                                                        class="oidc-button"
-                                                        style={button_style}
-                                                        onclick={
-                                                            let auth_url = provider.authorization_url.clone();
-                                                            let client_id = provider.client_id.clone();
-                                                            let scope = provider.scope.clone();
-                                                            // let server_name = server_name.clone();
-                                                            let window = web_sys::window().expect("no global `window` exists");
-                                                            let location = window.location();
-                                                            let server_name = location
-                                                                .href()
-                                                                .expect("should have a href")
-                                                                .trim_end_matches('/')
-                                                                .to_string();
-
-                                                            Callback::from(move |_| {
-                                                                let window = web_sys::window().unwrap();
-                                                                let crypto = window.crypto().unwrap();
-                                                                let mut random_bytes = [0u8; 16];
-                                                                crypto.get_random_values_with_u8_array(&mut random_bytes).unwrap();
-                                                                let state = random_bytes.iter()
-                                                                    .map(|b| format!("{:02x}", b))
-                                                                    .collect::<String>();
-
-                                                                let auth_url_clone = auth_url.clone();
-                                                                let client_id_clone = client_id.clone();
-                                                                let scope_clone = scope.clone();
-                                                                let state_clone = state.clone();
-                                                                let server_name_clone = server_name.clone();
-
-                                                                wasm_bindgen_futures::spawn_local(async move {
-                                                                    let origin = window.location().origin().unwrap();
-                                                                    match call_store_oidc_state(
-                                                                        server_name_clone,
-                                                                        state_clone.clone(),
-                                                                        client_id_clone.clone(),
-                                                                        Some(origin.clone()),
-                                                                    ).await {
-                                                                        Ok(_) => {
-                                                                            let redirect_uri = format!("{}/api/auth/callback", origin);
-                                                                            let auth_url = format!(
-                                                                                "{}?client_id={}&redirect_uri={}&scope={}&response_type=code&state={}",
-                                                                                auth_url_clone, client_id_clone, redirect_uri, scope_clone, state_clone
-                                                                            );
-                                                                            window.location().set_href(&auth_url).unwrap();
-                                                                        },
-                                                                        Err(e) => {
-                                                                            web_sys::console::log_1(&format!("Failed to store state: {:?}", e).into());
-                                                                        }
-                                                                    }
-                                                                });
-                                                            })
-                                                        }
-                                                    >
-                                                        if let Some(icon) = &provider.icon_svg {
-                                                            <div class="oidc-icon">
-                                                                {Html::from_html_unchecked(AttrValue::from(icon.clone()))}
-                                                            </div>
-                                                        }
-                                                        <span style={button_text_style}>{&provider.button_text}</span>
-                                                    </button>
-                                                }
-                                            }).collect::<Html>()
-                                        }
-                                    </div>
-                                </>
-                            }
-                        } else {
-                            html! {}
-                        }
-                    }
-
-
+                    <ToastNotification />
+                    // Connect to Different Server button at bottom right
+                    <div class="fixed bottom-4 right-4">
+                        <button
+                            onclick={on_different_server}
+                            class="p-2 bg-gray-500 text-white rounded hover:bg-gray-600"
+                        >
+    {&i18n_connect_different_server}
+                        </button>
+                    </div>
                 </div>
-                <ToastNotification />
-                // Connect to Different Server button at bottom right
-                <div class="fixed bottom-4 right-4">
-                    <button
-                        onclick={on_different_server}
-                        class="p-2 bg-gray-500 text-white rounded hover:bg-gray-600"
-                    >
-{&i18n_connect_different_server}
-                    </button>
                 </div>
-            </div>
-            </div>
+            }
+            </>
+
         }
-        </>
-
-    }
 }
 
 #[function_component(ChangeServer)]
 pub fn login() -> Html {
     let (i18n, _) = use_translation();
-    
+
     // Pre-capture translation strings for use in closures and async blocks
     let i18n_error_checking_mfa = i18n.t("login.error_checking_mfa_status").to_string();
-    let i18n_error_checking_first_login = i18n.t("login.error_checking_first_login_status").to_string();
+    let i18n_error_checking_first_login = i18n
+        .t("login.error_checking_first_login_status")
+        .to_string();
     let i18n_credentials_incorrect = i18n.t("login.credentials_incorrect").to_string();
     let i18n_error_setting_up_timezone = i18n.t("login.error_setting_up_timezone").to_string();
-    let i18n_forgot_password = i18n.t("login.forgot_password").to_string();
-    let i18n_reset_instructions = i18n.t("login.reset_password_instructions").to_string();
-    let i18n_fill_password_fields = i18n.t("login.fill_password_fields").to_string();
-    let i18n_passwords_no_match = i18n.t("login.passwords_no_match").to_string();
-    let i18n_enter_reset_code = i18n.t("login.enter_reset_code").to_string();
-    let i18n_password_reset_success = i18n.t("login.password_reset_success").to_string();
-    let i18n_invalid_reset_code = i18n.t("login.invalid_reset_code").to_string();
-    let i18n_password_reset_title = i18n.t("login.password_reset_title").to_string();
-    let i18n_reset_code_sent = i18n.t("login.reset_code_sent").to_string();
-    let i18n_reset_code_label = i18n.t("login.reset_code_label").to_string();
-    let i18n_new_password_label = i18n.t("login.new_password_label").to_string();
-    let i18n_confirm_password_label = i18n.t("login.confirm_password_label").to_string();
     let i18n_initial_setup = i18n.t("login.initial_setup").to_string();
-    let i18n_hour_format = i18n.t("login.hour_format").to_string(); 
+    let i18n_hour_format = i18n.t("login.hour_format").to_string();
     let i18n_time_zone = i18n.t("login.time_zone").to_string();
     let i18n_date_format = i18n.t("login.date_format").to_string();
     let i18n_save_preferences = i18n.t("login.save_preferences").to_string();
     let i18n_mfa_login = i18n.t("login.mfa_login").to_string();
-    let i18n_or_continue_with = i18n.t("login.or_continue_with").to_string();
-    let i18n_connect_different_server = i18n.t("login.connect_different_server").to_string();
     let i18n_connect_local_server = i18n.t("login.connect_local_server").to_string();
-    let i18n_admin_created_success = i18n.t("login.admin_created_success").to_string();
     let i18n_error_parsing_time = i18n.t("login.error_parsing_time").to_string();
     let i18n_language_updated = i18n.t("login.language_updated").to_string();
-    let i18n_error_setup_timezone = i18n.t("login.error_setup_timezone").to_string();
     let i18n_error_validating_mfa = i18n.t("login.error_validating_mfa").to_string();
     let i18n_language = i18n.t("common.language").to_string();
-    let i18n_login = i18n.t("auth.login").to_string();
-    let i18n_pinepods = i18n.t("common.pinepods").to_string();
-    let i18n_password_reset_successfully = i18n.t("login.password_reset_successfully").to_string();
-    
+
     let (_app_state, _app_dispatch) = use_store::<AppState>();
     let (_state, _dispatch) = use_store::<UIState>();
     let history = BrowserHistory::new();
@@ -2060,8 +2040,8 @@ pub fn login() -> Html {
     let username = use_state(|| "".to_string());
     let password = use_state(|| "".to_string());
     let (_app_state, dispatch) = use_store::<AppState>();
-    let time_zone = use_state(|| "".to_string());
-    let date_format = use_state(|| "".to_string());
+    let time_zone = use_state(|| "America/New_York".to_string());
+    let date_format = use_state(|| "MDY".to_string());
     let time_pref = use_state(|| 12);
     let mfa_code = use_state(|| "".to_string());
     let temp_api_key = use_state(|| "".to_string());
@@ -2313,9 +2293,8 @@ pub fn login() -> Html {
                                         }
                                         Err(_) => {
                                             post_state.reduce_mut(|state| {
-                                                state.error_message = Option::from(
-                                                    (&i18n_error_checking_mfa).clone(),
-                                                )
+                                                state.error_message =
+                                                    Option::from((&i18n_error_checking_mfa).clone())
                                             });
                                         }
                                     }
@@ -2325,9 +2304,8 @@ pub fn login() -> Html {
                             }
                             Err(_) => {
                                 post_state.reduce_mut(|state| {
-                                    state.error_message = Option::from(
-                                        (&i18n_error_checking_first_login).clone(),
-                                    )
+                                    state.error_message =
+                                        Option::from((&i18n_error_checking_first_login).clone())
                                 });
                             }
                         }
@@ -2453,18 +2431,12 @@ pub fn login() -> Html {
         let history = history.clone();
         // let error_message_create = error_message.clone();
         let i18n_error_checking_mfa = (&i18n_error_checking_mfa).clone();
-        let i18n_error_checking_first_login = (&i18n_error_checking_first_login).clone();
-        let i18n_credentials_incorrect = (&i18n_credentials_incorrect).clone();
         let i18n_error_setting_up_timezone = (&i18n_error_setting_up_timezone).clone();
         let i18n_language_updated = i18n_language_updated.clone();
-        let i18n_error_validating_mfa = i18n_error_validating_mfa.clone();
         Callback::from(move |e: MouseEvent| {
             let i18n_error_checking_mfa = (&i18n_error_checking_mfa).clone();
-            let i18n_error_checking_first_login = (&i18n_error_checking_first_login).clone();
-            let i18n_credentials_incorrect = (&i18n_credentials_incorrect).clone();
             let i18n_error_setting_up_timezone = (&i18n_error_setting_up_timezone).clone();
             let i18n_language_updated = i18n_language_updated.clone();
-            let i18n_error_validating_mfa = i18n_error_validating_mfa.clone();
             let post_state = dispatch_time.clone();
             e.prevent_default();
             let server_name = (*temp_server_name).clone();
@@ -2598,110 +2570,113 @@ pub fn login() -> Html {
     }
 
     let time_zone_setup_modal = html! {
-        <div class="modal-overlay">
-            <div class="item_container-text modal-content">
-                // Header
-                <div class="item_container-text modal-header">
-                    <i class="ph ph-clock text-xl"></i>
-                    <h3 class="text-lg">{&i18n_initial_setup}</h3>
-                </div>
+            <div class="modal-overlay">
+                <div class="item_container-text modal-content">
+                    // Header
+                    <div class="item_container-text modal-header">
+                        <i class="ph ph-clock text-xl"></i>
+                        <h3 class="text-lg">{&i18n_initial_setup}</h3>
+                    </div>
 
-                // Content
-                <div class="modal-body">
-                    <form>
-                        <div class="modal-welcome">
-                            <i class="ph ph-hand-waving text-xl"></i>
-                            <p>
-{&i18n.t("login.first_time_welcome")}
-                            </p>
-                        </div>
+                    // Content
+                    <div class="modal-body">
+                        <form>
+                            <div class="modal-welcome">
+                                <i class="ph ph-hand-waving text-xl"></i>
+                                <p>
+    {&i18n.t("login.first_time_welcome")}
+                                </p>
+                            </div>
 
-                        <div class="modal-form-group">
-                            <label class="modal-label">
-                                <i class="ph ph-translate"></i>
-                                <span>{&i18n_language}</span>
-                            </label>
-                            <select
-                                id="language"
-                                name="language"
-                                class="modal-select"
-                                oninput={on_language_change.clone()}
-                                value={(*user_language).clone()}
+                            <div class="modal-form-group">
+                                <label class="modal-label">
+                                    <i class="ph ph-translate"></i>
+                                    <span>{&i18n_language}</span>
+                                </label>
+                                <select
+                                    id="language"
+                                    name="language"
+                                    class="modal-select"
+                                    oninput={on_language_change.clone()}
+                                    value={(*user_language).clone()}
+                                >
+                                    { for available_languages.iter().map(|lang| {
+                                        html! {
+                                            <option value={lang.code.clone()}>{&lang.name}</option>
+                                        }
+                                    })}
+                                </select>
+                            </div>
+
+                            <div class="modal-form-group">
+                                <label class="modal-label">
+                                    <i class="ph ph-clock-clockwise"></i>
+                                    <span>{&i18n_hour_format}</span>
+                                </label>
+                                <select
+                                    id="hour_format"
+                                    name="hour_format"
+                                    class="modal-select"
+                                    oninput={on_time_pref_change}
+                                    value={(*time_pref).to_string()}
+                                >
+                                    <option value="12">{"12 Hour"}</option>
+                                    <option value="24">{"24 Hour"}</option>
+                                </select>
+                            </div>
+
+                            <div class="modal-form-group">
+                                <label class="modal-label">
+                                    <i class="ph ph-globe"></i>
+                                    <span>{&i18n_time_zone}</span>
+                                </label>
+                                <select
+                                    id="time_zone"
+                                    name="time_zone"
+                                    class="modal-select"
+                                    oninput={on_tz_change}
+                                    value={(*time_zone).clone()}
+                                >
+                                    { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
+                                </select>
+                            </div>
+
+                            <div class="modal-form-group">
+                                <label class="modal-label">
+                                    <i class="ph ph-calendar"></i>
+                                    <span>{&i18n_date_format}</span>
+                                </label>
+                                <select
+                                    id="date_format"
+                                    name="date_format"
+                                    class="modal-select"
+                                    oninput={on_df_change}
+                                    value={(*date_format).clone()}
+                                >
+                                    <option value="MDY">{"MM-DD-YYYY"}</option>
+                                    <option value="DMY">{"DD-MM-YYYY"}</option>
+                                    <option value="YMD">{"YYYY-MM-DD"}</option>
+                                    <option value="JUL">{"YY/DDD (Julian)"}</option>
+                                    <option value="ISO">{"ISO 8601"}</option>
+                                    <option value="USA">{"MM/DD/YYYY"}</option>
+                                    <option value="EUR">{"DD.MM.YYYY"}</option>
+                                    <option value="JIS">{"YYYY-MM-DD"}</option>
+                                </select>
+                            </div>
+
+                            <button
+                                type="submit"
+                                onclick={on_time_zone_submit}
+                                class="modal-button"
                             >
-                                { for available_languages.iter().map(|lang| {
-                                    html! {
-                                        <option value={lang.code.clone()}>{&lang.name}</option>
-                                    }
-                                })}
-                            </select>
-                        </div>
-
-                        <div class="modal-form-group">
-                            <label class="modal-label">
-                                <i class="ph ph-clock-clockwise"></i>
-                                <span>{&i18n_hour_format}</span>
-                            </label>
-                            <select
-                                id="hour_format"
-                                name="hour_format"
-                                class="modal-select"
-                                oninput={on_time_pref_change}
-                            >
-                                <option value="12">{"12 Hour"}</option>
-                                <option value="24">{"24 Hour"}</option>
-                            </select>
-                        </div>
-
-                        <div class="modal-form-group">
-                            <label class="modal-label">
-                                <i class="ph ph-globe"></i>
-                                <span>{&i18n_time_zone}</span>
-                            </label>
-                            <select
-                                id="time_zone"
-                                name="time_zone"
-                                class="modal-select"
-                                oninput={on_tz_change}
-                            >
-                                { for TZ_VARIANTS.iter().map(|tz| render_time_zone_option(*tz)) }
-                            </select>
-                        </div>
-
-                        <div class="modal-form-group">
-                            <label class="modal-label">
-                                <i class="ph ph-calendar"></i>
-                                <span>{&i18n_date_format}</span>
-                            </label>
-                            <select
-                                id="date_format"
-                                name="date_format"
-                                class="modal-select"
-                                oninput={on_df_change}
-                            >
-                                <option value="MDY">{"MM-DD-YYYY"}</option>
-                                <option value="DMY">{"DD-MM-YYYY"}</option>
-                                <option value="YMD">{"YYYY-MM-DD"}</option>
-                                <option value="JUL">{"YY/DDD (Julian)"}</option>
-                                <option value="ISO">{"ISO 8601"}</option>
-                                <option value="USA">{"MM/DD/YYYY"}</option>
-                                <option value="EUR">{"DD.MM.YYYY"}</option>
-                                <option value="JIS">{"YYYY-MM-DD"}</option>
-                            </select>
-                        </div>
-
-                        <button
-                            type="submit"
-                            onclick={on_time_zone_submit}
-                            class="modal-button"
-                        >
-                            <i class="ph ph-check"></i>
-                            <span>{&i18n_save_preferences}</span>
-                        </button>
-                    </form>
+                                <i class="ph ph-check"></i>
+                                <span>{&i18n_save_preferences}</span>
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
-        </div>
-    };
+        };
 
     let on_mfa_change = {
         let mfa_code = mfa_code.clone();
@@ -2852,88 +2827,88 @@ pub fn login() -> Html {
     };
 
     let mfa_code_modal = html! {
-        <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
-            <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700" onclick={stop_propagation.clone()}>
-                <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
-                    <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
-                        <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
-{&i18n_mfa_login}
-                        </h3>
-                        <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
-                            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
-                                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
-                            </svg>
-                            <span class="sr-only">{&i18n.t("common.close_modal")}</span>
-                        </button>
-                    </div>
-                    <div class="p-4 md:p-5">
-                        <form class="space-y-4" action="#">
-                            <p class="text-m font-semibold text-gray-900 dark:text-white">
-{&i18n.t("login.mfa_welcome")}
-                            </p>
-                            <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder={i18n.t("auth.enter_mfa_code")} />
-                            <button type="submit" onclick={on_mfa_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{&i18n.t("common.submit")}</button>
-                        </form>
+            <div id="create-user-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 right-0 left-0 z-50 flex justify-center items-center w-full h-[calc(100%-1rem)] max-h-full bg-black bg-opacity-25" onclick={on_background_click.clone()}>
+                <div class="relative p-4 w-full max-w-md max-h-full bg-white rounded-lg shadow dark:bg-gray-700" onclick={stop_propagation.clone()}>
+                    <div class="relative bg-white rounded-lg shadow dark:bg-gray-700">
+                        <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t dark:border-gray-600">
+                            <h3 class="text-xl font-semibold text-gray-900 dark:text-white">
+    {&i18n_mfa_login}
+                            </h3>
+                            <button onclick={on_close_modal.clone()} class="end-2.5 text-gray-400 bg-transparent hover:bg-gray-200 hover:text-gray-900 rounded-lg text-sm w-8 h-8 ms-auto inline-flex justify-center items-center dark:hover:bg-gray-600 dark:hover:text-white">
+                                <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                                    <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+                                </svg>
+                                <span class="sr-only">{&i18n.t("common.close_modal")}</span>
+                            </button>
+                        </div>
+                        <div class="p-4 md:p-5">
+                            <form class="space-y-4" action="#">
+                                <p class="text-m font-semibold text-gray-900 dark:text-white">
+    {&i18n.t("login.mfa_welcome")}
+                                </p>
+                                <input oninput={on_mfa_change} type="text" id="mfa_code" name="mfa_code" class="w-full px-3 py-2 text-gray-700 border rounded-lg focus:outline-none" placeholder={i18n.t("auth.enter_mfa_code")} />
+                                <button type="submit" onclick={on_mfa_submit} class="w-full text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-5 py-2.5 text-center dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">{&i18n.t("common.submit")}</button>
+                            </form>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    };
+        };
 
     html! {
-        <>
-        <div id="login-page" style={format!("background-image: url('{}'); background-repeat: no-repeat; background-attachment: fixed; background-size: cover;", *background_image_url)}>
-        {
-            match *page_state {
-            PageState::TimeZone => time_zone_setup_modal,
-            PageState::MFAPrompt => mfa_code_modal,
-            _ => html! {},
+            <>
+            <div id="login-page" style={format!("background-image: url('{}'); background-repeat: no-repeat; background-attachment: fixed; background-size: cover;", *background_image_url)}>
+            {
+                match *page_state {
+                PageState::TimeZone => time_zone_setup_modal,
+                PageState::MFAPrompt => mfa_code_modal,
+                _ => html! {},
+                }
             }
-        }
-        <div class="flex justify-center items-center h-screen">
-            <div class="modal-container flex flex-col space-y-4 w-full max-w-xs p-8 border rounded-lg shadow-lg">
-                <div class="flex justify-center items-center">
-                    <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
+            <div class="flex justify-center items-center h-screen">
+                <div class="modal-container flex flex-col space-y-4 w-full max-w-xs p-8 border rounded-lg shadow-lg">
+                    <div class="flex justify-center items-center">
+                        <img class="object-scale-down h-20 w-66" src="static/assets/favicon.png" alt="Pinepods Logo" />
+                    </div>
+                    <h1 class="item_container-text text-xl font-bold mb-2 text-center">{"Pinepods"}</h1>
+                    <p class="item_container-text text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
+                    <input
+                        type="text"
+                        placeholder={i18n.t("auth.server_name")}
+                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
+                        oninput={on_server_name_change}
+                        onkeypress={handle_key_press.clone()}
+                    />
+                    <input
+                        type="text"
+                        placeholder={i18n.t("auth.username")}
+                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
+                        oninput={on_username_change}
+                        onkeypress={handle_key_press.clone()}
+                    />
+                    <input
+                        type="password"
+                        placeholder={i18n.t("auth.password")}
+                        class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
+                        oninput={on_password_change}
+                        onkeypress={handle_key_press.clone()}
+                    />
+                    <button onclick={on_submit_click} class="p-2 download-button rounded">
+                        {"Login"}
+                    </button>
                 </div>
-                <h1 class="item_container-text text-xl font-bold mb-2 text-center">{"Pinepods"}</h1>
-                <p class="item_container-text text-center">{"A Forest of Podcasts, Rooted in the Spirit of Self-Hosting"}</p>
-                <input
-                    type="text"
-                    placeholder={i18n.t("auth.server_name")}
-                    class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                    oninput={on_server_name_change}
-                    onkeypress={handle_key_press.clone()}
-                />
-                <input
-                    type="text"
-                    placeholder={i18n.t("auth.username")}
-                    class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                    oninput={on_username_change}
-                    onkeypress={handle_key_press.clone()}
-                />
-                <input
-                    type="password"
-                    placeholder={i18n.t("auth.password")}
-                    class="search-bar-input border text-sm rounded-lg block w-full p-2.5"
-                    oninput={on_password_change}
-                    onkeypress={handle_key_press.clone()}
-                />
-                <button onclick={on_submit_click} class="p-2 download-button rounded">
-                    {"Login"}
-                </button>
-            </div>
-            <ToastNotification />
+                <ToastNotification />
 
-            // Connect to Different Server button at bottom right
-            <div class="fixed bottom-4 right-4">
-                <button onclick={on_different_server} class="p-2 bg-gray-500 text-white rounded hover:bg-gray-600">
-{&i18n_connect_local_server}
-                </button>
+                // Connect to Different Server button at bottom right
+                <div class="fixed bottom-4 right-4">
+                    <button onclick={on_different_server} class="p-2 bg-gray-500 text-white rounded hover:bg-gray-600">
+    {&i18n_connect_local_server}
+                    </button>
+                </div>
             </div>
-        </div>
-        </div>
-        </>
-    }
+            </div>
+            </>
+        }
 }
 
 #[function_component(LogOut)]
