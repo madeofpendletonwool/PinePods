@@ -1049,13 +1049,22 @@ pub fn oidc_settings() -> Html {
                                         />
                                     </div>
                                     <div class="form-group">
-                                        <label class="form-label">{&i18n_client_secret}</label>
+                                        <label class="form-label">{&i18n_client_secret}
+                                            {match &*page_state {
+                                                PageState::EditProvider(_) => html! { <span class="text-sm opacity-70">{" (leave empty to keep current)"}</span> },
+                                                _ => html! {}
+                                            }}
+                                        </label>
                                         <input
                                             type="password"
                                             class="form-input"
                                             value={(*client_secret).clone()}
                                             oninput={on_client_secret_change}
-                                            required=true
+                                            required={match &*page_state {
+                                                PageState::AddProvider => true,
+                                                PageState::EditProvider(_) => false,
+                                                PageState::Hidden => false,
+                                            }}
                                         />
                                     </div>
                                     <div class="form-group">

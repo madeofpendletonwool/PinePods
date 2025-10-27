@@ -1801,6 +1801,8 @@ struct CustomFeedRequest {
     user_id: i32,
     username: Option<String>,
     password: Option<String>,
+    youtube_channel: Option<bool>,
+    feed_cutoff: Option<i32>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1815,6 +1817,8 @@ pub async fn call_add_custom_feed(
     api_key: &str,
     username: Option<String>,
     password: Option<String>,
+    youtube_channel: Option<bool>,
+    feed_cutoff: Option<i32>,
 ) -> Result<Podcast, Error> {
     let url = format!("{}/api/data/add_custom_podcast", server_name);
     let request_body = CustomFeedRequest {
@@ -1822,6 +1826,8 @@ pub async fn call_add_custom_feed(
         user_id: *user_id,
         username,
         password,
+        youtube_channel,
+        feed_cutoff,
     };
 
     let response = Request::post(&url)
@@ -2137,7 +2143,7 @@ pub async fn call_update_oidc_provider(
         "{}/api/data/update_oidc_provider/{}",
         server_name, provider_id
     );
-    let response = Request::post(&url)
+    let response = Request::put(&url)
         .header("Api-Key", &api_key)
         .json(&provider)?
         .send()

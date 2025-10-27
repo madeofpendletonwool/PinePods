@@ -1168,6 +1168,7 @@ pub fn epsiode() -> Html {
     let queue_status = use_state(|| false);
     let save_status = use_state(|| false);
     let download_status = use_state(|| false);
+    let download_in_progress = use_state(|| false);
 
     {
         let state = state.clone();
@@ -1268,12 +1269,17 @@ pub fn epsiode() -> Html {
         let server_name = server_name.clone();
         let episode_id = episode_id.clone();
         let dispatch = _post_dispatch.clone();
+        let download_in_progress = download_in_progress.clone();
 
         Callback::from(move |_| {
             let api_key = api_key.clone();
             let server_name = server_name.clone();
             let ep_id_deref = episode_id.clone().unwrap();
             let dispatch = dispatch.clone();
+            let download_in_progress = download_in_progress.clone();
+
+            // Set download in progress state
+            download_in_progress.set(true);
 
             // Set global loading state
             dispatch.reduce_mut(|state| {
@@ -1298,6 +1304,9 @@ pub fn epsiode() -> Html {
                         }
                     }
                 }
+                // Clear download in progress state
+                download_in_progress.set(false);
+
                 // Clear global loading state
                 dispatch.reduce_mut(|state| {
                     state.is_loading = Some(false);
@@ -1929,8 +1938,14 @@ pub fn epsiode() -> Html {
                                                                 <button onclick={create_share_link.clone()} class="ml-2">
                                                                     <i class="ph ph-share-network text-2xl"></i>
                                                                 </button>
-                                                                <button onclick={download_episode_file.clone()} class="ml-2">
-                                                                    <i class="ph ph-download text-2xl"></i>
+                                                                <button onclick={download_episode_file.clone()} class="ml-2" disabled={*download_in_progress}>
+                                                                    {
+                                                                        if *download_in_progress {
+                                                                            html! { <i class="ph ph-spinner text-2xl animate-spin"></i> }
+                                                                        } else {
+                                                                            html! { <i class="ph ph-download text-2xl"></i> }
+                                                                        }
+                                                                    }
                                                                 </button>
                                                             </>
                                                         }

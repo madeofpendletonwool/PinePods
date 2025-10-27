@@ -4005,7 +4005,7 @@ pub async fn call_unmerge_podcast(
         server_name, primary_podcast_id, target_podcast_id
     );
 
-    let response = Request::delete(&url)
+    let response = Request::post(&url)
         .header(
             "Api-Key",
             &api_key.as_ref().unwrap_or(&String::new()).clone(),

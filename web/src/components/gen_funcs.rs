@@ -75,11 +75,18 @@ pub fn match_date_format(date_format: Option<&str>) -> DateFormat {
 }
 
 pub fn parse_date(date_str: &str, user_tz: &Option<String>) -> DateTime<Tz> {
-    let naive_datetime = NaiveDateTime::parse_from_str(date_str, "%a, %d %b %Y %H:%M:%S %z")
-        .or_else(|_| NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S"))
-        .unwrap_or_else(|_| Utc::now().naive_utc());
+    // Try parsing as RFC 3339 first (most common for podcast feeds)
+    let datetime_utc = if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(date_str) {
+        dt.with_timezone(&Utc)
+    } else {
+        // Fall back to parsing as RFC 2822 or ISO 8601 without timezone
+        let naive_datetime = NaiveDateTime::parse_from_str(date_str, "%a, %d %b %Y %H:%M:%S %z")
+            .or_else(|_| NaiveDateTime::parse_from_str(date_str, "%Y-%m-%dT%H:%M:%S"))
+            .unwrap_or_else(|_| Utc::now().naive_utc());
 
-    let datetime_utc = Utc.from_utc_datetime(&naive_datetime);
+        Utc.from_utc_datetime(&naive_datetime)
+    };
+
     let tz: Tz = user_tz
         .as_ref()
         .and_then(|tz| Tz::from_str(tz).ok())

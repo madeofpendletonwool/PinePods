@@ -299,6 +299,7 @@ pub fn podcasts() -> Html {
     let history = BrowserHistory::new();
     let is_loading = use_state(|| false);
     let feed_url = use_state(|| "".to_string());
+    let youtube_url = use_state(|| "".to_string());
     let pod_user = use_state(|| "".to_string());
     let pod_pass = use_state(|| "".to_string());
     let search_term = use_state(|| String::new());
@@ -605,7 +606,16 @@ pub fn podcasts() -> Html {
             pod_pass.set(input.value());
         })
     };
-    // Ensure `onclick_restore` is correctly used
+
+    let update_youtube_url = {
+        let youtube_url = youtube_url.clone();
+        Callback::from(move |e: InputEvent| {
+            let input: HtmlInputElement = e.target_dyn_into().unwrap();
+            youtube_url.set(input.value());
+        })
+    };
+
+    // Podcast feed addition callback
     let custom_loading = is_loading.clone();
     let add_custom_feed = {
         let dispatch_remove = dispatch.clone();
@@ -614,6 +624,9 @@ pub fn podcasts() -> Html {
         let user_id = user_id;
         let feed_url = (*feed_url).clone();
         let is_loading_call = custom_loading.clone();
+        // Clone i18n messages before move
+        let success_msg = i18n_podcast_successfully_added.clone();
+        let error_prefix = i18n_failed_to_add_podcast.clone();
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             let dispatch_call = dispatch_remove.clone();
@@ -625,9 +638,9 @@ pub fn podcasts() -> Html {
             let unstate_pod_user = (*pod_user).clone();
             let unstate_pod_pass = (*pod_pass).clone();
 
-            // Capture translated messages before async block
-            let success_msg = i18n_podcast_successfully_added.clone();
-            let error_prefix = i18n_failed_to_add_podcast.clone();
+            // Clone again for async block
+            let success_msg = success_msg.clone();
+            let error_prefix = error_prefix.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 match call_add_custom_feed(
                     &server_name,
@@ -636,6 +649,76 @@ pub fn podcasts() -> Html {
                     &api_key.unwrap(),
                     Some(unstate_pod_user),
                     Some(unstate_pod_pass),
+                    Some(false), // Not a YouTube channel
+                    Some(30),
+                )
+                .await
+                {
+                    Ok(new_podcast) => {
+                        dispatch_call.reduce_mut(|state| {
+                            state.info_message = Some(success_msg);
+                        });
+                        dispatch_call.reduce_mut(move |state| {
+                            if let Some(ref mut podcast_response) = state.podcast_feed_return_extra
+                            {
+                                if let Some(ref mut pods) = podcast_response.pods {
+                                    pods.push(PodcastExtra::from(new_podcast.clone()));
+                                } else {
+                                    podcast_response.pods =
+                                        Some(vec![PodcastExtra::from(new_podcast.clone())]);
+                                }
+                            } else {
+                                state.podcast_feed_return_extra = Some(PodcastResponseExtra {
+                                    pods: Some(vec![PodcastExtra::from(new_podcast)]),
+                                });
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        dispatch_call.reduce_mut(|state| {
+                            state.error_message = Some(format!("{}{}", error_prefix, e));
+                        });
+                    }
+                }
+                is_loading_wasm.set(false);
+            });
+        })
+    };
+
+    // YouTube channel addition callback
+    let youtube_loading = is_loading.clone();
+    let add_youtube_channel = {
+        let dispatch_remove = dispatch.clone();
+        let api_key = api_key.clone().unwrap_or_default();
+        let server_name = server_name.clone().unwrap_or_default();
+        let user_id = user_id;
+        let youtube_url = (*youtube_url).clone();
+        let is_loading_call = youtube_loading.clone();
+        // Clone i18n messages before move
+        let success_msg = i18n_podcast_successfully_added.clone();
+        let error_prefix = i18n_failed_to_add_podcast.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            let dispatch_call = dispatch_remove.clone();
+            let server_name = server_name.clone();
+            let api_key = api_key.clone();
+            let youtube_url = youtube_url.clone();
+            is_loading_call.set(true);
+            let is_loading_wasm = is_loading_call.clone();
+
+            // Clone again for async block
+            let success_msg = success_msg.clone();
+            let error_prefix = error_prefix.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                match call_add_custom_feed(
+                    &server_name,
+                    &youtube_url,
+                    &user_id.unwrap(),
+                    &api_key.unwrap(),
+                    None, // No username for YouTube
+                    None, // No password for YouTube
+                    Some(true), // IS a YouTube channel
+                    Some(30),
                 )
                 .await
                 {
@@ -688,8 +771,9 @@ pub fn podcasts() -> Html {
                     </div>
                     <div class="p-4 md:p-5">
                         <form class="space-y-4" action="#">
+                            // Podcast Feed Section
                             <div>
-                                <label for="download_schedule" class="block mb-2 text-sm font-medium">{&i18n.t("podcasts.custom_podcast_instructions")}</label>
+                                <label for="feed_url" class="block mb-2 text-sm font-medium">{&i18n.t("podcasts.custom_podcast_instructions")}</label>
                                 <div class="justify-between space-x-4">
                                     <div>
                                         <input id="feed_url" oninput={update_feed.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n_feed_url_placeholder.clone()} />
@@ -706,6 +790,24 @@ pub fn podcasts() -> Html {
                                 <div>
                                     <button onclick={add_custom_feed} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" disabled={*is_loading}>
                                     {&i18n_add_feed}
+                                    if *is_loading {
+                                        <span class="ml-2 spinner-border animate-spin inline-block w-4 h-4 border-2 rounded-full"></span>
+                                    }
+                                    </button>
+                                </div>
+                            </div>
+
+                            <hr class="my-4 border-t"/>
+
+                            // YouTube Channel Section
+                            <div>
+                                <label for="youtube_url" class="block mb-2 text-sm font-medium">{&i18n.t("podcasts.youtube_channel_instructions")}</label>
+                                <div>
+                                    <input id="youtube_url" oninput={update_youtube_url.clone()} class="search-bar-input border text-sm rounded-lg block w-full p-2.5" placeholder={i18n.t("podcasts.youtube_channel_url_placeholder")} />
+                                </div>
+                                <div>
+                                    <button onclick={add_youtube_channel} class="mt-2 settings-button font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline" disabled={*is_loading}>
+                                    {&i18n.t("podcasts.add_channel")}
                                     if *is_loading {
                                         <span class="ml-2 spinner-border animate-spin inline-block w-4 h-4 border-2 rounded-full"></span>
                                     }

@@ -14355,77 +14355,145 @@ impl DatabasePool {
     }
 
     // Update OIDC provider - updates an existing provider with new values
-    pub async fn update_oidc_provider(&self, provider_id: i32, provider_name: &str, client_id: &str, client_secret: &str, authorization_url: &str, token_url: &str, user_info_url: &str, button_text: &str, scope: &str, button_color: &str, button_text_color: &str, icon_svg: &str, name_claim: &str, email_claim: &str, username_claim: &str, roles_claim: &str, user_role: &str, admin_role: &str) -> AppResult<bool> {
+    // If client_secret is None, the existing secret will be preserved
+    pub async fn update_oidc_provider(&self, provider_id: i32, provider_name: &str, client_id: &str, client_secret: Option<&str>, authorization_url: &str, token_url: &str, user_info_url: &str, button_text: &str, scope: &str, button_color: &str, button_text_color: &str, icon_svg: &str, name_claim: &str, email_claim: &str, username_claim: &str, roles_claim: &str, user_role: &str, admin_role: &str) -> AppResult<bool> {
         println!("Updating OIDC provider with ID: {}", provider_id);
-        
+
         let rows_affected = match self {
             DatabasePool::Postgres(pool) => {
-                let result = sqlx::query(r#"
-                    UPDATE "OIDCProviders" SET
-                        providername = $2, clientid = $3, clientsecret = $4, 
-                        authorizationurl = $5, tokenurl = $6, userinfourl = $7,
-                        buttontext = $8, scope = $9, buttoncolor = $10,
-                        buttontextcolor = $11, iconsvg = $12, nameclaim = $13,
-                        emailclaim = $14, usernameclaim = $15, rolesclaim = $16,
-                        userrole = $17, adminrole = $18, modified = CURRENT_TIMESTAMP
-                    WHERE providerid = $1
-                "#)
-                    .bind(provider_id)
-                    .bind(provider_name)
-                    .bind(client_id)
-                    .bind(client_secret)
-                    .bind(authorization_url)
-                    .bind(token_url)
-                    .bind(user_info_url)
-                    .bind(button_text)
-                    .bind(scope)
-                    .bind(button_color)
-                    .bind(button_text_color)
-                    .bind(icon_svg)
-                    .bind(name_claim)
-                    .bind(email_claim)
-                    .bind(username_claim)
-                    .bind(roles_claim)
-                    .bind(user_role)
-                    .bind(admin_role)
-                    .execute(pool)
-                    .await?;
-                
-                result.rows_affected()
+                // Build query dynamically based on whether client_secret is provided
+                if let Some(secret) = client_secret {
+                    let result = sqlx::query(r#"
+                        UPDATE "OIDCProviders" SET
+                            providername = $2, clientid = $3, clientsecret = $4,
+                            authorizationurl = $5, tokenurl = $6, userinfourl = $7,
+                            buttontext = $8, scope = $9, buttoncolor = $10,
+                            buttontextcolor = $11, iconsvg = $12, nameclaim = $13,
+                            emailclaim = $14, usernameclaim = $15, rolesclaim = $16,
+                            userrole = $17, adminrole = $18, modified = CURRENT_TIMESTAMP
+                        WHERE providerid = $1
+                    "#)
+                        .bind(provider_id)
+                        .bind(provider_name)
+                        .bind(client_id)
+                        .bind(secret)
+                        .bind(authorization_url)
+                        .bind(token_url)
+                        .bind(user_info_url)
+                        .bind(button_text)
+                        .bind(scope)
+                        .bind(button_color)
+                        .bind(button_text_color)
+                        .bind(icon_svg)
+                        .bind(name_claim)
+                        .bind(email_claim)
+                        .bind(username_claim)
+                        .bind(roles_claim)
+                        .bind(user_role)
+                        .bind(admin_role)
+                        .execute(pool)
+                        .await?;
+                    result.rows_affected()
+                } else {
+                    // Don't update client_secret if not provided
+                    let result = sqlx::query(r#"
+                        UPDATE "OIDCProviders" SET
+                            providername = $2, clientid = $3,
+                            authorizationurl = $4, tokenurl = $5, userinfourl = $6,
+                            buttontext = $7, scope = $8, buttoncolor = $9,
+                            buttontextcolor = $10, iconsvg = $11, nameclaim = $12,
+                            emailclaim = $13, usernameclaim = $14, rolesclaim = $15,
+                            userrole = $16, adminrole = $17, modified = CURRENT_TIMESTAMP
+                        WHERE providerid = $1
+                    "#)
+                        .bind(provider_id)
+                        .bind(provider_name)
+                        .bind(client_id)
+                        .bind(authorization_url)
+                        .bind(token_url)
+                        .bind(user_info_url)
+                        .bind(button_text)
+                        .bind(scope)
+                        .bind(button_color)
+                        .bind(button_text_color)
+                        .bind(icon_svg)
+                        .bind(name_claim)
+                        .bind(email_claim)
+                        .bind(username_claim)
+                        .bind(roles_claim)
+                        .bind(user_role)
+                        .bind(admin_role)
+                        .execute(pool)
+                        .await?;
+                    result.rows_affected()
+                }
             }
             DatabasePool::MySQL(pool) => {
-                let result = sqlx::query("
-                    UPDATE OIDCProviders SET
-                        ProviderName = ?, ClientID = ?, ClientSecret = ?,
-                        AuthorizationURL = ?, TokenURL = ?, UserInfoURL = ?,
-                        ButtonText = ?, Scope = ?, ButtonColor = ?,
-                        ButtonTextColor = ?, IconSVG = ?, NameClaim = ?,
-                        EmailClaim = ?, UsernameClaim = ?, RolesClaim = ?,
-                        UserRole = ?, AdminRole = ?, Modified = CURRENT_TIMESTAMP
-                    WHERE ProviderID = ?
-                ")
-                    .bind(provider_name)
-                    .bind(client_id)
-                    .bind(client_secret)
-                    .bind(authorization_url)
-                    .bind(token_url)
-                    .bind(user_info_url)
-                    .bind(button_text)
-                    .bind(scope)
-                    .bind(button_color)
-                    .bind(button_text_color)
-                    .bind(icon_svg)
-                    .bind(name_claim)
-                    .bind(email_claim)
-                    .bind(username_claim)
-                    .bind(roles_claim)
-                    .bind(user_role)
-                    .bind(admin_role)
-                    .bind(provider_id)
-                    .execute(pool)
-                    .await?;
-                
-                result.rows_affected()
+                if let Some(secret) = client_secret {
+                    let result = sqlx::query("
+                        UPDATE OIDCProviders SET
+                            ProviderName = ?, ClientID = ?, ClientSecret = ?,
+                            AuthorizationURL = ?, TokenURL = ?, UserInfoURL = ?,
+                            ButtonText = ?, Scope = ?, ButtonColor = ?,
+                            ButtonTextColor = ?, IconSVG = ?, NameClaim = ?,
+                            EmailClaim = ?, UsernameClaim = ?, RolesClaim = ?,
+                            UserRole = ?, AdminRole = ?, Modified = CURRENT_TIMESTAMP
+                        WHERE ProviderID = ?
+                    ")
+                        .bind(provider_name)
+                        .bind(client_id)
+                        .bind(secret)
+                        .bind(authorization_url)
+                        .bind(token_url)
+                        .bind(user_info_url)
+                        .bind(button_text)
+                        .bind(scope)
+                        .bind(button_color)
+                        .bind(button_text_color)
+                        .bind(icon_svg)
+                        .bind(name_claim)
+                        .bind(email_claim)
+                        .bind(username_claim)
+                        .bind(roles_claim)
+                        .bind(user_role)
+                        .bind(admin_role)
+                        .bind(provider_id)
+                        .execute(pool)
+                        .await?;
+                    result.rows_affected()
+                } else {
+                    // Don't update client_secret if not provided
+                    let result = sqlx::query("
+                        UPDATE OIDCProviders SET
+                            ProviderName = ?, ClientID = ?,
+                            AuthorizationURL = ?, TokenURL = ?, UserInfoURL = ?,
+                            ButtonText = ?, Scope = ?, ButtonColor = ?,
+                            ButtonTextColor = ?, IconSVG = ?, NameClaim = ?,
+                            EmailClaim = ?, UsernameClaim = ?, RolesClaim = ?,
+                            UserRole = ?, AdminRole = ?, Modified = CURRENT_TIMESTAMP
+                        WHERE ProviderID = ?
+                    ")
+                        .bind(provider_name)
+                        .bind(client_id)
+                        .bind(authorization_url)
+                        .bind(token_url)
+                        .bind(user_info_url)
+                        .bind(button_text)
+                        .bind(scope)
+                        .bind(button_color)
+                        .bind(button_text_color)
+                        .bind(icon_svg)
+                        .bind(name_claim)
+                        .bind(email_claim)
+                        .bind(username_claim)
+                        .bind(roles_claim)
+                        .bind(user_role)
+                        .bind(admin_role)
+                        .bind(provider_id)
+                        .execute(pool)
+                        .await?;
+                    result.rows_affected()
+                }
             }
         };
         
@@ -24062,38 +24130,97 @@ impl DatabasePool {
     fn map_timezone_for_postgres(user_timezone: &str) -> String {
         match user_timezone {
             // US timezone mappings
+            "US/Alaska" => "America/Anchorage".to_string(),
+            "US/Aleutian" => "America/Adak".to_string(),
+            "US/Arizona" => "America/Phoenix".to_string(),
             "US/Central" => "America/Chicago".to_string(),
+            "US/East-Indiana" => "America/Indiana/Indianapolis".to_string(),
             "US/Eastern" => "America/New_York".to_string(),
+            "US/Hawaii" => "Pacific/Honolulu".to_string(),
+            "US/Indiana-Starke" => "America/Indiana/Knox".to_string(),
+            "US/Michigan" => "America/Detroit".to_string(),
             "US/Mountain" => "America/Denver".to_string(),
             "US/Pacific" => "America/Los_Angeles".to_string(),
-            "US/Alaska" => "America/Anchorage".to_string(),
-            "US/Hawaii" => "Pacific/Honolulu".to_string(),
-            
-            // Common legacy timezone mappings
+            "US/Samoa" => "Pacific/Pago_Pago".to_string(),
+
+            // Canada timezone mappings
+            "Canada/Atlantic" => "America/Halifax".to_string(),
+            "Canada/Central" => "America/Winnipeg".to_string(),
+            "Canada/Eastern" => "America/Toronto".to_string(),
+            "Canada/Mountain" => "America/Edmonton".to_string(),
+            "Canada/Newfoundland" => "America/St_Johns".to_string(),
+            "Canada/Pacific" => "America/Vancouver".to_string(),
+            "Canada/Saskatchewan" => "America/Regina".to_string(),
+            "Canada/Yukon" => "America/Whitehorse".to_string(),
+
+            // Brazil timezone mappings
+            "Brazil/Acre" => "America/Rio_Branco".to_string(),
+            "Brazil/DeNoronha" => "America/Noronha".to_string(),
+            "Brazil/East" => "America/Sao_Paulo".to_string(),
+            "Brazil/West" => "America/Manaus".to_string(),
+
+            // Chile timezone mappings
+            "Chile/Continental" => "America/Santiago".to_string(),
+            "Chile/EasterIsland" => "Pacific/Easter".to_string(),
+
+            // Mexico timezone mappings
+            "Mexico/BajaNorte" => "America/Tijuana".to_string(),
+            "Mexico/BajaSur" => "America/Mazatlan".to_string(),
+            "Mexico/General" => "America/Mexico_City".to_string(),
+
+            // Common US legacy timezone abbreviations
             "EST" => "America/New_York".to_string(),
             "CST" => "America/Chicago".to_string(),
             "MST" => "America/Denver".to_string(),
             "PST" => "America/Los_Angeles".to_string(),
+            "HST" => "Pacific/Honolulu".to_string(),
             "EST5EDT" => "America/New_York".to_string(),
             "CST6CDT" => "America/Chicago".to_string(),
             "MST7MDT" => "America/Denver".to_string(),
             "PST8PDT" => "America/Los_Angeles".to_string(),
-            
-            // Common international legacy mappings
-            "GMT" => "UTC".to_string(),
-            "GMT+0" => "UTC".to_string(),
-            "GMT-0" => "UTC".to_string(),
-            "Greenwich" => "UTC".to_string(),
-            "UCT" => "UTC".to_string(),
-            "Universal" => "UTC".to_string(),
-            "Zulu" => "UTC".to_string(),
-            
+
             // European legacy mappings
             "CET" => "Europe/Paris".to_string(),
             "EET" => "Europe/Helsinki".to_string(),
             "WET" => "Europe/Lisbon".to_string(),
             "MET" => "Europe/Paris".to_string(),
-            
+
+            // Common international legacy mappings
+            "GMT" => "UTC".to_string(),
+            "GMT+0" => "UTC".to_string(),
+            "GMT-0" => "UTC".to_string(),
+            "GMT0" => "UTC".to_string(),
+            "Greenwich" => "UTC".to_string(),
+            "UCT" => "UTC".to_string(),
+            "Universal" => "UTC".to_string(),
+            "Zulu" => "UTC".to_string(),
+
+            // Country/region legacy mappings
+            "Cuba" => "America/Havana".to_string(),
+            "Egypt" => "Africa/Cairo".to_string(),
+            "Eire" => "Europe/Dublin".to_string(),
+            "GB" => "Europe/London".to_string(),
+            "GB-Eire" => "Europe/London".to_string(),
+            "Hongkong" => "Asia/Hong_Kong".to_string(),
+            "Iceland" => "Atlantic/Reykjavik".to_string(),
+            "Iran" => "Asia/Tehran".to_string(),
+            "Israel" => "Asia/Jerusalem".to_string(),
+            "Jamaica" => "America/Jamaica".to_string(),
+            "Japan" => "Asia/Tokyo".to_string(),
+            "Kwajalein" => "Pacific/Kwajalein".to_string(),
+            "Libya" => "Africa/Tripoli".to_string(),
+            "NZ" => "Pacific/Auckland".to_string(),
+            "NZ-CHAT" => "Pacific/Chatham".to_string(),
+            "Navajo" => "America/Denver".to_string(),
+            "PRC" => "Asia/Shanghai".to_string(),
+            "Poland" => "Europe/Warsaw".to_string(),
+            "Portugal" => "Europe/Lisbon".to_string(),
+            "ROC" => "Asia/Taipei".to_string(),
+            "ROK" => "Asia/Seoul".to_string(),
+            "Singapore" => "Asia/Singapore".to_string(),
+            "Turkey" => "Europe/Istanbul".to_string(),
+            "W-SU" => "Europe/Moscow".to_string(),
+
             // If it's already a valid IANA timezone name or unknown, pass through
             _ => {
                 // For unknown timezones, fall back to UTC to prevent errors

@@ -269,7 +269,7 @@ pub async fn subscribe_to_youtube_channel(
 }
 
 // Helper function to get YouTube channel info using Backend service
-async fn get_youtube_channel_info(channel_id: &str) -> Result<HashMap<String, String>, AppError> {
+pub async fn get_youtube_channel_info(channel_id: &str) -> Result<HashMap<String, String>, AppError> {
     println!("Getting channel info for {} from Backend service", channel_id);
     
     // Get Backend URL from environment variable
