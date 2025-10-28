@@ -118,7 +118,11 @@ pub fn queue() -> Html {
                         match pod_req::call_get_queued_episodes(&server_name, &api_key, &user_id)
                             .await
                         {
-                            Ok(fetched_episodes) => {
+                            Ok(mut fetched_episodes) => {
+                                // Sort episodes by queue position (ascending order)
+                                // First episode in queue (position 1) should be at the top
+                                fetched_episodes.sort_by_key(|ep| ep.queueposition.unwrap_or(999999));
+
                                 let completed_episode_ids: Vec<i32> = fetched_episodes
                                     .iter()
                                     .filter(|ep| ep.completed)

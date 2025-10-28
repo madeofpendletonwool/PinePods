@@ -26,7 +26,7 @@ Major Version:
 - [] Redis/Valkey Authentication
 - [x] Move Episode Addition process to the background when adding a podcast
 - [] Fully dynamic Playlist implementation
-- [] Support HTTP request notifications. Will work with Telegram and quite a few other basic http notification platforms
+- [x] Support HTTP request notifications. Will work with Telegram and quite a few other basic http notification platforms
 - [x] Podcast Merge Options
 - [] Gpodder Completion Set Bug where if episode played length was exactly the length of the podcast episode it wouldn't mark complete
 - [] Fixed issue with auto complete threshold. Will now mark historical episodes complete when enabled

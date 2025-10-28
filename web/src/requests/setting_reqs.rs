@@ -2000,6 +2000,9 @@ pub async fn call_update_notification_settings(
         "ntfy_access_token": settings.ntfy_access_token,
         "gotify_url": settings.gotify_url,
         "gotify_token": settings.gotify_token,
+        "http_url": settings.http_url,
+        "http_token": settings.http_token,
+        "http_method": settings.http_method,
     });
 
     let response = Request::put(&url)

@@ -15654,14 +15654,32 @@ impl DatabasePool {
         }
     }
     
-    // Remove old YouTube videos - matches Python remove_old_youtube_videos function exactly
+    // Remove old YouTube videos - deletes videos and all their references from dependent tables
     pub async fn remove_old_youtube_videos(&self, podcast_id: i32, cutoff_date: chrono::DateTime<chrono::Utc>) -> AppResult<()> {
         println!("Removing old YouTube videos for podcast {} before {}", podcast_id, cutoff_date);
-        
+
         let cutoff_naive = cutoff_date.naive_utc();
-        
+
         let rows_affected = match self {
             DatabasePool::Postgres(pool) => {
+                // First, delete all references from dependent tables
+                let cleanup_queries = vec![
+                    r#"DELETE FROM "UserVideoHistory" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1 AND publishedat < $2)"#,
+                    r#"DELETE FROM "SavedVideos" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1 AND publishedat < $2)"#,
+                    r#"DELETE FROM "DownloadedVideos" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1 AND publishedat < $2)"#,
+                    r#"DELETE FROM "PlaylistContents" WHERE videoid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1 AND publishedat < $2)"#,
+                    r#"DELETE FROM "EpisodeQueue" WHERE episodeid IN (SELECT videoid FROM "YouTubeVideos" WHERE podcastid = $1 AND publishedat < $2)"#,
+                ];
+
+                for query in cleanup_queries {
+                    sqlx::query(query)
+                        .bind(podcast_id)
+                        .bind(cutoff_naive)
+                        .execute(pool)
+                        .await?;
+                }
+
+                // Now delete the videos themselves
                 sqlx::query(r#"DELETE FROM "YouTubeVideos" WHERE podcastid = $1 AND publishedat < $2"#)
                     .bind(podcast_id)
                     .bind(cutoff_naive)
@@ -15670,6 +15688,24 @@ impl DatabasePool {
                     .rows_affected()
             }
             DatabasePool::MySQL(pool) => {
+                // First, delete all references from dependent tables
+                let cleanup_queries = vec![
+                    "DELETE FROM UserVideoHistory WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ? AND PublishedAt < ?)",
+                    "DELETE FROM SavedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ? AND PublishedAt < ?)",
+                    "DELETE FROM DownloadedVideos WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ? AND PublishedAt < ?)",
+                    "DELETE FROM PlaylistContents WHERE VideoID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ? AND PublishedAt < ?)",
+                    "DELETE FROM EpisodeQueue WHERE EpisodeID IN (SELECT VideoID FROM YouTubeVideos WHERE PodcastID = ? AND PublishedAt < ?)",
+                ];
+
+                for query in cleanup_queries {
+                    sqlx::query(query)
+                        .bind(podcast_id)
+                        .bind(cutoff_naive)
+                        .execute(pool)
+                        .await?;
+                }
+
+                // Now delete the videos themselves
                 sqlx::query("DELETE FROM YouTubeVideos WHERE PodcastID = ? AND PublishedAt < ?")
                     .bind(podcast_id)
                     .bind(cutoff_naive)
@@ -15678,7 +15714,7 @@ impl DatabasePool {
                     .rows_affected()
             }
         };
-        
+
         println!("Removed {} old YouTube videos", rows_affected);
         Ok(())
     }
