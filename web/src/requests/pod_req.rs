@@ -2285,23 +2285,77 @@ pub async fn call_download_episode_file(
         .as_deref()
         .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
 
-    // Create a simple link and click it to trigger download
-    let window = web_sys::window().unwrap();
-    let document = window.document().unwrap();
+    let window = web_sys::window().ok_or_else(|| anyhow::Error::msg("No window"))?;
+    let document = window.document().ok_or_else(|| anyhow::Error::msg("No document"))?;
 
-    let a_element = document.create_element("a").unwrap();
-    let a_element = a_element.dyn_into::<web_sys::HtmlAnchorElement>().unwrap();
+    // Use fetch to actually wait for the server response
+    let mut opts = web_sys::RequestInit::new();
+    opts.method("GET");
 
-    // Set the URL with API key as query parameter for direct download
-    let download_url = format!("{}?api_key={}", url, api_key_ref);
-    a_element.set_href(&download_url);
-    a_element.set_download("episode.mp3");
+    let request = web_sys::Request::new_with_str_and_init(
+        &format!("{}?api_key={}", url, api_key_ref),
+        &opts,
+    ).map_err(|e| anyhow::Error::msg(format!("Request creation failed: {:?}", e)))?;
 
-    // Append to body, click, and remove
-    let body = document.body().unwrap();
-    body.append_child(&a_element).unwrap();
+    let resp_value = wasm_bindgen_futures::JsFuture::from(window.fetch_with_request(&request))
+        .await
+        .map_err(|e| anyhow::Error::msg(format!("Fetch failed: {:?}", e)))?;
+
+    let resp: web_sys::Response = resp_value.dyn_into()
+        .map_err(|e| anyhow::Error::msg(format!("Response cast failed: {:?}", e)))?;
+
+    if !resp.ok() {
+        return Err(anyhow::Error::msg(format!("Download request failed with status: {}", resp.status())));
+    }
+
+    // Extract filename from Content-Disposition header
+    let filename = resp.headers().get("content-disposition")
+        .ok()
+        .flatten()
+        .and_then(|header| {
+            // Parse "attachment; filename="filename.mp3"" or "attachment; filename=filename.mp3"
+            header.split(';')
+                .find(|part| part.trim().starts_with("filename"))
+                .and_then(|part| {
+                    part.split('=')
+                        .nth(1)
+                        .map(|name| name.trim().trim_matches('"').to_string())
+                })
+        })
+        .unwrap_or_else(|| "episode.mp3".to_string());
+
+    // Get the blob from the response
+    let blob_promise = resp.blob()
+        .map_err(|e| anyhow::Error::msg(format!("Failed to get blob: {:?}", e)))?;
+    let blob_value = wasm_bindgen_futures::JsFuture::from(blob_promise)
+        .await
+        .map_err(|e| anyhow::Error::msg(format!("Blob conversion failed: {:?}", e)))?;
+    let blob: web_sys::Blob = blob_value.dyn_into()
+        .map_err(|e| anyhow::Error::msg(format!("Blob cast failed: {:?}", e)))?;
+
+    // Create object URL for the blob
+    let url_obj = web_sys::Url::create_object_url_with_blob(&blob)
+        .map_err(|e| anyhow::Error::msg(format!("Failed to create object URL: {:?}", e)))?;
+
+    // Create and click download link
+    let a_element = document.create_element("a")
+        .map_err(|e| anyhow::Error::msg(format!("Failed to create element: {:?}", e)))?;
+    let a_element = a_element.dyn_into::<web_sys::HtmlAnchorElement>()
+        .map_err(|e| anyhow::Error::msg(format!("Failed to cast to anchor: {:?}", e)))?;
+
+    a_element.set_href(&url_obj);
+    a_element.set_download(&filename);
+
+    let body = document.body().ok_or_else(|| anyhow::Error::msg("No body"))?;
+    body.append_child(&a_element)
+        .map_err(|e| anyhow::Error::msg(format!("Failed to append child: {:?}", e)))?;
     a_element.click();
-    body.remove_child(&a_element).unwrap();
+    body.remove_child(&a_element)
+        .map_err(|e| anyhow::Error::msg(format!("Failed to remove child: {:?}", e)))?;
+
+    // Revoke the object URL to free memory
+    web_sys::Url::revoke_object_url(&url_obj)
+        .map_err(|e| anyhow::Error::msg(format!("Failed to revoke URL: {:?}", e)))?;
 
     Ok(())
 }

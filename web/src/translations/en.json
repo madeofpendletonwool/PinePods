@@ -119,7 +119,7 @@
     "change_user_fields_instructions": "Change the fields below coresponding to the user details you want to edit. Do not add values to fields you don't want to change. Leave those blank.",
     "admin_user_question": "Admin User?",
     "delete_user": "Delete User",
-    "user_management": "User Management:",
+    "user_management": "User Management",
     "user_management_description": "You can manage users here. Click a user in the table to manage settings for that existing user or click 'Create New' to add a new user. Note that the background_tasks user will always show and cannot be edited.",
     "user_id": "User ID",
     "fullname": "Fullname",
