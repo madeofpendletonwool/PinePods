@@ -248,26 +248,28 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 
 			if database.IsPostgreSQLDB() {
 				query = `
-					SELECT DISTINCT s.PodcastURL
+					SELECT s.PodcastURL
 					FROM "GpodderSyncSubscriptions" s
 					WHERE s.UserID = $1
 					AND s.DeviceID != $2
 					AND s.Timestamp > $3
 					AND s.Action = 'add'
-					ORDER BY s.Timestamp DESC
+					GROUP BY s.PodcastURL
+					ORDER BY MAX(s.Timestamp) DESC
 					LIMIT $4
                 `
 				log.Printf("[DEBUG] getSubscriptions: Executing add query with limit %d", MAX_SUBSCRIPTION_CHANGES)
 				addRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)
 			} else {
 				query = `
-					SELECT DISTINCT s.PodcastURL
+					SELECT s.PodcastURL
 					FROM GpodderSyncSubscriptions s
 					WHERE s.UserID = ?
 					AND s.DeviceID != ?
 					AND s.Timestamp > ?
 					AND s.Action = 'add'
-					ORDER BY s.Timestamp DESC
+					GROUP BY s.PodcastURL
+					ORDER BY MAX(s.Timestamp) DESC
 					LIMIT ?
                 `
 				log.Printf("[DEBUG] getSubscriptions: Executing add query with limit %d", MAX_SUBSCRIPTION_CHANGES)
@@ -297,25 +299,27 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 
 			if database.IsPostgreSQLDB() {
 				query = `
-					SELECT DISTINCT s.PodcastURL
+					SELECT s.PodcastURL
 					FROM "GpodderSyncSubscriptions" s
 					WHERE s.UserID = $1
 					AND s.DeviceID != $2
 					AND s.Timestamp > $3
 					AND s.Action = 'remove'
-					ORDER BY s.Timestamp DESC
+					GROUP BY s.PodcastURL
+					ORDER BY MAX(s.Timestamp) DESC
 					LIMIT $4
                 `
 				removeRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)
 			} else {
 				query = `
-					SELECT DISTINCT s.PodcastURL
+					SELECT s.PodcastURL
 					FROM GpodderSyncSubscriptions s
 					WHERE s.UserID = ?
 					AND s.DeviceID != ?
 					AND s.Timestamp > ?
 					AND s.Action = 'remove'
-					ORDER BY s.Timestamp DESC
+					GROUP BY s.PodcastURL
+					ORDER BY MAX(s.Timestamp) DESC
 					LIMIT ?
                 `
 				removeRows, err = database.Query(query, userID, deviceID, since, MAX_SUBSCRIPTION_CHANGES)

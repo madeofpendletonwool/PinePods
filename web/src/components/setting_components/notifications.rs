@@ -126,19 +126,37 @@ pub fn notification_settings() -> Html {
                                 // Set the notification_info state
                                 notification_info.set(Some(settings_response.clone()));
 
-                                // Always default to ntfy platform, but populate all settings
+                                // Find all platform settings
                                 let ntfy_setting = settings_response.settings.iter().find(|s| s.platform == "ntfy");
                                 let gotify_setting = settings_response.settings.iter().find(|s| s.platform == "gotify");
                                 let http_setting = settings_response.settings.iter().find(|s| s.platform == "http");
-                                
-                                // Always set platform to ntfy by default - override any existing setting
-                                platform.set("ntfy".to_string());
-                                
-                                // Set enabled state based on ntfy setting if it exists
-                                if let Some(ntfy) = ntfy_setting {
-                                    enabled.set(ntfy.enabled);
-                                } else {
-                                    enabled.set(false);
+
+                                // Get the currently selected platform
+                                let current_platform = (*platform).clone();
+
+                                // Update enabled state based on the currently selected platform
+                                match current_platform.as_str() {
+                                    "http" => {
+                                        if let Some(http) = http_setting {
+                                            enabled.set(http.enabled);
+                                        } else {
+                                            enabled.set(false);
+                                        }
+                                    }
+                                    "gotify" => {
+                                        if let Some(gotify) = gotify_setting {
+                                            enabled.set(gotify.enabled);
+                                        } else {
+                                            enabled.set(false);
+                                        }
+                                    }
+                                    _ => {
+                                        if let Some(ntfy) = ntfy_setting {
+                                            enabled.set(ntfy.enabled);
+                                        } else {
+                                            enabled.set(false);
+                                        }
+                                    }
                                 }
 
                                 // Populate ntfy fields if ntfy setting exists
@@ -424,27 +442,66 @@ pub fn notification_settings() -> Html {
                         <button
                             type="button"
                             class={if *platform == "ntfy" { "notification-platform-tab active" } else { "notification-platform-tab" }}
-                            onclick={let platform = platform.clone(); Callback::from(move |_| {
-                                platform.set("ntfy".to_string());
-                            })}
+                            onclick={
+                                let platform = platform.clone();
+                                let enabled = enabled.clone();
+                                let notification_info = notification_info.clone();
+                                Callback::from(move |_| {
+                                    platform.set("ntfy".to_string());
+                                    // Update enabled checkbox based on saved ntfy settings
+                                    if let Some(info) = &*notification_info {
+                                        if let Some(ntfy) = info.settings.iter().find(|s| s.platform == "ntfy") {
+                                            enabled.set(ntfy.enabled);
+                                        } else {
+                                            enabled.set(false);
+                                        }
+                                    }
+                                })
+                            }
                         >
                             {"ntfy"}
                         </button>
                         <button
                             type="button"
                             class={if *platform == "gotify" { "notification-platform-tab active" } else { "notification-platform-tab" }}
-                            onclick={let platform = platform.clone(); Callback::from(move |_| {
-                                platform.set("gotify".to_string());
-                            })}
+                            onclick={
+                                let platform = platform.clone();
+                                let enabled = enabled.clone();
+                                let notification_info = notification_info.clone();
+                                Callback::from(move |_| {
+                                    platform.set("gotify".to_string());
+                                    // Update enabled checkbox based on saved gotify settings
+                                    if let Some(info) = &*notification_info {
+                                        if let Some(gotify) = info.settings.iter().find(|s| s.platform == "gotify") {
+                                            enabled.set(gotify.enabled);
+                                        } else {
+                                            enabled.set(false);
+                                        }
+                                    }
+                                })
+                            }
                         >
                             {"Gotify"}
                         </button>
                         <button
                             type="button"
                             class={if *platform == "http" { "notification-platform-tab active" } else { "notification-platform-tab" }}
-                            onclick={let platform = platform.clone(); Callback::from(move |_| {
-                                platform.set("http".to_string());
-                            })}
+                            onclick={
+                                let platform = platform.clone();
+                                let enabled = enabled.clone();
+                                let notification_info = notification_info.clone();
+                                Callback::from(move |_| {
+                                    platform.set("http".to_string());
+                                    // Update enabled checkbox based on saved HTTP settings
+                                    if let Some(info) = &*notification_info {
+                                        if let Some(http) = info.settings.iter().find(|s| s.platform == "http") {
+                                            enabled.set(http.enabled);
+                                        } else {
+                                            enabled.set(false);
+                                        }
+                                    }
+                                })
+                            }
                         >
                             {"HTTP"}
                         </button>

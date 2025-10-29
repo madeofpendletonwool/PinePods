@@ -2272,6 +2272,8 @@ pub struct CustomPodcastRequest {
     pub user_id: i32,
     pub username: Option<String>,
     pub password: Option<String>,
+    pub youtube_channel: Option<bool>,
+    pub feed_cutoff: Option<i32>,
 }
 
 // Request struct for import_opml
@@ -2365,6 +2367,56 @@ pub async fn add_custom_podcast(
         return Err(AppError::forbidden("You can only add podcasts for yourself!"));
     }
 
+    // Check if this is a YouTube channel request
+    if request.youtube_channel.unwrap_or(false) {
+        // Extract channel ID from YouTube URL
+        let channel_id = extract_youtube_channel_id(&request.feed_url)?;
+
+        // Check if channel already exists
+        let existing_id = state.db_pool.check_existing_channel_subscription(
+            &channel_id,
+            request.user_id,
+        ).await?;
+
+        if let Some(podcast_id) = existing_id {
+            // Channel already subscribed, return existing podcast details
+            let podcast_details = state.db_pool.get_podcast_details(request.user_id, podcast_id).await?;
+            return Ok(Json(serde_json::json!({ "data": podcast_details })));
+        }
+
+        // Get channel info using yt-dlp (bypasses Google API limits)
+        let channel_info = crate::handlers::youtube::get_youtube_channel_info(&channel_id).await?;
+
+        let feed_cutoff = request.feed_cutoff.unwrap_or(30);
+
+        // Add YouTube channel to database
+        let podcast_id = state.db_pool.add_youtube_channel(
+            &channel_info,
+            request.user_id,
+            feed_cutoff,
+        ).await?;
+
+        // Spawn background task to process YouTube videos
+        let state_clone = state.clone();
+        let channel_id_clone = channel_id.clone();
+        tokio::spawn(async move {
+            if let Err(e) = crate::handlers::youtube::process_youtube_channel(
+                podcast_id,
+                &channel_id_clone,
+                feed_cutoff,
+                &state_clone
+            ).await {
+                println!("Error processing YouTube channel {}: {}", channel_id_clone, e);
+            }
+        });
+
+        // Get complete podcast details for response
+        let podcast_details = state.db_pool.get_podcast_details(request.user_id, podcast_id).await?;
+
+        return Ok(Json(serde_json::json!({ "data": podcast_details })));
+    }
+
+    // Regular podcast feed handling
     // Get podcast values from feed URL
     let podcast_values = state.db_pool.get_podcast_values(
         &request.feed_url,
@@ -2386,6 +2438,44 @@ pub async fn add_custom_podcast(
     let podcast_details = state.db_pool.get_podcast_details(request.user_id, podcast_id).await?;
 
     Ok(Json(serde_json::json!({ "data": podcast_details })))
+}
+
+// Helper function to extract YouTube channel ID from various URL formats
+fn extract_youtube_channel_id(url: &str) -> Result<String, AppError> {
+    // Support various YouTube URL formats:
+    // - https://www.youtube.com/channel/UC...
+    // - https://youtube.com/channel/UC...
+    // - https://www.youtube.com/@channelname
+    // - youtube.com/@channelname
+    // - Just the channel ID itself: UC...
+
+    let url_lower = url.to_lowercase();
+
+    // If it's already a channel ID (starts with UC)
+    if url.starts_with("UC") && !url.contains('/') && !url.contains('.') {
+        return Ok(url.to_string());
+    }
+
+    // Extract from /channel/ URLs
+    if url_lower.contains("/channel/") {
+        if let Some(channel_part) = url.split("/channel/").nth(1) {
+            let channel_id = channel_part.split(&['/', '?', '&'][..]).next().unwrap_or("");
+            if !channel_id.is_empty() {
+                return Ok(channel_id.to_string());
+            }
+        }
+    }
+
+    // For @handle URLs, we need to use yt-dlp to resolve the channel ID
+    // This will be handled by get_youtube_channel_info, so we return the URL as-is
+    if url_lower.contains("/@") || url.starts_with('@') {
+        return Ok(url.to_string());
+    }
+
+    Err(AppError::bad_request(&format!(
+        "Invalid YouTube channel URL. Expected format: https://www.youtube.com/channel/UC... or https://www.youtube.com/@channelname or just the channel ID. Got: {}",
+        url
+    )))
 }
 
 // Import OPML - matches Python import_opml function exactly with background processing
@@ -2629,11 +2719,18 @@ pub async fn update_oidc_provider(
         return Err(AppError::forbidden("Admin access required to update OIDC providers"));
     }
 
+    // Only update client_secret if it's not empty
+    let client_secret_to_update = if request.client_secret.is_empty() {
+        None
+    } else {
+        Some(request.client_secret.as_str())
+    };
+
     let success = state.db_pool.update_oidc_provider(
         provider_id,
         &request.provider_name,
         &request.client_id,
-        &request.client_secret,
+        client_secret_to_update,
         &request.authorization_url,
         &request.token_url,
         &request.user_info_url,

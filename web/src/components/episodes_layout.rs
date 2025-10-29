@@ -15,15 +15,15 @@ use crate::requests::pod_req::{
     call_check_podcast, call_clear_playback_speed, call_download_all_podcast,
     call_enable_auto_download, call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
     call_get_feed_cutoff_days, call_get_merged_podcasts, call_get_play_episode_details,
-    call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
+    call_get_podcast_details, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
     call_get_podcast_notifications_status, call_get_podcasts, call_get_rss_key,
     call_merge_podcasts, call_remove_category, call_remove_podcasts_name,
     call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_notifications,
-    call_update_feed_cutoff_days, call_update_podcast_info, AddCategoryRequest,
-    AutoDownloadRequest, BulkEpisodeActionRequest, ClearPlaybackSpeedRequest,
-    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, PlaybackSpeedRequest, PodcastValues,
-    RemoveCategoryRequest, RemovePodcastValuesName, RemoveYouTubeChannelValues, SkipTimesRequest,
-    UpdateFeedCutoffDaysRequest,
+    call_unmerge_podcast, call_update_feed_cutoff_days, call_update_podcast_info,
+    AddCategoryRequest, AutoDownloadRequest, BulkEpisodeActionRequest, ClearPlaybackSpeedRequest,
+    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, PlaybackSpeedRequest,
+    PodcastDetails, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
+    RemoveYouTubeChannelValues, SkipTimesRequest, UpdateFeedCutoffDaysRequest,
 };
 use crate::requests::search_pods::call_get_podcast_details_dynamic;
 use crate::requests::search_pods::call_get_podcast_episodes;
@@ -534,6 +534,7 @@ pub fn episode_layout() -> Html {
     let available_podcasts_for_merge =
         use_state(|| Vec::<crate::requests::pod_req::Podcast>::new());
     let current_merged_podcasts = use_state(|| Vec::<i32>::new());
+    let merged_podcast_details = use_state(|| HashMap::<i32, PodcastDetails>::new());
     let loading_merge_data = use_state(|| false);
 
     // Pre-populate edit form when modal opens
@@ -564,80 +565,6 @@ pub fn episode_layout() -> Html {
                         edit_artwork_url.set(info.artworkurl.clone());
                         edit_website_url.set(info.websiteurl.clone());
                         edit_podcast_index_id.set(info.podcastindexid.to_string());
-                    }
-                }
-            },
-        );
-    }
-
-    // Load merge-related data when edit modal opens
-    {
-        let available_podcasts_for_merge = available_podcasts_for_merge.clone();
-        let current_merged_podcasts = current_merged_podcasts.clone();
-        let loading_merge_data = loading_merge_data.clone();
-        let page_state = page_state.clone();
-        let clicked_podcast_info = clicked_podcast_info.clone();
-        let api_key = api_key.clone();
-        let server_name = server_name.clone();
-        let user_id = user_id.clone();
-
-        use_effect_with(
-            (page_state.clone(), clicked_podcast_info.clone()),
-            move |(page_state, podcast_info)| {
-                if **page_state == PageState::EditPodcast {
-                    if let (Some(api_key), Some(server_name), Some(user_id), Some(podcast_info)) = (
-                        api_key.as_ref(),
-                        server_name.as_ref(),
-                        user_id.as_ref(),
-                        podcast_info.as_ref(),
-                    ) {
-                        loading_merge_data.set(true);
-
-                        // Load available podcasts
-                        let available_podcasts_for_merge = available_podcasts_for_merge.clone();
-                        let current_merged_podcasts = current_merged_podcasts.clone();
-                        let loading_merge_data = loading_merge_data.clone();
-                        let api_key = api_key.clone();
-                        let server_name = server_name.clone();
-                        let user_id = *user_id;
-                        let podcast_id = podcast_info.podcastid;
-
-                        spawn_local(async move {
-                            // Load all available podcasts
-                            match call_get_podcasts(&server_name, &api_key, &user_id).await {
-                                Ok(mut podcasts) => {
-                                    // Remove the current podcast from the list
-                                    podcasts.retain(|p| p.podcastid != podcast_id as i32);
-                                    available_podcasts_for_merge.set(podcasts);
-                                }
-                                Err(e) => {
-                                    console::log_1(
-                                        &format!("Error loading podcasts for merge: {}", e).into(),
-                                    );
-                                }
-                            }
-
-                            // Load current merged podcasts
-                            match call_get_merged_podcasts(
-                                &server_name,
-                                &api_key,
-                                podcast_id as i32,
-                            )
-                            .await
-                            {
-                                Ok(merged_ids) => {
-                                    current_merged_podcasts.set(merged_ids);
-                                }
-                                Err(e) => {
-                                    console::log_1(
-                                        &format!("Error loading merged podcasts: {}", e).into(),
-                                    );
-                                    current_merged_podcasts.set(Vec::new());
-                                }
-                            }
-
-                            loading_merge_data.set(false);
-                        });
                     }
                 }
             },
@@ -901,6 +828,108 @@ pub fn episode_layout() -> Html {
     let podcast_id = use_state(|| 0);
     let start_skip = use_state(|| 0);
     let end_skip = use_state(|| 0);
+
+    // Load merge-related data when edit modal opens
+    {
+        let available_podcasts_for_merge = available_podcasts_for_merge.clone();
+        let current_merged_podcasts = current_merged_podcasts.clone();
+        let merged_podcast_details = merged_podcast_details.clone();
+        let loading_merge_data = loading_merge_data.clone();
+        let page_state = page_state.clone();
+        let clicked_podcast_info = clicked_podcast_info.clone();
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let user_id = user_id.clone();
+        let podcast_id = podcast_id.clone();
+
+        use_effect_with(
+            (page_state.clone(), clicked_podcast_info.clone()),
+            move |(page_state, podcast_info)| {
+                if **page_state == PageState::EditPodcast {
+                    if let (Some(api_key), Some(server_name), Some(user_id), Some(_podcast_info)) = (
+                        api_key.as_ref(),
+                        server_name.as_ref(),
+                        user_id.as_ref(),
+                        podcast_info.as_ref(),
+                    ) {
+                        loading_merge_data.set(true);
+
+                        // Load available podcasts
+                        let available_podcasts_for_merge = available_podcasts_for_merge.clone();
+                        let current_merged_podcasts = current_merged_podcasts.clone();
+                        let merged_podcast_details = merged_podcast_details.clone();
+                        let loading_merge_data = loading_merge_data.clone();
+                        let api_key = api_key.clone();
+                        let server_name = server_name.clone();
+                        let user_id = *user_id;
+                        let current_podcast_id = *podcast_id;
+
+                        spawn_local(async move {
+                            // Load all available podcasts (keep all for name lookups)
+                            match call_get_podcasts(&server_name, &api_key, &user_id).await {
+                                Ok(podcasts) => {
+                                    available_podcasts_for_merge.set(podcasts);
+                                }
+                                Err(e) => {
+                                    console::log_1(
+                                        &format!("Error loading podcasts for merge: {}", e).into(),
+                                    );
+                                }
+                            }
+
+                            // Load current merged podcasts
+                            match call_get_merged_podcasts(
+                                &server_name,
+                                &api_key,
+                                current_podcast_id,
+                            )
+                            .await
+                            {
+                                Ok(merged_ids) => {
+                                    current_merged_podcasts.set(merged_ids.clone());
+
+                                    // Fetch details for each merged podcast
+                                    let mut details_map = HashMap::new();
+                                    for &merged_id in &merged_ids {
+                                        match call_get_podcast_details(
+                                            &server_name,
+                                            &api_key.as_ref().unwrap(),
+                                            user_id,
+                                            &merged_id,
+                                        )
+                                        .await
+                                        {
+                                            Ok(details) => {
+                                                details_map.insert(merged_id, details);
+                                            }
+                                            Err(e) => {
+                                                console::log_1(
+                                                    &format!(
+                                                        "Error loading details for merged podcast {}: {}",
+                                                        merged_id, e
+                                                    )
+                                                    .into(),
+                                                );
+                                            }
+                                        }
+                                    }
+                                    merged_podcast_details.set(details_map);
+                                }
+                                Err(e) => {
+                                    console::log_1(
+                                        &format!("Error loading merged podcasts: {}", e).into(),
+                                    );
+                                    current_merged_podcasts.set(Vec::new());
+                                }
+                            }
+
+                            loading_merge_data.set(false);
+                        });
+                    }
+                }
+            },
+        );
+    }
 
     // Update sort direction when podcast_id changes to load per-podcast preferences
     {
@@ -2622,12 +2651,90 @@ pub fn episode_layout() -> Html {
 
                                     // Show currently merged podcasts
                                     if !(*current_merged_podcasts).is_empty() {
-                                        <div class="mb-3">
+                                        <div class="mb-4">
                                             <label class="block mb-2 text-sm font-medium">
                                                 {"Currently Merged Podcasts"}
                                             </label>
-                                            <div class="text-sm text-gray-600">
-                                                {format!("{} podcasts merged into this one", (*current_merged_podcasts).len())}
+                                            <div>
+                                                {
+                                                    (*current_merged_podcasts).iter().map(|&merged_id| {
+                                                        // Get podcast name from fetched details
+                                                        let podcast_name = (*merged_podcast_details)
+                                                            .get(&merged_id)
+                                                            .map(|details| details.podcastname.clone())
+                                                            .unwrap_or_else(|| format!("Podcast ID {}", merged_id));
+
+                                                        let api_key = api_key.clone();
+                                                        let server_name = server_name.clone();
+                                                        let podcast_id = podcast_id.clone();
+                                                        let user_id = user_id.clone();
+                                                        let current_merged_podcasts = current_merged_podcasts.clone();
+                                                        let merged_podcast_details = merged_podcast_details.clone();
+                                                        let dispatch = _search_dispatch.clone();
+
+                                                        html! {
+                                                            <div class="merged-podcast-item">
+                                                                <span class="merged-podcast-name">{podcast_name}</span>
+                                                                <button
+                                                                    type="button"
+                                                                    class="clear-button unmerge-button"
+                                                                    onclick={Callback::from(move |_| {
+                                                                        let api_key = api_key.clone();
+                                                                        let server_name = server_name.clone();
+                                                                        let user_id = user_id.clone();
+                                                                        let primary_id = *podcast_id;
+                                                                        let current_merged_podcasts = current_merged_podcasts.clone();
+                                                                        let merged_podcast_details = merged_podcast_details.clone();
+                                                                        let dispatch = dispatch.clone();
+
+                                                                        spawn_local(async move {
+                                                                            if let (Some(api_key), Some(server_name), Some(user_id)) = (api_key.as_ref(), server_name.as_ref(), user_id.as_ref()) {
+                                                                                match call_unmerge_podcast(server_name, &api_key, primary_id, merged_id).await {
+                                                                                    Ok(_) => {
+                                                                                        dispatch.reduce_mut(|state| {
+                                                                                            state.info_message = Some("Podcast unmerged successfully".to_string())
+                                                                                        });
+
+                                                                                        // Reload merged podcasts list and details
+                                                                                        match call_get_merged_podcasts(server_name, &api_key, primary_id).await {
+                                                                                            Ok(merged_ids) => {
+                                                                                                current_merged_podcasts.set(merged_ids.clone());
+
+                                                                                                // Fetch details for remaining merged podcasts
+                                                                                                let mut details_map = HashMap::new();
+                                                                                                for &id in &merged_ids {
+                                                                                                    if let Ok(details) = call_get_podcast_details(
+                                                                                                        server_name,
+                                                                                                        api_key.as_deref().unwrap(),
+                                                                                                        *user_id,
+                                                                                                        &id,
+                                                                                                    ).await {
+                                                                                                        details_map.insert(id, details);
+                                                                                                    }
+                                                                                                }
+                                                                                                merged_podcast_details.set(details_map);
+                                                                                            },
+                                                                                            Err(e) => {
+                                                                                                console::log_1(&format!("Error reloading merged podcasts: {}", e).into());
+                                                                                            }
+                                                                                        }
+                                                                                    },
+                                                                                    Err(e) => {
+                                                                                        dispatch.reduce_mut(|state| {
+                                                                                            state.error_message = Some(format!("Failed to unmerge podcast: {}", e))
+                                                                                        });
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                        });
+                                                                    })}
+                                                                >
+                                                                    {"Unmerge"}
+                                                                </button>
+                                                            </div>
+                                                        }
+                                                    }).collect::<Html>()
+                                                }
                                             </div>
                                         </div>
                                     }
@@ -2661,28 +2768,64 @@ pub fn episode_layout() -> Html {
                                                 let api_key = api_key.clone();
                                                 let server_name = server_name.clone();
                                                 let user_id = user_id.clone();
+                                                let podcast_id = podcast_id.clone();
+                                                let current_merged_podcasts = current_merged_podcasts.clone();
+                                                let merged_podcast_details = merged_podcast_details.clone();
+                                                let dispatch = _search_dispatch.clone();
 
                                                 Callback::from(move |_| {
-                                                    if let (Some(api_key), Some(server_name), Some(_user_id), Some(podcast_info)) =
+                                                    if let (Some(api_key), Some(server_name), Some(user_id), Some(_podcast_info)) =
                                                         (api_key.as_ref(), server_name.as_ref(), user_id.as_ref(), clicked_podcast_info.as_ref()) {
 
                                                         let podcast_ids = (*selected_podcasts_to_merge).clone();
-                                                        let primary_id = podcast_info.podcastid;
+                                                        let primary_id = *podcast_id;
                                                         let selected_podcasts_to_merge = selected_podcasts_to_merge.clone();
                                                         let api_key = api_key.clone();
                                                         let server_name = server_name.clone();
+                                                        let user_id = *user_id;
+                                                        let current_merged_podcasts = current_merged_podcasts.clone();
+                                                        let merged_podcast_details = merged_podcast_details.clone();
+                                                        let dispatch = dispatch.clone();
 
                                                         spawn_local(async move {
-                                                            match call_merge_podcasts(&server_name, &api_key, primary_id as i32, &podcast_ids).await {
+                                                            match call_merge_podcasts(&server_name, &api_key, primary_id, &podcast_ids).await {
                                                                 Ok(response) => {
-                                                                    console::log_1(&format!("Merge successful: {}", response.message).into());
                                                                     // Clear selection after successful merge
                                                                     selected_podcasts_to_merge.set(Vec::new());
-                                                                    // TODO: Refresh podcast list or show success message
+
+                                                                    // Show success message
+                                                                    dispatch.reduce_mut(|state| {
+                                                                        state.info_message = Some(format!("Successfully merged {} podcast(s)", podcast_ids.len()))
+                                                                    });
+
+                                                                    // Reload merged podcasts list and details
+                                                                    match call_get_merged_podcasts(&server_name, &api_key, primary_id).await {
+                                                                        Ok(merged_ids) => {
+                                                                            current_merged_podcasts.set(merged_ids.clone());
+
+                                                                            // Fetch details for all merged podcasts
+                                                                            let mut details_map = HashMap::new();
+                                                                            for &merged_id in &merged_ids {
+                                                                                if let Ok(details) = call_get_podcast_details(
+                                                                                    &server_name,
+                                                                                    api_key.as_deref().unwrap(),
+                                                                                    user_id,
+                                                                                    &merged_id,
+                                                                                ).await {
+                                                                                    details_map.insert(merged_id, details);
+                                                                                }
+                                                                            }
+                                                                            merged_podcast_details.set(details_map);
+                                                                        },
+                                                                        Err(e) => {
+                                                                            console::log_1(&format!("Error reloading merged podcasts: {}", e).into());
+                                                                        }
+                                                                    }
                                                                 },
                                                                 Err(e) => {
-                                                                    console::log_1(&format!("Merge failed: {}", e).into());
-                                                                    // TODO: Show error message to user
+                                                                    dispatch.reduce_mut(|state| {
+                                                                        state.error_message = Some(format!("Failed to merge podcasts: {}", e))
+                                                                    });
                                                                 }
                                                             }
                                                         });
@@ -2715,6 +2858,7 @@ pub fn episode_layout() -> Html {
                                             let user_id = user_id.clone();
                                             let page_state = page_state.clone();
                                             let dispatch = _search_dispatch.clone();
+                                            let podcast_id = podcast_id.clone();
 
                                             Callback::from(move |_| {
                                                 let edit_feed_url = edit_feed_url.clone();
@@ -2734,7 +2878,6 @@ pub fn episode_layout() -> Html {
                                                 let dispatch = dispatch.clone();
 
                                                 if let Some(podcast_info) = clicked_podcast_info.as_ref() {
-                                                    let podcast_id = podcast_info.podcastid;
                                                     let current_feed_url = podcast_info.feedurl.clone();
                                                     let current_podcast_name = podcast_info.podcastname.clone();
                                                     let current_description = podcast_info.description.clone();
@@ -2742,8 +2885,17 @@ pub fn episode_layout() -> Html {
                                                     let current_artwork_url = podcast_info.artworkurl.clone();
                                                     let current_website_url = podcast_info.websiteurl.clone();
                                                     let current_podcast_index_id = podcast_info.podcastindexid.to_string();
+                                                    let current_podcast_id = *podcast_id;
 
                                                     spawn_local(async move {
+                                                        // Check if podcast is loaded
+                                                        if current_podcast_id == 0 {
+                                                            dispatch.reduce_mut(|state| {
+                                                                state.error_message = Some("Please wait for podcast to load before editing".to_string())
+                                                            });
+                                                            return;
+                                                        }
+
                                                         let feed_url = if (*edit_feed_url).trim().is_empty() || *edit_feed_url == current_feed_url {
                                                             None
                                                         } else {
@@ -2813,7 +2965,7 @@ pub fn episode_layout() -> Html {
                                                             &server_name.unwrap_or_default(),
                                                             &api_key.unwrap(),
                                                             user_id.unwrap_or_default(),
-                                                            podcast_id.try_into().unwrap_or_default(),
+                                                            current_podcast_id,
                                                             feed_url,
                                                             username,
                                                             password,

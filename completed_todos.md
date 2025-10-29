@@ -15,26 +15,30 @@ Major Version:
 
 0.8.2
 
-- [] Translations on the web app
-- [] Account Settings now updates dropdowns with pre-populated values
+- [x] Translations on the web app
+- [x] Account Settings now updates dropdowns with pre-populated values
 - [x] episode-layout (podcast page) will now set sort settings based on pod id
-- [] Added endpoint to delete OIDC settings
-- [] Manually search or enter podcast index id for matching to podcast index
-- [] OIDC Setup on start
-- [] Better errors if needed vars are missing
-- [] Redis/Valkey Authentication
-- [] Move Episode Addition process to the background when adding a podcast
-- [] Fully dynamic Playlist implementation
-- [] Support HTTP request notifications. Will work with Telegram and quite a few other basic http notification platforms
-- [] Podcast Merge Options
+- [x] Added endpoint to delete OIDC settings
+- [x] Added endpoint to Edit OIDC settings
+- [x] Manually search or enter podcast index id for matching to podcast index
+- [x] OIDC Setup on start
+- [x] Better errors if needed vars are missing
+- [x] Redis/Valkey Authentication
+- [x] Move Episode Addition process to the background when adding a podcast
+- [x] Support HTTP request notifications. Will work with Telegram and quite a few other basic http notification platforms
+- [x] Podcast Merge Options
+- [x] Individual Episode download on /episode page
+- [x] Option to use Podcast covers if desired
+- [x] Fix issue where release date on podcasts not added shows as current date/time
+- [x] Fix yt-dlp issues
+
 - [] Gpodder Completion Set Bug where if episode played length was exactly the length of the podcast episode it wouldn't mark complete
 - [] Fixed issue with auto complete threshold. Will now mark historical episodes complete when enabled
-- [] Individual Episode download on /episode page
-- [] Option to use Podcast covers if desired
-- [] Fix issue where duplicate episodes where created if details of the episode were updated
+- [] Some sort of loading indicator for the single ep download
+- [] Fix issue where duplicate episodes were created if details of the episode were updated
+- [] Fully dynamic Playlist implementation
 
 - [] Checking on rss feeds returning downloaded urls correctly
-- yt-dlp get working again
 
 0.7.9
 

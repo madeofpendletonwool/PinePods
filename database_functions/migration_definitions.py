@@ -3722,6 +3722,65 @@ def migration_035_add_podcast_cover_preference_columns(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("036", "add_episodecount_column_to_playlists", "Add episodecount column to Playlists table for tracking episode counts", requires=["010"])
+def migration_036_add_episodecount_column(conn, db_type: str):
+    """Add episodecount column to Playlists table if it doesn't exist
+
+    This migration was needed because migration 032 was applied to existing databases
+    before the episodecount column addition was added to it. Since migration 032 is
+    already marked as applied in those databases, the column was never created.
+    """
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Checking for episodecount column in Playlists table")
+
+        if db_type == "postgresql":
+            # Check if episodecount column exists
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'Playlists'
+                AND column_name = 'episodecount'
+            """)
+            column_exists = len(cursor.fetchall()) > 0
+
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE "Playlists"
+                    ADD COLUMN episodecount INTEGER DEFAULT 0
+                """)
+                logger.info("Added episodecount column to Playlists table (PostgreSQL)")
+            else:
+                logger.info("episodecount column already exists in Playlists table (PostgreSQL)")
+        else:
+            # Check if episodecount column exists (MySQL/MariaDB)
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Playlists'
+                AND COLUMN_NAME = 'EpisodeCount'
+                AND TABLE_SCHEMA = DATABASE()
+            """)
+            column_exists = cursor.fetchone()[0] > 0
+
+            if not column_exists:
+                cursor.execute("""
+                    ALTER TABLE Playlists
+                    ADD COLUMN EpisodeCount INT DEFAULT 0
+                """)
+                logger.info("Added EpisodeCount column to Playlists table (MySQL/MariaDB)")
+            else:
+                logger.info("EpisodeCount column already exists in Playlists table (MySQL/MariaDB)")
+
+        logger.info("episodecount column migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in migration 036: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 if __name__ == "__main__":
     # Register all migrations and run them
     register_all_migrations()

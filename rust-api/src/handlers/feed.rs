@@ -81,6 +81,11 @@ pub struct RssKeyInfo {
 }
 
 fn extract_domain_from_request(request: &Request<axum::body::Body>) -> String {
+    // Check HOSTNAME environment variable first (includes scheme and port)
+    if let Ok(hostname) = std::env::var("HOSTNAME") {
+        return hostname;
+    }
+
     // Try to get domain from Host header
     if let Some(host) = request.headers().get("host") {
         if let Ok(host_str) = host.to_str() {
@@ -89,11 +94,11 @@ fn extract_domain_from_request(request: &Request<axum::body::Body>) -> String {
                 .get("x-forwarded-proto")
                 .and_then(|h| h.to_str().ok())
                 .unwrap_or("http");
-            
+
             return format!("{}://{}", scheme, host_str);
         }
     }
-    
+
     // Fallback
     "http://localhost:8041".to_string()
 }

@@ -1168,6 +1168,7 @@ pub fn epsiode() -> Html {
     let queue_status = use_state(|| false);
     let save_status = use_state(|| false);
     let download_status = use_state(|| false);
+    let download_in_progress = use_state(|| false);
 
     {
         let state = state.clone();
@@ -1267,19 +1268,16 @@ pub fn epsiode() -> Html {
         let api_key = api_key.clone();
         let server_name = server_name.clone();
         let episode_id = episode_id.clone();
-        let dispatch = _post_dispatch.clone();
+        let download_in_progress = download_in_progress.clone();
 
         Callback::from(move |_| {
             let api_key = api_key.clone();
             let server_name = server_name.clone();
             let ep_id_deref = episode_id.clone().unwrap();
-            let dispatch = dispatch.clone();
+            let download_in_progress = download_in_progress.clone();
 
-            // Set global loading state
-            dispatch.reduce_mut(|state| {
-                state.is_loading = Some(true);
-                web_sys::console::log_1(&"Loading state set to true".into());
-            });
+            // Set download in progress state
+            download_in_progress.set(true);
 
             wasm_bindgen_futures::spawn_local(async move {
                 if let (Some(_api_key), Some(server_name)) =
@@ -1298,11 +1296,8 @@ pub fn epsiode() -> Html {
                         }
                     }
                 }
-                // Clear global loading state
-                dispatch.reduce_mut(|state| {
-                    state.is_loading = Some(false);
-                    web_sys::console::log_1(&"Loading state set to false".into());
-                });
+                // Clear download in progress state
+                download_in_progress.set(false);
             });
         })
     };
@@ -1929,8 +1924,14 @@ pub fn epsiode() -> Html {
                                                                 <button onclick={create_share_link.clone()} class="ml-2">
                                                                     <i class="ph ph-share-network text-2xl"></i>
                                                                 </button>
-                                                                <button onclick={download_episode_file.clone()} class="ml-2">
-                                                                    <i class="ph ph-download text-2xl"></i>
+                                                                <button onclick={download_episode_file.clone()} class="ml-2" disabled={*download_in_progress}>
+                                                                    {
+                                                                        if *download_in_progress {
+                                                                            html! { <i class="ph ph-spinner text-2xl animate-spin"></i> }
+                                                                        } else {
+                                                                            html! { <i class="ph ph-download text-2xl"></i> }
+                                                                        }
+                                                                    }
                                                                 </button>
                                                             </>
                                                         }
@@ -2241,11 +2242,10 @@ pub fn epsiode() -> Html {
                                                 <button
                                                     class="download-button font-bold py-2 px-4 rounded"
                                                     onclick={download_episode_file.clone()}
-                                                    disabled={post_state.is_loading.unwrap_or(false)}
+                                                    disabled={*download_in_progress}
                                                 >
                                                     {
-                                                        if post_state.is_loading.unwrap_or(false) {
-                                                            web_sys::console::log_1(&"UI: Showing loading spinner".into());
+                                                        if *download_in_progress {
                                                             html! {
                                                                 <>
                                                                     <div class="animate-spin inline-block w-4 h-4 mr-2 border-2 border-gray-300 border-t-white rounded-full"></div>
@@ -2253,7 +2253,6 @@ pub fn epsiode() -> Html {
                                                                 </>
                                                             }
                                                         } else {
-                                                            web_sys::console::log_1(&format!("UI: Not loading, state: {:?}", post_state.is_loading).into());
                                                             html! { {&i18n_download_episode} }
                                                         }
                                                     }

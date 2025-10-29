@@ -119,7 +119,7 @@
     "change_user_fields_instructions": "Change the fields below coresponding to the user details you want to edit. Do not add values to fields you don't want to change. Leave those blank.",
     "admin_user_question": "Admin User?",
     "delete_user": "Delete User",
-    "user_management": "User Management:",
+    "user_management": "User Management",
     "user_management_description": "You can manage users here. Click a user in the table to manage settings for that existing user or click 'Create New' to add a new user. Note that the background_tasks user will always show and cannot be edited.",
     "user_id": "User ID",
     "fullname": "Fullname",
@@ -322,7 +322,8 @@
     "shortest_first": "Shortest First",
     "longest_first": "Longest First",
     "title_az": "Title A-Z",
-    "title_za": "Title Z-A"
+    "title_za": "Title Z-A",
+    "update": "Update"
   },
   "validation": {
     "username_min_length": "Username must be at least 4 characters long",
@@ -371,6 +372,10 @@
     "no_take_me_back": "No, take me back",
     "add_custom_podcast": "Add Custom Podcast",
     "custom_podcast_instructions": "Simply enter the feed url, optional credentials, and click the button below. This is great in case you subscibe to premium podcasts and they aren't availble in The Pocast Index or other indexing services.",
+    "youtube_channel_instructions": "Enter a YouTube channel URL to add it directly.",
+    "podcast_feed": "Podcast Feed",
+    "youtube_channel": "YouTube Channel",
+    "youtube_channel_url_placeholder": "https://www.youtube.com/@channelname or https://www.youtube.com/channel/UC...",
     "username_optional": "Username (optional)",
     "password_optional": "Password (optional)",
     "add_feed": "Add Feed",
@@ -398,7 +403,8 @@
     "unknown_author": "Unknown Author",
     "no_website_provided": "No Website Provided",
     "cover_alt_text": "Cover for ",
-    "feed_url_placeholder": "https://bestpodcast.com/feed.xml"
+    "feed_url_placeholder": "https://bestpodcast.com/feed.xml",
+    "add_channel": "Add Channel"
   },
   "api_keys": {
     "api_keys_title": "API Keys:",
@@ -617,7 +623,9 @@
     "admin_role": "Admin Role",
     "oidc_provider_management": "OIDC Provider Management",
     "add_provider": " Add Provider",
-    "no_oidc_providers_configured": "No OIDC providers configured yet. Add one to enable single sign-on."
+    "no_oidc_providers_configured": "No OIDC providers configured yet. Add one to enable single sign-on.",
+    "edit_oidc_provider": "Edit OIDC Provider",
+    "oidc_provider_successfully_updated": "Updated OIDC Provider"
   },
   "playback_settings": {
     "failed_to_fetch_playback_speed": "Failed to fetch playback speed: ",
