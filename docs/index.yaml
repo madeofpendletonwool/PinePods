@@ -2,7 +2,26 @@ apiVersion: v1
 entries:
   pinepods:
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.821873003Z"
+    created: "2025-10-30T11:52:41.683959727Z"
+    dependencies:
+    - condition: postgresql.enabled
+      name: postgresql
+      repository: https://charts.bitnami.com/bitnami
+      version: 15.5.14
+    - condition: valkey.enabled
+      name: valkey
+      repository: https://charts.bitnami.com/bitnami
+      version: 2.0.1
+    description: A Helm chart for deploying Pinepods - A complete podcast management
+      system and allows you to play, download, and keep track of podcasts you enjoy.
+      All self hosted and enjoyed on your own server!
+    digest: 28e32586ecbdfc1749890007055c61add7b78076cee90980d425113b38b13b9c
+    name: pinepods
+    urls:
+    - https://helm.pinepods.online/pinepods-0.8.1.tgz
+    version: 0.8.1
+  - apiVersion: v2
+    created: "2025-10-30T11:52:41.67456305Z"
     dependencies:
     - condition: postgresql.enabled
       name: postgresql
@@ -21,7 +40,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.7.8.tgz
     version: 0.7.8
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.81219332Z"
+    created: "2025-10-30T11:52:41.665123097Z"
     dependencies:
     - condition: postgresql.enabled
       name: postgresql
@@ -40,7 +59,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.7.7.tgz
     version: 0.7.7
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.802612391Z"
+    created: "2025-10-30T11:52:41.655783861Z"
     dependencies:
     - condition: postgresql.enabled
       name: postgresql
@@ -59,7 +78,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.7.6.tgz
     version: 0.7.6
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.793019863Z"
+    created: "2025-10-30T11:52:41.646315323Z"
     dependencies:
     - condition: postgresql.enabled
       name: postgresql
@@ -78,7 +97,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.7.5.tgz
     version: 0.7.5
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.783514329Z"
+    created: "2025-10-30T11:52:41.636858843Z"
     dependencies:
     - condition: postgresql.enabled
       name: postgresql
@@ -97,7 +116,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.7.4.tgz
     version: 0.7.4
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.77388794Z"
+    created: "2025-10-30T11:52:41.626710376Z"
     dependencies:
     - condition: postgresql.enabled
       name: postgresql
@@ -116,7 +135,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.7.3.tgz
     version: 0.7.3
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.764225682Z"
+    created: "2025-10-30T11:52:41.61704642Z"
     dependencies:
     - condition: postgresql.enabled
       name: postgresql
@@ -135,7 +154,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.7.2.tgz
     version: 0.7.2
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.754821944Z"
+    created: "2025-10-30T11:52:41.607497209Z"
     dependencies:
     - condition: postgresql.enabled
       name: postgresql
@@ -154,7 +173,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.7.1.tgz
     version: 0.7.1
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.744826392Z"
+    created: "2025-10-30T11:52:41.597450971Z"
     dependencies:
     - condition: postgresql.enabled
       name: postgresql
@@ -173,7 +192,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.7.0.tgz
     version: 0.7.0
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.734393365Z"
+    created: "2025-10-30T11:52:41.588288452Z"
     dependencies:
     - name: postgresql
       repository: https://charts.bitnami.com/bitnami
@@ -187,7 +206,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.6.6.tgz
     version: 0.6.6
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.730412407Z"
+    created: "2025-10-30T11:52:41.584369055Z"
     dependencies:
     - name: postgresql
       repository: https://charts.bitnami.com/bitnami
@@ -201,7 +220,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.6.5.tgz
     version: 0.6.5
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.725514296Z"
+    created: "2025-10-30T11:52:41.579496258Z"
     dependencies:
     - name: postgresql
       repository: https://charts.bitnami.com/bitnami
@@ -215,7 +234,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.6.4.tgz
     version: 0.6.4
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.72084837Z"
+    created: "2025-10-30T11:52:41.574870899Z"
     dependencies:
     - name: postgresql
       repository: https://charts.bitnami.com/bitnami
@@ -229,7 +248,7 @@ entries:
     - https://helm.pinepods.online/pinepods-0.6.3.tgz
     version: 0.6.3
   - apiVersion: v2
-    created: "2025-05-14T12:45:57.716786601Z"
+    created: "2025-10-30T11:52:41.57094979Z"
     dependencies:
     - name: postgresql
       repository: https://charts.bitnami.com/bitnami
@@ -242,4 +261,4 @@ entries:
     urls:
     - https://helm.pinepods.online/pinepods-0.6.2.tgz
     version: 0.6.2
-generated: "2025-05-14T12:45:57.711649484Z"
+generated: "2025-10-30T11:52:41.565858306Z"
