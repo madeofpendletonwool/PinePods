@@ -68,6 +68,7 @@ pub fn saved() -> Html {
     // Folder state
     let folders = use_state(|| Vec::<SavedFolder>::new());
     let selected_folder = use_state(|| None::<i32>); // None means "All Episodes"
+    let folder_episodes = use_state(|| Vec::<pod_req::SavedEpisode>::new());
     let show_folder_modal = use_state(|| false);
     let folder_modal_mode = use_state(|| "create".to_string()); // "create" or "edit"
     let editing_folder_id = use_state(|| None::<i32>);
@@ -192,6 +193,44 @@ pub fn saved() -> Html {
         );
     }
 
+    // Fetch folder episodes when a folder is selected
+    {
+        let folder_episodes = folder_episodes.clone();
+        let selected_folder = selected_folder.clone();
+        let api_key = post_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.api_key.clone());
+        let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let server_name = post_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.server_name.clone());
+
+        use_effect_with(
+            (selected_folder.clone(), api_key.clone(), user_id.clone(), server_name.clone()),
+            move |(folder_id, api_key, user_id, server_name)| {
+                if let Some(folder_id) = **folder_id {
+                    if let (Some(api_key), Some(user_id), Some(server_name)) =
+                        (api_key.clone(), user_id.clone(), server_name.clone())
+                    {
+                        let folder_episodes = folder_episodes.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            if let Ok(episodes) =
+                                pod_req::call_get_folder_episodes(&server_name, &api_key, folder_id, user_id).await
+                            {
+                                folder_episodes.set(episodes);
+                            }
+                        });
+                    }
+                } else {
+                    folder_episodes.set(Vec::new());
+                }
+                || ()
+            },
+        );
+    }
+
     let filtered_episodes = use_memo(
         (
             state.saved_episodes.clone(),
@@ -199,11 +238,21 @@ pub fn saved() -> Html {
             episode_sort_direction.clone(),
             show_completed.clone(),
             show_in_progress.clone(),
+            selected_folder.clone(),
+            folder_episodes.clone(),
         ),
-        |(saved_eps, search, sort_dir, show_completed, show_in_progress)| {
-            if let Some(saved_episodes) = saved_eps {
-                let mut filtered = saved_episodes
-                    .episodes
+        |(saved_eps, search, sort_dir, show_completed, show_in_progress, selected_folder, folder_eps)| {
+            // Use folder episodes if a folder is selected, otherwise use all saved episodes
+            let episodes_to_filter = if selected_folder.is_some() {
+                (**folder_eps).clone()
+            } else if let Some(saved_episodes) = saved_eps {
+                saved_episodes.episodes.clone()
+            } else {
+                vec![]
+            };
+
+            if !episodes_to_filter.is_empty() {
+                let mut filtered = episodes_to_filter
                     .iter()
                     .filter(|episode| {
                         // Search filter
@@ -435,6 +484,7 @@ pub fn saved() -> Html {
                                         let folder_id = folder.folderid;
                                         let is_active = *selected_folder == Some(folder_id);
                                         let selected_folder = selected_folder.clone();
+                                        let folder_color = folder.foldercolor.clone();
 
                                         html! {
                                             <button
@@ -443,13 +493,13 @@ pub fn saved() -> Html {
                                                     "folder-tab",
                                                     if is_active { "active" } else { "" }
                                                 )}
+                                                style={folder_color.map(|c| format!("border-color: {}; {}", c, if is_active { format!("background-color: {};", c) } else { String::new() }))}
                                                 onclick={Callback::from(move |_| {
                                                     selected_folder.set(Some(folder_id));
                                                 })}
                                             >
                                                 <i class={format!("ph ph-{} folder-tab-icon", folder.iconname)}></i>
                                                 <span>{&folder.foldername}</span>
-                                                // TODO: Add folder episode count
                                             </button>
                                         }
                                     }).collect::<Html>()
@@ -617,6 +667,7 @@ pub fn saved() -> Html {
                                                     let icon_str = icon.to_string();
                                                     let is_selected = *folder_icon_input == icon_str;
                                                     let folder_icon_input = folder_icon_input.clone();
+                                                    let icon_str_for_class = icon_str.clone();
 
                                                     html! {
                                                         <button
@@ -629,7 +680,7 @@ pub fn saved() -> Html {
                                                                 folder_icon_input.set(icon_str.clone());
                                                             })}
                                                         >
-                                                            <i class={format!("ph ph-{}", icon_str)}></i>
+                                                            <i class={format!("ph ph-{}", icon_str_for_class)}></i>
                                                         </button>
                                                     }
                                                 }).collect::<Html>()

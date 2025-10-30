@@ -1027,7 +1027,7 @@ pub async fn call_create_saved_folder(
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
-        .body(serde_json::to_string(&request)?)
+        .body(serde_json::to_string(&request)?)?
         .send()
         .await?;
 
@@ -1058,7 +1058,7 @@ pub async fn call_update_saved_folder(
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
-        .body(serde_json::to_string(&request)?)
+        .body(serde_json::to_string(&request)?)?
         .send()
         .await?;
 
@@ -1094,7 +1094,7 @@ pub async fn call_delete_saved_folder(
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
-        .body(serde_json::to_string(&body)?)
+        .body(serde_json::to_string(&body)?)?
         .send()
         .await?;
 
@@ -1133,7 +1133,7 @@ pub async fn call_add_episode_to_folder(
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
-        .body(serde_json::to_string(&body)?)
+        .body(serde_json::to_string(&body)?)?
         .send()
         .await?;
 
@@ -1172,7 +1172,7 @@ pub async fn call_remove_episode_from_folder(
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
-        .body(serde_json::to_string(&body)?)
+        .body(serde_json::to_string(&body)?)?
         .send()
         .await?;
 
@@ -1211,7 +1211,7 @@ pub async fn call_get_save_id(
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
-        .body(serde_json::to_string(&body)?)
+        .body(serde_json::to_string(&body)?)?
         .send()
         .await?;
 
@@ -1247,7 +1247,7 @@ pub async fn call_get_folder_episodes(
     let response = Request::post(&url)
         .header("Api-Key", api_key_ref)
         .header("Content-Type", "application/json")
-        .body(serde_json::to_string(&body)?)
+        .body(serde_json::to_string(&body)?)?
         .send()
         .await?;
 
