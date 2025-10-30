@@ -88,6 +88,84 @@ jobs:
         run: |
           RUSTFLAGS="--cfg=web_sys_unstable_apis" cargo test --features server_build -- --nocapture
 
+  rust-api-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:latest
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: hecrj/setup-rust-action@v2
+        with:
+          rust-version: 1.89
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            rust-api/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust-api/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Run rust-api tests
+        working-directory: ./rust-api
+        env:
+          # Database configuration
+          DB_TYPE: postgresql
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: test_user
+          DB_PASSWORD: test_password
+          DB_NAME: test_db
+          # Test database configuration
+          TEST_DB_TYPE: postgresql
+          TEST_DB_HOST: localhost
+          TEST_DB_PORT: 5432
+          TEST_DB_USER: test_user
+          TEST_DB_PASSWORD: test_password
+          TEST_DB_NAME: test_db
+          # Redis/Valkey configuration
+          VALKEY_HOST: localhost
+          VALKEY_PORT: 6379
+          TEST_REDIS_HOST: localhost
+          TEST_REDIS_PORT: 6379
+          # API URLs (required for config)
+          SEARCH_API_URL: https://search.pinepods.online/api/search
+          PEOPLE_API_URL: https://people.pinepods.online
+          # Logging
+          RUST_LOG: info
+        run: |
+          cargo test --verbose -- --nocapture
+
   # docker-build:
   #   runs-on: ubuntu-latest
   #   needs: [backend-tests, frontend-tests]

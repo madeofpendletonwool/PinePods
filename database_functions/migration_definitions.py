@@ -3781,6 +3781,129 @@ def migration_036_add_episodecount_column(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("037", "add_saved_folders_functionality", "Add saved folders functionality to organize saved episodes", requires=["007"])
+def migration_037_add_saved_folders(conn, db_type: str):
+    """Create SavedFolders and SavedEpisodeFolders tables for organizing saved episodes
+
+    This migration adds the ability for users to organize their saved episodes into folders.
+    Features include:
+    - Custom folders with names, colors, and icons
+    - Episodes can belong to multiple folders
+    - Auto-categorization based on podcast categories
+    - Position ordering for folder display
+    """
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Creating saved folders tables")
+
+        if db_type == "postgresql":
+            # Create SavedFolders table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "SavedFolders" (
+                    folderid SERIAL PRIMARY KEY,
+                    userid INT NOT NULL,
+                    foldername VARCHAR(255) NOT NULL,
+                    foldercolor VARCHAR(50),
+                    iconname VARCHAR(100) DEFAULT 'ph-folder',
+                    autoaddcategory VARCHAR(255),
+                    position INT DEFAULT 0,
+                    created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    lastupdated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (userid) REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    UNIQUE(userid, foldername)
+                )
+            """)
+            logger.info("Created SavedFolders table (PostgreSQL)")
+
+            # Create SavedEpisodeFolders junction table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "SavedEpisodeFolders" (
+                    savedepisodefolderid SERIAL PRIMARY KEY,
+                    saveid INT NOT NULL,
+                    folderid INT NOT NULL,
+                    dateadded TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (saveid) REFERENCES "SavedEpisodes"(saveid) ON DELETE CASCADE,
+                    FOREIGN KEY (folderid) REFERENCES "SavedFolders"(folderid) ON DELETE CASCADE,
+                    UNIQUE(saveid, folderid)
+                )
+            """)
+            logger.info("Created SavedEpisodeFolders junction table (PostgreSQL)")
+
+            # Create indexes for better performance
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_saved_folders_userid ON "SavedFolders"(userid);
+                CREATE INDEX IF NOT EXISTS idx_saved_folders_position ON "SavedFolders"(userid, position);
+                CREATE INDEX IF NOT EXISTS idx_saved_episode_folders_saveid ON "SavedEpisodeFolders"(saveid);
+                CREATE INDEX IF NOT EXISTS idx_saved_episode_folders_folderid ON "SavedEpisodeFolders"(folderid);
+            """)
+            logger.info("Created indexes for saved folders (PostgreSQL)")
+
+        else:  # MySQL/MariaDB
+            # Create SavedFolders table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS SavedFolders (
+                    FolderID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    FolderName VARCHAR(255) NOT NULL,
+                    FolderColor VARCHAR(50),
+                    IconName VARCHAR(100) DEFAULT 'ph-folder',
+                    AutoAddCategory VARCHAR(255),
+                    Position INT DEFAULT 0,
+                    Created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    LastUpdated TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    UNIQUE KEY unique_user_folder (UserID, FolderName)
+                )
+            """)
+            logger.info("Created SavedFolders table (MySQL/MariaDB)")
+
+            # Create SavedEpisodeFolders junction table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS SavedEpisodeFolders (
+                    SavedEpisodeFolderID INT AUTO_INCREMENT PRIMARY KEY,
+                    SaveID INT NOT NULL,
+                    FolderID INT NOT NULL,
+                    DateAdded TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (SaveID) REFERENCES SavedEpisodes(SaveID) ON DELETE CASCADE,
+                    FOREIGN KEY (FolderID) REFERENCES SavedFolders(FolderID) ON DELETE CASCADE,
+                    UNIQUE KEY unique_save_folder (SaveID, FolderID)
+                )
+            """)
+            logger.info("Created SavedEpisodeFolders junction table (MySQL/MariaDB)")
+
+            # Create indexes for better performance
+            try:
+                cursor.execute("CREATE INDEX idx_saved_folders_userid ON SavedFolders(UserID)")
+            except:
+                logger.info("Index idx_saved_folders_userid already exists")
+
+            try:
+                cursor.execute("CREATE INDEX idx_saved_folders_position ON SavedFolders(UserID, Position)")
+            except:
+                logger.info("Index idx_saved_folders_position already exists")
+
+            try:
+                cursor.execute("CREATE INDEX idx_saved_episode_folders_saveid ON SavedEpisodeFolders(SaveID)")
+            except:
+                logger.info("Index idx_saved_episode_folders_saveid already exists")
+
+            try:
+                cursor.execute("CREATE INDEX idx_saved_episode_folders_folderid ON SavedEpisodeFolders(FolderID)")
+            except:
+                logger.info("Index idx_saved_episode_folders_folderid already exists")
+
+            logger.info("Created indexes for saved folders (MySQL/MariaDB)")
+
+        logger.info("Saved folders migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in migration 037: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 if __name__ == "__main__":
     # Register all migrations and run them
     register_all_migrations()

@@ -354,6 +354,79 @@ pub struct SavedEpisodesResponse {
     pub saved_episodes: Vec<SavedEpisode>,
 }
 
+// Saved folders models
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SavedFolder {
+    pub folderid: i32,
+    pub userid: i32,
+    pub foldername: String,
+    pub foldercolor: Option<String>,
+    pub iconname: String,
+    pub autoaddcategory: Option<String>,
+    pub position: i32,
+    pub created: String,
+    pub lastupdated: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SavedFoldersResponse {
+    pub folders: Vec<SavedFolder>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateSavedFolderRequest {
+    pub user_id: i32,
+    pub folder_name: String,
+    pub folder_color: Option<String>,
+    pub icon_name: Option<String>,
+    pub auto_add_category: Option<String>,
+    pub position: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateSavedFolderRequest {
+    pub folder_id: i32,
+    pub user_id: i32,
+    pub folder_name: Option<String>,
+    pub folder_color: Option<String>,
+    pub icon_name: Option<String>,
+    pub auto_add_category: Option<String>,
+    pub position: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SavedFolderResponse {
+    pub detail: String,
+    pub folder_id: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddEpisodeToFolderRequest {
+    pub save_id: i32,
+    pub folder_id: i32,
+    pub user_id: i32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RemoveEpisodeFromFolderRequest {
+    pub save_id: i32,
+    pub folder_id: i32,
+    pub user_id: i32,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct BulkAddEpisodesToFolderRequest {
+    pub save_ids: Vec<i32>,
+    pub folder_id: i32,
+    pub user_id: i32,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FolderEpisodesResponse {
+    pub episodes: Vec<SavedEpisode>,
+    pub folder: SavedFolder,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PlaylistInfo {
     pub name: String,

@@ -10,36 +10,13 @@ use tower_http::{
     compression::CompressionLayer,
 };
 use tracing::{info, warn, error};
-
-mod config;
-mod database;
-mod error;
-mod handlers;
-mod models;
-mod redis_client;
-mod redis_manager;
-mod services;
-
-use config::Config;
-use database::DatabasePool;
-use error::AppResult;
-use redis_client::RedisClient;
-use services::{scheduler::BackgroundScheduler, task_manager::TaskManager, tasks::TaskSpawner};
-use handlers::websocket::WebSocketManager;
-use redis_manager::{ImportProgressManager, NotificationManager};
 use std::sync::Arc;
 
-#[derive(Clone)]
-pub struct AppState {
-    pub db_pool: DatabasePool,
-    pub redis_client: RedisClient,
-    pub config: Config,
-    pub task_manager: Arc<TaskManager>,
-    pub task_spawner: Arc<TaskSpawner>,
-    pub websocket_manager: Arc<WebSocketManager>,
-    pub import_progress_manager: Arc<ImportProgressManager>,
-    pub notification_manager: Arc<NotificationManager>,
-}
+// Use the library exports
+use pinepods_api::*;
+use pinepods_api::services::{scheduler::BackgroundScheduler, task_manager::TaskManager, tasks::TaskSpawner};
+use pinepods_api::handlers::websocket::WebSocketManager;
+use pinepods_api::redis_manager::{ImportProgressManager, NotificationManager};
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
@@ -212,6 +189,16 @@ fn create_data_routes() -> Router<AppState> {
         .route("/save_episode", post(handlers::podcasts::save_episode))
         .route("/remove_saved_episode", post(handlers::podcasts::remove_saved_episode))
         .route("/saved_episode_list/{user_id}", get(handlers::podcasts::get_saved_episodes))
+        // Saved folders routes
+        .route("/saved_folders/{user_id}", get(handlers::saved_folders::get_saved_folders))
+        .route("/create_saved_folder", post(handlers::saved_folders::create_saved_folder))
+        .route("/update_saved_folder", post(handlers::saved_folders::update_saved_folder))
+        .route("/delete_saved_folder/{folder_id}", post(handlers::saved_folders::delete_saved_folder))
+        .route("/add_episode_to_folder", post(handlers::saved_folders::add_episode_to_folder))
+        .route("/remove_episode_from_folder", post(handlers::saved_folders::remove_episode_from_folder))
+        .route("/bulk_add_episodes_to_folder", post(handlers::saved_folders::bulk_add_episodes_to_folder))
+        .route("/folder_episodes/{folder_id}", post(handlers::saved_folders::get_folder_episodes))
+        .route("/get_save_id", post(handlers::saved_folders::get_save_id_endpoint))
         .route("/record_podcast_history", post(handlers::podcasts::add_history))
         .route("/get_podcast_id", get(handlers::podcasts::get_podcast_id))
         .route("/download_episode_list", get(handlers::podcasts::download_episode_list))

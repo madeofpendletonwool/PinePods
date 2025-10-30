@@ -897,6 +897,53 @@ pub struct SavedEpisode {
     pub is_youtube: bool,
 }
 
+// Saved folders structures
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[allow(non_snake_case)]
+pub struct SavedFolder {
+    pub folderid: i32,
+    pub userid: i32,
+    pub foldername: String,
+    pub foldercolor: Option<String>,
+    pub iconname: String,
+    pub autoaddcategory: Option<String>,
+    pub position: i32,
+    pub created: String,
+    pub lastupdated: String,
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct SavedFoldersResponse {
+    pub folders: Vec<SavedFolder>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct CreateSavedFolderRequest {
+    pub user_id: i32,
+    pub folder_name: String,
+    pub folder_color: Option<String>,
+    pub icon_name: Option<String>,
+    pub auto_add_category: Option<String>,
+    pub position: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct UpdateSavedFolderRequest {
+    pub folder_id: i32,
+    pub user_id: i32,
+    pub folder_name: Option<String>,
+    pub folder_color: Option<String>,
+    pub icon_name: Option<String>,
+    pub auto_add_category: Option<String>,
+    pub position: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct SavedFolderResponse {
+    pub detail: String,
+    pub folder_id: Option<i32>,
+}
+
 #[derive(Debug, Deserialize, PartialEq, Clone)]
 pub struct SavedDataResponse {
     pub saved_episodes: Vec<SavedEpisode>,
@@ -931,6 +978,287 @@ pub async fn call_get_saved_episodes(
     let response_text = response.text().await?;
     // let response_text = response.text().await?;
 
+    let response_data: SavedDataResponse = serde_json::from_str(&response_text)?;
+    Ok(response_data.saved_episodes)
+}
+
+// Saved folders API functions
+#[allow(dead_code)]
+pub async fn call_get_saved_folders(
+    server_name: &str,
+    api_key: &Option<String>,
+    user_id: &i32,
+) -> Result<Vec<SavedFolder>, anyhow::Error> {
+    let url = format!("{}/api/data/saved_folders/{}", server_name, user_id);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key_ref)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to fetch saved folders: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+    let response_data: SavedFoldersResponse = serde_json::from_str(&response_text)?;
+    Ok(response_data.folders)
+}
+
+#[allow(dead_code)]
+pub async fn call_create_saved_folder(
+    server_name: &str,
+    api_key: &Option<String>,
+    request: CreateSavedFolderRequest,
+) -> Result<SavedFolderResponse, anyhow::Error> {
+    let url = format!("{}/api/data/create_saved_folder", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(&request)?)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to create folder: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+    let response_data: SavedFolderResponse = serde_json::from_str(&response_text)?;
+    Ok(response_data)
+}
+
+#[allow(dead_code)]
+pub async fn call_update_saved_folder(
+    server_name: &str,
+    api_key: &Option<String>,
+    request: UpdateSavedFolderRequest,
+) -> Result<SavedFolderResponse, anyhow::Error> {
+    let url = format!("{}/api/data/update_saved_folder", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(&request)?)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to update folder: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+    let response_data: SavedFolderResponse = serde_json::from_str(&response_text)?;
+    Ok(response_data)
+}
+
+#[allow(dead_code)]
+pub async fn call_delete_saved_folder(
+    server_name: &str,
+    api_key: &Option<String>,
+    folder_id: i32,
+    user_id: i32,
+) -> Result<SavedFolderResponse, anyhow::Error> {
+    let url = format!("{}/api/data/delete_saved_folder/{}", server_name, folder_id);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let body = serde_json::json!({
+        "user_id": user_id
+    });
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(&body)?)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to delete folder: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+    let response_data: SavedFolderResponse = serde_json::from_str(&response_text)?;
+    Ok(response_data)
+}
+
+#[allow(dead_code)]
+pub async fn call_add_episode_to_folder(
+    server_name: &str,
+    api_key: &Option<String>,
+    save_id: i32,
+    folder_id: i32,
+    user_id: i32,
+) -> Result<SavedFolderResponse, anyhow::Error> {
+    let url = format!("{}/api/data/add_episode_to_folder", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let body = serde_json::json!({
+        "save_id": save_id,
+        "folder_id": folder_id,
+        "user_id": user_id
+    });
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(&body)?)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to add episode to folder: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+    let response_data: SavedFolderResponse = serde_json::from_str(&response_text)?;
+    Ok(response_data)
+}
+
+#[allow(dead_code)]
+pub async fn call_remove_episode_from_folder(
+    server_name: &str,
+    api_key: &Option<String>,
+    save_id: i32,
+    folder_id: i32,
+    user_id: i32,
+) -> Result<SavedFolderResponse, anyhow::Error> {
+    let url = format!("{}/api/data/remove_episode_from_folder", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let body = serde_json::json!({
+        "save_id": save_id,
+        "folder_id": folder_id,
+        "user_id": user_id
+    });
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(&body)?)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to remove episode from folder: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+    let response_data: SavedFolderResponse = serde_json::from_str(&response_text)?;
+    Ok(response_data)
+}
+
+#[allow(dead_code)]
+pub async fn call_get_save_id(
+    server_name: &str,
+    api_key: &Option<String>,
+    episode_id: i32,
+    user_id: i32,
+    is_youtube: bool,
+) -> Result<Option<i32>, anyhow::Error> {
+    let url = format!("{}/api/data/get_save_id", server_name);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let body = serde_json::json!({
+        "episode_id": episode_id,
+        "user_id": user_id,
+        "is_youtube": is_youtube
+    });
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(&body)?)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to get save_id: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
+    let response_data: serde_json::Value = serde_json::from_str(&response_text)?;
+    Ok(response_data["save_id"].as_i64().map(|v| v as i32))
+}
+
+#[allow(dead_code)]
+pub async fn call_get_folder_episodes(
+    server_name: &str,
+    api_key: &Option<String>,
+    folder_id: i32,
+    user_id: i32,
+) -> Result<Vec<SavedEpisode>, anyhow::Error> {
+    let url = format!("{}/api/data/folder_episodes/{}", server_name, folder_id);
+
+    let api_key_ref = api_key
+        .as_deref()
+        .ok_or_else(|| anyhow::Error::msg("API key is missing"))?;
+
+    let body = serde_json::json!({
+        "user_id": user_id
+    });
+
+    let response = Request::post(&url)
+        .header("Api-Key", api_key_ref)
+        .header("Content-Type", "application/json")
+        .body(serde_json::to_string(&body)?)
+        .send()
+        .await?;
+
+    if !response.ok() {
+        return Err(anyhow::Error::msg(format!(
+            "Failed to get folder episodes: {}",
+            response.status_text()
+        )));
+    }
+
+    let response_text = response.text().await?;
     let response_data: SavedDataResponse = serde_json::from_str(&response_text)?;
     Ok(response_data.saved_episodes)
 }

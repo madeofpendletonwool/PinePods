@@ -4406,6 +4406,506 @@ impl DatabasePool {
         }
     }
 
+    // Saved folders functions
+
+    // Get user's saved folders
+    pub async fn get_saved_folders(&self, user_id: i32) -> AppResult<Vec<crate::models::SavedFolder>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(
+                    r#"SELECT
+                        folderid,
+                        userid,
+                        foldername,
+                        foldercolor,
+                        iconname,
+                        autoaddcategory,
+                        position,
+                        created::text as created,
+                        lastupdated::text as lastupdated
+                    FROM "SavedFolders"
+                    WHERE userid = $1
+                    ORDER BY position ASC, folderid ASC"#
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut folders = Vec::new();
+                for row in rows {
+                    folders.push(crate::models::SavedFolder {
+                        folderid: row.try_get("folderid")?,
+                        userid: row.try_get("userid")?,
+                        foldername: row.try_get("foldername")?,
+                        foldercolor: row.try_get("foldercolor").ok(),
+                        iconname: row.try_get("iconname")?,
+                        autoaddcategory: row.try_get("autoaddcategory").ok(),
+                        position: row.try_get("position")?,
+                        created: row.try_get("created")?,
+                        lastupdated: row.try_get("lastupdated")?,
+                    });
+                }
+                Ok(folders)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    "SELECT
+                        FolderID as folderid,
+                        UserID as userid,
+                        FolderName as foldername,
+                        FolderColor as foldercolor,
+                        IconName as iconname,
+                        AutoAddCategory as autoaddcategory,
+                        Position as position,
+                        Created as created,
+                        LastUpdated as lastupdated
+                    FROM SavedFolders
+                    WHERE UserID = ?
+                    ORDER BY Position ASC, FolderID ASC"
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut folders = Vec::new();
+                for row in rows {
+                    folders.push(crate::models::SavedFolder {
+                        folderid: row.try_get("folderid")?,
+                        userid: row.try_get("userid")?,
+                        foldername: row.try_get("foldername")?,
+                        foldercolor: row.try_get("foldercolor").ok(),
+                        iconname: row.try_get("iconname")?,
+                        autoaddcategory: row.try_get("autoaddcategory").ok(),
+                        position: row.try_get("position")?,
+                        created: row.try_get::<String, _>("created")?,
+                        lastupdated: row.try_get::<String, _>("lastupdated")?,
+                    });
+                }
+                Ok(folders)
+            }
+        }
+    }
+
+    // Create a new saved folder
+    pub async fn create_saved_folder(
+        &self,
+        user_id: i32,
+        folder_name: &str,
+        folder_color: Option<&str>,
+        icon_name: &str,
+        auto_add_category: Option<&str>,
+        position: i32,
+    ) -> AppResult<i32> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(
+                    r#"INSERT INTO "SavedFolders"
+                        (userid, foldername, foldercolor, iconname, autoaddcategory, position)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    RETURNING folderid"#
+                )
+                .bind(user_id)
+                .bind(folder_name)
+                .bind(folder_color)
+                .bind(icon_name)
+                .bind(auto_add_category)
+                .bind(position)
+                .fetch_one(pool)
+                .await?;
+
+                Ok(row.try_get("folderid")?)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(
+                    "INSERT INTO SavedFolders
+                        (UserID, FolderName, FolderColor, IconName, AutoAddCategory, Position)
+                    VALUES (?, ?, ?, ?, ?, ?)"
+                )
+                .bind(user_id)
+                .bind(folder_name)
+                .bind(folder_color)
+                .bind(icon_name)
+                .bind(auto_add_category)
+                .bind(position)
+                .execute(pool)
+                .await?;
+
+                Ok(result.last_insert_id() as i32)
+            }
+        }
+    }
+
+    // Update a saved folder
+    pub async fn update_saved_folder(
+        &self,
+        folder_id: i32,
+        user_id: i32,
+        folder_name: Option<&str>,
+        folder_color: Option<&str>,
+        icon_name: Option<&str>,
+        auto_add_category: Option<&str>,
+        position: Option<i32>,
+    ) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let mut query_parts = Vec::new();
+                let mut bind_index = 3; // Start at 3 because folder_id is $1 and user_id is $2
+
+                if folder_name.is_some() {
+                    query_parts.push(format!("foldername = ${}", bind_index));
+                    bind_index += 1;
+                }
+                if folder_color.is_some() {
+                    query_parts.push(format!("foldercolor = ${}", bind_index));
+                    bind_index += 1;
+                }
+                if icon_name.is_some() {
+                    query_parts.push(format!("iconname = ${}", bind_index));
+                    bind_index += 1;
+                }
+                if auto_add_category.is_some() {
+                    query_parts.push(format!("autoaddcategory = ${}", bind_index));
+                    bind_index += 1;
+                }
+                if position.is_some() {
+                    query_parts.push(format!("position = ${}", bind_index));
+                    bind_index += 1;
+                }
+                query_parts.push("lastupdated = NOW()".to_string());
+
+                if query_parts.len() == 1 {
+                    // Only lastupdated would be updated
+                    return Ok(());
+                }
+
+                let query_str = format!(
+                    r#"UPDATE "SavedFolders" SET {} WHERE folderid = $1 AND userid = $2"#,
+                    query_parts.join(", ")
+                );
+
+                let mut query = sqlx::query(&query_str)
+                    .bind(folder_id)
+                    .bind(user_id);
+
+                if let Some(name) = folder_name {
+                    query = query.bind(name);
+                }
+                if let Some(color) = folder_color {
+                    query = query.bind(color);
+                }
+                if let Some(icon) = icon_name {
+                    query = query.bind(icon);
+                }
+                if let Some(category) = auto_add_category {
+                    query = query.bind(category);
+                }
+                if let Some(pos) = position {
+                    query = query.bind(pos);
+                }
+
+                query.execute(pool).await?;
+                Ok(())
+            }
+            DatabasePool::MySQL(pool) => {
+                let mut query_parts = Vec::new();
+
+                if folder_name.is_some() {
+                    query_parts.push("FolderName = ?");
+                }
+                if folder_color.is_some() {
+                    query_parts.push("FolderColor = ?");
+                }
+                if icon_name.is_some() {
+                    query_parts.push("IconName = ?");
+                }
+                if auto_add_category.is_some() {
+                    query_parts.push("AutoAddCategory = ?");
+                }
+                if position.is_some() {
+                    query_parts.push("Position = ?");
+                }
+
+                if query_parts.is_empty() {
+                    return Ok(());
+                }
+
+                let query_str = format!(
+                    "UPDATE SavedFolders SET {} WHERE FolderID = ? AND UserID = ?",
+                    query_parts.join(", ")
+                );
+
+                let mut query = sqlx::query(&query_str);
+
+                if let Some(name) = folder_name {
+                    query = query.bind(name);
+                }
+                if let Some(color) = folder_color {
+                    query = query.bind(color);
+                }
+                if let Some(icon) = icon_name {
+                    query = query.bind(icon);
+                }
+                if let Some(category) = auto_add_category {
+                    query = query.bind(category);
+                }
+                if let Some(pos) = position {
+                    query = query.bind(pos);
+                }
+
+                query = query.bind(folder_id).bind(user_id);
+
+                query.execute(pool).await?;
+                Ok(())
+            }
+        }
+    }
+
+    // Delete a saved folder
+    pub async fn delete_saved_folder(&self, folder_id: i32, user_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"DELETE FROM "SavedFolders" WHERE folderid = $1 AND userid = $2"#)
+                    .bind(folder_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                Ok(())
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("DELETE FROM SavedFolders WHERE FolderID = ? AND UserID = ?")
+                    .bind(folder_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                Ok(())
+            }
+        }
+    }
+
+    // Add episode to folder
+    pub async fn add_episode_to_folder(&self, save_id: i32, folder_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(
+                    r#"INSERT INTO "SavedEpisodeFolders" (saveid, folderid)
+                    VALUES ($1, $2)
+                    ON CONFLICT (saveid, folderid) DO NOTHING"#
+                )
+                .bind(save_id)
+                .bind(folder_id)
+                .execute(pool)
+                .await?;
+                Ok(())
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query(
+                    "INSERT IGNORE INTO SavedEpisodeFolders (SaveID, FolderID)
+                    VALUES (?, ?)"
+                )
+                .bind(save_id)
+                .bind(folder_id)
+                .execute(pool)
+                .await?;
+                Ok(())
+            }
+        }
+    }
+
+    // Remove episode from folder
+    pub async fn remove_episode_from_folder(&self, save_id: i32, folder_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"DELETE FROM "SavedEpisodeFolders" WHERE saveid = $1 AND folderid = $2"#)
+                    .bind(save_id)
+                    .bind(folder_id)
+                    .execute(pool)
+                    .await?;
+                Ok(())
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("DELETE FROM SavedEpisodeFolders WHERE SaveID = ? AND FolderID = ?")
+                    .bind(save_id)
+                    .bind(folder_id)
+                    .execute(pool)
+                    .await?;
+                Ok(())
+            }
+        }
+    }
+
+    // Get episodes in a specific folder
+    pub async fn get_folder_episodes(&self, folder_id: i32, user_id: i32) -> AppResult<Vec<crate::models::SavedEpisode>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(
+                    r#"SELECT
+                        p.podcastname,
+                        e.episodetitle,
+                        e.episodepubdate,
+                        e.episodedescription,
+                        e.episodeid,
+                        CASE
+                            WHEN p.usepodcastcoverscustomized = TRUE AND p.usepodcastcovers = TRUE THEN p.artworkurl
+                            WHEN u.usepodcastcovers = TRUE THEN p.artworkurl
+                            ELSE e.episodeartwork
+                        END as episodeartwork,
+                        e.episodeurl,
+                        e.episodeduration,
+                        p.websiteurl,
+                        ueh.listenduration,
+                        e.completed,
+                        TRUE as saved,
+                        CASE WHEN eq.episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                        CASE WHEN de.episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                        FALSE as is_youtube,
+                        p.podcastid
+                    FROM "SavedEpisodeFolders" sef
+                    INNER JOIN "SavedEpisodes" se ON sef.saveid = se.saveid
+                    INNER JOIN "Episodes" e ON se.episodeid = e.episodeid
+                    INNER JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                    LEFT JOIN "Users" u ON p.userid = u.userid
+                    LEFT JOIN "UserEpisodeHistory" ueh ON se.episodeid = ueh.episodeid AND ueh.userid = $1
+                    LEFT JOIN "EpisodeQueue" eq ON se.episodeid = eq.episodeid AND eq.userid = $1 AND eq.is_youtube = FALSE
+                    LEFT JOIN "DownloadedEpisodes" de ON se.episodeid = de.episodeid AND de.userid = $1
+                    WHERE sef.folderid = $2 AND se.userid = $1
+                    ORDER BY e.episodepubdate DESC"#
+                )
+                .bind(user_id)
+                .bind(folder_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut episodes = Vec::new();
+                for row in rows {
+                    episodes.push(crate::models::SavedEpisode {
+                        episodetitle: row.try_get("episodetitle")?,
+                        podcastname: row.try_get("podcastname")?,
+                        episodepubdate: row.try_get("episodepubdate")?,
+                        episodedescription: row.try_get("episodedescription")?,
+                        episodeartwork: row.try_get("episodeartwork")?,
+                        episodeurl: row.try_get("episodeurl")?,
+                        episodeduration: row.try_get("episodeduration")?,
+                        listenduration: row.try_get("listenduration").ok(),
+                        episodeid: row.try_get("episodeid")?,
+                        websiteurl: row.try_get("websiteurl")?,
+                        completed: row.try_get("completed")?,
+                        saved: row.try_get("saved")?,
+                        queued: row.try_get("queued")?,
+                        downloaded: row.try_get("downloaded")?,
+                        is_youtube: row.try_get("is_youtube")?,
+                        podcastid: row.try_get("podcastid").ok(),
+                    });
+                }
+                Ok(episodes)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    "SELECT
+                        p.PodcastName as podcastname,
+                        e.EpisodeTitle as episodetitle,
+                        e.EpisodePubDate as episodepubdate,
+                        e.EpisodeDescription as episodedescription,
+                        e.EpisodeID as episodeid,
+                        CASE
+                            WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                            WHEN u.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                            ELSE e.EpisodeArtwork
+                        END as episodeartwork,
+                        e.EpisodeURL as episodeurl,
+                        e.EpisodeDuration as episodeduration,
+                        p.WebsiteURL as websiteurl,
+                        ueh.ListenDuration as listenduration,
+                        e.Completed as completed,
+                        TRUE as saved,
+                        CASE WHEN eq.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                        CASE WHEN de.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                        FALSE as is_youtube,
+                        p.PodcastID as podcastid
+                    FROM SavedEpisodeFolders sef
+                    INNER JOIN SavedEpisodes se ON sef.SaveID = se.SaveID
+                    INNER JOIN Episodes e ON se.EpisodeID = e.EpisodeID
+                    INNER JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                    LEFT JOIN Users u ON p.UserID = u.UserID
+                    LEFT JOIN UserEpisodeHistory ueh ON se.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
+                    LEFT JOIN EpisodeQueue eq ON se.EpisodeID = eq.EpisodeID AND eq.UserID = ? AND eq.IsYouTube = FALSE
+                    LEFT JOIN DownloadedEpisodes de ON se.EpisodeID = de.EpisodeID AND de.UserID = ?
+                    WHERE sef.FolderID = ? AND se.UserID = ?
+                    ORDER BY e.EpisodePubDate DESC"
+                )
+                .bind(user_id)
+                .bind(user_id)
+                .bind(user_id)
+                .bind(folder_id)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut episodes = Vec::new();
+                for row in rows {
+                    episodes.push(crate::models::SavedEpisode {
+                        episodetitle: row.try_get("episodetitle")?,
+                        podcastname: row.try_get("podcastname")?,
+                        episodepubdate: row.try_get("episodepubdate")?,
+                        episodedescription: row.try_get("episodedescription")?,
+                        episodeartwork: row.try_get("episodeartwork")?,
+                        episodeurl: row.try_get("episodeurl")?,
+                        episodeduration: row.try_get("episodeduration")?,
+                        listenduration: row.try_get("listenduration").ok(),
+                        episodeid: row.try_get("episodeid")?,
+                        websiteurl: row.try_get("websiteurl")?,
+                        completed: row.try_get("completed")?,
+                        saved: row.try_get("saved")?,
+                        queued: row.try_get("queued")?,
+                        downloaded: row.try_get("downloaded")?,
+                        is_youtube: row.try_get("is_youtube")?,
+                        podcastid: row.try_get("podcastid").ok(),
+                    });
+                }
+                Ok(episodes)
+            }
+        }
+    }
+
+    // Get SaveID from episode_id and user_id
+    pub async fn get_save_id(&self, episode_id: i32, user_id: i32, is_youtube: bool) -> AppResult<Option<i32>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                if is_youtube {
+                    let row = sqlx::query(r#"SELECT saveid FROM "SavedVideos" WHERE videoid = $1 AND userid = $2"#)
+                        .bind(episode_id)
+                        .bind(user_id)
+                        .fetch_optional(pool)
+                        .await?;
+                    Ok(row.and_then(|r| r.try_get("saveid").ok()))
+                } else {
+                    let row = sqlx::query(r#"SELECT saveid FROM "SavedEpisodes" WHERE episodeid = $1 AND userid = $2"#)
+                        .bind(episode_id)
+                        .bind(user_id)
+                        .fetch_optional(pool)
+                        .await?;
+                    Ok(row.and_then(|r| r.try_get("saveid").ok()))
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                if is_youtube {
+                    let row = sqlx::query("SELECT SaveID FROM SavedVideos WHERE VideoID = ? AND UserID = ?")
+                        .bind(episode_id)
+                        .bind(user_id)
+                        .fetch_optional(pool)
+                        .await?;
+                    Ok(row.and_then(|r| r.try_get("SaveID").ok()))
+                } else {
+                    let row = sqlx::query("SELECT SaveID FROM SavedEpisodes WHERE EpisodeID = ? AND UserID = ?")
+                        .bind(episode_id)
+                        .bind(user_id)
+                        .fetch_optional(pool)
+                        .await?;
+                    Ok(row.and_then(|r| r.try_get("SaveID").ok()))
+                }
+            }
+        }
+    }
+
     // Record podcast history - matches Python record_podcast_history function
     pub async fn record_podcast_history(&self, episode_id: i32, user_id: i32, episode_pos: f32, is_youtube: bool) -> AppResult<()> {
         let listen_duration = (episode_pos * 100.0) as i32; // Convert position to duration

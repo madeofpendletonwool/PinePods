@@ -11,7 +11,7 @@ use crate::components::gen_funcs::{
     parse_date, sanitize_html_with_blank_target, set_filter_preference,
 };
 use crate::requests::pod_req;
-use crate::requests::pod_req::SavedEpisodesResponse;
+use crate::requests::pod_req::{SavedEpisodesResponse, SavedFolder, CreateSavedFolderRequest, UpdateSavedFolderRequest};
 use gloo::events::EventListener;
 use i18nrs::yew::use_translation;
 use wasm_bindgen::JsCast;
@@ -64,6 +64,19 @@ pub fn saved() -> Html {
 
     let show_completed = use_state(|| false); // Toggle for showing completed episodes only
     let show_in_progress = use_state(|| false); // Toggle for showing in-progress episodes only
+
+    // Folder state
+    let folders = use_state(|| Vec::<SavedFolder>::new());
+    let selected_folder = use_state(|| None::<i32>); // None means "All Episodes"
+    let show_folder_modal = use_state(|| false);
+    let folder_modal_mode = use_state(|| "create".to_string()); // "create" or "edit"
+    let editing_folder_id = use_state(|| None::<i32>);
+
+    // Folder form state
+    let folder_name_input = use_state(|| String::new());
+    let folder_color_input = use_state(|| None::<String>);
+    let folder_icon_input = use_state(|| "folder".to_string());
+    let folder_category_input = use_state(|| None::<String>);
 
     let _toggle_dropdown = {
         let dropdown_open = dropdown_open.clone();
@@ -139,6 +152,38 @@ pub fn saved() -> Html {
                                 error_clone.set(Some(e.to_string()));
                                 loading_ep.set(false);
                             }
+                        }
+                    });
+                }
+                || ()
+            },
+        );
+    }
+
+    // Fetch folders on component mount
+    {
+        let folders = folders.clone();
+        let api_key = post_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.api_key.clone());
+        let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let server_name = post_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.server_name.clone());
+
+        use_effect_with(
+            (api_key.clone(), user_id.clone(), server_name.clone()),
+            move |_| {
+                if let (Some(api_key), Some(user_id), Some(server_name)) =
+                    (api_key.clone(), user_id.clone(), server_name.clone())
+                {
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(fetched_folders) =
+                            pod_req::call_get_saved_folders(&server_name, &api_key, &user_id).await
+                        {
+                            folders.set(fetched_folders);
                         }
                     });
                 }
@@ -356,6 +401,85 @@ pub fn saved() -> Html {
                                 </div>
                             </div>
 
+                            // Folder tabs
+                            <div class="folder-tabs-container">
+                                // "All Episodes" tab
+                                <button
+                                    class={classes!(
+                                        "folder-tab",
+                                        if selected_folder.is_none() { "active" } else { "" }
+                                    )}
+                                    onclick={
+                                        let selected_folder = selected_folder.clone();
+                                        Callback::from(move |_| {
+                                            selected_folder.set(None);
+                                        })
+                                    }
+                                >
+                                    <i class="ph ph-bookmark folder-tab-icon"></i>
+                                    <span>{"All Episodes"}</span>
+                                    {
+                                        if let Some(ref saved_eps) = state.saved_episodes {
+                                            html! {
+                                                <span class="folder-tab-count">{saved_eps.episodes.len()}</span>
+                                            }
+                                        } else {
+                                            html! {}
+                                        }
+                                    }
+                                </button>
+
+                                // Folder tabs
+                                {
+                                    folders.iter().map(|folder| {
+                                        let folder_id = folder.folderid;
+                                        let is_active = *selected_folder == Some(folder_id);
+                                        let selected_folder = selected_folder.clone();
+
+                                        html! {
+                                            <button
+                                                key={folder_id}
+                                                class={classes!(
+                                                    "folder-tab",
+                                                    if is_active { "active" } else { "" }
+                                                )}
+                                                onclick={Callback::from(move |_| {
+                                                    selected_folder.set(Some(folder_id));
+                                                })}
+                                            >
+                                                <i class={format!("ph ph-{} folder-tab-icon", folder.iconname)}></i>
+                                                <span>{&folder.foldername}</span>
+                                                // TODO: Add folder episode count
+                                            </button>
+                                        }
+                                    }).collect::<Html>()
+                                }
+
+                                // Add folder button
+                                <button
+                                    class="add-folder-btn"
+                                    onclick={
+                                        let show_folder_modal = show_folder_modal.clone();
+                                        let folder_modal_mode = folder_modal_mode.clone();
+                                        let folder_name_input = folder_name_input.clone();
+                                        let folder_color_input = folder_color_input.clone();
+                                        let folder_icon_input = folder_icon_input.clone();
+                                        let folder_category_input = folder_category_input.clone();
+                                        Callback::from(move |_| {
+                                            folder_modal_mode.set("create".to_string());
+                                            folder_name_input.set(String::new());
+                                            folder_color_input.set(None);
+                                            folder_icon_input.set("folder".to_string());
+                                            folder_category_input.set(None);
+                                            show_folder_modal.set(true);
+                                        })
+                                    }
+                                >
+                                    <i class="ph ph-plus"></i>
+                                    <span>{"New Folder"}</span>
+                                </button>
+                            </div>
+
                             {
                                 if let Some(_saved_eps) = state.saved_episodes.clone() {
                                     if (*filtered_episodes).is_empty() {
@@ -385,6 +509,246 @@ pub fn saved() -> Html {
             {
                 if let Some(audio_props) = &audio_state.currently_playing {
                     html! { <AudioPlayer src={audio_props.src.clone()} title={audio_props.title.clone()} description={audio_props.description.clone()} release_date={audio_props.release_date.clone()} artwork_url={audio_props.artwork_url.clone()} duration={audio_props.duration.clone()} episode_id={audio_props.episode_id.clone()} duration_sec={audio_props.duration_sec.clone()} start_pos_sec={audio_props.start_pos_sec.clone()} end_pos_sec={audio_props.end_pos_sec.clone()} offline={audio_props.offline.clone()} is_youtube={audio_props.is_youtube.clone()} /> }
+                } else {
+                    html! {}
+                }
+            }
+
+            // Folder modal
+            {
+                if *show_folder_modal {
+                    let modal_title = if *folder_modal_mode == "create" {
+                        "Create Folder"
+                    } else {
+                        "Edit Folder"
+                    };
+
+                    // Available colors for folders
+                    let colors = vec![
+                        "#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A",
+                        "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E2",
+                        "#F8B195", "#C06C84", "#6C5B7B", "#355C7D",
+                    ];
+
+                    // Available icons for folders
+                    let icons = vec![
+                        "folder", "folder-open", "star", "heart",
+                        "bookmark", "tag", "flag", "lightning",
+                        "fire", "briefcase", "graduation-cap", "trophy",
+                        "music-notes", "microphone", "headphones", "globe",
+                    ];
+
+                    html! {
+                        <div class="folder-modal-overlay" onclick={
+                            let show_folder_modal = show_folder_modal.clone();
+                            Callback::from(move |_| {
+                                show_folder_modal.set(false);
+                            })
+                        }>
+                            <div class="folder-modal" onclick={Callback::from(|e: MouseEvent| {
+                                e.stop_propagation();
+                            })}>
+                                <div class="folder-modal-header">
+                                    <h2 class="folder-modal-title">{modal_title}</h2>
+                                    <button class="folder-modal-close" onclick={
+                                        let show_folder_modal = show_folder_modal.clone();
+                                        Callback::from(move |_| {
+                                            show_folder_modal.set(false);
+                                        })
+                                    }>
+                                        <i class="ph ph-x"></i>
+                                    </button>
+                                </div>
+
+                                <div class="folder-form">
+                                    // Folder name input
+                                    <div class="folder-form-group">
+                                        <label class="folder-form-label">{"Folder Name"}</label>
+                                        <input
+                                            type="text"
+                                            class="folder-form-input"
+                                            placeholder="Enter folder name"
+                                            value={(*folder_name_input).clone()}
+                                            oninput={
+                                                let folder_name_input = folder_name_input.clone();
+                                                Callback::from(move |e: InputEvent| {
+                                                    if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                                                        folder_name_input.set(input.value());
+                                                    }
+                                                })
+                                            }
+                                        />
+                                    </div>
+
+                                    // Color picker
+                                    <div class="folder-form-group">
+                                        <label class="folder-form-label">{"Color (Optional)"}</label>
+                                        <div class="folder-color-picker">
+                                            {
+                                                colors.iter().map(|color| {
+                                                    let color_str = color.to_string();
+                                                    let is_selected = folder_color_input.as_ref().map(|c| c == &color_str).unwrap_or(false);
+                                                    let folder_color_input = folder_color_input.clone();
+
+                                                    html! {
+                                                        <button
+                                                            key={color_str.clone()}
+                                                            class={classes!(
+                                                                "folder-color-option",
+                                                                if is_selected { "selected" } else { "" }
+                                                            )}
+                                                            style={format!("background-color: {};", color_str)}
+                                                            onclick={Callback::from(move |_| {
+                                                                folder_color_input.set(Some(color_str.clone()));
+                                                            })}
+                                                        />
+                                                    }
+                                                }).collect::<Html>()
+                                            }
+                                        </div>
+                                    </div>
+
+                                    // Icon picker
+                                    <div class="folder-form-group">
+                                        <label class="folder-form-label">{"Icon"}</label>
+                                        <div class="folder-icon-picker">
+                                            {
+                                                icons.iter().map(|icon| {
+                                                    let icon_str = icon.to_string();
+                                                    let is_selected = *folder_icon_input == icon_str;
+                                                    let folder_icon_input = folder_icon_input.clone();
+
+                                                    html! {
+                                                        <button
+                                                            key={icon_str.clone()}
+                                                            class={classes!(
+                                                                "folder-icon-option",
+                                                                if is_selected { "selected" } else { "" }
+                                                            )}
+                                                            onclick={Callback::from(move |_| {
+                                                                folder_icon_input.set(icon_str.clone());
+                                                            })}
+                                                        >
+                                                            <i class={format!("ph ph-{}", icon_str)}></i>
+                                                        </button>
+                                                    }
+                                                }).collect::<Html>()
+                                            }
+                                        </div>
+                                    </div>
+
+                                    // Auto-add category input
+                                    <div class="folder-form-group">
+                                        <label class="folder-form-label">{"Auto-add Category (Optional)"}</label>
+                                        <input
+                                            type="text"
+                                            class="folder-form-input"
+                                            placeholder="e.g., Technology"
+                                            value={folder_category_input.as_ref().map(|s| s.clone()).unwrap_or_default()}
+                                            oninput={
+                                                let folder_category_input = folder_category_input.clone();
+                                                Callback::from(move |e: InputEvent| {
+                                                    if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                                                        let value = input.value();
+                                                        folder_category_input.set(if value.is_empty() { None } else { Some(value) });
+                                                    }
+                                                })
+                                            }
+                                        />
+                                    </div>
+
+                                    // Action buttons
+                                    <div class="folder-modal-actions">
+                                        <button
+                                            class="folder-btn folder-btn-secondary"
+                                            onclick={
+                                                let show_folder_modal = show_folder_modal.clone();
+                                                Callback::from(move |_| {
+                                                    show_folder_modal.set(false);
+                                                })
+                                            }
+                                        >
+                                            {"Cancel"}
+                                        </button>
+                                        <button
+                                            class="folder-btn folder-btn-primary"
+                                            onclick={
+                                                let show_folder_modal = show_folder_modal.clone();
+                                                let folder_modal_mode = folder_modal_mode.clone();
+                                                let folder_name_input = folder_name_input.clone();
+                                                let folder_color_input = folder_color_input.clone();
+                                                let folder_icon_input = folder_icon_input.clone();
+                                                let folder_category_input = folder_category_input.clone();
+                                                let folders = folders.clone();
+                                                let editing_folder_id = editing_folder_id.clone();
+                                                let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+                                                let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+                                                let server_name = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+                                                Callback::from(move |_| {
+                                                    if folder_name_input.is_empty() {
+                                                        return;
+                                                    }
+
+                                                    let show_folder_modal = show_folder_modal.clone();
+                                                    let folders = folders.clone();
+                                                    let folder_name = (*folder_name_input).clone();
+                                                    let folder_color = (*folder_color_input).clone();
+                                                    let folder_icon = (*folder_icon_input).clone();
+                                                    let folder_category = (*folder_category_input).clone();
+                                                    let mode = (*folder_modal_mode).clone();
+                                                    let editing_id = *editing_folder_id;
+
+                                                    if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
+                                                        wasm_bindgen_futures::spawn_local(async move {
+                                                            if mode == "create" {
+                                                                let request = CreateSavedFolderRequest {
+                                                                    user_id,
+                                                                    folder_name,
+                                                                    folder_color,
+                                                                    icon_name: Some(folder_icon),
+                                                                    auto_add_category: folder_category,
+                                                                    position: None,
+                                                                };
+
+                                                                if let Ok(_) = pod_req::call_create_saved_folder(&server_name, &api_key, request).await {
+                                                                    // Refresh folders list
+                                                                    if let Ok(fetched_folders) = pod_req::call_get_saved_folders(&server_name, &api_key, &user_id).await {
+                                                                        folders.set(fetched_folders);
+                                                                    }
+                                                                    show_folder_modal.set(false);
+                                                                }
+                                                            } else if let Some(folder_id) = editing_id {
+                                                                let request = UpdateSavedFolderRequest {
+                                                                    folder_id,
+                                                                    user_id,
+                                                                    folder_name: Some(folder_name),
+                                                                    folder_color,
+                                                                    icon_name: Some(folder_icon),
+                                                                    auto_add_category: folder_category,
+                                                                    position: None,
+                                                                };
+
+                                                                if let Ok(_) = pod_req::call_update_saved_folder(&server_name, &api_key, request).await {
+                                                                    // Refresh folders list
+                                                                    if let Ok(fetched_folders) = pod_req::call_get_saved_folders(&server_name, &api_key, &user_id).await {
+                                                                        folders.set(fetched_folders);
+                                                                    }
+                                                                    show_folder_modal.set(false);
+                                                                }
+                                                            }
+                                                        });
+                                                    }
+                                                })
+                                            }
+                                        >
+                                            {if *folder_modal_mode == "create" { "Create Folder" } else { "Save Changes" }}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
                 } else {
                     html! {}
                 }

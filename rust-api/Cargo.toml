@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.89"
 
+[[bin]]
+name = "pinepods-api"
+path = "src/main.rs"
+
+[lib]
+name = "pinepods_api"
+path = "src/lib.rs"
+
 [dependencies]
 # Web Framework
 axum = { version = "0.8.4", features = ["macros", "multipart", "ws"] }
@@ -85,4 +93,22 @@ tokio-util = { version = "0.7.16", features = ["io"] }
 mime_guess = "2.0.5"
 
 [dev-dependencies]
+# Testing framework
 tower-test = "0.4"
+tokio-test = "0.4"
+
+# HTTP mocking for external services
+mockito = "1.6"
+
+# Better assertions for JSON
+assert-json-diff = "2.0"
+
+# Generate fake test data
+fake = { version = "2.10", features = ["derive", "chrono"] }
+
+# Serialize tests that share state
+serial_test = "3.2"
+
+# Testing helpers
+http-body-util = "0.1"
+mime = "0.3"
