@@ -46,6 +46,7 @@ pub fn app_drawer() -> Html {
     let i18n_playlists = i18n.t("navigation.playlists").to_string();
     let i18n_history = i18n.t("navigation.history").to_string();
     let i18n_server_downloads = i18n.t("app_drawer.server_downloads").to_string();
+    let i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
     let i18n_subscribed_people = i18n.t("app_drawer.subscribed_people").to_string();
     let i18n_podcasts = i18n.t("navigation.podcasts").to_string();
     let i18n_settings = i18n.t("app_drawer.settings").to_string();
