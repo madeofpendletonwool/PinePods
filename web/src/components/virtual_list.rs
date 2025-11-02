@@ -172,6 +172,39 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
             let datetime = parse_date(&episode.pub_date.clone().unwrap_or_default(), &search_state_clone.user_tz);
             let format_release = format!("{}", format_datetime(&datetime, &search_state_clone.hour_preference, date_format));
 
+            // Check if episode is downloaded when podcast is added to database
+            let is_local = if props.podcast_added && episode_id_clone != 0 {
+                // Podcast is in database, check if episode is downloaded
+                if search_state_clone
+                    .downloaded_episode_ids
+                    .as_ref()
+                    .map(|ids| ids.contains(&episode_id_clone))
+                    .unwrap_or(false)
+                {
+                    Some(true)
+                } else {
+                    #[cfg(not(feature = "server_build"))]
+                    {
+                        if search_state_clone
+                            .locally_downloaded_episodes
+                            .as_ref()
+                            .map(|episodes| episodes.contains(&episode_id_clone))
+                            .unwrap_or(false)
+                        {
+                            Some(true)
+                        } else {
+                            None
+                        }
+                    }
+                    #[cfg(feature = "server_build")]
+                    {
+                        None
+                    }
+                }
+            } else {
+                None // Podcast not in database, can't be downloaded
+            };
+
             let on_play_pause = on_play_pause(
                 episode_url_clone.clone(),
                 episode_title_clone.clone(),
@@ -186,7 +219,7 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
                 server_name_play.unwrap(),
                 dispatch.clone(),
                 search_ui_state_clone.clone(),
-                None, // is_local
+                is_local,
                 episode_is_youtube, // is_youtube_vid
             );
 
@@ -643,6 +676,30 @@ pub fn person_episode_component(props: &PersonEpisodeComponentProps) -> Html {
         .map_or(false, |current| current.episode_id == episode.episodeid);
     let is_playing = audio_state.audio_playing.unwrap_or(false);
 
+    // Check if episode is downloaded - use the downloaded field from the episode
+    // or check against locally_downloaded_episodes for Tauri builds
+    let is_local = if episode.downloaded {
+        Some(true)
+    } else {
+        #[cfg(not(feature = "server_build"))]
+        {
+            if state
+                .locally_downloaded_episodes
+                .as_ref()
+                .map(|episodes| episodes.contains(&episode.episodeid))
+                .unwrap_or(false)
+            {
+                Some(true)
+            } else {
+                None
+            }
+        }
+        #[cfg(feature = "server_build")]
+        {
+            None
+        }
+    };
+
     let on_play_pause = on_play_pause(
         episode.episodeurl.clone(),
         episode.episodetitle.clone(),
@@ -657,7 +714,7 @@ pub fn person_episode_component(props: &PersonEpisodeComponentProps) -> Html {
         props.server_name.clone().unwrap(),
         audio_dispatch.clone(),
         audio_state.clone(),
-        None,
+        is_local,
         Some(false), // person episodes are always non-YouTube
     );
 

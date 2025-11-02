@@ -14953,15 +14953,24 @@ impl DatabasePool {
     // Subscribe to person - matches Python subscribe_to_person function exactly
     pub async fn subscribe_to_person(&self, user_id: i32, person_id: i32, person_name: &str, person_img: &str, podcast_id: i32) -> AppResult<i32> {
         println!("Subscribing user {} to person {}: {}", user_id, person_id, person_name);
-        
+
         // Check if person already exists for this user and handle accordingly
         let result = match self {
             DatabasePool::Postgres(pool) => {
-                let existing = sqlx::query(r#"SELECT personid FROM "People" WHERE userid = $1 AND peopledbid = $2"#)
-                    .bind(user_id)
-                    .bind(person_id)
-                    .fetch_optional(pool)
-                    .await?;
+                // When peopledbid is 0 or not set, use name for lookup to avoid collisions
+                let existing = if person_id == 0 {
+                    sqlx::query(r#"SELECT personid FROM "People" WHERE userid = $1 AND LOWER(name) = LOWER($2)"#)
+                        .bind(user_id)
+                        .bind(person_name)
+                        .fetch_optional(pool)
+                        .await?
+                } else {
+                    sqlx::query(r#"SELECT personid FROM "People" WHERE userid = $1 AND peopledbid = $2"#)
+                        .bind(user_id)
+                        .bind(person_id)
+                        .fetch_optional(pool)
+                        .await?
+                };
                 
                 if let Some(row) = existing {
                     let person_db_id: i32 = row.try_get("personid")?;
@@ -15013,11 +15022,20 @@ impl DatabasePool {
                 }
             }
             DatabasePool::MySQL(pool) => {
-                let existing = sqlx::query("SELECT PersonID FROM People WHERE UserID = ? AND PeopleDBID = ?")
-                    .bind(user_id)
-                    .bind(person_id)
-                    .fetch_optional(pool)
-                    .await?;
+                // When peopledbid is 0 or not set, use name for lookup to avoid collisions
+                let existing = if person_id == 0 {
+                    sqlx::query("SELECT PersonID FROM People WHERE UserID = ? AND LOWER(Name) = LOWER(?)")
+                        .bind(user_id)
+                        .bind(person_name)
+                        .fetch_optional(pool)
+                        .await?
+                } else {
+                    sqlx::query("SELECT PersonID FROM People WHERE UserID = ? AND PeopleDBID = ?")
+                        .bind(user_id)
+                        .bind(person_id)
+                        .fetch_optional(pool)
+                        .await?
+                };
                 
                 if let Some(row) = existing {
                     let person_db_id: i32 = row.try_get("PersonID")?;
@@ -15075,24 +15093,44 @@ impl DatabasePool {
     // Unsubscribe from person - matches Python unsubscribe_from_person function exactly
     pub async fn unsubscribe_from_person(&self, user_id: i32, person_id: i32, person_name: &str) -> AppResult<bool> {
         println!("Unsubscribing user {} from person {}: {}", user_id, person_id, person_name);
-        
+
         // Find and delete the person record
         let rows_affected = match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"DELETE FROM "People" WHERE userid = $1 AND peopledbid = $2"#)
-                    .bind(user_id)
-                    .bind(person_id)
-                    .execute(pool)
-                    .await?
-                    .rows_affected()
+                // When peopledbid is 0 or not set, use name for lookup to avoid collisions
+                if person_id == 0 {
+                    sqlx::query(r#"DELETE FROM "People" WHERE userid = $1 AND LOWER(name) = LOWER($2)"#)
+                        .bind(user_id)
+                        .bind(person_name)
+                        .execute(pool)
+                        .await?
+                        .rows_affected()
+                } else {
+                    sqlx::query(r#"DELETE FROM "People" WHERE userid = $1 AND peopledbid = $2"#)
+                        .bind(user_id)
+                        .bind(person_id)
+                        .execute(pool)
+                        .await?
+                        .rows_affected()
+                }
             }
             DatabasePool::MySQL(pool) => {
-                sqlx::query("DELETE FROM People WHERE UserID = ? AND PeopleDBID = ?")
-                    .bind(user_id)
-                    .bind(person_id)
-                    .execute(pool)
-                    .await?
-                    .rows_affected()
+                // When peopledbid is 0 or not set, use name for lookup to avoid collisions
+                if person_id == 0 {
+                    sqlx::query("DELETE FROM People WHERE UserID = ? AND LOWER(Name) = LOWER(?)")
+                        .bind(user_id)
+                        .bind(person_name)
+                        .execute(pool)
+                        .await?
+                        .rows_affected()
+                } else {
+                    sqlx::query("DELETE FROM People WHERE UserID = ? AND PeopleDBID = ?")
+                        .bind(user_id)
+                        .bind(person_id)
+                        .execute(pool)
+                        .await?
+                        .rows_affected()
+                }
             }
         };
         

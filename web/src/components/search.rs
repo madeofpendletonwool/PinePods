@@ -305,6 +305,30 @@ pub fn search(_props: &SearchProps) -> Html {
                                     let datetime = parse_date(&episode.episodepubdate, &state.user_tz);
                                     let format_release = format!("{}", format_datetime(&datetime, &state.hour_preference, date_format));
 
+                                    // Check if episode is downloaded - use the downloaded field from the episode
+                                    // or check against locally_downloaded_episodes for Tauri builds
+                                    let is_local = if episode.downloaded {
+                                        Some(true)
+                                    } else {
+                                        #[cfg(not(feature = "server_build"))]
+                                        {
+                                            if state
+                                                .locally_downloaded_episodes
+                                                .as_ref()
+                                                .map(|episodes| episodes.contains(&episode.episodeid))
+                                                .unwrap_or(false)
+                                            {
+                                                Some(true)
+                                            } else {
+                                                None
+                                            }
+                                        }
+                                        #[cfg(feature = "server_build")]
+                                        {
+                                            None
+                                        }
+                                    };
+
                                     let on_play_pause = on_play_pause(
                                         episode_url_for_closure.clone(),
                                         episode_title_for_closure.clone(),
@@ -319,7 +343,7 @@ pub fn search(_props: &SearchProps) -> Html {
                                         server_name_play.unwrap(),
                                         audio_dispatch.clone(),
                                         audio_state.clone(),
-                                        None,
+                                        is_local,
                                         episode_is_youtube,
                                     );
 

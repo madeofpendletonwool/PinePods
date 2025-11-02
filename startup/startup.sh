@@ -32,6 +32,10 @@ export VALKEY_HOST=${VALKEY_HOST:-'valkey'}
 export VALKEY_PORT=${VALKEY_PORT:-'6379'}
 export DEFAULT_LANGUAGE=${DEFAULT_LANGUAGE:-'en'}
 
+# Save user's HOSTNAME to SERVER_URL before Docker overwrites it with container ID
+# This preserves the user-configured server URL for RSS feed generation
+export SERVER_URL=${HOSTNAME}
+
 # Export OIDC environment variables
 export OIDC_DISABLE_STANDARD_LOGIN=${OIDC_DISABLE_STANDARD_LOGIN:-'false'}
 export OIDC_PROVIDER_NAME=${OIDC_PROVIDER_NAME}

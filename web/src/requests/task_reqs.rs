@@ -21,11 +21,25 @@ struct TaskListResponse {
     tasks: Vec<TaskProgress>,
 }
 
+// Struct for parsing the backend TaskInfo format (used in "initial" events)
+#[derive(Deserialize, Debug, Clone)]
+struct BackendTaskInfo {
+    pub id: String,
+    pub task_type: String,
+    pub user_id: i32,
+    pub status: String,
+    pub progress: f64,
+    pub message: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub result: Option<serde_json::Value>,
+}
+
 #[derive(Deserialize, Debug)]
 struct TaskUpdateMessage {
     event: String,
     #[serde(default)]
-    tasks: Option<Vec<TaskProgress>>,
+    tasks: Option<Vec<BackendTaskInfo>>,
     #[serde(default)]
     task: Option<RawTaskProgress>,
 }
@@ -44,6 +58,62 @@ struct RawTaskProgress {
     pub completed_at: Option<String>,
     #[serde(default)]
     pub details: Option<HashMap<String, Value>>, // Also using Value for details
+}
+
+// Convert BackendTaskInfo to TaskProgress
+impl From<BackendTaskInfo> for TaskProgress {
+    fn from(backend_task: BackendTaskInfo) -> Self {
+        // Extract details from result field
+        let mut details: HashMap<String, String> = HashMap::new();
+
+        if let Some(result) = &backend_task.result {
+            // Try to extract useful information from result
+            if let Some(obj) = result.as_object() {
+                for (key, value) in obj {
+                    match value {
+                        Value::String(s) => {
+                            details.insert(key.clone(), s.clone());
+                        }
+                        Value::Number(n) => {
+                            details.insert(key.clone(), n.to_string());
+                        }
+                        _ => {
+                            details.insert(key.clone(), value.to_string().trim_matches('"').to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Add status message if available
+        if let Some(message) = &backend_task.message {
+            details.insert("status_text".to_string(), message.clone());
+        }
+
+        // Check if task is completed before moving values
+        let is_completed = backend_task.status == "SUCCESS" || backend_task.status == "FAILED";
+
+        TaskProgress {
+            task_id: backend_task.id,
+            user_id: backend_task.user_id,
+            item_id: None, // BackendTaskInfo doesn't have item_id
+            r#type: backend_task.task_type,
+            progress: backend_task.progress,
+            status: backend_task.status,
+            started_at: backend_task.created_at,
+            completed_at: if is_completed {
+                Some(backend_task.updated_at)
+            } else {
+                None
+            },
+            details: Some(details),
+            completion_time: if is_completed {
+                Some(js_sys::Date::now())
+            } else {
+                None
+            },
+        }
+    }
 }
 
 // Connect to the task websocket
@@ -144,7 +214,13 @@ pub async fn connect_to_task_websocket(
                         Ok(update) => {
                             match update.event.as_str() {
                                 "initial" | "refresh" => {
-                                    if let Some(tasks) = update.tasks {
+                                    if let Some(backend_tasks) = update.tasks {
+                                        // Convert BackendTaskInfo to TaskProgress
+                                        let tasks: Vec<TaskProgress> = backend_tasks
+                                            .into_iter()
+                                            .map(|t| t.into())
+                                            .collect();
+
                                         dispatch_clone.reduce_mut(|state| {
                                             state.active_tasks = Some(tasks);
                                         });
