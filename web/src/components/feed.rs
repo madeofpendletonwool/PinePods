@@ -519,6 +519,30 @@ pub fn episode(props: &EpisodeProps) -> Html {
         format_datetime(&datetime, &state.hour_preference, date_format)
     );
 
+    // Check if episode is downloaded - use the downloaded field from the episode
+    // or check against locally_downloaded_episodes for Tauri builds
+    let is_local = if props.episode.downloaded {
+        Some(true)
+    } else {
+        #[cfg(not(feature = "server_build"))]
+        {
+            if state
+                .locally_downloaded_episodes
+                .as_ref()
+                .map(|episodes| episodes.contains(&props.episode.episodeid))
+                .unwrap_or(false)
+            {
+                Some(true)
+            } else {
+                None
+            }
+        }
+        #[cfg(feature = "server_build")]
+        {
+            None
+        }
+    };
+
     let on_play_pause = on_play_pause(
         props.episode.episodeurl.clone(),
         props.episode.episodetitle.clone(),
@@ -533,7 +557,7 @@ pub fn episode(props: &EpisodeProps) -> Html {
         server_name.unwrap(),
         audio_dispatch.clone(),
         audio_state.clone(),
-        None,
+        is_local,
         Some(props.episode.is_youtube.clone()),
     );
 

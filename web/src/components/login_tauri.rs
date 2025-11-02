@@ -369,9 +369,11 @@ pub fn login() -> Html {
         let submit_dispatch = dispatch.clone();
         let i18n_error_checking_first_login = i18n_error_checking_first_login.clone();
         let i18n_credentials_incorrect = i18n_credentials_incorrect.clone();
+        let i18n_error_checking_mfa_status = i18n_error_checking_mfa_status.clone();
         Callback::from(move |_| {
             let i18n_error_checking_first_login = i18n_error_checking_first_login.clone();
             let i18n_credentials_incorrect = i18n_credentials_incorrect.clone();
+            let i18n_error_checking_mfa_status = i18n_error_checking_mfa_status.clone();
             let history = history_clone.clone();
             let username = username.clone();
             let password = password.clone();
@@ -616,9 +618,15 @@ pub fn login() -> Html {
         let temp_api_key = temp_api_key.clone();
         let temp_user_id = temp_user_id.clone();
         let history = history.clone();
+        let i18n_error_checking_mfa_status = i18n_error_checking_mfa_status.clone();
+        let i18n_error_setting_timezone = i18n_error_setting_timezone.clone();
+        let i18n_error_setting_timezone_details = i18n_error_setting_timezone_details.clone();
         // let error_message_create = error_message.clone();
         Callback::from(move |e: MouseEvent| {
             let post_state = dispatch_time.clone();
+            let i18n_error_checking_mfa_status = i18n_error_checking_mfa_status.clone();
+            let i18n_error_setting_timezone = i18n_error_setting_timezone.clone();
+            let i18n_error_setting_timezone_details = i18n_error_setting_timezone_details.clone();
             e.prevent_default();
             let server_name = (*temp_server_name).clone();
             let api_key = (*temp_api_key).clone();
@@ -767,10 +775,14 @@ pub fn login() -> Html {
         let api_key = state.auth_details.as_ref().map(|ud| ud.api_key.clone());
         let user_id = state.user_details.as_ref().map(|ud| ud.UserID.clone());
         let history = history.clone();
+        let i18n_error_validating_mfa = i18n_error_validating_mfa.clone();
+        let i18n_error_setting_timezone_details = i18n_error_setting_timezone_details.clone();
         // let error_message_create = error_message.clone();
         let dispatch_wasm = dispatch.clone();
         Callback::from(move |e: MouseEvent| {
             let dispatch = dispatch_wasm.clone();
+            let i18n_error_validating_mfa = i18n_error_validating_mfa.clone();
+            let i18n_error_setting_timezone_details = i18n_error_setting_timezone_details.clone();
             let mfa_code = mfa_code.clone();
             let server_name = server_name.clone();
             let api_key = api_key.clone();

@@ -2014,26 +2014,52 @@ pub async fn stream_episode(
     Query(query): Query<StreamQuery>,
 ) -> Result<axum::response::Response, AppError> {
     let api_key = &query.api_key;
-    
-    // Try API key validation first
+    println!("Stream request for episode {} with api_key {} and user_id {}", episode_id, api_key, query.user_id);
+
+    // Try RSS key validation FIRST (RSS keys are used in RSS feeds for streaming)
     let mut is_valid = false;
     let mut is_web_key = false;
     let mut key_user_id = None;
-    
-    if let Ok(_) = validate_api_key(&state, api_key).await {
-        is_valid = true;
-        is_web_key = state.db_pool.is_web_key(api_key).await?;
-        key_user_id = Some(state.db_pool.get_user_id_from_api_key(api_key).await?);
-    }
-    
-    // If not a valid API key, try RSS key validation
-    if !is_valid {
-        if let Ok(Some(_rss_info)) = state.db_pool.get_rss_key_if_valid(api_key, None).await {
-            // RSS key is valid - allow access for any user (as per requirements)
+
+    println!("Trying RSS key validation first");
+    match state.db_pool.get_rss_key_if_valid(api_key, None).await {
+        Ok(Some(rss_info)) => {
+            println!("Valid RSS key for user {}", rss_info.user_id);
             is_valid = true;
+            // Don't set key_user_id for RSS keys - they don't need permission checks
+        }
+        Ok(None) => {
+            println!("Not an RSS key, trying regular API key");
+        }
+        Err(e) => {
+            println!("RSS key validation error: {}", e);
         }
     }
-    
+
+    // If not a valid RSS key, try regular API key validation
+    if !is_valid {
+        match validate_api_key(&state, api_key).await {
+            Ok(_) => {
+                println!("Valid API key");
+                // Try to get user_id, but don't fail if it errors (might be cached RSS key)
+                match state.db_pool.get_user_id_from_api_key(api_key).await {
+                    Ok(user_id) => {
+                        println!("API key user_id: {}", user_id);
+                        is_valid = true;
+                        is_web_key = state.db_pool.is_web_key(api_key).await?;
+                        key_user_id = Some(user_id);
+                    }
+                    Err(e) => {
+                        println!("Failed to get user_id for API key (might be RSS key): {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                println!("API key validation failed: {}", e);
+            }
+        }
+    }
+
     if !is_valid {
         return Err(AppError::unauthorized("Invalid API key or RSS key"));
     }

@@ -475,10 +475,14 @@ pub fn downloads() -> Html {
     let delete_selected_episodes = {
         let dispatch = dispatch.clone();
         let page_state = page_state.clone();
+        let i18n_successfully_deleted_episodes = i18n_successfully_deleted_episodes.clone();
+        let i18n_failed_to_delete_episodes = i18n_failed_to_delete_episodes.clone();
 
         Callback::from(move |_: MouseEvent| {
             let dispatch_cloned = dispatch.clone();
             let page_state_cloned = page_state.clone();
+            let i18n_successfully_deleted_episodes = i18n_successfully_deleted_episodes.clone();
+            let i18n_failed_to_delete_episodes = i18n_failed_to_delete_episodes.clone();
 
             dispatch.reduce_mut(move |state| {
                 let selected_episodes = state.selected_episodes_for_deletion.clone();
@@ -695,7 +699,7 @@ pub fn downloads() -> Html {
                                             <input
                                                 type="text"
                                                 class="search-input"
-                                                placeholder={&i18n_search_downloaded_episodes}
+                                                placeholder={i18n_search_downloaded_episodes.clone()}
                                                 value={(*episode_search_term).clone()}
                                                 oninput={let episode_search_term = episode_search_term.clone();
                                                     Callback::from(move |e: InputEvent| {
