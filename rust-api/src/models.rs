@@ -526,3 +526,13 @@ impl<T> PaginatedResponse<T> {
         }
     }
 }
+
+// ==================== Podcast Recommendations ====================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PodcastRecommendation {
+    pub recommendation_id: i32,
+    pub podcast_id: i64,
+    pub score: f64,
+    pub reason: Option<String>,
+}

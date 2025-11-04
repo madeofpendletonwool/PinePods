@@ -80,20 +80,28 @@ impl BackgroundScheduler {
         match refresh::refresh_pods_admin_internal(&state).await {
             Ok(_) => {
                 info!("✅ Podcast refresh completed");
-                
-                // Also run gpodder sync  
+
+                // Also run gpodder sync
                 if let Err(e) = refresh::refresh_gpodder_subscriptions_admin_internal(&state).await {
                     warn!("⚠️ GPodder sync failed during scheduled refresh: {}", e);
                 }
-                
+
                 // Also run nextcloud sync
                 if let Err(e) = refresh::refresh_nextcloud_subscriptions_admin_internal(&state).await {
                     warn!("⚠️ Nextcloud sync failed during scheduled refresh: {}", e);
                 }
-                
+
                 // Update playlist episode counts (replaces complex playlist content updates)
                 if let Err(e) = state.db_pool.update_playlist_episode_counts().await {
                     warn!("⚠️ Playlist episode count update failed during scheduled refresh: {}", e);
+                }
+
+                // Generate podcast recommendations for all users
+                use crate::services::homepage;
+                if let Err(e) = homepage::generate_all_recommendations(&state.db_pool, &state.redis_client).await {
+                    warn!("⚠️ Recommendation generation failed during scheduled refresh: {}", e);
+                } else {
+                    info!("✅ Podcast recommendations updated");
                 }
             }
             Err(e) => {

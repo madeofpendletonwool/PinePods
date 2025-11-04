@@ -24842,6 +24842,215 @@ impl DatabasePool {
             }
         }
     }
+
+    // ==================== Podcast Recommendations ====================
+
+    /// Get podcast recommendations for a user (for homepage display)
+    pub async fn get_user_recommendations(&self, user_id: i32, limit: Option<i32>) -> AppResult<Vec<crate::models::PodcastRecommendation>> {
+        let limit = limit.unwrap_or(6);
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT
+                        r."RecommendationID",
+                        r."PodcastID",
+                        r."Score",
+                        r."Reason"
+                    FROM "PodcastRecommendations" r
+                    WHERE r."UserID" = $1
+                    ORDER BY r."Score" DESC
+                    LIMIT $2
+                "#)
+                .bind(user_id)
+                .bind(limit)
+                .fetch_all(pool)
+                .await?;
+
+                let mut recommendations = Vec::new();
+                for row in rows {
+                    recommendations.push(crate::models::PodcastRecommendation {
+                        recommendation_id: row.try_get("RecommendationID")?,
+                        podcast_id: row.try_get("PodcastID")?,
+                        score: row.try_get("Score")?,
+                        reason: row.try_get("Reason")?,
+                    });
+                }
+                Ok(recommendations)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT
+                        RecommendationID,
+                        PodcastID,
+                        Score,
+                        Reason
+                    FROM PodcastRecommendations
+                    WHERE UserID = ?
+                    ORDER BY Score DESC
+                    LIMIT ?
+                "#)
+                .bind(user_id)
+                .bind(limit)
+                .fetch_all(pool)
+                .await?;
+
+                let mut recommendations = Vec::new();
+                for row in rows {
+                    recommendations.push(crate::models::PodcastRecommendation {
+                        recommendation_id: row.try_get("RecommendationID")?,
+                        podcast_id: row.try_get("PodcastID")?,
+                        score: row.try_get("Score")?,
+                        reason: row.try_get("Reason")?,
+                    });
+                }
+                Ok(recommendations)
+            }
+        }
+    }
+
+    /// Store or update podcast recommendations for a user
+    pub async fn store_recommendations(&self, user_id: i32, recommendations: Vec<(i64, f64, Option<String>)>) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                for (podcast_id, score, reason) in recommendations {
+                    sqlx::query(r#"
+                        INSERT INTO "PodcastRecommendations" ("UserID", "PodcastID", "Score", "Reason", "UpdatedAt")
+                        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+                        ON CONFLICT ("UserID", "PodcastID")
+                        DO UPDATE SET
+                            "Score" = EXCLUDED."Score",
+                            "Reason" = EXCLUDED."Reason",
+                            "UpdatedAt" = CURRENT_TIMESTAMP
+                    "#)
+                    .bind(user_id)
+                    .bind(podcast_id)
+                    .bind(score)
+                    .bind(reason)
+                    .execute(pool)
+                    .await?;
+                }
+                Ok(())
+            }
+            DatabasePool::MySQL(pool) => {
+                for (podcast_id, score, reason) in recommendations {
+                    sqlx::query(r#"
+                        INSERT INTO PodcastRecommendations (UserID, PodcastID, Score, Reason, UpdatedAt)
+                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        ON DUPLICATE KEY UPDATE
+                            Score = VALUES(Score),
+                            Reason = VALUES(Reason),
+                            UpdatedAt = CURRENT_TIMESTAMP
+                    "#)
+                    .bind(user_id)
+                    .bind(podcast_id)
+                    .bind(score)
+                    .bind(reason)
+                    .execute(pool)
+                    .await?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Delete all recommendations for a user (useful for regenerating fresh recommendations)
+    pub async fn delete_user_recommendations(&self, user_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"DELETE FROM "PodcastRecommendations" WHERE "UserID" = $1"#)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                Ok(())
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("DELETE FROM PodcastRecommendations WHERE UserID = ?")
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                Ok(())
+            }
+        }
+    }
+
+    /// Get all users who have podcasts (for recommendation generation)
+    pub async fn get_users_with_podcasts(&self) -> AppResult<Vec<i32>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT DISTINCT "UserID"
+                    FROM "Podcasts"
+                    WHERE "UserID" IS NOT NULL
+                "#)
+                .fetch_all(pool)
+                .await?;
+
+                Ok(rows.into_iter().map(|row| row.try_get("UserID").unwrap_or(0)).collect())
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT DISTINCT UserID
+                    FROM Podcasts
+                    WHERE UserID IS NOT NULL
+                "#)
+                .fetch_all(pool)
+                .await?;
+
+                Ok(rows.into_iter().map(|row| row.try_get("UserID").unwrap_or(0)).collect())
+            }
+        }
+    }
+
+    /// Get user's subscribed podcasts and categories for recommendation algorithm
+    pub async fn get_user_podcast_categories(&self, user_id: i32) -> AppResult<Vec<String>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT DISTINCT UNNEST(string_to_array("PodcastCategories", ',')) as category
+                    FROM "Podcasts"
+                    WHERE "UserID" = $1
+                    AND "PodcastCategories" IS NOT NULL
+                    AND "PodcastCategories" != ''
+                "#)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                Ok(rows.into_iter()
+                    .filter_map(|row| row.try_get::<String, _>("category").ok())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect())
+            }
+            DatabasePool::MySQL(pool) => {
+                // For MySQL, we need to split the categories client-side
+                let rows = sqlx::query(r#"
+                    SELECT DISTINCT PodcastCategories
+                    FROM Podcasts
+                    WHERE UserID = ?
+                    AND PodcastCategories IS NOT NULL
+                    AND PodcastCategories != ''
+                "#)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let mut categories = Vec::new();
+                for row in rows {
+                    if let Ok(cats_str) = row.try_get::<String, _>("PodcastCategories") {
+                        for cat in cats_str.split(',') {
+                            let trimmed = cat.trim().to_string();
+                            if !trimmed.is_empty() && !categories.contains(&trimmed) {
+                                categories.push(trimmed);
+                            }
+                        }
+                    }
+                }
+                Ok(categories)
+            }
+        }
+    }
 }
 
 // Standalone create_playlist function that matches Python API

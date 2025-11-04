@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod homepage;
 pub mod podcast;
 pub mod scheduler;
 pub mod task_manager;

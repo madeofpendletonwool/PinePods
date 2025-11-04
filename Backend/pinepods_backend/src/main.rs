@@ -28,6 +28,12 @@ struct YouTubeChannelQuery {
     id: String,
 }
 
+#[derive(Deserialize)]
+struct TrendingQuery {
+    max: Option<u32>,
+    since: Option<i64>,
+}
+
 // Hit counter for API usage tracking
 #[derive(Clone)]
 struct HitCounters {
@@ -382,6 +388,47 @@ async fn podcast_handler(
     handle_response(response).await
 }
 
+async fn trending_handler(
+    query: web::Query<TrendingQuery>,
+    hit_counters: web::Data<HitCounters>,
+) -> impl Responder {
+    println!("trending_handler called");
+    hit_counters.increment_podcast_index();
+
+    let client = reqwest::Client::new();
+
+    let (api_key, api_secret) = match get_api_credentials() {
+        Ok(creds) => creds,
+        Err(response) => return response,
+    };
+
+    // Build trending URL with optional parameters
+    let mut trending_url = String::from("https://api.podcastindex.org/api/1.0/podcasts/trending");
+    let mut params = Vec::new();
+
+    if let Some(max) = query.max {
+        params.push(format!("max={}", max));
+    }
+    if let Some(since) = query.since {
+        params.push(format!("since={}", since));
+    }
+
+    if !params.is_empty() {
+        trending_url.push('?');
+        trending_url.push_str(&params.join("&"));
+    }
+
+    println!("Using Podcast Index trending URL: {}", trending_url);
+
+    let headers = match create_auth_headers(&api_key, &api_secret) {
+        Ok(h) => h,
+        Err(response) => return response,
+    };
+
+    let response = client.get(&trending_url).headers(headers).send().await;
+    handle_response(response).await
+}
+
 async fn youtube_channel_handler(
     query: web::Query<YouTubeChannelQuery>,
     hit_counters: web::Data<HitCounters>,
@@ -633,6 +680,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(cors)
             .route("/api/search", web::get().to(search_handler))
             .route("/api/podcast", web::get().to(podcast_handler))
+            .route("/api/trending", web::get().to(trending_handler))
             .route("/api/youtube/channel", web::get().to(youtube_channel_handler))
             .route("/api/stats", web::get().to(stats_handler))
     })

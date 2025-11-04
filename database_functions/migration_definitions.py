@@ -3781,6 +3781,91 @@ def migration_036_add_episodecount_column(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("037", "create_podcast_recommendations_table", "Create table for storing user podcast recommendations", requires=["005"])
+def migration_037_create_recommendations_table(conn, db_type: str):
+    """Create PodcastRecommendations table for storing user-specific podcast recommendations"""
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Creating PodcastRecommendations table")
+
+        if db_type == "postgresql":
+            # Check if table already exists
+            cursor.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = 'PodcastRecommendations'
+                )
+            """)
+            table_exists = cursor.fetchone()[0]
+
+            if not table_exists:
+                cursor.execute("""
+                    CREATE TABLE "PodcastRecommendations" (
+                        "RecommendationID" SERIAL PRIMARY KEY,
+                        "UserID" INTEGER NOT NULL,
+                        "PodcastID" BIGINT NOT NULL,
+                        "Score" NUMERIC(5,2) DEFAULT 0,
+                        "Reason" TEXT,
+                        "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        "UpdatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY ("UserID") REFERENCES "Users"("UserID") ON DELETE CASCADE,
+                        UNIQUE("UserID", "PodcastID")
+                    )
+                """)
+
+                # Create indexes for performance
+                cursor.execute("""
+                    CREATE INDEX "idx_recommendations_user_score"
+                    ON "PodcastRecommendations"("UserID", "Score" DESC)
+                """)
+                cursor.execute("""
+                    CREATE INDEX "idx_recommendations_podcast"
+                    ON "PodcastRecommendations"("PodcastID")
+                """)
+                logger.info("Created PodcastRecommendations table (PostgreSQL)")
+            else:
+                logger.info("PodcastRecommendations table already exists (PostgreSQL)")
+
+        else:  # MySQL/MariaDB
+            # Check if table already exists
+            cursor.execute("""
+                SELECT COUNT(*)
+                FROM INFORMATION_SCHEMA.TABLES
+                WHERE TABLE_NAME = 'PodcastRecommendations'
+                AND TABLE_SCHEMA = DATABASE()
+            """)
+            table_exists = cursor.fetchone()[0] > 0
+
+            if not table_exists:
+                cursor.execute("""
+                    CREATE TABLE PodcastRecommendations (
+                        RecommendationID INT AUTO_INCREMENT PRIMARY KEY,
+                        UserID INT NOT NULL,
+                        PodcastID BIGINT NOT NULL,
+                        Score DECIMAL(5,2) DEFAULT 0,
+                        Reason TEXT,
+                        CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                        UNIQUE KEY unique_user_podcast (UserID, PodcastID),
+                        INDEX idx_recommendations_user_score (UserID, Score DESC),
+                        INDEX idx_recommendations_podcast (PodcastID)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+                """)
+                logger.info("Created PodcastRecommendations table (MySQL/MariaDB)")
+            else:
+                logger.info("PodcastRecommendations table already exists (MySQL/MariaDB)")
+
+        logger.info("PodcastRecommendations table migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in migration 037: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 if __name__ == "__main__":
     # Register all migrations and run them
     register_all_migrations()

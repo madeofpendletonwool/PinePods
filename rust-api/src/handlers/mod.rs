@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod health;
+pub mod homepage;
 pub mod podcasts;
 pub mod episodes;
 pub mod playlists;
