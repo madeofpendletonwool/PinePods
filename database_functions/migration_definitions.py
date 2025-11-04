@@ -2765,7 +2765,7 @@ def migration_032_create_user_default_playlists(conn, db_type: str):
                 'description': 'Perfect-length episodes (15-45 minutes) for your daily commute',
                 'min_duration': 900,   # 15 minutes
                 'max_duration': 2700,  # 45 minutes
-                'sort_order': 'random',
+                'sort_order': 'date_desc',
                 'icon_name': 'ph-car-simple',
                 'max_episodes': 1000
             }

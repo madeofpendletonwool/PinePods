@@ -1809,9 +1809,9 @@ impl DatabasePool {
                     .bind(podcast_id)
                     .fetch_optional(pool)
                     .await?;
-                
+
                 if let Some(row) = row {
-                    if let Some(merged_json) = row.try_get::<Option<String>, _>("mergedpodcastids")? {
+                    if let Some(merged_json) = row.try_get::<Option<String>, _>("MergedPodcastIDs")? {
                         let merged_ids: Vec<i32> = serde_json::from_str(&merged_json).unwrap_or_default();
                         Ok(merged_ids)
                     } else {
@@ -18732,7 +18732,7 @@ impl DatabasePool {
                 let row = playlist_row.unwrap();
                 let playlist_name: String = row.try_get("Name")?;
                 let playlist_description: String = row.try_get("Description").unwrap_or_default();
-                let episode_count: i64 = row.try_get("EpisodeCount")?;
+                let episode_count: i64 = row.try_get("episode_count")?;
                 let icon_name: String = row.try_get("IconName").unwrap_or_default();
                 let is_system_playlist: bool = row.try_get::<i8, _>("IsSystemPlaylist")? != 0;
 
@@ -23843,7 +23843,7 @@ impl DatabasePool {
                                     UserID, Name, Description, IsSystemPlaylist, MinDuration, MaxDuration, SortOrder,
                                     IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
                                     GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
-                                    IconName, episode_count
+                                    IconName, EpisodeCount
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 ")
                                 .bind(user_id).bind(name).bind(description).bind(false)
@@ -23925,7 +23925,7 @@ impl DatabasePool {
                                 UserID, Name, Description, IsSystemPlaylist, MinDuration, MaxDuration, SortOrder,
                                 IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
                                 GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
-                                IconName, episode_count
+                                IconName, EpisodeCount
                             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ")
                             .bind(user_id).bind(name).bind(description).bind(false)
@@ -24013,7 +24013,7 @@ impl DatabasePool {
                         Ok(count) => {
                             // Update the episode_count in the playlist
                             match sqlx::query(
-                                r#"UPDATE Playlists SET episode_count = ? WHERE PlaylistID = ?"#
+                                r#"UPDATE Playlists SET EpisodeCount = ? WHERE PlaylistID = ?"#
                             ).bind(count).bind(playlist_id).execute(pool).await {
                                 Ok(_) => {
                                     debug!("Updated MySQL playlist '{}' (ID: {}) count to {}", name, playlist_id, count);
@@ -24615,10 +24615,10 @@ impl DatabasePool {
                 debug!("User {} timezone: {} -> {}", user_id, raw_timezone, user_timezone);
                 
                 let playlist_row = sqlx::query(
-                    r#"SELECT UserID, Name, Description, MinDuration, MaxDuration, SortOrder, 
+                    r#"SELECT UserID, Name, Description, MinDuration, MaxDuration, SortOrder,
                        IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
                        GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
-                       IsSystemPlaylist, Created, IconName, episode_count
+                       IsSystemPlaylist, Created, IconName, EpisodeCount
                        FROM Playlists WHERE PlaylistID = ?"#
                 ).bind(playlist_id).fetch_optional(pool).await?;
                 
