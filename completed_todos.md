@@ -32,13 +32,12 @@ Major Version:
 - [x] Fix issue where release date on podcasts not added shows as current date/time
 - [x] Fix yt-dlp issues
 
-- [] Gpodder Completion Set Bug where if episode played length was exactly the length of the podcast episode it wouldn't mark complete
-- [] Fixed issue with auto complete threshold. Will now mark historical episodes complete when enabled
-- [] Some sort of loading indicator for the single ep download
-- [] Fix issue where duplicate episodes were created if details of the episode were updated
-- [] Fully dynamic Playlist implementation
-
-- [] Checking on rss feeds returning downloaded urls correctly
+- [x] Gpodder Completion Set Bug where if episode played length was exactly the length of the podcast episode it wouldn't mark complete
+- [x] Fixed issue with auto complete threshold. Will now mark historical episodes complete when enabled
+- [x] Some sort of loading indicator for the single ep download
+- [x] Fix issue where duplicate episodes were created if details of the episode were updated
+- [x] Fully dynamic Playlist implementation
+- [x] Checking on rss feeds returning downloaded urls correctly
 
 0.7.9
 

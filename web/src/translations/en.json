@@ -542,7 +542,21 @@
     "smtp_username_required": "SMTP username is required",
     "smtp_password_required": "SMTP password is required",
     "from_email_required": "From email is required",
-    "test_email_recipient_required": "Test email recipient is required"
+    "test_email_recipient_required": "Test email recipient is required",
+    "current_settings": "Current Settings",
+    "server": "Server",
+    "encryption": "Encryption",
+    "username": "Username",
+    "auth_required": "Auth Required",
+    "update_settings": "Update Settings",
+    "port": "Port",
+    "from_email_address": "From Email Address",
+    "encryption_method": "Encryption Method",
+    "require_authentication": "Authentication Required",
+    "auth_username": "Username",
+    "password": "Password",
+    "yes": "Yes",
+    "no": "No"
   },
   "mfa_settings": {
     "error_getting_mfa_status": "Error getting MFA status: ",

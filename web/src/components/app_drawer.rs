@@ -46,6 +46,7 @@ pub fn app_drawer() -> Html {
     let i18n_playlists = i18n.t("navigation.playlists").to_string();
     let i18n_history = i18n.t("navigation.history").to_string();
     let i18n_server_downloads = i18n.t("app_drawer.server_downloads").to_string();
+    let i18n_local_downloads = i18n.t("app_drawer.local_downloads").to_string();
     let i18n_subscribed_people = i18n.t("app_drawer.subscribed_people").to_string();
     let i18n_podcasts = i18n.t("navigation.podcasts").to_string();
     let i18n_settings = i18n.t("app_drawer.settings").to_string();
@@ -211,8 +212,8 @@ pub fn app_drawer() -> Html {
         <div class="relative">
             // Drawer
             <div class={classes!("fixed", "drawer-background", "top-0", "left-0", "z-20", "h-full", "transition-all", "duration-400", "transform", "shadow-lg", "md:w-64", "w-less-full", "border-solid", "border-b-2", "border-r-2", "border-color", (*is_drawer_open).then(|| "translate-x-0").unwrap_or("-translate-x-full"))}>
-                <div class="flex flex-col justify-between h-full overflow-y-auto">
-                    <div class="px-6 py-4 mt-16">
+                <div class="flex flex-col justify-between h-full">
+                    <div class="px-6 py-4 mt-16 overflow-y-auto flex-1">
                         <div class="flex items-center gap-2">
                             <img
                                 src="/static/assets/favicon.png"
@@ -372,6 +373,20 @@ pub fn app_drawer() -> Html {
 
                         </div>
                     </div>
+                    // Version display at bottom of drawer
+                    {
+                        if let Some(version) = &stats_state.pinepods_version {
+                            html! {
+                                <div class="text-center py-3 px-4">
+                                    <div class="text-xs opacity-50 drawer-text">
+                                        { format!("v{}", version) }
+                                    </div>
+                                </div>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
                 </div>
             </div>
 
@@ -442,21 +457,6 @@ pub fn app_drawer() -> Html {
                     }
                 }
             </div>
-
-            // Version display at bottom center
-            {
-                if let Some(version) = &stats_state.pinepods_version {
-                    html! {
-                        <div class="fixed bottom-0 left-1/2 transform -translate-x-1/2 z-10 pointer-events-none">
-                            <div class="text-xs opacity-60 py-1 px-2 drawer-text">
-                                { format!("v{}", version) }
-                            </div>
-                        </div>
-                    }
-                } else {
-                    html! {}
-                }
-            }
         </div>
         </div>
     }

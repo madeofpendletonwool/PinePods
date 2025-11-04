@@ -1809,9 +1809,9 @@ impl DatabasePool {
                     .bind(podcast_id)
                     .fetch_optional(pool)
                     .await?;
-                
+
                 if let Some(row) = row {
-                    if let Some(merged_json) = row.try_get::<Option<String>, _>("mergedpodcastids")? {
+                    if let Some(merged_json) = row.try_get::<Option<String>, _>("MergedPodcastIDs")? {
                         let merged_ids: Vec<i32> = serde_json::from_str(&merged_json).unwrap_or_default();
                         Ok(merged_ids)
                     } else {
@@ -15453,15 +15453,24 @@ impl DatabasePool {
     // Subscribe to person - matches Python subscribe_to_person function exactly
     pub async fn subscribe_to_person(&self, user_id: i32, person_id: i32, person_name: &str, person_img: &str, podcast_id: i32) -> AppResult<i32> {
         println!("Subscribing user {} to person {}: {}", user_id, person_id, person_name);
-        
+
         // Check if person already exists for this user and handle accordingly
         let result = match self {
             DatabasePool::Postgres(pool) => {
-                let existing = sqlx::query(r#"SELECT personid FROM "People" WHERE userid = $1 AND peopledbid = $2"#)
-                    .bind(user_id)
-                    .bind(person_id)
-                    .fetch_optional(pool)
-                    .await?;
+                // When peopledbid is 0 or not set, use name for lookup to avoid collisions
+                let existing = if person_id == 0 {
+                    sqlx::query(r#"SELECT personid FROM "People" WHERE userid = $1 AND LOWER(name) = LOWER($2)"#)
+                        .bind(user_id)
+                        .bind(person_name)
+                        .fetch_optional(pool)
+                        .await?
+                } else {
+                    sqlx::query(r#"SELECT personid FROM "People" WHERE userid = $1 AND peopledbid = $2"#)
+                        .bind(user_id)
+                        .bind(person_id)
+                        .fetch_optional(pool)
+                        .await?
+                };
                 
                 if let Some(row) = existing {
                     let person_db_id: i32 = row.try_get("personid")?;
@@ -15513,11 +15522,20 @@ impl DatabasePool {
                 }
             }
             DatabasePool::MySQL(pool) => {
-                let existing = sqlx::query("SELECT PersonID FROM People WHERE UserID = ? AND PeopleDBID = ?")
-                    .bind(user_id)
-                    .bind(person_id)
-                    .fetch_optional(pool)
-                    .await?;
+                // When peopledbid is 0 or not set, use name for lookup to avoid collisions
+                let existing = if person_id == 0 {
+                    sqlx::query("SELECT PersonID FROM People WHERE UserID = ? AND LOWER(Name) = LOWER(?)")
+                        .bind(user_id)
+                        .bind(person_name)
+                        .fetch_optional(pool)
+                        .await?
+                } else {
+                    sqlx::query("SELECT PersonID FROM People WHERE UserID = ? AND PeopleDBID = ?")
+                        .bind(user_id)
+                        .bind(person_id)
+                        .fetch_optional(pool)
+                        .await?
+                };
                 
                 if let Some(row) = existing {
                     let person_db_id: i32 = row.try_get("PersonID")?;
@@ -15575,24 +15593,44 @@ impl DatabasePool {
     // Unsubscribe from person - matches Python unsubscribe_from_person function exactly
     pub async fn unsubscribe_from_person(&self, user_id: i32, person_id: i32, person_name: &str) -> AppResult<bool> {
         println!("Unsubscribing user {} from person {}: {}", user_id, person_id, person_name);
-        
+
         // Find and delete the person record
         let rows_affected = match self {
             DatabasePool::Postgres(pool) => {
-                sqlx::query(r#"DELETE FROM "People" WHERE userid = $1 AND peopledbid = $2"#)
-                    .bind(user_id)
-                    .bind(person_id)
-                    .execute(pool)
-                    .await?
-                    .rows_affected()
+                // When peopledbid is 0 or not set, use name for lookup to avoid collisions
+                if person_id == 0 {
+                    sqlx::query(r#"DELETE FROM "People" WHERE userid = $1 AND LOWER(name) = LOWER($2)"#)
+                        .bind(user_id)
+                        .bind(person_name)
+                        .execute(pool)
+                        .await?
+                        .rows_affected()
+                } else {
+                    sqlx::query(r#"DELETE FROM "People" WHERE userid = $1 AND peopledbid = $2"#)
+                        .bind(user_id)
+                        .bind(person_id)
+                        .execute(pool)
+                        .await?
+                        .rows_affected()
+                }
             }
             DatabasePool::MySQL(pool) => {
-                sqlx::query("DELETE FROM People WHERE UserID = ? AND PeopleDBID = ?")
-                    .bind(user_id)
-                    .bind(person_id)
-                    .execute(pool)
-                    .await?
-                    .rows_affected()
+                // When peopledbid is 0 or not set, use name for lookup to avoid collisions
+                if person_id == 0 {
+                    sqlx::query("DELETE FROM People WHERE UserID = ? AND LOWER(Name) = LOWER(?)")
+                        .bind(user_id)
+                        .bind(person_name)
+                        .execute(pool)
+                        .await?
+                        .rows_affected()
+                } else {
+                    sqlx::query("DELETE FROM People WHERE UserID = ? AND PeopleDBID = ?")
+                        .bind(user_id)
+                        .bind(person_id)
+                        .execute(pool)
+                        .await?
+                        .rows_affected()
+                }
             }
         };
         
@@ -19194,7 +19232,7 @@ impl DatabasePool {
                 let row = playlist_row.unwrap();
                 let playlist_name: String = row.try_get("Name")?;
                 let playlist_description: String = row.try_get("Description").unwrap_or_default();
-                let episode_count: i64 = row.try_get("EpisodeCount")?;
+                let episode_count: i64 = row.try_get("episode_count")?;
                 let icon_name: String = row.try_get("IconName").unwrap_or_default();
                 let is_system_playlist: bool = row.try_get::<i8, _>("IsSystemPlaylist")? != 0;
 
@@ -24305,7 +24343,7 @@ impl DatabasePool {
                                     UserID, Name, Description, IsSystemPlaylist, MinDuration, MaxDuration, SortOrder,
                                     IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
                                     GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
-                                    IconName, episode_count
+                                    IconName, EpisodeCount
                                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 ")
                                 .bind(user_id).bind(name).bind(description).bind(false)
@@ -24387,7 +24425,7 @@ impl DatabasePool {
                                 UserID, Name, Description, IsSystemPlaylist, MinDuration, MaxDuration, SortOrder,
                                 IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
                                 GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
-                                IconName, episode_count
+                                IconName, EpisodeCount
                             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             ")
                             .bind(user_id).bind(name).bind(description).bind(false)
@@ -24475,7 +24513,7 @@ impl DatabasePool {
                         Ok(count) => {
                             // Update the episode_count in the playlist
                             match sqlx::query(
-                                r#"UPDATE Playlists SET episode_count = ? WHERE PlaylistID = ?"#
+                                r#"UPDATE Playlists SET EpisodeCount = ? WHERE PlaylistID = ?"#
                             ).bind(count).bind(playlist_id).execute(pool).await {
                                 Ok(_) => {
                                     debug!("Updated MySQL playlist '{}' (ID: {}) count to {}", name, playlist_id, count);
@@ -25077,10 +25115,10 @@ impl DatabasePool {
                 debug!("User {} timezone: {} -> {}", user_id, raw_timezone, user_timezone);
                 
                 let playlist_row = sqlx::query(
-                    r#"SELECT UserID, Name, Description, MinDuration, MaxDuration, SortOrder, 
+                    r#"SELECT UserID, Name, Description, MinDuration, MaxDuration, SortOrder,
                        IncludeUnplayed, IncludePartiallyPlayed, IncludePlayed, TimeFilterHours,
                        GroupByPodcast, MaxEpisodes, PlayProgressMin, PlayProgressMax, PodcastIDs,
-                       IsSystemPlaylist, Created, IconName, episode_count
+                       IsSystemPlaylist, Created, IconName, EpisodeCount
                        FROM Playlists WHERE PlaylistID = ?"#
                 ).bind(playlist_id).fetch_optional(pool).await?;
                 

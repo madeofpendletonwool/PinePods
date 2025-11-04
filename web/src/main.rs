@@ -182,7 +182,6 @@ fn language_handler() -> Html {
         ("tr", include_str!("translations/tr.json")),
         ("uk", include_str!("translations/uk.json")),
         ("vi", include_str!("translations/vi.json")),
-        ("zh", include_str!("translations/zh.json")),
         ("zh-Hans", include_str!("translations/zh-Hans.json")),
         ("zh-Hant", include_str!("translations/zh-Hant.json")),
         ("test", include_str!("translations/test.json")),
