@@ -199,6 +199,11 @@ fn create_data_routes() -> Router<AppState> {
         .route("/bulk_add_episodes_to_folder", post(handlers::saved_folders::bulk_add_episodes_to_folder))
         .route("/folder_episodes/{folder_id}", post(handlers::saved_folders::get_folder_episodes))
         .route("/get_save_id", post(handlers::saved_folders::get_save_id_endpoint))
+        // Clips routes
+        .route("/create_clip", post(handlers::clips::create_clip))
+        .route("/user_clips/{user_id}", get(handlers::clips::get_user_clips))
+        .route("/delete_clip/{clip_id}", post(handlers::clips::delete_clip))
+        .route("/clips/{clip_id}/download", get(handlers::clips::download_clip))
         .route("/record_podcast_history", post(handlers::podcasts::add_history))
         .route("/get_podcast_id", get(handlers::podcasts::get_podcast_id))
         .route("/download_episode_list", get(handlers::podcasts::download_episode_list))

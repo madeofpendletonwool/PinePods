@@ -7,3 +7,4 @@ pub(crate) mod task_reqs;
 
 pub(crate) mod setting_reqs;
 pub(crate) mod stat_reqs;
+pub(crate) mod clip_reqs;

@@ -14,6 +14,7 @@ use crate::requests::pod_req::{
     call_record_listen_duration, call_remove_queued_episode, call_update_episode_duration, HistoryAddRequest,
     MarkEpisodeCompletedRequest, QueuePodcastRequest, RecordListenDurationRequest, UpdateEpisodeDurationRequest
 };
+use crate::requests::clip_reqs::{call_create_clip, CreateClipRequest};
 use gloo_timers::callback::Interval;
 use i18nrs::yew::use_translation;
 use std::cell::Cell;
@@ -172,6 +173,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let i18n_no_chapters_available = i18n.t("audio.no_chapters_available").to_string();
     let i18n_shownotes = i18n.t("audio.shownotes").to_string();
     let i18n_shownotes_unavailable = i18n.t("audio.shownotes_unavailable").to_string();
+    let i18n_create_clip = i18n.t("audio.create_clip").to_string();
+    let i18n_clip_start = i18n.t("audio.clip_start").to_string();
+    let i18n_clip_end = i18n.t("audio.clip_end").to_string();
+    let i18n_clip_creating = i18n.t("audio.clip_creating").to_string();
+    let i18n_clip_success = i18n.t("audio.clip_success").to_string();
+    let i18n_clip_error = i18n.t("audio.clip_error").to_string();
     let on_modal_close = {
         let show_modal = show_modal.clone();
         Callback::from(move |_: MouseEvent| show_modal.set(false))
@@ -179,6 +186,15 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
     // Add error handling state
     let last_playback_position = use_state(|| 0.0);
+
+    // Clip recording state
+    #[derive(Clone, PartialEq)]
+    enum ClipState {
+        Idle,
+        Recording(f32), // Store start time
+        Processing,
+    }
+    let clip_state = use_state(|| ClipState::Idle);
 
     // Add periodic state saving
     {
@@ -1255,6 +1271,98 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         })
     };
 
+    // Clip recording handler
+    let toggle_clip = {
+        let clip_state = clip_state.clone();
+        let audio_ref = audio_ref.clone();
+        let server_name = server_name.clone();
+        let api_key = api_key.clone();
+        let user_id = user_id.clone();
+        let episode_id = episode_id.clone();
+        let is_youtube = is_youtube_vid;
+        let episode_title = audio_state.currently_playing.as_ref().map(|p| p.title.clone());
+
+        Callback::from(move |_: MouseEvent| {
+            let current_state = (*clip_state).clone();
+
+            match current_state {
+                ClipState::Idle => {
+                    // Start clip recording
+                    if let Some(audio_element) = audio_ref.cast::<HtmlAudioElement>() {
+                        let start_time = audio_element.current_time() as f32;
+                        clip_state.set(ClipState::Recording(start_time));
+
+                        // Show toast notification
+                        if let Some(window) = web_sys::window() {
+                            if let Some(console) = window.get("console") {
+                                let _ = web_sys::console::log_1(&format!("Clip started at {:.2}s", start_time).into());
+                            }
+                        }
+                    }
+                }
+                ClipState::Recording(start_time) => {
+                    // End clip recording and create clip
+                    if let Some(audio_element) = audio_ref.cast::<HtmlAudioElement>() {
+                        let end_time = audio_element.current_time() as f32;
+
+                        // Validate times
+                        if end_time > start_time && (end_time - start_time) < 1800.0 {
+                            clip_state.set(ClipState::Processing);
+
+                            let server_name = server_name.clone();
+                            let api_key = api_key.clone();
+                            let user_id = user_id.clone();
+                            let episode_id = episode_id.clone();
+                            let episode_title = episode_title.clone();
+                            let clip_state = clip_state.clone();
+
+                            wasm_bindgen_futures::spawn_local(async move {
+                                let clip_title = format!(
+                                    "{} ({:.0}s-{:.0}s)",
+                                    episode_title.unwrap_or_else(|| "Clip".to_string()),
+                                    start_time,
+                                    end_time
+                                );
+
+                                let request = CreateClipRequest {
+                                    user_id: user_id.unwrap(),
+                                    episode_id,
+                                    video_id: None,
+                                    clip_title,
+                                    start_time,
+                                    end_time,
+                                    is_youtube,
+                                };
+
+                                match call_create_clip(
+                                    &server_name.unwrap(),
+                                    &api_key.unwrap(),
+                                    request
+                                ).await {
+                                    Ok(_) => {
+                                        web_sys::console::log_1(&"Clip created successfully!".into());
+                                        clip_state.set(ClipState::Idle);
+                                    }
+                                    Err(e) => {
+                                        web_sys::console::error_1(&format!("Failed to create clip: {}", e).into());
+                                        clip_state.set(ClipState::Idle);
+                                    }
+                                }
+                            });
+                        } else {
+                            // Invalid clip duration
+                            web_sys::console::error_1(&"Invalid clip duration".into());
+                            clip_state.set(ClipState::Idle);
+                        }
+                    }
+                }
+                ClipState::Processing => {
+                    // Do nothing while processing
+                }
+            }
+        })
+    };
+
     let on_chapter_click = {
         let audio_dispatch = _audio_dispatch.clone();
         Callback::from(move |start_time: i32| {
@@ -1535,6 +1643,30 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         <button onclick={skip_episode.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                             <i class="ph ph-skip-forward text-2xl"></i>
                         </button>
+                        // Clip button
+                        {
+                            if episode_in_db {
+                                let clip_button_class = match *clip_state {
+                                    ClipState::Idle => "skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center",
+                                    ClipState::Recording(_) => "skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center bg-red-600 animate-pulse",
+                                    ClipState::Processing => "skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center opacity-50",
+                                };
+
+                                html! {
+                                    <button onclick={toggle_clip.clone()} class={clip_button_class} title={i18n_create_clip.clone()}>
+                                        {
+                                            match *clip_state {
+                                                ClipState::Idle => html! { <i class="ph ph-scissors text-2xl"></i> },
+                                                ClipState::Recording(_) => html! { <i class="ph ph-stop text-2xl"></i> },
+                                                ClipState::Processing => html! { <i class="ph ph-spinner-gap animate-spin text-2xl"></i> },
+                                            }
+                                        }
+                                    </button>
+                                }
+                            } else {
+                                html! {}
+                            }
+                        }
                     </div>
 
                     <div class="episode-button-container flex items-center justify-center">

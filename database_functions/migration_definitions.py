@@ -3904,6 +3904,107 @@ def migration_037_add_saved_folders(conn, db_type: str):
         cursor.close()
 
 
+@register_migration("038", "add_podclips_table", "Add PodClips table for saving audio clip segments", requires=["007"])
+def migration_038_add_podclips_table(conn, db_type: str):
+    """Create PodClips table for storing audio clip segments
+
+    This migration adds the ability for users to save specific segments/clips from episodes.
+    Features include:
+    - Save clips from both regular podcast episodes and YouTube videos
+    - Store start time, end time, and duration
+    - Store file location of extracted clip
+    - Link clips to source episodes/videos
+    """
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Creating PodClips table")
+
+        if db_type == "postgresql":
+            # Create PodClips table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS "PodClips" (
+                    clipid SERIAL PRIMARY KEY,
+                    userid INT NOT NULL,
+                    episodeid INT,
+                    videoid INT,
+                    cliptitle VARCHAR(255) NOT NULL,
+                    starttime FLOAT NOT NULL,
+                    endtime FLOAT NOT NULL,
+                    clipduration FLOAT NOT NULL,
+                    cliplocation VARCHAR(500) NOT NULL,
+                    clipdate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    isyoutube BOOLEAN DEFAULT FALSE,
+                    FOREIGN KEY (userid) REFERENCES "Users"(userid) ON DELETE CASCADE,
+                    FOREIGN KEY (episodeid) REFERENCES "Episodes"(episodeid) ON DELETE CASCADE,
+                    FOREIGN KEY (videoid) REFERENCES "YouTubeVideos"(videoid) ON DELETE CASCADE
+                )
+            """)
+            logger.info("Created PodClips table (PostgreSQL)")
+
+            # Create indexes for better performance
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_podclips_userid ON "PodClips"(userid);
+                CREATE INDEX IF NOT EXISTS idx_podclips_episodeid ON "PodClips"(episodeid);
+                CREATE INDEX IF NOT EXISTS idx_podclips_videoid ON "PodClips"(videoid);
+                CREATE INDEX IF NOT EXISTS idx_podclips_date ON "PodClips"(userid, clipdate DESC);
+            """)
+            logger.info("Created indexes for PodClips (PostgreSQL)")
+
+        else:  # MySQL/MariaDB
+            # Create PodClips table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS PodClips (
+                    ClipID INT AUTO_INCREMENT PRIMARY KEY,
+                    UserID INT NOT NULL,
+                    EpisodeID INT,
+                    VideoID INT,
+                    ClipTitle VARCHAR(255) NOT NULL,
+                    StartTime FLOAT NOT NULL,
+                    EndTime FLOAT NOT NULL,
+                    ClipDuration FLOAT NOT NULL,
+                    ClipLocation VARCHAR(500) NOT NULL,
+                    ClipDate TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    IsYouTube TINYINT(1) DEFAULT 0,
+                    FOREIGN KEY (UserID) REFERENCES Users(UserID) ON DELETE CASCADE,
+                    FOREIGN KEY (EpisodeID) REFERENCES Episodes(EpisodeID) ON DELETE CASCADE,
+                    FOREIGN KEY (VideoID) REFERENCES YouTubeVideos(VideoID) ON DELETE CASCADE
+                )
+            """)
+            logger.info("Created PodClips table (MySQL/MariaDB)")
+
+            # Create indexes for better performance
+            try:
+                cursor.execute("CREATE INDEX idx_podclips_userid ON PodClips(UserID)")
+            except:
+                logger.info("Index idx_podclips_userid already exists")
+
+            try:
+                cursor.execute("CREATE INDEX idx_podclips_episodeid ON PodClips(EpisodeID)")
+            except:
+                logger.info("Index idx_podclips_episodeid already exists")
+
+            try:
+                cursor.execute("CREATE INDEX idx_podclips_videoid ON PodClips(VideoID)")
+            except:
+                logger.info("Index idx_podclips_videoid already exists")
+
+            try:
+                cursor.execute("CREATE INDEX idx_podclips_date ON PodClips(UserID, ClipDate)")
+            except:
+                logger.info("Index idx_podclips_date already exists")
+
+            logger.info("Created indexes for PodClips (MySQL/MariaDB)")
+
+        logger.info("PodClips migration completed successfully")
+
+    except Exception as e:
+        logger.error(f"Error in migration 038: {e}")
+        raise
+    finally:
+        cursor.close()
+
+
 if __name__ == "__main__":
     # Register all migrations and run them
     register_all_migrations()

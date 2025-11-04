@@ -745,7 +745,13 @@
     "no_audio_playing": "No audio playing",
     "no_chapters_available": "No chapters available",
     "shownotes": "Shownotes",
-    "shownotes_unavailable": "Shownotes (Unavailable)"
+    "shownotes_unavailable": "Shownotes (Unavailable)",
+    "create_clip": "Create Clip",
+    "clip_start": "Clip start marked",
+    "clip_end": "Clip end marked - Creating clip...",
+    "clip_creating": "Creating clip...",
+    "clip_success": "Clip created successfully!",
+    "clip_error": "Failed to create clip"
   },
   "downloads": {
     "select": "Select",
@@ -1058,7 +1064,18 @@
     "completed": "Completed",
     "in_progress": "In Progress",
     "no_saved_episodes": "No Saved Episodes Found",
-    "save_episodes_instructions": "You can save episodes by clicking the context button on each episode and clicking 'Save Episode'. Doing this will save episodes here for easy access when you want to return to them."
+    "save_episodes_instructions": "You can save episodes by clicking the context button on each episode and clicking 'Save Episode'. Doing this will save episodes here for easy access when you want to return to them.",
+    "clips": "Clips",
+    "all_episodes": "All Episodes",
+    "no_clips_found": "No Clips Found",
+    "clips_instructions": "Create clips while listening by clicking the clip button in the audio player. Click once to mark the start, click again to mark the end.",
+    "clip_title": "Clip Title",
+    "clip_duration": "Duration",
+    "clip_date": "Date Created",
+    "delete_clip": "Delete Clip",
+    "download_clip": "Download Clip",
+    "play_clip": "Play Clip",
+    "clip_from": "Clip from"
   },
   "search": {
     "search_podcasts": "Search podcasts...",

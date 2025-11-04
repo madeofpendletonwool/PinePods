@@ -13,6 +13,7 @@ pub mod youtube;
 pub mod tasks;
 pub mod feed;
 pub mod saved_folders;
+pub mod clips;
 
 // Common handler utilities
 use axum::{

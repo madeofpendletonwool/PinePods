@@ -599,3 +599,41 @@ impl<T> PaginatedResponse<T> {
         }
     }
 }
+
+// PodClips models
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PodClip {
+    pub clipid: i32,
+    pub userid: i32,
+    pub episodeid: Option<i32>,
+    pub videoid: Option<i32>,
+    pub cliptitle: String,
+    pub starttime: f32,
+    pub endtime: f32,
+    pub clipduration: f32,
+    pub cliplocation: String,
+    pub clipdate: String,
+    pub isyoutube: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateClipRequest {
+    pub user_id: i32,
+    pub episode_id: Option<i32>,
+    pub video_id: Option<i32>,
+    pub clip_title: String,
+    pub start_time: f32,
+    pub end_time: f32,
+    pub is_youtube: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ClipResponse {
+    pub detail: String,
+    pub clip_id: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UserClipsResponse {
+    pub clips: Vec<PodClip>,
+}

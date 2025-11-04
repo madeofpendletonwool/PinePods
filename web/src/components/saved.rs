@@ -12,6 +12,7 @@ use crate::components::gen_funcs::{
 };
 use crate::requests::pod_req;
 use crate::requests::pod_req::{SavedEpisodesResponse, SavedFolder, CreateSavedFolderRequest, UpdateSavedFolderRequest};
+use crate::requests::clip_reqs::{call_get_user_clips, call_delete_clip, get_clip_download_url, PodClip};
 use gloo::events::EventListener;
 use i18nrs::yew::use_translation;
 use wasm_bindgen::JsCast;
@@ -33,6 +34,12 @@ pub enum SavedSortDirection {
     LongestFirst,
     TitleAZ,
     TitleZA,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum SavedViewMode {
+    Episodes,
+    Clips,
 }
 
 #[function_component(Saved)]
@@ -64,6 +71,13 @@ pub fn saved() -> Html {
 
     let show_completed = use_state(|| false); // Toggle for showing completed episodes only
     let show_in_progress = use_state(|| false); // Toggle for showing in-progress episodes only
+
+    // View mode state
+    let view_mode = use_state(|| SavedViewMode::Episodes);
+
+    // Clips state
+    let clips = use_state(|| Vec::<PodClip>::new());
+    let clips_loading = use_state(|| false);
 
     // Folder state
     let folders = use_state(|| Vec::<SavedFolder>::new());
@@ -186,6 +200,41 @@ pub fn saved() -> Html {
                         {
                             folders.set(fetched_folders);
                         }
+                    });
+                }
+                || ()
+            },
+        );
+    }
+
+    // Fetch clips on component mount
+    {
+        let clips = clips.clone();
+        let clips_loading = clips_loading.clone();
+        let api_key = post_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.api_key.clone());
+        let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+        let server_name = post_state
+            .auth_details
+            .as_ref()
+            .map(|ud| ud.server_name.clone());
+
+        use_effect_with(
+            (api_key.clone(), user_id.clone(), server_name.clone()),
+            move |_| {
+                if let (Some(api_key), Some(user_id), Some(server_name)) =
+                    (api_key.clone(), user_id.clone(), server_name.clone())
+                {
+                    clips_loading.set(true);
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Ok(fetched_clips) =
+                            call_get_user_clips(&server_name, &api_key, user_id).await
+                        {
+                            clips.set(fetched_clips);
+                        }
+                        clips_loading.set(false);
                     });
                 }
                 || ()
@@ -450,33 +499,88 @@ pub fn saved() -> Html {
                                 </div>
                             </div>
 
-                            // Folder tabs
-                            <div class="folder-tabs-container">
-                                // "All Episodes" tab
+                            // View mode tabs (Episodes vs Clips)
+                            <div class="mb-4 flex gap-2 border-b border-gray-200 dark:border-gray-700">
                                 <button
                                     class={classes!(
-                                        "folder-tab",
-                                        if selected_folder.is_none() { "active" } else { "" }
+                                        "px-4 py-2 font-medium transition-colors",
+                                        if *view_mode == SavedViewMode::Episodes {
+                                            "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
+                                        } else {
+                                            "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                                        }
                                     )}
                                     onclick={
-                                        let selected_folder = selected_folder.clone();
+                                        let view_mode = view_mode.clone();
                                         Callback::from(move |_| {
-                                            selected_folder.set(None);
+                                            view_mode.set(SavedViewMode::Episodes);
                                         })
                                     }
                                 >
-                                    <i class="ph ph-bookmark folder-tab-icon"></i>
-                                    <span>{"All Episodes"}</span>
+                                    <i class="ph ph-bookmark mr-2"></i>
+                                    {&i18n.t("saved.all_episodes")}
+                                </button>
+                                <button
+                                    class={classes!(
+                                        "px-4 py-2 font-medium transition-colors",
+                                        if *view_mode == SavedViewMode::Clips {
+                                            "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
+                                        } else {
+                                            "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                                        }
+                                    )}
+                                    onclick={
+                                        let view_mode = view_mode.clone();
+                                        Callback::from(move |_| {
+                                            view_mode.set(SavedViewMode::Clips);
+                                        })
+                                    }
+                                >
+                                    <i class="ph ph-scissors mr-2"></i>
+                                    {&i18n.t("saved.clips")}
                                     {
-                                        if let Some(ref saved_eps) = state.saved_episodes {
+                                        if !clips.is_empty() {
                                             html! {
-                                                <span class="folder-tab-count">{saved_eps.episodes.len()}</span>
+                                                <span class="ml-2 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded-full">{clips.len()}</span>
                                             }
                                         } else {
                                             html! {}
                                         }
                                     }
                                 </button>
+                            </div>
+
+                            {
+                                if *view_mode == SavedViewMode::Episodes {
+                                    html! {
+                                        <>
+                                            // Folder tabs
+                                            <div class="folder-tabs-container">
+                                                // "All Episodes" tab
+                                                <button
+                                                    class={classes!(
+                                                        "folder-tab",
+                                                        if selected_folder.is_none() { "active" } else { "" }
+                                                    )}
+                                                    onclick={
+                                                        let selected_folder = selected_folder.clone();
+                                                        Callback::from(move |_| {
+                                                            selected_folder.set(None);
+                                                        })
+                                                    }
+                                                >
+                                                    <i class="ph ph-bookmark folder-tab-icon"></i>
+                                                    <span>{"All Episodes"}</span>
+                                                    {
+                                                        if let Some(ref saved_eps) = state.saved_episodes {
+                                                            html! {
+                                                                <span class="folder-tab-count">{saved_eps.episodes.len()}</span>
+                                                            }
+                                                        } else {
+                                                            html! {}
+                                                        }
+                                                    }
+                                                </button>
 
                                 // Folder tabs
                                 {
@@ -550,6 +654,129 @@ pub fn saved() -> Html {
                                         &i18n.t("saved.no_saved_episodes"),
                                         &i18n.t("saved.save_episodes_instructions")
                                     )
+                                }
+                            }
+                        </>
+                    }
+                                } else {
+                                    // Clips view
+                                    html! {
+                                        <div class="clips-container p-4">
+                                            {
+                                                if *clips_loading {
+                                                    html! {
+                                                        <div class="loading-animation">
+                                                            <div class="frame1"></div>
+                                                            <div class="frame2"></div>
+                                                            <div class="frame3"></div>
+                                                            <div class="frame4"></div>
+                                                            <div class="frame5"></div>
+                                                            <div class="frame6"></div>
+                                                        </div>
+                                                    }
+                                                } else if clips.is_empty() {
+                                                    empty_message(
+                                                        &i18n.t("saved.no_clips_found"),
+                                                        &i18n.t("saved.clips_instructions")
+                                                    )
+                                                } else {
+                                                    html! {
+                                                        <div class="grid gap-4">
+                                                            {
+                                                                clips.iter().map(|clip| {
+                                                                    let clip_id = clip.clipid;
+                                                                    let clip_title = clip.cliptitle.clone();
+                                                                    let clip_duration = clip.clipduration;
+                                                                    let clip_date = clip.clipdate.clone();
+                                                                    let clip_location = clip.cliplocation.clone();
+                                                                    let is_youtube = clip.isyoutube;
+
+                                                                    let clips = clips.clone();
+                                                                    let api_key = post_state.auth_details.as_ref().map(|ud| ud.api_key.clone());
+                                                                    let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
+                                                                    let server_name_state = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
+
+                                                                    html! {
+                                                                        <div key={clip_id} class="clip-card bg-white dark:bg-gray-800 rounded-lg shadow p-4 hover:shadow-lg transition-shadow">
+                                                                            <div class="flex items-start justify-between">
+                                                                                <div class="flex-1 min-w-0">
+                                                                                    <div class="flex items-center gap-2 mb-2">
+                                                                                        <i class="ph ph-scissors text-blue-600 dark:text-blue-400"></i>
+                                                                                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white truncate">{&clip_title}</h3>
+                                                                                    </div>
+                                                                                    <div class="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
+                                                                                        <span class="flex items-center gap-1">
+                                                                                            <i class="ph ph-clock"></i>
+                                                                                            {format!("{:.1}s", clip_duration)}
+                                                                                        </span>
+                                                                                        <span class="flex items-center gap-1">
+                                                                                            <i class="ph ph-calendar"></i>
+                                                                                            {&clip_date}
+                                                                                        </span>
+                                                                                        {
+                                                                                            if is_youtube {
+                                                                                                html! {
+                                                                                                    <span class="flex items-center gap-1 text-red-600 dark:text-red-400">
+                                                                                                        <i class="ph ph-youtube-logo"></i>
+                                                                                                        {"YouTube"}
+                                                                                                    </span>
+                                                                                                }
+                                                                                            } else {
+                                                                                                html! {}
+                                                                                            }
+                                                                                        }
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            <div class="flex gap-2 mt-4">
+                                                                                <a
+                                                                                    href={if let (Some(server_name), Some(api_key)) = (server_name_state.clone(), api_key.clone()) {
+                                                                                        get_clip_download_url(&server_name, clip_id, &api_key)
+                                                                                    } else {
+                                                                                        String::new()
+                                                                                    }}
+                                                                                    download={format!("{}.mp3", clip_title.replace(" ", "_"))}
+                                                                                    class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                                                                                >
+                                                                                    <i class="ph ph-download-simple"></i>
+                                                                                    {&i18n.t("saved.download_clip")}
+                                                                                </a>
+                                                                                <button
+                                                                                    onclick={
+                                                                                        let clips = clips.clone();
+                                                                                        let api_key = api_key.clone();
+                                                                                        let user_id = user_id.clone();
+                                                                                        let server_name = server_name_state.clone();
+                                                                                        Callback::from(move |_| {
+                                                                                            if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
+                                                                                                let clips = clips.clone();
+                                                                                                wasm_bindgen_futures::spawn_local(async move {
+                                                                                                    if let Ok(_) = call_delete_clip(&server_name, &api_key, clip_id, user_id).await {
+                                                                                                        // Refresh clips list
+                                                                                                        if let Ok(fetched_clips) = call_get_user_clips(&server_name, &api_key, user_id).await {
+                                                                                                            clips.set(fetched_clips);
+                                                                                                        }
+                                                                                                    }
+                                                                                                });
+                                                                                            }
+                                                                                        })
+                                                                                    }
+                                                                                    class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                                                                                >
+                                                                                    <i class="ph ph-trash"></i>
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    }
+                                                                }).collect::<Html>()
+                                                            }
+                                                        </div>
+                                                    }
+                                                }
+                                            }
+                                        </div>
+                                    }
                                 }
                             }
                         </>

@@ -25342,6 +25342,214 @@ impl DatabasePool {
             }
         }
     }
+
+    // PodClips database functions
+
+    // Create a new clip
+    pub async fn create_clip(
+        &self,
+        user_id: i32,
+        episode_id: Option<i32>,
+        video_id: Option<i32>,
+        clip_title: &str,
+        start_time: f32,
+        end_time: f32,
+        clip_location: &str,
+        is_youtube: bool,
+    ) -> AppResult<i32> {
+        let clip_duration = end_time - start_time;
+
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let clip_id: i32 = sqlx::query_scalar(
+                    r#"INSERT INTO "PodClips" (userid, episodeid, videoid, cliptitle, starttime, endtime, clipduration, cliplocation, isyoutube)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                       RETURNING clipid"#
+                )
+                .bind(user_id)
+                .bind(episode_id)
+                .bind(video_id)
+                .bind(clip_title)
+                .bind(start_time)
+                .bind(end_time)
+                .bind(clip_duration)
+                .bind(clip_location)
+                .bind(is_youtube)
+                .fetch_one(pool)
+                .await?;
+
+                Ok(clip_id)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(
+                    "INSERT INTO PodClips (UserID, EpisodeID, VideoID, ClipTitle, StartTime, EndTime, ClipDuration, ClipLocation, IsYouTube)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                )
+                .bind(user_id)
+                .bind(episode_id)
+                .bind(video_id)
+                .bind(clip_title)
+                .bind(start_time)
+                .bind(end_time)
+                .bind(clip_duration)
+                .bind(clip_location)
+                .bind(is_youtube)
+                .execute(pool)
+                .await?;
+
+                Ok(result.last_insert_id() as i32)
+            }
+        }
+    }
+
+    // Get all clips for a user
+    pub async fn get_user_clips(&self, user_id: i32) -> AppResult<Vec<crate::models::PodClip>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let clips = sqlx::query_as!(
+                    crate::models::PodClip,
+                    r#"SELECT
+                        clipid,
+                        userid,
+                        episodeid,
+                        videoid,
+                        cliptitle,
+                        starttime,
+                        endtime,
+                        clipduration,
+                        cliplocation,
+                        to_char(clipdate, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as clipdate,
+                        isyoutube
+                       FROM "PodClips"
+                       WHERE userid = $1
+                       ORDER BY clipdate DESC"#,
+                    user_id
+                )
+                .fetch_all(pool)
+                .await?;
+
+                Ok(clips)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    "SELECT ClipID, UserID, EpisodeID, VideoID, ClipTitle, StartTime, EndTime, ClipDuration, ClipLocation,
+                            DATE_FORMAT(ClipDate, '%Y-%m-%dT%H:%i:%sZ') as ClipDate, IsYouTube
+                     FROM PodClips
+                     WHERE UserID = ?
+                     ORDER BY ClipDate DESC"
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let clips = rows
+                    .iter()
+                    .map(|row| {
+                        Ok(crate::models::PodClip {
+                            clipid: row.try_get("ClipID")?,
+                            userid: row.try_get("UserID")?,
+                            episodeid: row.try_get("EpisodeID")?,
+                            videoid: row.try_get("VideoID")?,
+                            cliptitle: row.try_get("ClipTitle")?,
+                            starttime: row.try_get("StartTime")?,
+                            endtime: row.try_get("EndTime")?,
+                            clipduration: row.try_get("ClipDuration")?,
+                            cliplocation: row.try_get("ClipLocation")?,
+                            clipdate: row.try_get("ClipDate")?,
+                            isyoutube: row.try_get::<bool, _>("IsYouTube")?,
+                        })
+                    })
+                    .collect::<AppResult<Vec<_>>>()?;
+
+                Ok(clips)
+            }
+        }
+    }
+
+    // Get a single clip by ID
+    pub async fn get_clip_by_id(&self, clip_id: i32, user_id: i32) -> AppResult<Option<crate::models::PodClip>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let clip = sqlx::query_as!(
+                    crate::models::PodClip,
+                    r#"SELECT
+                        clipid,
+                        userid,
+                        episodeid,
+                        videoid,
+                        cliptitle,
+                        starttime,
+                        endtime,
+                        clipduration,
+                        cliplocation,
+                        to_char(clipdate, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as clipdate,
+                        isyoutube
+                       FROM "PodClips"
+                       WHERE clipid = $1 AND userid = $2"#,
+                    clip_id,
+                    user_id
+                )
+                .fetch_optional(pool)
+                .await?;
+
+                Ok(clip)
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(
+                    "SELECT ClipID, UserID, EpisodeID, VideoID, ClipTitle, StartTime, EndTime, ClipDuration, ClipLocation,
+                            DATE_FORMAT(ClipDate, '%Y-%m-%dT%H:%i:%sZ') as ClipDate, IsYouTube
+                     FROM PodClips
+                     WHERE ClipID = ? AND UserID = ?"
+                )
+                .bind(clip_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                Ok(row.map(|r| crate::models::PodClip {
+                    clipid: r.try_get("ClipID").unwrap(),
+                    userid: r.try_get("UserID").unwrap(),
+                    episodeid: r.try_get("EpisodeID").ok(),
+                    videoid: r.try_get("VideoID").ok(),
+                    cliptitle: r.try_get("ClipTitle").unwrap(),
+                    starttime: r.try_get("StartTime").unwrap(),
+                    endtime: r.try_get("EndTime").unwrap(),
+                    clipduration: r.try_get("ClipDuration").unwrap(),
+                    cliplocation: r.try_get("ClipLocation").unwrap(),
+                    clipdate: r.try_get("ClipDate").unwrap(),
+                    isyoutube: r.try_get::<bool, _>("IsYouTube").unwrap(),
+                }))
+            }
+        }
+    }
+
+    // Delete a clip
+    pub async fn delete_clip(&self, clip_id: i32, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(
+                    r#"DELETE FROM "PodClips" WHERE clipid = $1 AND userid = $2"#
+                )
+                .bind(clip_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(
+                    "DELETE FROM PodClips WHERE ClipID = ? AND UserID = ?"
+                )
+                .bind(clip_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+
+                Ok(result.rows_affected() > 0)
+            }
+        }
+    }
 }
 
 // Standalone create_playlist function that matches Python API
