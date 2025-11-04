@@ -1,1 +1,24 @@
-{}
+{
+  "auth": {
+    "account_created_success": "Konto utworzone! Możesz się zalogować.",
+    "confirm_new_password": "Potwierdź nowe hasło",
+    "connect_different_server": "Połącz z innym serwerem",
+    "create_new_user": "Utwórz użytkownika",
+    "email": "E-mail",
+    "enter_mfa_code": "Kod MFA",
+    "enter_new_password": "Wprowadź nowe hasło",
+    "enter_password_reset_code": "Wprowadź kod resetowania hasła",
+    "forgot_password": "Zapomniałem hasła",
+    "full_name": "Imię i Nazwisko",
+    "incorrect_credentials": "Nieprawidłowe hasło",
+    "invalid_email": "Nieprawidłowy adres e-mail",
+    "login": "Zaloguj",
+    "logout": "Wyloguj",
+    "password": "Hasło",
+    "reset_password": "Zresetuj hasło",
+    "reset_password_instructions": "Podaj nazwę użytkownika i email, aby zrestartować hasło.",
+    "server_name": "Nazwa serwera",
+    "submit": "Wyślij",
+    "username": "Użytkownik"
+  }
+}
