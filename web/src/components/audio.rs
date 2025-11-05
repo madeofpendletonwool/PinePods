@@ -3,6 +3,7 @@ use crate::components::context::{AppState, UIState};
 use crate::components::downloads_tauri::start_local_file_server;
 use crate::components::gen_components::{EpisodeModal, FallbackImage};
 use crate::components::gen_funcs::format_time_rm_hour;
+use crate::requests::clip_reqs::{call_create_clip, CreateClipRequest};
 #[cfg(not(feature = "server_build"))]
 use crate::requests::pod_req::EpisodeDownload;
 use crate::requests::pod_req::FetchPodcasting2DataRequest;
@@ -11,10 +12,10 @@ use crate::requests::pod_req::{
     call_get_auto_skip_times, call_get_episode_id, call_get_play_episode_details,
     call_get_podcast_id_from_ep, call_get_queued_episodes, call_increment_listen_time,
     call_increment_played, call_mark_episode_completed, call_queue_episode,
-    call_record_listen_duration, call_remove_queued_episode, call_update_episode_duration, HistoryAddRequest,
-    MarkEpisodeCompletedRequest, QueuePodcastRequest, RecordListenDurationRequest, UpdateEpisodeDurationRequest
+    call_record_listen_duration, call_remove_queued_episode, call_update_episode_duration,
+    HistoryAddRequest, MarkEpisodeCompletedRequest, QueuePodcastRequest,
+    RecordListenDurationRequest, UpdateEpisodeDurationRequest,
 };
-use crate::requests::clip_reqs::{call_create_clip, CreateClipRequest};
 use gloo_timers::callback::Interval;
 use i18nrs::yew::use_translation;
 use std::cell::Cell;
@@ -191,7 +192,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     #[derive(Clone, PartialEq)]
     enum ClipState {
         Idle,
-        Recording(f32), // Store start time
+        Recording(f64), // Store start time
         Processing,
     }
     let clip_state = use_state(|| ClipState::Idle);
@@ -821,7 +822,9 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                     // Check if we're already processing an ended event
                     if processing_ended_clone.get() {
-                        web_sys::console::log_1(&"Already processing ended event, skipping duplicate".into());
+                        web_sys::console::log_1(
+                            &"Already processing ended event, skipping duplicate".into(),
+                        );
                         return;
                     }
 
@@ -839,7 +842,9 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     // Closure::wrap(Box::new(move |_| {
                     if offline_status_loop {
                         // If offline, do not perform any action
-                        web_sys::console::log_1(&"Offline mode - skipping queue advancement".into());
+                        web_sys::console::log_1(
+                            &"Offline mode - skipping queue advancement".into(),
+                        );
                         processing_flag_for_reset.set(false);
                     } else {
                         wasm_bindgen_futures::spawn_local(async move {
@@ -852,11 +857,16 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             .await;
                             match queued_episodes_result {
                                 Ok(episodes) => {
-                                    web_sys::console::log_1(&format!("Found {} episodes in queue", episodes.len()).into());
+                                    web_sys::console::log_1(
+                                        &format!("Found {} episodes in queue", episodes.len())
+                                            .into(),
+                                    );
 
                                     // If queue is empty, just stop playback
                                     if episodes.is_empty() {
-                                        web_sys::console::log_1(&"Queue is empty, stopping playback".into());
+                                        web_sys::console::log_1(
+                                            &"Queue is empty, stopping playback".into(),
+                                        );
                                         audio_dispatch.reduce_mut(|state| {
                                             state.audio_playing = Some(false);
                                         });
@@ -894,7 +904,8 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                         // Now play the first episode in the queue (which is the next one to play)
                                         // Sort by queue position to ensure we get the right one
                                         let mut sorted_episodes = episodes.clone();
-                                        sorted_episodes.sort_by_key(|ep| ep.queueposition.unwrap_or(999999));
+                                        sorted_episodes
+                                            .sort_by_key(|ep| ep.queueposition.unwrap_or(999999));
 
                                         if let Some(next_episode) = sorted_episodes.first() {
                                             web_sys::console::log_1(&format!("Playing first episode in queue: {} (ID: {}, Position: {})",
@@ -904,9 +915,16 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                             ).into());
 
                                             // Check if we have the required data
-                                            if let (Some(Some(api_key_val)), Some(user_id_val), Some(server_name_val)) =
-                                                (api_key.clone(), user_id, server_name.clone()) {
-                                                web_sys::console::log_1(&"Calling on_play_click for next episode".into());
+                                            if let (
+                                                Some(Some(api_key_val)),
+                                                Some(user_id_val),
+                                                Some(server_name_val),
+                                            ) = (api_key.clone(), user_id, server_name.clone())
+                                            {
+                                                web_sys::console::log_1(
+                                                    &"Calling on_play_click for next episode"
+                                                        .into(),
+                                                );
                                                 on_play_click(
                                                     next_episode.episodeurl.clone(),
                                                     next_episode.episodetitle.clone(),
@@ -930,7 +948,9 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                                 web_sys::console::log_1(&"ERROR: Missing required auth data (api_key, user_id, or server_name)".into());
                                             }
                                         } else {
-                                            web_sys::console::log_1(&"No episodes found in queue after sorting".into());
+                                            web_sys::console::log_1(
+                                                &"No episodes found in queue after sorting".into(),
+                                            );
                                             audio_dispatch.reduce_mut(|state| {
                                                 state.audio_playing = Some(false);
                                             });
@@ -938,13 +958,17 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     }
                                 }
                                 Err(e) => {
-                                    web_sys::console::log_1(&format!("Failed to fetch queued episodes: {:?}", e).into());
+                                    web_sys::console::log_1(
+                                        &format!("Failed to fetch queued episodes: {:?}", e).into(),
+                                    );
                                 }
                             }
 
                             // Reset the processing flag after all async work is complete
                             processing_flag_for_reset.set(false);
-                            web_sys::console::log_1(&"Queue processing complete, flag reset".into());
+                            web_sys::console::log_1(
+                                &"Queue processing complete, flag reset".into(),
+                            );
                         });
                     }
                     // }) as Box<dyn FnMut()>);
@@ -1274,39 +1298,51 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
     // Clip recording handler
     let toggle_clip = {
         let clip_state = clip_state.clone();
-        let audio_ref = audio_ref.clone();
+        let audio_state_clone = audio_state.clone();
         let server_name = server_name.clone();
         let api_key = api_key.clone();
         let user_id = user_id.clone();
         let episode_id = episode_id.clone();
         let is_youtube = is_youtube_vid;
-        let episode_title = audio_state.currently_playing.as_ref().map(|p| p.title.clone());
+        let episode_title = audio_state
+            .currently_playing
+            .as_ref()
+            .map(|p| p.title.clone());
 
-        Callback::from(move |_: MouseEvent| {
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            e.stop_propagation();
+            web_sys::console::log_1(&"Clip button clicked!".into());
             let current_state = (*clip_state).clone();
+            web_sys::console::log_1(&format!("Current clip state: {:?}", match current_state {
+                ClipState::Idle => "Idle",
+                ClipState::Recording(_) => "Recording",
+                ClipState::Processing => "Processing",
+            }).into());
 
             match current_state {
                 ClipState::Idle => {
                     // Start clip recording
-                    if let Some(audio_element) = audio_ref.cast::<HtmlAudioElement>() {
-                        let start_time = audio_element.current_time() as f32;
+                    web_sys::console::log_1(&"Attempting to start clip recording...".into());
+                    if let Some(audio_element) = &audio_state_clone.audio_element {
+                        let start_time = audio_element.current_time();
+                        web_sys::console::log_1(&format!("Audio element found! Starting clip at {:.2}s", start_time).into());
                         clip_state.set(ClipState::Recording(start_time));
-
-                        // Show toast notification
-                        if let Some(window) = web_sys::window() {
-                            if let Some(console) = window.get("console") {
-                                let _ = web_sys::console::log_1(&format!("Clip started at {:.2}s", start_time).into());
-                            }
-                        }
+                        web_sys::console::log_1(&"State set to Recording!".into());
+                    } else {
+                        web_sys::console::error_1(&"Audio element not found!".into());
                     }
                 }
                 ClipState::Recording(start_time) => {
                     // End clip recording and create clip
-                    if let Some(audio_element) = audio_ref.cast::<HtmlAudioElement>() {
-                        let end_time = audio_element.current_time() as f32;
+                    web_sys::console::log_1(&format!("Stopping clip recording (started at {:.2}s)...", start_time).into());
+                    if let Some(audio_element) = &audio_state_clone.audio_element {
+                        let end_time = audio_element.current_time();
+                        web_sys::console::log_1(&format!("End time: {:.2}s, Duration: {:.2}s", end_time, end_time - start_time).into());
 
                         // Validate times
                         if end_time > start_time && (end_time - start_time) < 1800.0 {
+                            web_sys::console::log_1(&"Creating clip...".into());
                             clip_state.set(ClipState::Processing);
 
                             let server_name = server_name.clone();
@@ -1336,15 +1372,21 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
                                 match call_create_clip(
                                     &server_name.unwrap(),
-                                    &api_key.unwrap(),
-                                    request
-                                ).await {
+                                    &api_key.unwrap().unwrap(),
+                                    request,
+                                )
+                                .await
+                                {
                                     Ok(_) => {
-                                        web_sys::console::log_1(&"Clip created successfully!".into());
+                                        web_sys::console::log_1(
+                                            &"Clip created successfully!".into(),
+                                        );
                                         clip_state.set(ClipState::Idle);
                                     }
                                     Err(e) => {
-                                        web_sys::console::error_1(&format!("Failed to create clip: {}", e).into());
+                                        web_sys::console::error_1(
+                                            &format!("Failed to create clip: {}", e).into(),
+                                        );
                                         clip_state.set(ClipState::Idle);
                                     }
                                 }
@@ -1643,30 +1685,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         <button onclick={skip_episode.clone()} class="skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center">
                             <i class="ph ph-skip-forward text-2xl"></i>
                         </button>
-                        // Clip button
-                        {
-                            if episode_in_db {
-                                let clip_button_class = match *clip_state {
-                                    ClipState::Idle => "skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center",
-                                    ClipState::Recording(_) => "skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center bg-red-600 animate-pulse",
-                                    ClipState::Processing => "skip-button audio-top-button selector-button font-bold py-2 px-4 rounded-full w-10 h-10 flex items-center justify-center opacity-50",
-                                };
-
-                                html! {
-                                    <button onclick={toggle_clip.clone()} class={clip_button_class} title={i18n_create_clip.clone()}>
-                                        {
-                                            match *clip_state {
-                                                ClipState::Idle => html! { <i class="ph ph-scissors text-2xl"></i> },
-                                                ClipState::Recording(_) => html! { <i class="ph ph-stop text-2xl"></i> },
-                                                ClipState::Processing => html! { <i class="ph ph-spinner-gap animate-spin text-2xl"></i> },
-                                            }
-                                        }
-                                    </button>
-                                }
-                            } else {
-                                html! {}
-                            }
-                        }
                     </div>
 
                     <div class="episode-button-container flex items-center justify-center">
@@ -1711,6 +1729,30 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         volume={audio_state.audio_volume}
                         on_volume_change={update_volume_closure}
                     />
+                    // Clip button
+                    {
+                        if episode_in_db {
+                            let clip_button_class = match *clip_state {
+                                ClipState::Idle => "skip-button audio-top-button selector-button font-bold py-2 px-4 mt-3 rounded-full w-10 h-10 flex items-center justify-center",
+                                ClipState::Recording(_) => "skip-button audio-top-button selector-button font-bold py-2 px-4 mt-3 rounded-full w-10 h-10 flex items-center justify-center bg-red-600 animate-pulse",
+                                ClipState::Processing => "skip-button audio-top-button selector-button font-bold py-2 px-4 mt-3 rounded-full w-10 h-10 flex items-center justify-center opacity-50",
+                            };
+
+                            html! {
+                                <button onclick={toggle_clip.clone()} class={clip_button_class} title={i18n_create_clip.clone()}>
+                                    {
+                                        match *clip_state {
+                                            ClipState::Idle => html! { <i class="ph ph-scissors text-2xl"></i> },
+                                            ClipState::Recording(_) => html! { <i class="ph ph-stop text-2xl"></i> },
+                                            ClipState::Processing => html! { <i class="ph ph-spinner-gap animate-spin text-2xl"></i> },
+                                        }
+                                    }
+                                </button>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
                     </div>
                     </div>
 
@@ -1845,9 +1887,6 @@ pub fn on_play_pause(
     is_local: Option<bool>,
     is_youtube_vid: Option<bool>,
 ) -> Callback<MouseEvent> {
-    web_sys::console::log_1(
-        &format!("on_play_pause - is_youtube_vid: {:?}", is_youtube_vid).into(),
-    );
     Callback::from(move |e: MouseEvent| {
         let episode_url_for_play = episode_url_for_closure.clone();
         let episode_title_for_play = episode_title_for_closure.clone();
@@ -2184,7 +2223,8 @@ pub fn on_play_click(
             let actual_duration_sec = get_actual_duration(&src_for_analysis).await;
 
             // Use the actual duration if available, otherwise fall back to provided duration
-            let final_duration_sec = actual_duration_sec.unwrap_or(episode_duration_for_wasm as f64);
+            let final_duration_sec =
+                actual_duration_sec.unwrap_or(episode_duration_for_wasm as f64);
 
             // Set actual duration in db
             if (final_duration_sec as i32) != episode_duration_for_wasm {
@@ -2193,7 +2233,12 @@ pub fn on_play_click(
                     new_duration: final_duration_sec as i32,
                     is_youtube: episode_is_youtube,
                 };
-                call_update_episode_duration(&server_name_for_player, &Some(api_key_for_player.clone()), &req).await;
+                call_update_episode_duration(
+                    &server_name_for_player,
+                    &Some(api_key_for_player.clone()),
+                    &req,
+                )
+                .await;
             }
 
             web_sys::console::log_1(&JsValue::from_str(&format!(

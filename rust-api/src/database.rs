@@ -25352,8 +25352,8 @@ impl DatabasePool {
         episode_id: Option<i32>,
         video_id: Option<i32>,
         clip_title: &str,
-        start_time: f32,
-        end_time: f32,
+        start_time: f64,
+        end_time: f64,
         clip_location: &str,
         is_youtube: bool,
     ) -> AppResult<i32> {
@@ -25406,8 +25406,7 @@ impl DatabasePool {
     pub async fn get_user_clips(&self, user_id: i32) -> AppResult<Vec<crate::models::PodClip>> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let clips = sqlx::query_as!(
-                    crate::models::PodClip,
+                let rows = sqlx::query(
                     r#"SELECT
                         clipid,
                         userid,
@@ -25422,11 +25421,30 @@ impl DatabasePool {
                         isyoutube
                        FROM "PodClips"
                        WHERE userid = $1
-                       ORDER BY clipdate DESC"#,
-                    user_id
+                       ORDER BY clipdate DESC"#
                 )
+                .bind(user_id)
                 .fetch_all(pool)
                 .await?;
+
+                let clips = rows
+                    .iter()
+                    .map(|row| {
+                        Ok(crate::models::PodClip {
+                            clipid: row.try_get("clipid")?,
+                            userid: row.try_get("userid")?,
+                            episodeid: row.try_get("episodeid")?,
+                            videoid: row.try_get("videoid")?,
+                            cliptitle: row.try_get("cliptitle")?,
+                            starttime: row.try_get("starttime")?,
+                            endtime: row.try_get("endtime")?,
+                            clipduration: row.try_get("clipduration")?,
+                            cliplocation: row.try_get("cliplocation")?,
+                            clipdate: row.try_get("clipdate")?,
+                            isyoutube: row.try_get::<bool, _>("isyoutube")?,
+                        })
+                    })
+                    .collect::<AppResult<Vec<_>>>()?;
 
                 Ok(clips)
             }
@@ -25470,8 +25488,7 @@ impl DatabasePool {
     pub async fn get_clip_by_id(&self, clip_id: i32, user_id: i32) -> AppResult<Option<crate::models::PodClip>> {
         match self {
             DatabasePool::Postgres(pool) => {
-                let clip = sqlx::query_as!(
-                    crate::models::PodClip,
+                let row = sqlx::query(
                     r#"SELECT
                         clipid,
                         userid,
@@ -25485,14 +25502,26 @@ impl DatabasePool {
                         to_char(clipdate, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as clipdate,
                         isyoutube
                        FROM "PodClips"
-                       WHERE clipid = $1 AND userid = $2"#,
-                    clip_id,
-                    user_id
+                       WHERE clipid = $1 AND userid = $2"#
                 )
+                .bind(clip_id)
+                .bind(user_id)
                 .fetch_optional(pool)
                 .await?;
 
-                Ok(clip)
+                Ok(row.map(|r| crate::models::PodClip {
+                    clipid: r.try_get("clipid").unwrap(),
+                    userid: r.try_get("userid").unwrap(),
+                    episodeid: r.try_get("episodeid").ok(),
+                    videoid: r.try_get("videoid").ok(),
+                    cliptitle: r.try_get("cliptitle").unwrap(),
+                    starttime: r.try_get("starttime").unwrap(),
+                    endtime: r.try_get("endtime").unwrap(),
+                    clipduration: r.try_get("clipduration").unwrap(),
+                    cliplocation: r.try_get("cliplocation").unwrap(),
+                    clipdate: r.try_get("clipdate").unwrap(),
+                    isyoutube: r.try_get::<bool, _>("isyoutube").unwrap(),
+                }))
             }
             DatabasePool::MySQL(pool) => {
                 let row = sqlx::query(

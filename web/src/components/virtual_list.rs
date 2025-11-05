@@ -145,7 +145,6 @@ pub fn podcast_episode_virtual_list(props: &PodcastEpisodeVirtualListProps) -> H
             let episode_artwork_clone = episode.artwork.clone().unwrap_or_default();
             let episode_duration_clone = episode.duration.clone().unwrap_or_default();
             let episode_is_youtube = episode.is_youtube.clone();
-            web_sys::console::log_1(&format!("Virtual List - episode.is_youtube: {:?}", episode_is_youtube).into());
             let episode_duration_in_seconds = match convert_time_to_seconds(&episode_duration_clone) {
                 Ok(seconds) => seconds as i32,
                 Err(e) => {

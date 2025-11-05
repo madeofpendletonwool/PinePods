@@ -224,7 +224,7 @@ pub fn saved() -> Html {
         use_effect_with(
             (api_key.clone(), user_id.clone(), server_name.clone()),
             move |_| {
-                if let (Some(api_key), Some(user_id), Some(server_name)) =
+                if let (Some(Some(api_key)), Some(user_id), Some(server_name)) =
                     (api_key.clone(), user_id.clone(), server_name.clone())
                 {
                     clips_loading.set(true);
@@ -500,14 +500,14 @@ pub fn saved() -> Html {
                             </div>
 
                             // View mode tabs (Episodes vs Clips)
-                            <div class="mb-4 flex gap-2 border-b border-gray-200 dark:border-gray-700">
+                            <div class={classes!("mb-4", "flex", "gap-2", "border-b", "border-gray-200", "dark:border-gray-700")}>
                                 <button
                                     class={classes!(
-                                        "px-4 py-2 font-medium transition-colors",
+                                        "px-4", "py-2", "font-medium", "transition-colors",
                                         if *view_mode == SavedViewMode::Episodes {
-                                            "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
+                                            classes!("border-b-2", "border-blue-500", "text-blue-600", "dark:text-blue-400")
                                         } else {
-                                            "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                                            classes!("text-gray-600", "dark:text-gray-400", "hover:text-gray-900", "dark:hover:text-gray-200")
                                         }
                                     )}
                                     onclick={
@@ -517,16 +517,16 @@ pub fn saved() -> Html {
                                         })
                                     }
                                 >
-                                    <i class="ph ph-bookmark mr-2"></i>
+                                    <i class={classes!("ph", "ph-bookmark", "mr-2")}></i>
                                     {&i18n.t("saved.all_episodes")}
                                 </button>
                                 <button
                                     class={classes!(
-                                        "px-4 py-2 font-medium transition-colors",
+                                        "px-4", "py-2", "font-medium", "transition-colors",
                                         if *view_mode == SavedViewMode::Clips {
-                                            "border-b-2 border-blue-500 text-blue-600 dark:text-blue-400"
+                                            classes!("border-b-2", "border-blue-500", "text-blue-600", "dark:text-blue-400")
                                         } else {
-                                            "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                                            classes!("text-gray-600", "dark:text-gray-400", "hover:text-gray-900", "dark:hover:text-gray-200")
                                         }
                                     )}
                                     onclick={
@@ -536,12 +536,12 @@ pub fn saved() -> Html {
                                         })
                                     }
                                 >
-                                    <i class="ph ph-scissors mr-2"></i>
+                                    <i class={classes!("ph", "ph-scissors", "mr-2")}></i>
                                     {&i18n.t("saved.clips")}
                                     {
                                         if !clips.is_empty() {
                                             html! {
-                                                <span class="ml-2 text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded-full">{clips.len()}</span>
+                                                <span class={classes!("ml-2", "text-xs", "bg-blue-100", "dark:bg-blue-900", "text-blue-800", "dark:text-blue-200", "px-2", "py-0.5", "rounded-full")}>{clips.len()}</span>
                                             }
                                         } else {
                                             html! {}
@@ -731,7 +731,7 @@ pub fn saved() -> Html {
 
                                                                             <div class="flex gap-2 mt-4">
                                                                                 <a
-                                                                                    href={if let (Some(server_name), Some(api_key)) = (server_name_state.clone(), api_key.clone()) {
+                                                                                    href={if let (Some(server_name), Some(Some(api_key))) = (server_name_state.clone(), api_key.clone()) {
                                                                                         get_clip_download_url(&server_name, clip_id, &api_key)
                                                                                     } else {
                                                                                         String::new()
@@ -749,7 +749,7 @@ pub fn saved() -> Html {
                                                                                         let user_id = user_id.clone();
                                                                                         let server_name = server_name_state.clone();
                                                                                         Callback::from(move |_| {
-                                                                                            if let (Some(api_key), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
+                                                                                            if let (Some(Some(api_key)), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
                                                                                                 let clips = clips.clone();
                                                                                                 wasm_bindgen_futures::spawn_local(async move {
                                                                                                     if let Ok(_) = call_delete_clip(&server_name, &api_key, clip_id, user_id).await {

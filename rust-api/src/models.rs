@@ -608,9 +608,9 @@ pub struct PodClip {
     pub episodeid: Option<i32>,
     pub videoid: Option<i32>,
     pub cliptitle: String,
-    pub starttime: f32,
-    pub endtime: f32,
-    pub clipduration: f32,
+    pub starttime: f64,
+    pub endtime: f64,
+    pub clipduration: f64,
     pub cliplocation: String,
     pub clipdate: String,
     pub isyoutube: bool,
@@ -622,8 +622,8 @@ pub struct CreateClipRequest {
     pub episode_id: Option<i32>,
     pub video_id: Option<i32>,
     pub clip_title: String,
-    pub start_time: f32,
-    pub end_time: f32,
+    pub start_time: f64,
+    pub end_time: f64,
     pub is_youtube: bool,
 }
 

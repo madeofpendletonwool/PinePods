@@ -2,16 +2,16 @@
 
 This is the list of previous todos that are now completed
 
-Major Version:
-
-- [] iOS App
-
 - [ ] Make sure youtube entirely works on playlists
 - [ ] Make sure youtube entirely works on homepage
 - [ ] Fix Virtual Line Spacing on Playlist Page
 - [ ] Update /home/collinp/Documents/github/PinePods/web/src-tauri/com.gooseberrydevelopment.pinepods.metainfo.xml file along with flatpak automation. This must be done on each release
 - [ ] Fix episode spacing on queue page. The context button still shows even on smallest screens
 - [ ] Check youtube download Issues when changing the download time
+
+0.8.3
+
+- []
 
 0.8.2
 
