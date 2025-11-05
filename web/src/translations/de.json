@@ -1,1 +1,38 @@
-{}
+{
+  "auth": {
+    "account_created_success": "Der Account wurde erstellt! Du kannst dich nun einloggen.",
+    "confirm_new_password": "Passwort bestätigen",
+    "connect_different_server": "Mit einem anderem Server verbinden",
+    "create_new_user": "Neuen Benutzer erstellen",
+    "email": "Email",
+    "enter_mfa_code": "MFA Code eingeben",
+    "enter_new_password": "Neues Passwort eingeben",
+    "enter_password_reset_code": "Passwort Reset Code eingeben",
+    "forgot_password": "Passwort vergessen",
+    "full_name": "Voller Name",
+    "incorrect_credentials": "Anmeldeinformationen falsch",
+    "invalid_email": "Ungültige Emailadresse",
+    "login": "Login",
+    "logout": "Logout",
+    "password": "Passwort",
+    "reset_password": "Passwort zurücksetzen",
+    "reset_password_instructions": "Bitte Benutzernamen und Emailadresse angeben, um dein Passwort zurückzusetzen.",
+    "server_name": "Severname",
+    "username": "Benutzername"
+  },
+  "login": {
+    "account_created_successfully": "Dein Account wurde erstellt! Du kannst dich nun einloggen.",
+    "create_new_user": "Neuen Benutzer erstellen",
+    "credentials_incorrect": "Deine Logindaten scheinen falsch zu sein",
+    "enter_reset_code": "Bitte gib den Resetcode aus der Email ein",
+    "error_creating_account": "Account konnte nicht erstellt werden",
+    "error_setting_up_timezone": "Fehler beim Einstellen der Zeitzone",
+    "fill_password_fields": "Bitte fülle beide Passwortfelder aus",
+    "first_time_welcome": "Willkommen bei PinePods! Anscheinend bist du das erste mal eingeloggt. Stellen wir zunächst wichtige Einstellungen, wie Sprache, Zeitzone und das Zeitformat ein.",
+    "forgot_password": "Passwort vergessen",
+    "mfa_welcome": "Willkommen bei PinePods! Bitte gebe deinen MFA Code unten ein.",
+    "password_reset_success": "Passwort erfolgreich zurückgesetzt! Bitte logge dich nun mit deinem neuen Passwort ein.",
+    "passwords_no_match": "Die Passwörter sind nicht identisch",
+    "reset_password_instructions": "Bitte gib deinen Benutzernamen und deine Emailadresse ein, um das Passwort zurückzusetzen."
+  }
+}
