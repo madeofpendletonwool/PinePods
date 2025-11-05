@@ -130,6 +130,7 @@
     "success": "ZZTEST-SUCCESS-ZZTEST",
     "title_az": "ZZTEST-TITLE-AZ-ZZTEST",
     "title_za": "ZZTEST-TITLE-ZA-ZZTEST",
+    "update": "",
     "username": "ZZTEST-USERNAME-ZZTEST",
     "yes": "ZZTEST-YES-ZZTEST"
   },
@@ -177,20 +178,31 @@
     "switch_to_online_mode": "ZZTEST-SWITCH-TO-ONLINE-MODE-ZZTEST"
   },
   "email_settings": {
+    "auth_required": "",
+    "auth_username": "",
+    "current_settings": "",
     "email_settings": "ZZTEST-EMAIL-SETTINGS-ZZTEST",
     "email_settings_description": "ZZTEST-EMAIL-SETTINGS-DESCRIPTION-ZZTEST",
     "email_settings_saved_successfully": "ZZTEST-EMAIL-SETTINGS-SAVED-SUCCESSFULLY-ZZTEST",
     "enable_email_notifications": "ZZTEST-ENABLE-EMAIL-NOTIFICATIONS-ZZTEST",
+    "encryption": "",
+    "encryption_method": "",
     "error_loading_email_settings": "ZZTEST-ERROR-LOADING-EMAIL-SETTINGS-ZZTEST",
     "error_saving_email_settings": "ZZTEST-ERROR-SAVING-EMAIL-SETTINGS-ZZTEST",
     "error_sending_test_email": "ZZTEST-ERROR-SENDING-TEST-EMAIL-ZZTEST",
     "from_email": "ZZTEST-FROM-EMAIL-ZZTEST",
+    "from_email_address": "",
     "from_email_placeholder": "ZZTEST-FROM-EMAIL-PLACEHOLDER-ZZTEST",
     "from_email_required": "ZZTEST-FROM-EMAIL-REQUIRED-ZZTEST",
     "invalid_email_address": "ZZTEST-INVALID-EMAIL-ADDRESS-ZZTEST",
+    "no": "",
+    "password": "",
+    "port": "",
+    "require_authentication": "",
     "save_email_settings": "ZZTEST-SAVE-EMAIL-SETTINGS-ZZTEST",
     "send_test": "ZZTEST-SEND-TEST-ZZTEST",
     "send_test_email": "ZZTEST-SEND-TEST-EMAIL-ZZTEST",
+    "server": "",
     "smtp_password": "ZZTEST-SMTP-PASSWORD-ZZTEST",
     "smtp_password_placeholder": "ZZTEST-SMTP-PASSWORD-PLACEHOLDER-ZZTEST",
     "smtp_password_required": "ZZTEST-SMTP-PASSWORD-REQUIRED-ZZTEST",
@@ -207,7 +219,10 @@
     "test_email_placeholder": "ZZTEST-TEST-EMAIL-PLACEHOLDER-ZZTEST",
     "test_email_recipient": "ZZTEST-TEST-EMAIL-RECIPIENT-ZZTEST",
     "test_email_recipient_required": "ZZTEST-TEST-EMAIL-RECIPIENT-REQUIRED-ZZTEST",
-    "test_email_success": "ZZTEST-TEST-EMAIL-SUCCESS-ZZTEST"
+    "test_email_success": "ZZTEST-TEST-EMAIL-SUCCESS-ZZTEST",
+    "update_settings": "",
+    "username": "",
+    "yes": ""
   },
   "episode": {
     "add_podcast_to_enable_actions": "ZZTEST-ADD-PODCAST-TO-ENABLE-ACTIONS-ZZTEST",
@@ -217,6 +232,8 @@
     "cover_alt_text": "ZZTEST-COVER-ALT-TEXT-ZZTEST",
     "current_page_link_description": "ZZTEST-CURRENT-PAGE-LINK-DESCRIPTION-ZZTEST",
     "download": "ZZTEST-DOWNLOAD-ZZTEST",
+    "download_episode": "",
+    "downloading": "",
     "episode_transcript": "ZZTEST-EPISODE-TRANSCRIPT-ZZTEST",
     "failed_to_parse_duration": "ZZTEST-FAILED-TO-PARSE-DURATION-ZZTEST",
     "in_this_episode": "ZZTEST-IN-THIS-EPISODE-ZZTEST",
@@ -642,6 +659,7 @@
     "button_text_color": "ZZTEST-BUTTON-TEXT-COLOR-ZZTEST",
     "client_id": "ZZTEST-CLIENT-ID-ZZTEST",
     "client_secret": "ZZTEST-CLIENT-SECRET-ZZTEST",
+    "edit_oidc_provider": "",
     "email_claim": "ZZTEST-EMAIL-CLAIM-ZZTEST",
     "failed_to_add_provider": "ZZTEST-FAILED-TO-ADD-PROVIDER-ZZTEST",
     "failed_to_fetch_oidc_providers": "ZZTEST-FAILED-TO-FETCH-OIDC-PROVIDERS-ZZTEST",
@@ -651,6 +669,7 @@
     "no_oidc_providers_configured": "ZZTEST-NO-OIDC-PROVIDERS-CONFIGURED-ZZTEST",
     "oidc_provider_management": "ZZTEST-OIDC-PROVIDER-MANAGEMENT-ZZTEST",
     "oidc_provider_successfully_added": "ZZTEST-OIDC-PROVIDER-SUCCESSFULLY-ADDED-ZZTEST",
+    "oidc_provider_successfully_updated": "",
     "oidc_redirect_url": "ZZTEST-OIDC-REDIRECT-URL-ZZTEST",
     "provider_name": "ZZTEST-PROVIDER-NAME-ZZTEST",
     "provider_successfully_removed": "ZZTEST-PROVIDER-SUCCESSFULLY-REMOVED-ZZTEST",
@@ -711,7 +730,9 @@
     "episodes": "ZZTEST-EPISODES-ZZTEST",
     "fresh_releases_empty": "ZZTEST-FRESH-RELEASES-EMPTY-ZZTEST",
     "no_episodes_found": "ZZTEST-NO-EPISODES-FOUND-ZZTEST",
-    "no_episodes_match_criteria": "ZZTEST-NO-EPISODES-MATCH-CRITERIA-ZZTEST"
+    "no_episodes_match_criteria": "ZZTEST-NO-EPISODES-MATCH-CRITERIA-ZZTEST",
+    "refresh": "",
+    "refreshing": ""
   },
   "playlists": {
     "are_you_sure_delete": "ZZTEST-ARE-YOU-SURE-DELETE-ZZTEST",
@@ -798,6 +819,7 @@
     "try_different_keywords": "ZZTEST-TRY-DIFFERENT-KEYWORDS-ZZTEST"
   },
   "podcasts": {
+    "add_channel": "",
     "add_custom_podcast": "ZZTEST-ADD-CUSTOM-PODCAST-ZZTEST",
     "add_feed": "ZZTEST-ADD-FEED-ZZTEST",
     "clear_all": "ZZTEST-CLEAR-ALL-ZZTEST",
@@ -819,6 +841,7 @@
     "no_take_me_back": "ZZTEST-NO-TAKE-ME-BACK-ZZTEST",
     "no_website_provided": "ZZTEST-NO-WEBSITE-PROVIDED-ZZTEST",
     "password_optional": "ZZTEST-PASSWORD-OPTIONAL-ZZTEST",
+    "podcast_feed": "",
     "podcast_remove_failed": "ZZTEST-PODCAST-REMOVE-FAILED-ZZTEST",
     "podcast_removed": "ZZTEST-PODCAST-REMOVED-ZZTEST",
     "podcast_successfully_added": "ZZTEST-PODCAST-SUCCESSFULLY-ADDED-ZZTEST",
@@ -834,8 +857,11 @@
     "unknown_author": "ZZTEST-UNKNOWN-AUTHOR-ZZTEST",
     "username_optional": "ZZTEST-USERNAME-OPTIONAL-ZZTEST",
     "yes_delete_podcast": "ZZTEST-YES-DELETE-PODCAST-ZZTEST",
+    "youtube_channel": "",
+    "youtube_channel_instructions": "",
     "youtube_channel_remove_failed": "ZZTEST-YOUTUBE-CHANNEL-REMOVE-FAILED-ZZTEST",
-    "youtube_channel_removed": "ZZTEST-YOUTUBE-CHANNEL-REMOVED-ZZTEST"
+    "youtube_channel_removed": "ZZTEST-YOUTUBE-CHANNEL-REMOVED-ZZTEST",
+    "youtube_channel_url_placeholder": ""
   },
   "queue": {
     "no_queued_episodes_found": "ZZTEST-NO-QUEUED-EPISODES-FOUND-ZZTEST",
@@ -920,6 +946,7 @@
     "default_login_page": "ZZTEST-DEFAULT-LOGIN-PAGE-ZZTEST",
     "delete_user": "ZZTEST-DELETE-USER-ZZTEST",
     "disable_guest_user": "ZZTEST-DISABLE-GUEST-USER-ZZTEST",
+    "display_settings": "",
     "download_settings": "ZZTEST-DOWNLOAD-SETTINGS-ZZTEST",
     "edit_existing_user": "ZZTEST-EDIT-EXISTING-USER-ZZTEST",
     "email": "ZZTEST-EMAIL-ZZTEST",
