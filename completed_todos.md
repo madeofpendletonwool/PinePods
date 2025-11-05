@@ -31,13 +31,14 @@ Major Version:
 - [x] Option to use Podcast covers if desired
 - [x] Fix issue where release date on podcasts not added shows as current date/time
 - [x] Fix yt-dlp issues
-
 - [x] Gpodder Completion Set Bug where if episode played length was exactly the length of the podcast episode it wouldn't mark complete
 - [x] Fixed issue with auto complete threshold. Will now mark historical episodes complete when enabled
 - [x] Some sort of loading indicator for the single ep download
 - [x] Fix issue where duplicate episodes were created if details of the episode were updated
 - [x] Fully dynamic Playlist implementation
 - [x] Checking on rss feeds returning downloaded urls correctly
+
+- [] Missing Translations for Email Settings
 
 0.7.9
 
