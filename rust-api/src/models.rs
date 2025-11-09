@@ -614,6 +614,8 @@ pub struct PodClip {
     pub cliplocation: String,
     pub clipdate: String,
     pub isyoutube: bool,
+    pub sourceartwork: Option<String>,
+    pub sourcetitle: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

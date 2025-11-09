@@ -696,30 +696,60 @@ pub fn saved() -> Html {
                                                                     let user_id = post_state.user_details.as_ref().map(|ud| ud.UserID.clone());
                                                                     let server_name_state = post_state.auth_details.as_ref().map(|ud| ud.server_name.clone());
 
-                                                                    html! {
-                                                                        <div key={clip_id} class="clip-card bg-white dark:bg-gray-800 rounded-lg shadow p-4 hover:shadow-lg transition-shadow">
-                                                                            <div class="flex items-start justify-between">
-                                                                                <div class="flex-1 min-w-0">
-                                                                                    <div class="flex items-center gap-2 mb-2">
-                                                                                        <i class="ph ph-scissors text-blue-600 dark:text-blue-400"></i>
-                                                                                        <h3 class="text-lg font-semibold text-gray-900 dark:text-white truncate">{&clip_title}</h3>
+                                                                    {
+                                                                        let source_artwork = clip.sourceartwork.clone().unwrap_or_else(|| "/static/assets/favicon.png".to_string());
+                                                                        let source_title = clip.sourcetitle.clone().unwrap_or_else(|| "Unknown Source".to_string());
+
+                                                                        // Build stream URL for clip playback
+                                                                        let clip_stream_url = if let (Some(server_name), Some(Some(api_key))) = (server_name_state.clone(), api_key.clone()) {
+                                                                            format!("{}/api/data/clips/{}/download?api_key={}", server_name, clip_id, api_key)
+                                                                        } else {
+                                                                            String::new()
+                                                                        };
+
+                                                                        html! {
+                                                                            <div key={clip_id} class="item-container border-solid border flex items-start mb-4 shadow-md rounded-lg" style="height: 221px; overflow: hidden;">
+                                                                                // Podcast artwork
+                                                                                <div class="flex flex-col w-auto object-cover pl-4">
+                                                                                    <img
+                                                                                        src={source_artwork.clone()}
+                                                                                        alt={format!("Cover for {}", source_title)}
+                                                                                        class="episode-image"
+                                                                                        onerror={Callback::from(move |e: Event| {
+                                                                                            if let Some(img) = e.target_dyn_into::<web_sys::HtmlElement>() {
+                                                                                                let _ = img.set_attribute("src", "/static/assets/favicon.png");
+                                                                                            }
+                                                                                        })}
+                                                                                    />
+                                                                                </div>
+
+                                                                                // Clip info
+                                                                                <div class="flex flex-col p-4 space-y-2 flex-grow md:w-7/12">
+                                                                                    <div class="flex items-center space-x-2">
+                                                                                        <i class="ph ph-scissors" style="color: var(--link-color);"></i>
+                                                                                        <p class="item_container-text font-semibold line-clamp-2">{&clip_title}</p>
                                                                                     </div>
-                                                                                    <div class="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
+                                                                                    <p class="item_container-text text-sm line-clamp-1" style="color: var(--text-2-color);">
+                                                                                        {format!("From: {}", source_title)}
+                                                                                    </p>
+
+                                                                                    <div class="flex items-center space-x-2 text-sm" style="color: var(--text-2-color);">
                                                                                         <span class="flex items-center gap-1">
                                                                                             <i class="ph ph-clock"></i>
                                                                                             {format!("{:.1}s", clip_duration)}
                                                                                         </span>
-                                                                                        <span class="flex items-center gap-1">
-                                                                                            <i class="ph ph-calendar"></i>
-                                                                                            {&clip_date}
-                                                                                        </span>
+                                                                                        <span>{"•"}</span>
+                                                                                        <span class="truncate">{&clip_date}</span>
                                                                                         {
                                                                                             if is_youtube {
                                                                                                 html! {
-                                                                                                    <span class="flex items-center gap-1 text-red-600 dark:text-red-400">
-                                                                                                        <i class="ph ph-youtube-logo"></i>
-                                                                                                        {"YouTube"}
-                                                                                                    </span>
+                                                                                                    <>
+                                                                                                        <span>{"•"}</span>
+                                                                                                        <span class="flex items-center gap-1" style="color: var(--error-color);">
+                                                                                                            <i class="ph ph-youtube-logo"></i>
+                                                                                                            {"YouTube"}
+                                                                                                        </span>
+                                                                                                    </>
                                                                                                 }
                                                                                             } else {
                                                                                                 html! {}
@@ -727,47 +757,101 @@ pub fn saved() -> Html {
                                                                                         }
                                                                                     </div>
                                                                                 </div>
-                                                                            </div>
 
-                                                                            <div class="flex gap-2 mt-4">
-                                                                                <a
-                                                                                    href={if let (Some(server_name), Some(Some(api_key))) = (server_name_state.clone(), api_key.clone()) {
-                                                                                        get_clip_download_url(&server_name, clip_id, &api_key)
-                                                                                    } else {
-                                                                                        String::new()
-                                                                                    }}
-                                                                                    download={format!("{}.mp3", clip_title.replace(" ", "_"))}
-                                                                                    class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-                                                                                >
-                                                                                    <i class="ph ph-download-simple"></i>
-                                                                                    {&i18n.t("saved.download_clip")}
-                                                                                </a>
-                                                                                <button
-                                                                                    onclick={
-                                                                                        let clips = clips.clone();
-                                                                                        let api_key = api_key.clone();
-                                                                                        let user_id = user_id.clone();
-                                                                                        let server_name = server_name_state.clone();
-                                                                                        Callback::from(move |_| {
-                                                                                            if let (Some(Some(api_key)), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
-                                                                                                let clips = clips.clone();
-                                                                                                wasm_bindgen_futures::spawn_local(async move {
-                                                                                                    if let Ok(_) = call_delete_clip(&server_name, &api_key, clip_id, user_id).await {
-                                                                                                        // Refresh clips list
-                                                                                                        if let Ok(fetched_clips) = call_get_user_clips(&server_name, &api_key, user_id).await {
-                                                                                                            clips.set(fetched_clips);
+                                                                                // Action buttons
+                                                                                <div class="flex flex-col items-center h-full w-2/12 px-2 space-y-4 md:space-y-8 button-container" style="align-self: center;">
+                                                                                    <button
+                                                                                        onclick={
+                                                                                            let clip_stream_url = clip_stream_url.clone();
+                                                                                            let clip_title_clone = clip_title.clone();
+                                                                                            let source_artwork_clone = source_artwork.clone();
+                                                                                            let audio_dispatch = _audio_dispatch.clone();
+                                                                                            let clip_duration_clone = clip_duration;
+                                                                                            let clip_id_clone = clip_id;
+
+                                                                                            Callback::from(move |_: MouseEvent| {
+                                                                                                web_sys::console::log_1(&format!("Play button clicked! URL: {}", clip_stream_url).into());
+                                                                                                if !clip_stream_url.is_empty() {
+                                                                                                    let clip_url = clip_stream_url.clone();
+                                                                                                    let title = clip_title_clone.clone();
+                                                                                                    let artwork = source_artwork_clone.clone();
+                                                                                                    web_sys::console::log_1(&format!("Setting audio state with URL: {}", clip_url).into());
+                                                                                                    audio_dispatch.reduce_mut(move |state| {
+                                                                                                        state.currently_playing = Some(crate::components::audio::AudioPlayerProps {
+                                                                                                            src: clip_url.clone(),
+                                                                                                            title: title.clone(),
+                                                                                                            description: "Podcast Clip".to_string(),
+                                                                                                            release_date: String::new(),
+                                                                                                            artwork_url: artwork,
+                                                                                                            duration: format!("{:.0}s", clip_duration_clone),
+                                                                                                            episode_id: clip_id_clone,
+                                                                                                            duration_sec: clip_duration_clone,
+                                                                                                            start_pos_sec: 0.0,
+                                                                                                            end_pos_sec: clip_duration_clone,
+                                                                                                            offline: false,
+                                                                                                            is_youtube: false,
+                                                                                                        });
+                                                                                                        state.audio_playing = Some(true);
+
+                                                                                                        // Try to trigger play on the audio element
+                                                                                                        if let Some(audio) = &state.audio_element {
+                                                                                                            web_sys::console::log_1(&"Found audio element, calling play()".into());
+                                                                                                            let _ = audio.play();
+                                                                                                        } else {
+                                                                                                            web_sys::console::log_1(&"No audio element found in state!".into());
                                                                                                         }
-                                                                                                    }
-                                                                                                });
-                                                                                            }
-                                                                                        })
-                                                                                    }
-                                                                                    class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                                                                                >
-                                                                                    <i class="ph ph-trash"></i>
-                                                                                </button>
+                                                                                                    });
+                                                                                                    web_sys::console::log_1(&"Audio state updated successfully".into());
+                                                                                                } else {
+                                                                                                    web_sys::console::log_1(&"Clip stream URL is empty!".into());
+                                                                                                }
+                                                                                            })
+                                                                                        }
+                                                                                        class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                                                                    >
+                                                                                        <i class="ph ph-play-circle md:text-6xl text-4xl"></i>
+                                                                                    </button>
+
+                                                                                    <a
+                                                                                        href={if let (Some(server_name), Some(Some(api_key))) = (server_name_state.clone(), api_key.clone()) {
+                                                                                            get_clip_download_url(&server_name, clip_id, &api_key)
+                                                                                        } else {
+                                                                                            String::new()
+                                                                                        }}
+                                                                                        download={format!("{}.mp3", clip_title.replace(" ", "_"))}
+                                                                                        class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                                                                    >
+                                                                                        <i class="ph ph-download-simple md:text-6xl text-4xl"></i>
+                                                                                    </a>
+
+                                                                                    <button
+                                                                                        onclick={
+                                                                                            let clips = clips.clone();
+                                                                                            let api_key = api_key.clone();
+                                                                                            let user_id = user_id.clone();
+                                                                                            let server_name = server_name_state.clone();
+                                                                                            Callback::from(move |_| {
+                                                                                                if let (Some(Some(api_key)), Some(user_id), Some(server_name)) = (api_key.clone(), user_id.clone(), server_name.clone()) {
+                                                                                                    let clips = clips.clone();
+                                                                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                                                                        if let Ok(_) = call_delete_clip(&server_name, &api_key, clip_id, user_id).await {
+                                                                                                            // Refresh clips list
+                                                                                                            if let Ok(fetched_clips) = call_get_user_clips(&server_name, &api_key, user_id).await {
+                                                                                                                clips.set(fetched_clips);
+                                                                                                            }
+                                                                                                        }
+                                                                                                    });
+                                                                                                }
+                                                                                            })
+                                                                                        }
+                                                                                        class="item-container-button selector-button font-bold py-2 px-4 rounded-full flex items-center justify-center md:w-16 md:h-16 w-10 h-10"
+                                                                                        title="Delete clip"
+                                                                                    >
+                                                                                        <i class="ph ph-trash md:text-6xl text-4xl" style="color: var(--error-color);"></i>
+                                                                                    </button>
+                                                                                </div>
                                                                             </div>
-                                                                        </div>
+                                                                        }
                                                                     }
                                                                 }).collect::<Html>()
                                                             }

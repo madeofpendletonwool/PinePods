@@ -25408,20 +25408,24 @@ impl DatabasePool {
             DatabasePool::Postgres(pool) => {
                 let rows = sqlx::query(
                     r#"SELECT
-                        clipid,
-                        userid,
-                        episodeid,
-                        videoid,
-                        cliptitle,
-                        starttime,
-                        endtime,
-                        clipduration,
-                        cliplocation,
-                        to_char(clipdate, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as clipdate,
-                        isyoutube
-                       FROM "PodClips"
-                       WHERE userid = $1
-                       ORDER BY clipdate DESC"#
+                        pc.clipid,
+                        pc.userid,
+                        pc.episodeid,
+                        pc.videoid,
+                        pc.cliptitle,
+                        pc.starttime,
+                        pc.endtime,
+                        pc.clipduration,
+                        pc.cliplocation,
+                        to_char(pc.clipdate, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as clipdate,
+                        pc.isyoutube,
+                        COALESCE(e.episodeartwork, yv.thumbnailurl) as sourceartwork,
+                        COALESCE(e.episodetitle, yv.videotitle) as sourcetitle
+                       FROM "PodClips" pc
+                       LEFT JOIN "Episodes" e ON pc.episodeid = e.episodeid AND NOT pc.isyoutube
+                       LEFT JOIN "YouTubeVideos" yv ON pc.videoid = yv.videoid AND pc.isyoutube
+                       WHERE pc.userid = $1
+                       ORDER BY pc.clipdate DESC"#
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -25442,6 +25446,8 @@ impl DatabasePool {
                             cliplocation: row.try_get("cliplocation")?,
                             clipdate: row.try_get("clipdate")?,
                             isyoutube: row.try_get::<bool, _>("isyoutube")?,
+                            sourceartwork: row.try_get("sourceartwork").ok(),
+                            sourcetitle: row.try_get("sourcetitle").ok(),
                         })
                     })
                     .collect::<AppResult<Vec<_>>>()?;
@@ -25450,11 +25456,15 @@ impl DatabasePool {
             }
             DatabasePool::MySQL(pool) => {
                 let rows = sqlx::query(
-                    "SELECT ClipID, UserID, EpisodeID, VideoID, ClipTitle, StartTime, EndTime, ClipDuration, ClipLocation,
-                            DATE_FORMAT(ClipDate, '%Y-%m-%dT%H:%i:%sZ') as ClipDate, IsYouTube
-                     FROM PodClips
-                     WHERE UserID = ?
-                     ORDER BY ClipDate DESC"
+                    "SELECT pc.ClipID, pc.UserID, pc.EpisodeID, pc.VideoID, pc.ClipTitle, pc.StartTime, pc.EndTime, pc.ClipDuration, pc.ClipLocation,
+                            DATE_FORMAT(pc.ClipDate, '%Y-%m-%dT%H:%i:%sZ') as ClipDate, pc.IsYouTube,
+                            COALESCE(e.EpisodeArtwork, yv.ThumbnailURL) as SourceArtwork,
+                            COALESCE(e.EpisodeTitle, yv.VideoTitle) as SourceTitle
+                     FROM PodClips pc
+                     LEFT JOIN Episodes e ON pc.EpisodeID = e.EpisodeID AND NOT pc.IsYouTube
+                     LEFT JOIN YouTubeVideos yv ON pc.VideoID = yv.VideoID AND pc.IsYouTube
+                     WHERE pc.UserID = ?
+                     ORDER BY pc.ClipDate DESC"
                 )
                 .bind(user_id)
                 .fetch_all(pool)
@@ -25475,6 +25485,8 @@ impl DatabasePool {
                             cliplocation: row.try_get("ClipLocation")?,
                             clipdate: row.try_get("ClipDate")?,
                             isyoutube: row.try_get::<bool, _>("IsYouTube")?,
+                            sourceartwork: row.try_get("SourceArtwork").ok(),
+                            sourcetitle: row.try_get("SourceTitle").ok(),
                         })
                     })
                     .collect::<AppResult<Vec<_>>>()?;
@@ -25490,19 +25502,23 @@ impl DatabasePool {
             DatabasePool::Postgres(pool) => {
                 let row = sqlx::query(
                     r#"SELECT
-                        clipid,
-                        userid,
-                        episodeid,
-                        videoid,
-                        cliptitle,
-                        starttime,
-                        endtime,
-                        clipduration,
-                        cliplocation,
-                        to_char(clipdate, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as clipdate,
-                        isyoutube
-                       FROM "PodClips"
-                       WHERE clipid = $1 AND userid = $2"#
+                        pc.clipid,
+                        pc.userid,
+                        pc.episodeid,
+                        pc.videoid,
+                        pc.cliptitle,
+                        pc.starttime,
+                        pc.endtime,
+                        pc.clipduration,
+                        pc.cliplocation,
+                        to_char(pc.clipdate, 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as clipdate,
+                        pc.isyoutube,
+                        COALESCE(e.episodeartwork, yv.thumbnailurl) as sourceartwork,
+                        COALESCE(e.episodetitle, yv.videotitle) as sourcetitle
+                       FROM "PodClips" pc
+                       LEFT JOIN "Episodes" e ON pc.episodeid = e.episodeid AND NOT pc.isyoutube
+                       LEFT JOIN "YouTubeVideos" yv ON pc.videoid = yv.videoid AND pc.isyoutube
+                       WHERE pc.clipid = $1 AND pc.userid = $2"#
                 )
                 .bind(clip_id)
                 .bind(user_id)
@@ -25521,14 +25537,20 @@ impl DatabasePool {
                     cliplocation: r.try_get("cliplocation").unwrap(),
                     clipdate: r.try_get("clipdate").unwrap(),
                     isyoutube: r.try_get::<bool, _>("isyoutube").unwrap(),
+                    sourceartwork: r.try_get("sourceartwork").ok(),
+                    sourcetitle: r.try_get("sourcetitle").ok(),
                 }))
             }
             DatabasePool::MySQL(pool) => {
                 let row = sqlx::query(
-                    "SELECT ClipID, UserID, EpisodeID, VideoID, ClipTitle, StartTime, EndTime, ClipDuration, ClipLocation,
-                            DATE_FORMAT(ClipDate, '%Y-%m-%dT%H:%i:%sZ') as ClipDate, IsYouTube
-                     FROM PodClips
-                     WHERE ClipID = ? AND UserID = ?"
+                    "SELECT pc.ClipID, pc.UserID, pc.EpisodeID, pc.VideoID, pc.ClipTitle, pc.StartTime, pc.EndTime, pc.ClipDuration, pc.ClipLocation,
+                            DATE_FORMAT(pc.ClipDate, '%Y-%m-%dT%H:%i:%sZ') as ClipDate, pc.IsYouTube,
+                            COALESCE(e.EpisodeArtwork, yv.ThumbnailURL) as SourceArtwork,
+                            COALESCE(e.EpisodeTitle, yv.VideoTitle) as SourceTitle
+                     FROM PodClips pc
+                     LEFT JOIN Episodes e ON pc.EpisodeID = e.EpisodeID AND NOT pc.IsYouTube
+                     LEFT JOIN YouTubeVideos yv ON pc.VideoID = yv.VideoID AND pc.IsYouTube
+                     WHERE pc.ClipID = ? AND pc.UserID = ?"
                 )
                 .bind(clip_id)
                 .bind(user_id)
@@ -25547,7 +25569,37 @@ impl DatabasePool {
                     cliplocation: r.try_get("ClipLocation").unwrap(),
                     clipdate: r.try_get("ClipDate").unwrap(),
                     isyoutube: r.try_get::<bool, _>("IsYouTube").unwrap(),
+                    sourceartwork: r.try_get("SourceArtwork").ok(),
+                    sourcetitle: r.try_get("SourceTitle").ok(),
                 }))
+            }
+        }
+    }
+
+    // Update clip location
+    pub async fn update_clip_location(&self, clip_id: i32, new_location: &str) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(
+                    r#"UPDATE "PodClips" SET cliplocation = $1 WHERE clipid = $2"#
+                )
+                .bind(new_location)
+                .bind(clip_id)
+                .execute(pool)
+                .await?;
+
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(
+                    "UPDATE PodClips SET ClipLocation = ? WHERE ClipID = ?"
+                )
+                .bind(new_location)
+                .bind(clip_id)
+                .execute(pool)
+                .await?;
+
+                Ok(result.rows_affected() > 0)
             }
         }
     }

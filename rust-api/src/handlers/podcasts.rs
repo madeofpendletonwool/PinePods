@@ -2073,7 +2073,12 @@ pub async fn stream_episode(
     // RSS keys don't need user permission checks - they can stream any episode
 
     // Choose which lookup to use based on source_type
-    let file_path = if query.source_type.as_deref() == Some("youtube") {
+    let file_path = if query.source_type.as_deref() == Some("clip") {
+        println!("Looking up clip file path");
+        // For clips, episode_id is actually the clip_id
+        let clip = state.db_pool.get_clip_by_id(episode_id, query.user_id).await?;
+        clip.map(|c| c.cliplocation)
+    } else if query.source_type.as_deref() == Some("youtube") {
         println!("Looking up YouTube video file path");
         state.db_pool.get_youtube_video_location(episode_id, query.user_id).await?
     } else {
