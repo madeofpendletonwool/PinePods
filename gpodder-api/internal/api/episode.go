@@ -102,10 +102,10 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 		}
 
 		// Performance optimization: Add limits and optimize query structure
-		const MAX_EPISODE_ACTIONS = 10000 // Reasonable limit for sync operations
-		
+		const MAX_EPISODE_ACTIONS = 25000 // Limit raised to 25k to handle power users while preventing DoS
+
 		// Log query performance info
-		log.Printf("[DEBUG] getEpisodeActions: Query for user %v with since=%d, device=%s, aggregated=%v", 
+		log.Printf("[DEBUG] getEpisodeActions: Query for user %v with since=%d, device=%s, aggregated=%v",
 			userID, since, deviceName, aggregated)
 		
 		// Build query based on parameters with performance optimizations
@@ -185,7 +185,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 						e.Timestamp = la.max_timestamp
 					LEFT JOIN "GpodderDevices" d ON e.DeviceID = d.DeviceID
 					WHERE e.UserID = $1
-					ORDER BY e.Timestamp DESC
+					ORDER BY e.Timestamp ASC
 					LIMIT %d
 				`, conditionsStr, MAX_EPISODE_ACTIONS)
 			} else {
@@ -239,7 +239,7 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 						e.Timestamp = la.max_timestamp
 					LEFT JOIN GpodderDevices d ON e.DeviceID = d.DeviceID
 					WHERE e.UserID = ?
-					ORDER BY e.Timestamp DESC
+					ORDER BY e.Timestamp ASC
 					LIMIT %d
 				`, conditionsStr, MAX_EPISODE_ACTIONS)
 			}
@@ -280,9 +280,12 @@ func getEpisodeActions(database *db.Database) gin.HandlerFunc {
 				}
 			}
 
-			queryParts = append(queryParts, "ORDER BY e.Timestamp DESC")
-			
+			// ORDER BY ASC (oldest first) for proper pagination with since parameter
+			// This ensures that when client uses since={last_timestamp}, they get the next batch chronologically
+			queryParts = append(queryParts, "ORDER BY e.Timestamp ASC")
+
 			// Add LIMIT for performance - prevents returning massive datasets
+			// Clients should use the 'since' parameter to paginate through results
 			if database.IsPostgreSQLDB() {
 				queryParts = append(queryParts, fmt.Sprintf("LIMIT %d", MAX_EPISODE_ACTIONS))
 			} else {

@@ -230,6 +230,11 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 				}
 
 				// Return subscriptions in gpodder format, ensuring backward compatibility
+				// CRITICAL FIX for issue #636: Ensure arrays are never nil - AntennaPod requires arrays, not null
+				if podcasts == nil {
+					podcasts = []string{}
+				}
+
 				response := gin.H{
 					"add":       podcasts,
 					"remove":    []string{},
@@ -365,6 +370,14 @@ func getSubscriptions(database *db.Database) gin.HandlerFunc {
 			if err != nil {
 				// Non-critical error, just log it
 				log.Printf("[WARNING] Error updating device last sync time: %v", err)
+			}
+
+			// CRITICAL FIX for issue #636: Ensure arrays are never nil - AntennaPod requires arrays, not null
+			if addList == nil {
+				addList = []string{}
+			}
+			if removeList == nil {
+				removeList = []string{}
 			}
 
 			response := gin.H{
