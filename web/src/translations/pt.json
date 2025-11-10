@@ -1,23 +1,23 @@
 {
   "api_keys": {
-    "api_id": "",
-    "api_key_deleted_successfully": "",
+    "api_id": "ID da API",
+    "api_key_deleted_successfully": "Chave de API excluída com sucesso",
     "api_key_save_instructions": "",
     "api_keys_description": "",
     "api_keys_title": "",
-    "cancel": "",
-    "close_modal": "",
+    "cancel": "Cancelar",
+    "close_modal": "Fechar modal",
     "date_created": "",
     "delete": "",
     "delete_api_key": "",
-    "delete_api_key_confirmation": "",
+    "delete_api_key_confirmation": "Tem certeza de que deseja excluir esta chave API? Esta ação não pode ser desfeita.",
     "error_deleting_api_key": "",
     "error_getting_api_info": "",
-    "last_4_digits": "",
+    "last_4_digits": "Últimos 4 Dígitos",
     "new_api_key_created": "",
     "ok": "",
     "request_api_key": "",
-    "user": ""
+    "user": "Usuário"
   },
   "app_drawer": {
     "downloads": "",
