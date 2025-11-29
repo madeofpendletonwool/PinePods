@@ -469,7 +469,7 @@
     "error_checking_status": "Fehler beim Überprüfen des Status",
     "error_creating_account": "Account konnte nicht erstellt werden",
     "error_fetching_languages": "Fehler beim Abrufen der verfügbaren Sprachen",
-    "error_fetching_oidc_providers": "Fehler beim Aufruf von OIDC-Anbietern",
+    "error_fetching_oidc_providers": "OIDC Provider konnten nicht ermittelt werden",
     "error_parsing_time": "Fehler beim Parsen der Zeitvoreinstellung",
     "error_setting_timezone": "Fehler beim Einrichten der Zeitzone",
     "error_setting_timezone_details": "Fehler beim Einrichten der Zeitzone",
