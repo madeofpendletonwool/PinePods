@@ -9,7 +9,7 @@ rust-version = "1.89"
 [dependencies]
 #trunk = "0.18.0"
 #yew = { git = "https://github.com/yewstack/yew/", features = ["csr"] }
-yew = { version = "0.21.0", features = ["csr"] }
+yew = { version = "0.22.0", features = ["csr"] }
 #yew = { "0.21.0", features = ["csr"] }
 web-sys = { version = "0.3.82", features = [
     "CssStyleDeclaration",
