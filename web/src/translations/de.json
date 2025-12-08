@@ -235,6 +235,7 @@
     "download_episode": "Episode herunterladen",
     "downloading": "Herunterladen...",
     "episode_transcript": "Episodentranskript",
+    "failed_to_find_podcast_metadata": "Fehler beim Auffinden der Metadaten des Podcasts.",
     "failed_to_parse_duration": "Die Dauer konnte nicht erfasst werden",
     "in_this_episode": "In dieser Episode",
     "mark_complete": "Abgeschlossen markieren",
