@@ -431,6 +431,7 @@ pub struct QueuedEpisode {
     pub queued: bool,
     pub downloaded: bool,
     pub is_youtube: bool,
+    pub is_video: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

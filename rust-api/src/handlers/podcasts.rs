@@ -29,6 +29,7 @@ pub struct Episode {
     pub queued: bool,
     pub downloaded: bool,
     pub is_youtube: bool,
+    pub is_video: bool,
 }
 
 // Separate struct for downloaded episodes that exactly matches Python implementation
@@ -54,6 +55,7 @@ pub struct DownloadedEpisode {
     pub queued: bool,
     pub downloaded: bool,  // Always true for downloaded episodes
     pub is_youtube: bool,
+    pub is_video: bool,
 }
 
 // Response struct for downloaded episodes
@@ -89,6 +91,7 @@ pub struct PodcastEpisode {
     pub queued: bool,
     pub downloaded: bool,
     pub is_youtube: bool,
+    pub is_video: bool,
 }
 
 #[derive(Serialize)]

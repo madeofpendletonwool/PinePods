@@ -25,7 +25,7 @@ use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{window, HtmlAudioElement, HtmlElement, HtmlInputElement, TouchEvent};
+use web_sys::{window, HtmlAudioElement, HtmlVideoElement, HtmlElement, HtmlInputElement, TouchEvent};
 use yew::prelude::*;
 use yew::{function_component, html, Callback, Html};
 use yew_router::history::{BrowserHistory, History};
@@ -46,6 +46,7 @@ pub struct AudioPlayerProps {
     pub end_pos_sec: f64,
     pub offline: bool,
     pub is_youtube: bool,
+    pub is_video: bool,
 }
 
 #[derive(Properties, PartialEq)]
@@ -162,9 +163,16 @@ pub fn volume_control(props: &VolumeControlProps) -> Html {
 pub fn audio_player(props: &AudioPlayerProps) -> Html {
     let (i18n, _) = use_translation();
     let audio_ref = use_node_ref();
+    let video_container_ref = use_node_ref();
     let (state, _dispatch) = use_store::<AppState>();
     let (audio_state, _audio_dispatch) = use_store::<UIState>();
     let show_modal = use_state(|| false);
+
+    // Memoize the audio playing state to reduce re-renders
+    let is_playing = use_memo(
+        audio_state.audio_playing.unwrap_or(false),
+        |state| *state
+    );
 
     // Capture i18n strings before they get moved
     let i18n_chapters = i18n.t("audio.chapters").to_string();
@@ -180,6 +188,36 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
 
     // Add error handling state
     let last_playback_position = use_state(|| 0.0);
+
+    // Local state for current time to avoid triggering global re-renders every second
+    let current_time_local = use_state(|| 0.0);
+    let current_time_formatted_local = use_state(|| String::from("00:00:00"));
+
+    // Mount video element into the DOM when fullscreen and video is playing
+    {
+        let video_container_ref = video_container_ref.clone();
+        let audio_state = audio_state.clone();
+
+        use_effect_with((audio_state.media_element.clone(), audio_state.is_expanded), move |(media_element, is_expanded)| {
+            if *is_expanded {
+                if let Some(crate::components::context::MediaElement::Video(video_elem)) = media_element {
+                    if let Some(container) = video_container_ref.cast::<web_sys::HtmlElement>() {
+                        // Clear container first
+                        container.set_inner_html("");
+
+                        // Clone and configure the video element for display
+                        let video_clone = video_elem.clone();
+                        video_clone.set_attribute("controls", "true").ok();
+                        video_clone.set_attribute("style", "width: 100%; max-height: 400px;").ok();
+
+                        // Append to container
+                        let _ = container.append_child(&video_clone);
+                    }
+                }
+            }
+            || ()
+        });
+    }
 
     // Add periodic state saving
     {
@@ -514,11 +552,31 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         match event.key().as_str() {
                             " " => {
                                 event.prevent_default();
-                                audio_info.reduce_mut(|state| state.toggle_playback());
+                                // Directly control media element for instant response
+                                let currently_playing = state.audio_playing.unwrap_or(false);
+                                if let Some(media) = &state.media_element {
+                                    if currently_playing {
+                                        let _ = media.pause();
+                                    } else {
+                                        let _ = media.play();
+                                    }
+                                } else if let Some(audio) = &state.audio_element {
+                                    if currently_playing {
+                                        let _ = audio.pause();
+                                    } else {
+                                        let _ = audio.play();
+                                    }
+                                }
                             }
                             "ArrowRight" => {
                                 event.prevent_default();
-                                if let Some(audio_element) = state.audio_element.as_ref() {
+                                // Support both new media_element and legacy audio_element
+                                if let Some(media_element) = state.media_element.as_ref() {
+                                    let new_time = media_element.current_time() + 15.0;
+                                    media_element.set_current_time(new_time);
+                                    audio_info
+                                        .reduce_mut(|state| state.update_current_time(new_time));
+                                } else if let Some(audio_element) = state.audio_element.as_ref() {
                                     let new_time = audio_element.current_time() + 15.0;
                                     audio_element.set_current_time(new_time);
                                     audio_info
@@ -527,7 +585,13 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             }
                             "ArrowLeft" => {
                                 event.prevent_default();
-                                if let Some(audio_element) = state.audio_element.as_ref() {
+                                // Support both new media_element and legacy audio_element
+                                if let Some(media_element) = state.media_element.as_ref() {
+                                    let new_time = (media_element.current_time() - 15.0).max(0.0);
+                                    media_element.set_current_time(new_time);
+                                    audio_info
+                                        .reduce_mut(|state| state.update_current_time(new_time));
+                                } else if let Some(audio_element) = state.audio_element.as_ref() {
                                     let new_time = (audio_element.current_time() - 15.0).max(0.0);
                                     audio_element.set_current_time(new_time);
                                     audio_info
@@ -565,14 +629,21 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         let closure_user_id = user_id.clone();
         let closure_episode_id = episode_id.clone();
         let offline_status = offline_status.clone();
+        let current_time_local = current_time_local.clone();
+        let current_time_formatted_local = current_time_formatted_local.clone();
         move |_| {
             //print the ep id
             let interval_handle: Rc<Cell<Option<Interval>>> = Rc::new(Cell::new(None));
             let interval_handle_clone = interval_handle.clone();
             let interval = Interval::new(1000, move || {
-                if let Some(audio_element) = state_clone.audio_element.as_ref() {
-                    let time_in_seconds = audio_element.current_time();
-                    let duration = audio_element.duration();
+                // Support both new media_element and legacy audio_element
+                let (time_in_seconds, duration) = if let Some(media_element) = state_clone.media_element.as_ref() {
+                    (media_element.current_time(), media_element.duration())
+                } else if let Some(audio_element) = state_clone.audio_element.as_ref() {
+                    (audio_element.current_time(), audio_element.duration())
+                } else {
+                    return; // No media element available
+                };
 
                     // Time updates happen regardless of duration
                     let hours = (time_in_seconds / 3600.0).floor() as i32;
@@ -586,11 +657,17 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         0.0
                     };
 
-                    audio_dispatch.reduce_mut(move |state_clone| {
-                        // Update the global state with the current time
-                        state_clone.current_time_seconds = time_in_seconds;
-                        state_clone.current_time_formatted = formatted_time;
-                    });
+                    // Update local state instead of global dispatch to avoid re-rendering entire app
+                    current_time_local.set(time_in_seconds);
+                    current_time_formatted_local.set(formatted_time.clone());
+
+                    // Only update global state every 5 seconds to reduce re-renders
+                    if (time_in_seconds as i32) % 5 == 0 && state_clone.current_time_formatted != formatted_time {
+                        audio_dispatch.reduce_mut(move |state_clone| {
+                            state_clone.current_time_seconds = time_in_seconds;
+                            state_clone.current_time_formatted = formatted_time;
+                        });
+                    }
 
                     progress.set(progress_percentage);
 
@@ -604,10 +681,16 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         let offline_status_loop = offline_status.unwrap_or(false);
                         if time_in_seconds >= (duration - end_pos_sec.unwrap()) {
                             web_sys::console::log_1(&"Episode completed".into());
-                            audio_element.pause().unwrap_or(());
-                            // Manually trigger the `ended` event
-                            let event = web_sys::Event::new("ended").unwrap();
-                            audio_element.dispatch_event(&event).unwrap();
+                            // Pause and trigger ended event on the appropriate media element
+                            if let Some(media_element) = state_clone.media_element.as_ref() {
+                                media_element.pause().unwrap_or(());
+                                let event = web_sys::Event::new("ended").unwrap();
+                                media_element.dispatch_event(&event).unwrap();
+                            } else if let Some(audio_element) = state_clone.audio_element.as_ref() {
+                                audio_element.pause().unwrap_or(());
+                                let event = web_sys::Event::new("ended").unwrap();
+                                audio_element.dispatch_event(&event).unwrap();
+                            }
                             // Call the endpoint to mark episode as completed
                             if offline_status_loop {
                                 // If offline, store the episode in the local database
@@ -656,7 +739,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             }
                         }
                     }
-                }
             });
 
             interval_handle_clone.set(Some(interval));
@@ -694,8 +776,14 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 if offline_status_loop {
                 } else {
                     if state_clone.audio_playing.unwrap_or_default() {
-                        if let Some(audio_element) = state_clone.audio_element.as_ref() {
-                            let listen_duration = audio_element.current_time();
+                        // Get current time from media or audio element
+                        let listen_duration = if let Some(media_element) = state_clone.media_element.as_ref() {
+                            media_element.current_time()
+                        } else if let Some(audio_element) = state_clone.audio_element.as_ref() {
+                            audio_element.current_time()
+                        } else {
+                            return; // No media element available
+                        };
                             let request_data = RecordListenDurationRequest {
                                 episode_id: episode_id_loop.unwrap().clone(),
                                 user_id: user_id.unwrap().clone(),
@@ -715,7 +803,6 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                     Err(_e) => {}
                                 }
                             });
-                        }
                     }
                 }
             });
@@ -793,13 +880,11 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         let offline_status = offline_status.clone();
 
         move |_| {
-            if let Some(audio_element) = audio_state_cloned.audio_element.clone() {
-                // if let Some(audio_element) = audio_ref.cast::<HtmlAudioElement>() {
-                // Clone all necessary data to be used inside the closure to avoid FnOnce limitation.
+            // Support both media_element and legacy audio_element
+            let has_media = audio_state_cloned.media_element.is_some() || audio_state_cloned.audio_element.is_some();
 
-                // Flag to prevent processing the same ended event multiple times
-                let processing_ended = Rc::new(Cell::new(false));
-                let processing_ended_clone = processing_ended.clone();
+            if has_media {
+                // Clone all necessary data to be used inside the closure to avoid FnOnce limitation.
 
                 // Flag to prevent processing the same ended event multiple times
                 let processing_ended = Rc::new(Cell::new(false));
@@ -955,7 +1040,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     // }) as Box<dyn FnMut()>);
                 }) as Box<dyn FnMut()>);
                 // Setting and forgetting the closure must be done within the same scope
-                audio_element.set_onended(Some(ended_closure.as_ref().unchecked_ref()));
+                // Set on the appropriate media element
+                if let Some(media_element) = audio_state_cloned.media_element.as_ref() {
+                    media_element.set_onended(Some(ended_closure.as_ref().unchecked_ref()));
+                } else if let Some(audio_element) = audio_state_cloned.audio_element.as_ref() {
+                    audio_element.set_onended(Some(ended_closure.as_ref().unchecked_ref()));
+                }
                 ended_closure.forget(); // This will indeed cause a memory leak if the component mounts multiple times
             }
 
@@ -963,11 +1053,27 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         }
     });
 
-    // Toggle playback
+    // Toggle playback - directly control media element without state dispatch for instant UI response
+    // The state will be updated by the media element's play/pause event listeners
     let toggle_playback = {
-        let dispatch = _audio_dispatch.clone();
+        let audio_state_cb = audio_state.clone();
         Callback::from(move |_| {
-            dispatch.reduce_mut(UIState::toggle_playback);
+            let currently_playing = audio_state_cb.audio_playing.unwrap_or(false);
+
+            // Directly control the media element - state updates happen via event listeners
+            if let Some(media) = &audio_state_cb.media_element {
+                if currently_playing {
+                    let _ = media.pause();
+                } else {
+                    let _ = media.play();
+                }
+            } else if let Some(audio) = &audio_state_cb.audio_element {
+                if currently_playing {
+                    let _ = audio.pause();
+                } else {
+                    let _ = audio.play();
+                }
+            }
         })
     };
 
@@ -979,7 +1085,18 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                 if let Ok(value) = input.value().parse::<f64>() {
                     // Update the state using dispatch
                     audio_dispatch.reduce_mut(move |state| {
-                        if let Some(audio_element) = state.audio_element.as_ref() {
+                        // Support both media_element and legacy audio_element
+                        if let Some(media_element) = state.media_element.as_ref() {
+                            media_element.set_current_time(value);
+                            state.current_time_seconds = value;
+
+                            // Update formatted time
+                            let hours = (value / 3600.0).floor() as i32;
+                            let minutes = ((value % 3600.0) / 60.0).floor() as i32;
+                            let seconds = (value % 60.0).floor() as i32;
+                            state.current_time_formatted =
+                                format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
+                        } else if let Some(audio_element) = state.audio_element.as_ref() {
                             audio_element.set_current_time(value);
                             state.current_time_seconds = value;
 
@@ -1002,7 +1119,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         Callback::from(move |speed: f64| {
             speed_dispatch.reduce_mut(|speed_state| {
                 speed_state.playback_speed = speed;
-                if let Some(audio_element) = &speed_state.audio_element {
+                // Support both media_element and legacy audio_element
+                if let Some(media_element) = &speed_state.media_element {
+                    media_element.set_playback_rate(speed);
+                } else if let Some(audio_element) = &speed_state.audio_element {
                     audio_element.set_playback_rate(speed);
                 }
             });
@@ -1017,7 +1137,10 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         Callback::from(move |volume: f64| {
             audio_dispatch.reduce_mut(|audio_state| {
                 audio_state.audio_volume = volume;
-                if let Some(audio_element) = &audio_state.audio_element {
+                // Support both media_element and legacy audio_element
+                if let Some(media_element) = &audio_state.media_element {
+                    media_element.set_volume(volume / 100.0); // Set volume as a percentage
+                } else if let Some(audio_element) = &audio_state.audio_element {
                     audio_element.set_volume(volume / 100.0); // Set volume as a percentage
                 }
             });
@@ -1030,7 +1153,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         // let dispatch = _dispatch.clone();
         let audio_dispatch = _audio_dispatch.clone();
         Callback::from(move |_| {
-            if let Some(audio_element) = skip_state.audio_element.as_ref() {
+            // Support both media_element and legacy audio_element
+            if let Some(media_element) = skip_state.media_element.as_ref() {
+                let new_time = media_element.current_time() + 15.0;
+                media_element.set_current_time(new_time);
+                audio_dispatch.reduce_mut(|state| state.update_current_time(new_time));
+            } else if let Some(audio_element) = skip_state.audio_element.as_ref() {
                 let new_time = audio_element.current_time() + 15.0;
                 audio_element.set_current_time(new_time);
                 audio_dispatch.reduce_mut(|state| state.update_current_time(new_time));
@@ -1043,7 +1171,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         // let dispatch = _dispatch.clone();
         let audio_dispatch = _audio_dispatch.clone();
         Callback::from(move |_| {
-            if let Some(audio_element) = backward_state.audio_element.as_ref() {
+            // Support both media_element and legacy audio_element
+            if let Some(media_element) = backward_state.media_element.as_ref() {
+                let new_time = media_element.current_time() - 15.0;
+                media_element.set_current_time(new_time);
+                audio_dispatch.reduce_mut(|state| state.update_current_time(new_time));
+            } else if let Some(audio_element) = backward_state.audio_element.as_ref() {
                 let new_time = audio_element.current_time() - 15.0;
                 audio_element.set_current_time(new_time);
                 audio_dispatch.reduce_mut(|state| state.update_current_time(new_time));
@@ -1112,7 +1245,18 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
         Callback::from(move |start_time: i32| {
             let start_time = start_time as f64;
             audio_dispatch.reduce_mut(|state| {
-                if let Some(audio_element) = state.audio_element.as_ref() {
+                // Support both media_element and legacy audio_element
+                if let Some(media_element) = state.media_element.as_ref() {
+                    media_element.set_current_time(start_time);
+                    state.current_time_seconds = start_time;
+
+                    // Update formatted time
+                    let hours = (start_time / 3600.0).floor() as i32;
+                    let minutes = ((start_time % 3600.0) / 60.0).floor() as i32;
+                    let seconds = (start_time % 60.0).floor() as i32;
+                    state.current_time_formatted =
+                        format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
+                } else if let Some(audio_element) = state.audio_element.as_ref() {
                     audio_element.set_current_time(start_time);
                     state.current_time_seconds = start_time;
 
@@ -1328,20 +1472,37 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                             <i class="ph ph-caret-circle-down text-4xl"></i>
                         </div>
                     </button>
-                    <div onclick={title_click.clone()} class="audio-image-container">
-                        <img src={(*current_chapter_image).clone()} />
-                    </div>
+                    // Show video player if is_video is true, otherwise show artwork
+                    {
+                        if audio_props.is_video {
+                            // Render video container for video podcasts in fullscreen mode
+                            html! {
+                                <div class="video-player-container" style="width: 100%; background: #000;">
+                                    <div ref={video_container_ref.clone()} id="video-player-mount" style="width: 100%; max-height: 400px; display: flex; justify-content: center; align-items: center;">
+                                        // Video element will be mounted here via use_effect
+                                    </div>
+                                </div>
+                            }
+                        } else {
+                            // Show artwork for audio podcasts
+                            html! {
+                                <div onclick={title_click.clone()} class="audio-image-container">
+                                    <img src={(*current_chapter_image).clone()} />
+                                </div>
+                            }
+                        }
+                    }
                     <div class="title" onclick={title_click.clone()}>{ &audio_props.title }
                     </div>
                     // Desktop scrubber
                     <div class="flex-grow flex items-center sm:block hidden">
                         <div class="flex items-center flex-nowrap">
-                            <span class="time-display px-2">{audio_state.current_time_formatted.clone()}</span>
+                            <span class="time-display px-2">{(*current_time_formatted_local).clone()}</span>
                             <input type="range"
                                 class="flex-grow h-1 cursor-pointer"
                                 min="0.0"
                                 max={audio_props.duration_sec.to_string().clone()}
-                                value={audio_state.current_time_seconds.to_string()}
+                                value={(*current_time_local).to_string()}
                                 oninput={update_time.clone()} />
                             <span class="time-display px-2">{formatted_duration.clone()}</span>
                         </div>
@@ -1349,12 +1510,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     // Mobile scrubber
                     <div class="w-full flex items-center justify-center sm:hidden">
                         <div class="flex items-center flex-nowrap w-full px-4">
-                            <span class="time-display px-2">{audio_state.current_time_formatted.clone()}</span>
+                            <span class="time-display px-2">{(*current_time_formatted_local).clone()}</span>
                             <input type="range"
                                 class="flex-grow h-1 cursor-pointer"
                                 min="0.0"
                                 max={audio_props.duration_sec.to_string().clone()}
-                                value={audio_state.current_time_seconds.to_string()}
+                                value={(*current_time_local).to_string()}
                                 oninput={update_time.clone()} />
                             <span class="time-display px-2">{formatted_duration.clone()}</span>
                         </div>
@@ -1468,12 +1629,12 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                     </button>
                     <div class="seek-bar-container md:flex hidden items-center">
                         <div class="flex items-center flex-nowrap w-full">
-                            <span class="time-display px-2">{audio_state.current_time_formatted.clone()}</span>
+                            <span class="time-display px-2">{(*current_time_formatted_local).clone()}</span>
                             <input type="range"
                                 class="flex-grow h-1 cursor-pointer mx-2"
                                 min="0.0"
                                 max={audio_props.duration_sec.to_string().clone()}
-                                value={audio_state.current_time_seconds.to_string()}
+                                value={(*current_time_local).to_string()}
                                 oninput={update_time.clone()} />
                             <span class="time-display px-2">{formatted_duration.clone()}</span>
                         </div>
@@ -1603,15 +1764,7 @@ pub fn on_play_pause(
             .map_or(false, |current| current.episode_id == episode.episodeid);
         if is_current {
             audio_dispatch.reduce_mut(|state| {
-                let currently_playing = state.audio_playing.unwrap_or(false);
-                state.audio_playing = Some(!currently_playing);
-                if let Some(audio) = &state.audio_element {
-                    if currently_playing {
-                        let _ = audio.pause();
-                    } else {
-                        let _ = audio.play();
-                    }
-                }
+                state.toggle_playback();
             });
         } else {
             web_sys::console::log_1(
@@ -1946,13 +2099,15 @@ pub fn on_play_click(
                                         end_pos_sec: end_pos_sec as f64,
                                         offline: false,
                                         is_youtube: episode.is_youtube,
+                                        is_video: episode.is_video,
                                     });
-                                    audio_state.set_audio_source(src.to_string());
-                                    if let Some(audio) = &audio_state.audio_element {
-                                        audio.set_current_time(start_pos_sec);
-                                        // Set the playback speed on the audio element as well
-                                        audio.set_playback_rate(playback_speed as f64);
-                                        let _ = audio.play();
+                                    // Use new media_element that supports both audio and video
+                                    audio_state.set_media_source(src.to_string(), episode.is_video);
+                                    if let Some(media) = &audio_state.media_element {
+                                        media.set_current_time(start_pos_sec);
+                                        // Set the playback speed on the media element as well
+                                        media.set_playback_rate(playback_speed as f64);
+                                        let _ = media.play();
                                     }
                                     audio_state.audio_playing = Some(true);
                                 });
@@ -1990,10 +2145,12 @@ pub fn on_play_click(
                         end_pos_sec: 0.0,
                         offline: false,
                         is_youtube: episode.is_youtube,
+                        is_video: episode.is_video,
                     });
-                    audio_state.set_audio_source(src.to_string());
-                    if let Some(audio) = &audio_state.audio_element {
-                        let _ = audio.play();
+                    // Use new media_element that supports both audio and video
+                    audio_state.set_media_source(src.to_string(), episode.is_video);
+                    if let Some(media) = &audio_state.media_element {
+                        let _ = media.play();
                     }
                     audio_state.audio_playing = Some(true);
                 });
@@ -2023,15 +2180,7 @@ pub fn on_play_pause_offline(
 
         if is_current {
             audio_dispatch.reduce_mut(|state| {
-                let currently_playing = state.audio_playing.unwrap_or(false);
-                state.audio_playing = Some(!currently_playing);
-                if let Some(audio) = &state.audio_element {
-                    if currently_playing {
-                        let _ = audio.pause();
-                    } else {
-                        let _ = audio.play();
-                    }
-                }
+                state.toggle_playback();
             });
         } else {
             on_play_click_offline(episode_info_for_closure, audio_dispatch, app_state)
@@ -2192,11 +2341,13 @@ pub fn on_play_click_offline(
                             end_pos_sec: 0.0,
                             offline: true,
                             is_youtube: episode_is_youtube_for_wasm,
+                            is_video: episode.is_video,
                         });
-                        audio_state.set_audio_source(src.to_string());
-                        if let Some(audio) = &audio_state.audio_element {
-                            audio.set_current_time(listen_duration_for_closure as f64);
-                            let _ = audio.play();
+                        // Use new media_element that supports both audio and video
+                        audio_state.set_media_source(src.to_string(), episode.is_video);
+                        if let Some(media) = &audio_state.media_element {
+                            media.set_current_time(listen_duration_for_closure as f64);
+                            let _ = media.play();
                         }
                         audio_state.audio_playing = Some(true);
                     });
@@ -2333,9 +2484,13 @@ pub fn on_play_click_shared(
                     end_pos_sec: 0.0,
                     offline: true,
                     is_youtube: episode_is_youtube,
+                    is_video: false, // Local playback assumed to be audio for now
                 });
                 audio_state.set_audio_source(episode_url.clone());
-                if let Some(audio) = &audio_state.audio_element {
+                // Support both media_element and legacy audio_element
+                if let Some(media) = &audio_state.media_element {
+                    let _ = media.play();
+                } else if let Some(audio) = &audio_state.audio_element {
                     let _ = audio.play();
                 }
                 audio_state.audio_playing = Some(true);
