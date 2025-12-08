@@ -25,9 +25,9 @@ use serde_json::{from_str, json};
 use std::collections::HashSet;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::window;
-use web_sys::HtmlAudioElement;
+use web_sys::{HtmlAudioElement, HtmlVideoElement, HtmlMediaElement};
 use yewdux::prelude::*;
 
 #[allow(dead_code)]
@@ -290,11 +290,77 @@ pub struct SettingsState {
     pub active_tab: Option<String>,
 }
 
+// MediaElement wrapper to handle both audio and video elements polymorphically
+#[derive(Clone, PartialEq, Debug)]
+pub enum MediaElement {
+    Audio(HtmlAudioElement),
+    Video(HtmlVideoElement),
+}
+
+impl MediaElement {
+    pub fn as_media_element(&self) -> &HtmlMediaElement {
+        match self {
+            MediaElement::Audio(audio) => audio.unchecked_ref(),
+            MediaElement::Video(video) => video.unchecked_ref(),
+        }
+    }
+
+    pub fn current_time(&self) -> f64 {
+        self.as_media_element().current_time()
+    }
+
+    pub fn set_current_time(&self, time: f64) {
+        self.as_media_element().set_current_time(time);
+    }
+
+    pub fn duration(&self) -> f64 {
+        self.as_media_element().duration()
+    }
+
+    pub fn pause(&self) -> Result<(), JsValue> {
+        self.as_media_element().pause()
+    }
+
+    pub fn play(&self) -> Result<js_sys::Promise, JsValue> {
+        self.as_media_element().play()
+    }
+
+    pub fn set_src(&self, src: &str) {
+        self.as_media_element().set_src(src);
+    }
+
+    pub fn set_volume(&self, volume: f64) {
+        self.as_media_element().set_volume(volume);
+    }
+
+    pub fn set_playback_rate(&self, rate: f64) {
+        self.as_media_element().set_playback_rate(rate);
+    }
+
+    pub fn set_onended(&self, callback: Option<&js_sys::Function>) {
+        self.as_media_element().set_onended(callback);
+    }
+
+    pub fn dispatch_event(&self, event: &web_sys::Event) -> Result<bool, JsValue> {
+        self.as_media_element().dispatch_event(event)
+    }
+
+    pub fn add_event_listener_with_callback(
+        &self,
+        event: &str,
+        callback: &js_sys::Function,
+    ) -> Result<(), JsValue> {
+        self.as_media_element()
+            .add_event_listener_with_callback(event, callback)
+    }
+}
+
 #[derive(Default, Clone, PartialEq, Store, Debug)]
 pub struct UIState {
     pub audio_playing: Option<bool>,
     pub currently_playing: Option<AudioPlayerProps>,
     pub audio_element: Option<HtmlAudioElement>,
+    pub media_element: Option<MediaElement>,
     pub current_time_seconds: f64,
     pub current_time_formatted: String,
     pub duration: f64,
@@ -334,7 +400,16 @@ impl UIState {
         self.current_time_formatted = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
     }
     pub fn toggle_playback(&mut self) {
-        if let Some(audio) = &self.audio_element {
+        // Support both new media_element and legacy audio_element
+        if let Some(media) = &self.media_element {
+            if self.audio_playing.unwrap_or(false) {
+                let _ = media.pause();
+                self.audio_playing = Some(false);
+            } else {
+                let _ = media.play();
+                self.audio_playing = Some(true);
+            }
+        } else if let Some(audio) = &self.audio_element {
             if self.audio_playing.unwrap_or(false) {
                 let _ = audio.pause();
                 self.audio_playing = Some(false);
@@ -360,6 +435,67 @@ impl UIState {
         }
         if let Some(audio) = &self.audio_element {
             audio.set_src(&src);
+        }
+    }
+
+    pub fn set_media_source(&mut self, src: String, is_video: bool) {
+        if self.media_element.is_none() {
+            self.media_element = if is_video {
+                // Create video element using DOM API
+                if let Some(window) = window() {
+                    if let Some(document) = window.document() {
+                        document.create_element("video")
+                            .ok()
+                            .and_then(|elem| elem.dyn_into::<HtmlVideoElement>().ok())
+                            .map(MediaElement::Video)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                HtmlAudioElement::new().ok().map(MediaElement::Audio)
+            };
+
+            if let Some(media) = &self.media_element {
+                // Canplay event
+                let canplay_closure = Closure::wrap(Box::new(move || {
+                    // Code to handle the media being ready to play
+                }) as Box<dyn Fn()>);
+                let _ = media.add_event_listener_with_callback("canplay", canplay_closure.as_ref().unchecked_ref());
+                canplay_closure.forget();
+
+                // Play event - update state when media starts playing
+                let play_closure = {
+                    Closure::wrap(Box::new(move || {
+                        use yewdux::prelude::Dispatch;
+                        let dispatch = Dispatch::<UIState>::global();
+                        dispatch.reduce_mut(|state| {
+                            state.audio_playing = Some(true);
+                        });
+                    }) as Box<dyn Fn()>)
+                };
+                let _ = media.add_event_listener_with_callback("play", play_closure.as_ref().unchecked_ref());
+                play_closure.forget();
+
+                // Pause event - update state when media pauses
+                let pause_closure = {
+                    Closure::wrap(Box::new(move || {
+                        use yewdux::prelude::Dispatch;
+                        let dispatch = Dispatch::<UIState>::global();
+                        dispatch.reduce_mut(|state| {
+                            state.audio_playing = Some(false);
+                        });
+                    }) as Box<dyn Fn()>)
+                };
+                let _ = media.add_event_listener_with_callback("pause", pause_closure.as_ref().unchecked_ref());
+                pause_closure.forget();
+            }
+        }
+
+        if let Some(media) = &self.media_element {
+            media.set_src(&src);
         }
     }
 

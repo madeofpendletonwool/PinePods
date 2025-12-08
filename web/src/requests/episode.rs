@@ -56,6 +56,7 @@ pub struct Episode {
     pub queued: bool,
     pub downloaded: bool,
     pub is_youtube: bool,
+    pub is_video: bool,
     pub guid: String,
     pub queueposition: Option<i32>,
     pub downloadedlocation: Option<String>,
