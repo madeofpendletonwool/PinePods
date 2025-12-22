@@ -235,6 +235,7 @@
     "download_episode": "Télécharger l'épisode",
     "downloading": "Téléchargement…",
     "episode_transcript": "Transcription de l'épisode",
+    "failed_to_find_podcast_metadata": "Échec de découverte des métadonnées du podcast.",
     "failed_to_parse_duration": "Échec lors de la récupération de la durée",
     "in_this_episode": "Dans cet épisode",
     "mark_complete": "Marquer comme lu",
@@ -429,7 +430,7 @@
     "quick_links": "Liens rapides",
     "recent_episodes": "Épisodes récents",
     "smart_playlists": "Listes de lectures intelligentes",
-    "top_podcasts": "Top Podcasts",
+    "top_podcasts": "Top des Podcasts",
     "unknown_author": "Auteur inconnu",
     "welcome_description": "Commencez par ajouter quelques podcasts en utilisant la barre de recherche ci-dessus.",
     "welcome_to_pinepods": "Bienvenue sur Pinepods"
@@ -555,12 +556,12 @@
     "pushing_to_device": "Envoi vers l'appareil : {} (ID : {}, remote : {})",
     "select_a_device": "-- Sélectionnez un appareil --",
     "select_device_for_operations": "Sélectionnez un appareil pour les opérations :",
-    "selected_device": "Appareil sélectionné : {} (ID : {}, distance : {:?})",
+    "selected_device": "Appareil sélectionné : {} (ID : {}, remote : {:?})",
     "set_as_default": "Définir par défaut",
     "setting_default": "Définition par défaut…",
     "setting_device_as_default": "Définition de l'appareil {} ({}) par défaut, is_remote : {}",
     "successfully_set_device_as_default": "Appareil défini par défaut avec succès",
-    "sync_gpodder": "Synchroniser GPodder",
+    "sync_gpodder": "Synchroniser via GPodder",
     "syncing": "Synchronisation…",
     "syncing_with_device": "Synchronisation avec l'appareil : {} (ID : {}, remote : {})",
     "your_gpodder_devices": "Vos appareils GPodder"
@@ -570,11 +571,11 @@
     "all_tasks": "Toutes les tâches",
     "clear_all_notifications": "Supprimer toutes les notifications",
     "dismiss_all_completed_tasks": "Masquer les tâches complétées",
-    "dismiss_completed": "Masquer les complétés",
+    "dismiss_completed": "Masquer les épisodes terminés",
     "dismiss_error": "Masquer les erreurs",
     "dismiss_message": "Masquer le message",
     "dismiss_notification": "Masquer la notification",
-    "hide_completed": "Cacher les complétés",
+    "hide_completed": "Cacher les épisodes terminés",
     "item_episode": "Épisode",
     "item_generic": "Objet",
     "item_youtube_video": "Vidéo YouTube",
@@ -626,7 +627,7 @@
   "oauth_callback": {
     "api_key_not_found": "Clé API introuvable",
     "authentication_failed": "Authentification échouée. Merci de réessayer.",
-    "back_to_login": "Retour à la connexion",
+    "back_to_login": "Retour à la page de connexion",
     "could_not_get_user_id": "Impossible d'obtenir l'ID utilisateur",
     "date_format": "Format de date",
     "error_checking_first_login_status": "Erreur de vérification du statut de première connexion",
@@ -674,9 +675,9 @@
     "provider_name": "Nom du fournisseur",
     "provider_successfully_removed": "Fournisseur supprimé avec succès",
     "roles_claim": "Requête des rôles",
-    "scopes": "Portées",
+    "scopes": "Permissions",
     "token_url": "URL du jeton",
-    "use_this_url_when_configuring": "Utilisez cet URL lors de la configuration du paramétrage de redirection de votre fournisseur OIDC.",
+    "use_this_url_when_configuring": "Utilisez cette URL lors de la configuration de la redirection de votre fournisseur OIDC.",
     "user_info_url": "URL des infos utilisateur",
     "user_role": "Rôle de l'utilisateur",
     "username_claim": "Requête du nom d'utilisateur"
@@ -764,7 +765,7 @@
     "group_by_podcast": "Grouper par podcast",
     "hours": "Heures",
     "icon": "Icône",
-    "include_partially_played": "Inclure ceux partiellement lus",
+    "include_partially_played": "Inclure ceux lus en partie",
     "include_played": "Inclure ceux lus",
     "include_unplayed": "Inclure ceux non-lus",
     "longest_first": "Le plus long d'abord",
@@ -800,7 +801,7 @@
     "podcast_index_matching": "Correspondance des podcasts à Podcast Index",
     "search_results": "Résultats de recherche",
     "show_ignored": "Afficher les ignorés",
-    "show_unmatched": "Afficher les sans correspondance",
+    "show_unmatched": "Afficher les podcasts sans correspondance",
     "unmatched_podcasts": "Podcasts sans correspondance"
   },
   "podcast_layout": {
@@ -912,7 +913,7 @@
     "title_za": "Titre Z-A"
   },
   "search": {
-    "go": "Chercher",
+    "go": "Rechercher",
     "no_results_found": "Aucun résultat de recherche trouvé",
     "search": "Rechercher",
     "search_for_podcast_episode_description": "Cherchez un podcast, un épisode ou une description",
@@ -920,7 +921,7 @@
     "try_different_search": "Essayez encore, mais modifiez légèrement votre recherche :/"
   },
   "search_new": {
-    "search_new": "Rechercher un nouveau"
+    "search_new": "Rechercher à nouveau"
   },
   "settings": {
     "12_hour": "12 heures",
