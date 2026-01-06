@@ -29,6 +29,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use web_sys::window;
 use web_sys::{HtmlAudioElement, HtmlVideoElement, HtmlMediaElement};
 use yewdux::prelude::*;
+use js_sys;
 
 #[allow(dead_code)]
 #[allow(dead_code)]
@@ -510,18 +511,60 @@ impl AppState {
     }
 
     pub fn store_app_state(&self) {
-        if let Some(window) = window() {
-            if let Some(local_storage) = window.local_storage().unwrap() {
-                let user_key = "userState";
-                let user_state = json!({ "user_details": self.user_details }).to_string();
-                let auth_key = "userAuthState";
-                let auth_state = json!({"auth_details": self.auth_details}).to_string();
-                let server_key = "serverState";
-                let server_state = json!({"server_details":self.server_details}).to_string();
-                let _ = local_storage.set_item(user_key, &user_state);
-                let _ = local_storage.set_item(auth_key, &auth_state);
-                let _ = local_storage.set_item(server_key, &server_state);
+        let user_state = json!({ "user_details": self.user_details }).to_string();
+        let auth_state = json!({"auth_details": self.auth_details}).to_string();
+        let server_state = json!({"server_details":self.server_details}).to_string();
+
+        // Try to use Tauri storage first (for desktop/Flatpak)
+        if Self::is_tauri() {
+            wasm_bindgen_futures::spawn_local(async move {
+                use wasm_bindgen::prelude::*;
+
+                #[wasm_bindgen]
+                extern "C" {
+                    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name = invoke)]
+                    async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+                }
+
+                let _ = invoke("store_credentials",
+                    serde_wasm_bindgen::to_value(&serde_json::json!({
+                        "key": "userState",
+                        "value": user_state
+                    })).unwrap()
+                ).await;
+
+                let _ = invoke("store_credentials",
+                    serde_wasm_bindgen::to_value(&serde_json::json!({
+                        "key": "userAuthState",
+                        "value": auth_state
+                    })).unwrap()
+                ).await;
+
+                let _ = invoke("store_credentials",
+                    serde_wasm_bindgen::to_value(&serde_json::json!({
+                        "key": "serverState",
+                        "value": server_state
+                    })).unwrap()
+                ).await;
+            });
+        } else {
+            // Fall back to localStorage for web version
+            if let Some(window) = window() {
+                if let Some(local_storage) = window.local_storage().unwrap() {
+                    let _ = local_storage.set_item("userState", &user_state);
+                    let _ = local_storage.set_item("userAuthState", &auth_state);
+                    let _ = local_storage.set_item("serverState", &server_state);
+                }
             }
+        }
+    }
+
+    fn is_tauri() -> bool {
+        if let Some(window) = window() {
+            let result = js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"));
+            result.is_ok() && !result.unwrap().is_undefined()
+        } else {
+            false
         }
     }
 }
