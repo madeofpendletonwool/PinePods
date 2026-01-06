@@ -12,11 +12,14 @@ use i18nrs::yew::use_translation;
 use md5;
 use rand::Rng;
 use wasm_bindgen::closure::Closure;
+use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{console, window};
 use yew::prelude::*;
 use yew_router::history::{BrowserHistory, History};
 use yewdux::prelude::*;
+use js_sys;
+use serde_json;
 
 // Gravatar URL generation functions (outside of use_effect_with)
 fn calculate_gravatar_hash(email: &String) -> String {
@@ -26,6 +29,49 @@ fn calculate_gravatar_hash(email: &String) -> String {
 fn generate_gravatar_url(email: &Option<String>, size: usize) -> String {
     let hash = calculate_gravatar_hash(&email.clone().unwrap());
     format!("https://gravatar.com/avatar/{}?s={}", hash, size)
+}
+
+// Check if running in Tauri
+fn is_tauri() -> bool {
+    if let Some(window) = window() {
+        let result = js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"));
+        result.is_ok() && !result.unwrap().is_undefined()
+    } else {
+        false
+    }
+}
+
+// Helper to get credentials from Tauri or localStorage
+async fn get_stored_credential(key: &str) -> Option<String> {
+    if is_tauri() {
+        // Try Tauri storage
+        #[wasm_bindgen]
+        extern "C" {
+            #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name = invoke)]
+            async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+        }
+
+        let result = invoke("get_credentials",
+            serde_wasm_bindgen::to_value(&serde_json::json!({
+                "key": key
+            })).unwrap()
+        ).await;
+
+        if let Ok(value) = serde_wasm_bindgen::from_value::<String>(result) {
+            return Some(value);
+        }
+    }
+
+    // Fall back to localStorage
+    if let Some(window) = window() {
+        if let Ok(Some(storage)) = window.local_storage() {
+            if let Ok(Some(value)) = storage.get_item(key) {
+                return Some(value);
+            }
+        }
+    }
+
+    None
 }
 
 #[function_component(Login)]
@@ -140,9 +186,10 @@ pub fn login() -> Html {
         // let error_clone_use = error_message_clone.clone();
         let history = history.clone();
         move |_| {
-            if let Some(window) = web_sys::window() {
-                if let Ok(local_storage) = window.local_storage() {
-                    if let Some(storage) = local_storage {
+            wasm_bindgen_futures::spawn_local(async move {
+                // Handle theme
+                if let Some(window) = web_sys::window() {
+                    if let Ok(Some(storage)) = window.local_storage() {
                         if let Ok(Some(stored_theme)) = storage.get_item("selected_theme") {
                             // Convert 'nordic' to 'Nordic' if needed
                             let theme_to_use = if stored_theme == "nordic" {
@@ -156,158 +203,147 @@ pub fn login() -> Html {
                                 &theme_to_use,
                             );
                         }
+                    }
+                }
 
-                        if let Ok(Some(user_state)) = storage.get_item("userState") {
-                            let app_state_result = AppState::deserialize(&user_state);
+                // Try to load credentials from Tauri storage or localStorage
+                if let Some(user_state) = get_stored_credential("userState").await {
+                    let app_state_result = AppState::deserialize(&user_state);
 
-                            if let Ok(Some(auth_state)) = storage.get_item("userAuthState") {
-                                match AppState::deserialize(&auth_state) {
-                                    Ok(auth_details) => {
-                                        // Successful deserialization of auth state
-                                        if let Ok(Some(server_state)) =
-                                            storage.get_item("serverState")
-                                        {
-                                            let server_details_result =
-                                                AppState::deserialize(&server_state);
+                    if let Some(auth_state) = get_stored_credential("userAuthState").await {
+                        match AppState::deserialize(&auth_state) {
+                            Ok(auth_details) => {
+                                // Successful deserialization of auth state
+                                if let Some(server_state) = get_stored_credential("serverState").await {
+                                    let server_details_result =
+                                        AppState::deserialize(&server_state);
 
-                                            if let Ok(app_state) = app_state_result {
-                                                // Successful deserialization of user state
-                                                if let Ok(server_details) = server_details_result {
-                                                    // Successful deserialization of server state
-                                                    // Check if the deserialized state contains valid data
-                                                    if app_state.user_details.is_some()
-                                                        && auth_details.auth_details.is_some()
-                                                        && server_details.server_details.is_some()
-                                                    {
-                                                        let auth_state_clone = auth_details.clone();
-                                                        let email = &app_state
-                                                            .user_details
-                                                            .as_ref()
-                                                            .unwrap()
-                                                            .Email;
-                                                        let user_id = app_state
-                                                            .user_details
-                                                            .as_ref()
-                                                            .unwrap()
-                                                            .UserID
-                                                            .clone();
-                                                        // Safely access server_name and api_key
-                                                        let auth_details_clone =
-                                                            auth_state_clone.auth_details.clone();
-                                                        if let Some(auth_details) =
-                                                            auth_details_clone.as_ref()
-                                                        {
-                                                            let server_name =
-                                                                auth_details.server_name.clone();
-                                                            let api_key = auth_details
-                                                                .api_key
-                                                                .clone()
-                                                                .unwrap_or_default();
+                                    if let Ok(app_state) = app_state_result {
+                                        // Successful deserialization of user state
+                                        if let Ok(server_details) = server_details_result {
+                                            // Successful deserialization of server state
+                                            // Check if the deserialized state contains valid data
+                                            if app_state.user_details.is_some()
+                                                && auth_details.auth_details.is_some()
+                                                && server_details.server_details.is_some()
+                                            {
+                                                let auth_state_clone = auth_details.clone();
+                                                let email = &app_state
+                                                    .user_details
+                                                    .as_ref()
+                                                    .unwrap()
+                                                    .Email;
+                                                let user_id = app_state
+                                                    .user_details
+                                                    .as_ref()
+                                                    .unwrap()
+                                                    .UserID
+                                                    .clone();
+                                                // Safely access server_name and api_key
+                                                let auth_details_clone =
+                                                    auth_state_clone.auth_details.clone();
+                                                if let Some(auth_details) =
+                                                    auth_details_clone.as_ref()
+                                                {
+                                                    let server_name =
+                                                        auth_details.server_name.clone();
+                                                    let api_key = auth_details
+                                                        .api_key
+                                                        .clone()
+                                                        .unwrap_or_default();
 
-                                                            // Now verify the API key
-                                                            // let wasm_user_id = user_id.clone();
-                                                            let wasm_app_state = app_state.clone();
-                                                            let wasm_auth_details: login_requests::LoginServerRequest = auth_details.clone();
-                                                            let wasm_email = email.clone();
-                                                            let wasm_user_id = user_id.clone();
-                                                            wasm_bindgen_futures::spawn_local(
-                                                                async move {
-                                                                    match call_verify_key(
-                                                                        &server_name.clone(),
-                                                                        &api_key.clone(),
-                                                                    )
-                                                                    .await
-                                                                    {
-                                                                        Ok(_) => {
-                                                                            // API key is valid, user can stay logged in
-                                                                            let final_dispatch =
-                                                                                effect_displatch
-                                                                                    .clone();
-                                                                            let gravatar_url = generate_gravatar_url(&Some(wasm_email.clone().unwrap()), 80);
-                                                                            // Auto login logic here
-                                                                            final_dispatch.reduce_mut(move |state| {
-                                                                            state.user_details = wasm_app_state.user_details;
-                                                                            state.auth_details = Some(wasm_auth_details.clone());
-                                                                            state.server_details = server_details.server_details;
-                                                                            state.gravatar_url = Some(gravatar_url);
-
-                                                                        });
-                                                                            // let mut error_message = app_state.error_message;
-                                                                            // Retrieve the originally requested route, if any
-                                                                            let session_storage = window.session_storage().unwrap().unwrap();
-                                                                            session_storage.set_item("isAuthenticated", "true").unwrap();
-                                                                            let requested_route = session_storage.get_item("requested_route").unwrap_or(None);
-                                                                            // Get Theme
-                                                                            let theme_api =
-                                                                                api_key.clone();
-                                                                            let theme_server =
-                                                                                server_name.clone();
-                                                                            wasm_bindgen_futures::spawn_local(async move {
-                                                                            match call_get_theme(theme_server, theme_api, &wasm_user_id).await{
-                                                                                Ok(theme) => {
-                                                                                    crate::components::setting_components::theme_options::changeTheme(&theme);
-                                                                                    if let Some(window) = web_sys::window() {
-                                                                                        if let Ok(Some(local_storage)) = window.local_storage() {
-                                                                                            match local_storage.set_item("selected_theme", &theme) {
-                                                                                                Ok(_) => console::log_1(&"Updated theme in local storage".into()),
-                                                                                                Err(e) => console::log_1(&format!("Error updating theme in local storage: {:?}", e).into()),
-                                                                                            }
+                                                    // Now verify the API key
+                                                    let wasm_app_state = app_state.clone();
+                                                    let wasm_auth_details: login_requests::LoginServerRequest = auth_details.clone();
+                                                    let wasm_email = email.clone();
+                                                    let wasm_user_id = user_id.clone();
+                                                    wasm_bindgen_futures::spawn_local(
+                                                        async move {
+                                                            match call_verify_key(
+                                                                &server_name.clone(),
+                                                                &api_key.clone(),
+                                                            )
+                                                            .await
+                                                            {
+                                                                Ok(_) => {
+                                                                    // API key is valid, user can stay logged in
+                                                                    let final_dispatch =
+                                                                        effect_displatch
+                                                                            .clone();
+                                                                    let gravatar_url = generate_gravatar_url(&Some(wasm_email.clone().unwrap()), 80);
+                                                                    // Auto login logic here
+                                                                    final_dispatch.reduce_mut(move |state| {
+                                                                        state.user_details = wasm_app_state.user_details;
+                                                                        state.auth_details = Some(wasm_auth_details.clone());
+                                                                        state.server_details = server_details.server_details;
+                                                                        state.gravatar_url = Some(gravatar_url);
+                                                                    });
+                                                                    // Retrieve the originally requested route, if any
+                                                                    let session_storage = window.session_storage().unwrap().unwrap();
+                                                                    session_storage.set_item("isAuthenticated", "true").unwrap();
+                                                                    let requested_route = session_storage.get_item("requested_route").unwrap_or(None);
+                                                                    // Get Theme
+                                                                    let theme_api = api_key.clone();
+                                                                    let theme_server = server_name.clone();
+                                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                                        match call_get_theme(theme_server, theme_api, &wasm_user_id).await {
+                                                                            Ok(theme) => {
+                                                                                crate::components::setting_components::theme_options::changeTheme(&theme);
+                                                                                if let Some(window) = web_sys::window() {
+                                                                                    if let Ok(Some(local_storage)) = window.local_storage() {
+                                                                                        match local_storage.set_item("selected_theme", &theme) {
+                                                                                            Ok(_) => console::log_1(&"Updated theme in local storage".into()),
+                                                                                            Err(e) => console::log_1(&format!("Error updating theme in local storage: {:?}", e).into()),
                                                                                         }
                                                                                     }
                                                                                 }
-                                                                                Err(_e) => {
-                                                                                    // console::log_1(&format!("Error getting theme: {:?}", e).into());
-                                                                                }
                                                                             }
-                                                                        });
-                                                                            wasm_bindgen_futures::spawn_local(async move {
-                                                                            match call_get_time_info(server_name, api_key, &wasm_user_id).await{
-                                                                                Ok(tz_response) => {
-                                                                                    effect_displatch.reduce_mut(move |state| {
-                                                                                        state.user_tz = Some(tz_response.timezone);
-                                                                                        state.hour_preference = Some(tz_response.hour_pref);
-                                                                                        state.date_format = Some(tz_response.date_format);
-                                                                                    });
-                                                                                }
-                                                                                Err(_e) => {
-                                                                                    // console::log_1(&format!("Error getting theme: {:?}", e).into());
-                                                                                }
+                                                                            Err(_e) => {
+                                                                                // console::log_1(&format!("Error getting theme: {:?}", e).into());
                                                                             }
-                                                                        });
-                                                                            let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
-                                                                            history.push(
-                                                                                &redirect_route,
-                                                                            ); // Redirect to the requested or home page
                                                                         }
-                                                                        Err(_) => {
-                                                                            // API key is not valid, redirect to login
-                                                                            history.push("/");
+                                                                    });
+                                                                    wasm_bindgen_futures::spawn_local(async move {
+                                                                        match call_get_time_info(server_name, api_key, &wasm_user_id).await {
+                                                                            Ok(tz_response) => {
+                                                                                effect_displatch.reduce_mut(move |state| {
+                                                                                    state.user_tz = Some(tz_response.timezone);
+                                                                                    state.hour_preference = Some(tz_response.hour_pref);
+                                                                                    state.date_format = Some(tz_response.date_format);
+                                                                                });
+                                                                            }
+                                                                            Err(_e) => {
+                                                                                // console::log_1(&format!("Error getting theme: {:?}", e).into());
+                                                                            }
                                                                         }
-                                                                    }
-                                                                },
-                                                            );
-                                                        } else {
-                                                            console::log_1(
-                                                                &"Auth details are None".into(),
-                                                            );
-                                                        }
-                                                    }
+                                                                    });
+                                                                    let redirect_route = requested_route.unwrap_or_else(|| "/home".to_string());
+                                                                    history.push(&redirect_route);
+                                                                }
+                                                                Err(_) => {
+                                                                    // API key is not valid, redirect to login
+                                                                    history.push("/");
+                                                                }
+                                                            }
+                                                        },
+                                                    );
+                                                } else {
+                                                    console::log_1(&"Auth details are None".into());
                                                 }
                                             }
                                         }
                                     }
-                                    Err(e) => {
-                                        web_sys::console::log_1(
-                                            &format!("Error deserializing auth state: {:?}", e)
-                                                .into(),
-                                        );
-                                    }
                                 }
+                            }
+                            Err(e) => {
+                                web_sys::console::log_1(
+                                    &format!("Error deserializing auth state: {:?}", e).into(),
+                                );
                             }
                         }
                     }
                 }
-            }
+            });
 
             || () // Return an empty closure to satisfy use_effect_with
         }
@@ -1000,6 +1036,19 @@ pub fn logout() -> Html {
         local_storage
             .set_item("selected_theme", &theme)
             .expect("failed to set 'selected_theme'");
+    }
+
+    // Clear Tauri credentials if running in Tauri
+    if is_tauri() {
+        wasm_bindgen_futures::spawn_local(async move {
+            #[wasm_bindgen]
+            extern "C" {
+                #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name = invoke)]
+                async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+            }
+
+            let _ = invoke("clear_all_credentials", JsValue::NULL).await;
+        });
     }
 
     // Redirect to root path

@@ -91,7 +91,7 @@ fn playlist_card(props: &PlaylistCardProps) -> Html {
                 </div>
             </div>
             {
-                if !props.is_selectable && !props.playlist.is_system_playlist {
+                if !props.is_selectable {
                     html! {
                         <button
                             onclick={props.on_delete.clone()}
@@ -1501,20 +1501,6 @@ pub fn playlists() -> Html {
                     </div>
                 </div>
 
-                // Info banner for selection mode
-                {
-                    if *is_selection_mode {
-                        html! {
-                            <div class="mb-4 p-3 bg-blue-100 text-blue-800 rounded-lg flex items-center">
-                                <i class="ph ph-info text-xl mr-2"></i>
-                                <span>{&i18n.t("playlists.system_playlists_info")}</span>
-                            </div>
-                        }
-                    } else {
-                        html! {}
-                    }
-                }
-
                 // Playlists grid
                 {
                     if let Some(playlists) = &tog_state.playlists {
@@ -1539,11 +1525,8 @@ pub fn playlists() -> Html {
 
                                             let on_delete = Callback::from(move |e: MouseEvent| {
                                                 e.stop_propagation();
-                                                // Don't allow deletion of system playlists
-                                                if !playlist_clone.is_system_playlist {
-                                                    selected_playlist_id.set(Some(playlist_id));
-                                                    modal_state.set(ModalState::Delete);
-                                                }
+                                                selected_playlist_id.set(Some(playlist_id));
+                                                modal_state.set(ModalState::Delete);
                                             });
 
                                             let is_selection_mode_clone = is_selection_mode.clone();
@@ -1563,7 +1546,7 @@ pub fn playlists() -> Html {
                                                     playlist={playlist.clone()}
                                                     {on_delete}
                                                     {on_select}
-                                                    is_selectable={*is_selection_mode && !playlist.is_system_playlist}
+                                                    is_selectable={*is_selection_mode}
                                                     is_selected={is_selected}
                                                     on_toggle_select={on_toggle_select.clone()}
                                                 />

@@ -24759,18 +24759,22 @@ impl DatabasePool {
                         p.podcastname,
                         TO_CHAR(e.episodepubdate AT TIME ZONE '{}', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') as episodepubdate,
                         e.episodedescription,
-                        COALESCE(e.episodeartwork, p.artworkurl) as episodeartwork,
+                        CASE
+                            WHEN p.usepodcastcoverscustomized = TRUE AND p.usepodcastcovers = TRUE THEN p.artworkurl
+                            WHEN u.usepodcastcovers = TRUE THEN p.artworkurl
+                            ELSE e.episodeartwork
+                        END as episodeartwork,
                         e.episodeurl,
                         e.episodeduration,
                         COALESCE(h.listenduration, 0) as listenduration,
                         e.episodeid,
                         COALESCE(p.websiteurl, '') as websiteurl,
                         -- ULTRA-PRECISE completion logic: 90% threshold OR within 30 seconds of end
-                        CASE WHEN 
+                        CASE WHEN
                             h.listenduration IS NOT NULL AND (
-                                h.listenduration >= e.episodeduration * 0.9 OR 
+                                h.listenduration >= e.episodeduration * 0.9 OR
                                 (e.episodeduration - h.listenduration) <= 30
-                            ) 
+                            )
                         THEN true ELSE false END as completed,
                         EXISTS(SELECT 1 FROM "SavedEpisodes" se WHERE se.episodeid = e.episodeid AND se.userid = {}) as saved,
                         EXISTS(SELECT 1 FROM "EpisodeQueue" eq WHERE eq.episodeid = e.episodeid AND eq.userid = {}) as queued,
@@ -24781,8 +24785,9 @@ impl DatabasePool {
                         ROUND(((COALESCE(h.listenduration, 0)::float / NULLIF(e.episodeduration, 0)) * 100)::numeric, 2) as progress_percent
                     FROM "Episodes" e
                     JOIN "Podcasts" p ON e.podcastid = p.podcastid AND p.userid = {}
-                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}"#, 
-                    user_timezone, user_id, user_id, user_id, user_id, user_id
+                    JOIN "Users" u ON u.userid = {}
+                    LEFT JOIN "UserEpisodeHistory" h ON e.episodeid = h.episodeid AND h.userid = {}"#,
+                    user_timezone, user_id, user_id, user_id, user_id, user_id, user_id
                 ));
                 
                 // Base condition - always filter by user's podcasts
@@ -25001,17 +25006,21 @@ impl DatabasePool {
                         p.PodcastName as podcastname,
                         DATE_FORMAT(CONVERT_TZ(e.EpisodePubDate, 'UTC', '{}'), '%Y-%m-%dT%H:%i:%sZ') as episodepubdate,
                         e.EpisodeDescription as episodedescription,
-                        COALESCE(e.EpisodeArtwork, p.ArtworkURL) as episodeartwork,
+                        CASE
+                            WHEN p.UsePodcastCoversCustomized = 1 AND p.UsePodcastCovers = 1 THEN p.ArtworkURL
+                            WHEN u.UsePodcastCovers = 1 THEN p.ArtworkURL
+                            ELSE e.EpisodeArtwork
+                        END as episodeartwork,
                         e.EpisodeURL as episodeurl,
                         e.EpisodeDuration as episodeduration,
                         COALESCE(h.ListenDuration, 0) as listenduration,
                         e.EpisodeID as episodeid,
                         COALESCE(p.WebsiteURL, '') as websiteurl,
-                        CASE WHEN 
+                        CASE WHEN
                             h.ListenDuration IS NOT NULL AND (
-                                h.ListenDuration >= e.EpisodeDuration * 0.9 OR 
+                                h.ListenDuration >= e.EpisodeDuration * 0.9 OR
                                 (e.EpisodeDuration - h.ListenDuration) <= 30
-                            ) 
+                            )
                         THEN 1 ELSE 0 END as completed,
                         EXISTS(SELECT 1 FROM SavedEpisodes se WHERE se.EpisodeID = e.EpisodeID AND se.UserID = {}) as saved,
                         EXISTS(SELECT 1 FROM EpisodeQueue eq WHERE eq.EpisodeID = e.EpisodeID AND eq.UserID = {}) as queued,
@@ -25021,8 +25030,9 @@ impl DatabasePool {
                         ROUND((COALESCE(h.ListenDuration, 0) / NULLIF(e.EpisodeDuration, 0)) * 100, 2) as progress_percent
                     FROM Episodes e
                     JOIN Podcasts p ON e.PodcastID = p.PodcastID AND p.UserID = {}
-                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}"#, 
-                    user_timezone, user_id, user_id, user_id, user_id, user_id
+                    JOIN Users u ON u.UserID = {}
+                    LEFT JOIN UserEpisodeHistory h ON e.EpisodeID = h.EpisodeID AND h.UserID = {}"#,
+                    user_timezone, user_id, user_id, user_id, user_id, user_id, user_id
                 ));
                 
                 where_conditions.push("p.UserID = ?".to_string());
