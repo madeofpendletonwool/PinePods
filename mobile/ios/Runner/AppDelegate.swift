@@ -10,6 +10,11 @@ import flutter_downloader
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
     FlutterDownloaderPlugin.setPluginRegistrantCallback(registerPlugins)
+
+    // Register AudioPlayerPlugin
+    let registrar = self.registrar(forPlugin: "AudioPlayerPlugin")
+    AudioPlayerPlugin.register(with: registrar!)
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

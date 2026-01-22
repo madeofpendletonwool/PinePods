@@ -101,4 +101,17 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'com.android.support.test:runner:1.0.2'
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
+
+    // Media3 (modern ExoPlayer) for native audio playback
+    implementation "androidx.media3:media3-exoplayer:1.2.1"
+    implementation "androidx.media3:media3-session:1.2.1"
+    implementation "androidx.media3:media3-ui:1.2.1"
+    implementation "androidx.media3:media3-common:1.2.1"
+    implementation "androidx.media3:media3-exoplayer-hls:1.2.1"
+
+    // Media support for notification MediaStyle
+    implementation "androidx.media:media:1.7.0"
+
+    // Kotlin coroutines for guava futures (needed for MediaLibraryService)
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.7.3"
 }

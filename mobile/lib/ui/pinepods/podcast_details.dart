@@ -300,33 +300,70 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   }
 
   Future<void> _toggleFollow() async {
-    print('PinePods Follow button: CLICKED - Setting loading to true');
-    setState(() {
-      _isFollowButtonLoading = true;
-    });
+    // Prevent concurrent operations
+    if (_isFollowButtonLoading) {
+      print('PinePods Follow button: Already processing, ignoring click');
+      return;
+    }
 
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
     final userId = settings.pinepodsUserId;
 
     if (userId == null) {
-      setState(() {
-        _isFollowButtonLoading = false;
-      });
       _showSnackBar('Not logged in to PinePods server', Colors.red);
       return;
     }
 
+    // Show confirmation dialog if unfollowing
+    if (_isFollowing) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false, // Prevent dismissing by tapping outside
+        builder: (context) => AlertDialog(
+          title: const Text('Unfollow Podcast'),
+          content: Text(
+            'Are you sure you want to unfollow "${widget.podcast.title}"?\n\nThis will remove the podcast and all episode history from your library.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('Unfollow'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) {
+        print('PinePods Follow button: User cancelled unfollow');
+        return;
+      }
+    }
+
+    print('PinePods Follow button: CLICKED - Setting loading to true');
+    setState(() {
+      _isFollowButtonLoading = true;
+    });
+
     try {
       bool success;
       final oldFollowingState = _isFollowing;
-      
-      if (_isFollowing) {
+
+      if (oldFollowingState) {
+        print('PinePods: Attempting to remove podcast');
         success = await _pinepodsService.removePodcast(
           widget.podcast.title,
           widget.podcast.url,
           userId,
         );
+        print('PinePods: Remove podcast result: $success');
         if (success) {
           setState(() {
             _isFollowing = false;
@@ -335,7 +372,9 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           _showSnackBar('Podcast removed', Colors.orange);
         }
       } else {
+        print('PinePods: Attempting to add podcast');
         success = await _pinepodsService.addPodcast(widget.podcast, userId);
+        print('PinePods: Add podcast result: $success');
         if (success) {
           setState(() {
             _isFollowing = true;
@@ -348,6 +387,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       if (success) {
         // Always reload episodes when follow status changes
         // This will switch between server episodes (followed) and RSS episodes (unfollowed)
+        print('PinePods: Reloading podcast feed after ${oldFollowingState ? 'unfollow' : 'follow'}');
         await _loadPodcastFeed();
       } else {
         // Revert state change if the operation failed
@@ -357,12 +397,15 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         _showSnackBar('Failed to ${oldFollowingState ? 'remove' : 'add'} podcast', Colors.red);
       }
     } catch (e) {
+      print('PinePods: Error in _toggleFollow: $e');
       _showSnackBar('Error: $e', Colors.red);
     } finally {
       // Always reset loading state
-      setState(() {
-        _isFollowButtonLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isFollowButtonLoading = false;
+        });
+      }
       print('PinePods Follow button: Loading state reset to false');
     }
   }
@@ -1096,16 +1139,17 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        _isFollowing 
+                        _isFollowing
                             ? 'Episodes from your PinePods library will appear here'
                             : 'Follow this podcast to add it to your library and view episodes',
                         style: Theme.of(context).textTheme.bodyMedium,
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _toggleFollow,
-                        child: Text(_isFollowing ? 'Unfollow' : 'Follow'),
+                      ElevatedButton.icon(
+                        onPressed: _isFollowing ? _loadPodcastFeed : _toggleFollow,
+                        icon: Icon(_isFollowing ? Icons.refresh : Icons.add),
+                        label: Text(_isFollowing ? 'Retry' : 'Follow'),
                       ),
                     ],
                   ),

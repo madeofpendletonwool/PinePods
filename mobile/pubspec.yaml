@@ -11,8 +11,6 @@ dependencies:
   accessibility_tools: ^2.3.0
   app_links: ^6.3.0
   auto_size_text: ^3.0.0
-  audio_service: ^0.18.17
-  audio_session: ^0.2.2
   collection: ^1.18.0
   connectivity_plus: ^6.0.11
   crypto: ^3.0.3
@@ -31,7 +29,6 @@ dependencies:
   http: ^1.2.2
   intl: ^0.20.2
   intl_translation: ^0.20.0
-  just_audio: ^0.10.4
   logging: ^1.0.2
   meta: ^1.17.0
   mp3_info: ^0.2.0

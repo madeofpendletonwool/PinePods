@@ -22,7 +22,7 @@ import 'package:pinepods_mobile/navigation/navigation_route_observer.dart';
 import 'package:pinepods_mobile/repository/repository.dart';
 import 'package:pinepods_mobile/repository/sembast/sembast_repository.dart';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
-import 'package:pinepods_mobile/services/audio/default_audio_player_service.dart';
+import 'package:pinepods_mobile/services/audio/native_audio_player_service.dart';
 import 'package:pinepods_mobile/services/download/download_service.dart';
 import 'package:pinepods_mobile/services/download/mobile_download_manager.dart';
 import 'package:pinepods_mobile/services/download/mobile_download_service.dart';
@@ -111,10 +111,10 @@ class PinepodsPodcastApp extends StatefulWidget {
       podcastService: podcastService!,
     );
 
-    audioPlayerService = DefaultAudioPlayerService(
+    // Use native audio player service (ExoPlayer/AVPlayer via platform channels)
+    audioPlayerService = NativeAudioPlayerService(
       repository: repository,
       settingsService: mobileSettingsService,
-      podcastService: podcastService!,
     );
 
     settingsBloc = SettingsBloc(mobileSettingsService);
@@ -128,7 +128,7 @@ class PinepodsPodcastApp extends StatefulWidget {
     );
 
     // Connect the services for listen duration recording
-    (audioPlayerService as DefaultAudioPlayerService).setPinepodsAudioService(
+    (audioPlayerService as NativeAudioPlayerService).setPinepodsAudioService(
       pinepodsAudioService,
     );
 

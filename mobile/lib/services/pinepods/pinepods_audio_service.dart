@@ -23,6 +23,8 @@ class PinepodsAudioService {
   int? _currentUserId;
   bool _isYoutube = false;
   double _lastRecordedPosition = 0;
+  bool _isSyncingPosition = false;
+  bool _hasPendingPositionSync = false;
   
   /// Callbacks for pause/stop events
   Function()? _onPauseCallback;
@@ -53,8 +55,6 @@ class PinepodsAudioService {
 
       _currentUserId = userId;
       _isYoutube = pinepodsEpisode.isYoutube;
-
-      log.info('Starting PinePods episode playback: ${pinepodsEpisode.episodeTitle}');
 
       // Use the episode ID that's already available from the PinepodsEpisode
       final episodeId = pinepodsEpisode.episodeId;
@@ -99,7 +99,6 @@ class PinepodsAudioService {
       }
 
       // Add to history
-      log.info('Adding episode $episodeId to history for user $userId');
       final initialPosition = resume ? (pinepodsEpisode.listenDuration ?? 0).toDouble() : 0.0;
       await _pinepodsService.recordListenDuration(
         episodeId,
@@ -109,7 +108,6 @@ class PinepodsAudioService {
       );
 
       // Queue episode for tracking
-      log.info('Queueing episode $episodeId for user $userId');
       await _pinepodsService.queueEpisode(
         episodeId,
         userId,
@@ -117,13 +115,10 @@ class PinepodsAudioService {
       );
 
       // Increment played count
-      log.info('Incrementing played count for user $userId');
       await _pinepodsService.incrementPlayed(userId);
 
       // Start periodic updates
       _startPeriodicUpdates();
-
-      log.info('PinePods episode playback started successfully');
     } catch (e) {
       log.severe('Error playing PinePods episode: $e');
       rethrow;
@@ -134,8 +129,6 @@ class PinepodsAudioService {
   void _startPeriodicUpdates() {
     _stopPeriodicUpdates(); // Clean up any existing timers
 
-    log.info('Starting periodic updates - episode position every 15s, user stats every 60s');
-    
     // Episode position updates every 15 seconds (more frequent for reliability)
     _episodeUpdateTimer = Timer.periodic(
       const Duration(seconds: 15),
@@ -151,11 +144,29 @@ class PinepodsAudioService {
 
   /// Safely update episode position without affecting playback
   void _safeUpdateEpisodePosition() async {
+    // If already syncing, mark that we have a pending sync and return
+    // The current sync will check this flag when done and re-sync with latest position
+    if (_isSyncingPosition) {
+      _hasPendingPositionSync = true;
+      log.fine('Position sync in progress - marked for re-sync with latest position');
+      return;
+    }
+
+    _isSyncingPosition = true;
     try {
       await _updateEpisodePosition();
+
+      // Check if another sync was requested while we were syncing
+      if (_hasPendingPositionSync) {
+        _hasPendingPositionSync = false;
+        log.fine('Re-syncing with latest position after pending request');
+        await _updateEpisodePosition(); // Sync again with the LATEST position
+      }
     } catch (e) {
       log.warning('Periodic sync completely failed but playback continues: $e');
       // Completely isolate any network failures from affecting playback
+    } finally {
+      _isSyncingPosition = false;
     }
   }
 

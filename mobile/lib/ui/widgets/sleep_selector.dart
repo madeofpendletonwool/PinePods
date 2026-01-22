@@ -59,6 +59,8 @@ class _SleepSelectorWidgetState extends State<SleepSelectorWidget> {
                             sl = '${L.of(context)!.now_playing_episode_time_remaining} ${SleepSlider.formatDuration(s.timeRemaining)}';
                           case SleepType.episode:
                             sl = '${L.of(context)!.semantic_current_value_label} ${L.of(context)!.sleep_episode_label}';
+                          case SleepType.episodes:
+                            sl = '${L.of(context)!.semantic_current_value_label} ${s.episodeCount} episodes';
                         }
                       }
 
@@ -165,6 +167,13 @@ class _SleepSliderState extends State<SleepSlider> {
                         '${L.of(context)!.semantic_current_value_label} ${L.of(context)!.sleep_episode_label}',
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
+                if (s != null && s.type == SleepType.episodes)
+                  Text(
+                    '(${s.episodeCount} episodes)',
+                    semanticsLabel:
+                        '${L.of(context)!.semantic_current_value_label} ${s.episodeCount} episodes',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: ListView(
@@ -229,6 +238,38 @@ class _SleepSliderState extends State<SleepSlider> {
                         ),
                         current: s,
                       ),
+                      const Divider(),
+                      SleepSelectorEntry(
+                        sleep: Sleep(
+                          type: SleepType.episodes,
+                          episodeCount: 2,
+                        ),
+                        current: s,
+                      ),
+                      const Divider(),
+                      SleepSelectorEntry(
+                        sleep: Sleep(
+                          type: SleepType.episodes,
+                          episodeCount: 3,
+                        ),
+                        current: s,
+                      ),
+                      const Divider(),
+                      SleepSelectorEntry(
+                        sleep: Sleep(
+                          type: SleepType.episodes,
+                          episodeCount: 4,
+                        ),
+                        current: s,
+                      ),
+                      const Divider(),
+                      SleepSelectorEntry(
+                        sleep: Sleep(
+                          type: SleepType.episodes,
+                          episodeCount: 5,
+                        ),
+                        current: s,
+                      ),
                     ],
                   ),
                 )
@@ -257,6 +298,7 @@ class SleepSelectorEntry extends StatelessWidget {
         audioBloc.sleep(Sleep(
           type: sleep.type,
           duration: sleep.duration,
+          episodeCount: sleep.episodeCount,
         ));
 
         Navigator.pop(context);
@@ -283,6 +325,11 @@ class SleepSelectorEntry extends StatelessWidget {
             if (sleep.type == SleepType.episode)
               Text(
                 L.of(context)!.sleep_episode_label,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            if (sleep.type == SleepType.episodes)
+              Text(
+                '${sleep.episodeCount} episodes',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
             if (sleep == current)

@@ -1,0 +1,275 @@
+package com.gooseberrydevelopment.pinepods.audio
+
+import android.os.Bundle
+import android.util.Log
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.guava.future
+
+class PinepodsLibrarySessionCallback(
+    private val service: PinepodsMediaService,
+    private var mediaBrowserHelper: MediaBrowserHelper?,
+    private var eventStreamHandler: AudioEventStreamHandler?
+) : MediaLibraryService.MediaLibrarySession.Callback {
+
+    private val scope = CoroutineScope(Dispatchers.Main)
+
+    fun updateEventStreamHandler(handler: AudioEventStreamHandler) {
+        this.eventStreamHandler = handler
+    }
+
+    fun updateMediaBrowserHelper(helper: MediaBrowserHelper) {
+        this.mediaBrowserHelper = helper
+        Log.d(TAG, "MediaBrowserHelper updated with Flutter connectivity")
+    }
+
+    override fun onConnect(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo
+    ): MediaSession.ConnectionResult {
+        Log.d(TAG, "onConnect called by ${controller.packageName}")
+        AudioPlayerPlugin.logToFlutter("INFO", TAG, "onConnect: accepting connection from ${controller.packageName}")
+
+        // Accept all connections (including Android Auto) with default permissions
+        // The default includes browsing permissions for MediaLibrarySession
+        val connectionResult = super.onConnect(session, controller)
+
+        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Connection accepted for ${controller.packageName} with default permissions")
+
+        return connectionResult
+    }
+
+    override fun onGetLibraryRoot(
+        session: MediaLibraryService.MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        params: MediaLibraryService.LibraryParams?
+    ): ListenableFuture<LibraryResult<MediaItem>> {
+        Log.d(TAG, "onGetLibraryRoot called by ${browser.packageName}")
+        AudioPlayerPlugin.logToFlutter("INFO", TAG, "onGetLibraryRoot called by ${browser.packageName}, params=$params")
+
+        try {
+            // Return root item for Android Auto browsing
+            val rootItem = MediaItem.Builder()
+                .setMediaId(MediaBrowserHelper.ROOT_ID)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setIsPlayable(false)
+                        .setIsBrowsable(true)
+                        .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                        .setTitle("Pinepods")
+                        .build()
+                )
+                .build()
+
+            AudioPlayerPlugin.logToFlutter("INFO", TAG, "onGetLibraryRoot returning root item with ID=${MediaBrowserHelper.ROOT_ID}")
+            return Futures.immediateFuture(LibraryResult.ofItem(rootItem, params))
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in onGetLibraryRoot", e)
+            AudioPlayerPlugin.logToFlutter("ERROR", TAG, "Error in onGetLibraryRoot: ${e.message}")
+            return Futures.immediateFuture(LibraryResult.ofError(LibraryResult.RESULT_ERROR_UNKNOWN))
+        }
+    }
+
+    override fun onGetChildren(
+        session: MediaLibraryService.MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        parentId: String,
+        page: Int,
+        pageSize: Int,
+        params: MediaLibraryService.LibraryParams?
+    ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+        Log.d(TAG, "onGetChildren: $parentId")
+        AudioPlayerPlugin.logToFlutter("INFO", TAG, "onGetChildren called for parentId=$parentId, helper=${if (mediaBrowserHelper != null) "ready" else "NULL"}")
+
+        // If Flutter hasn't connected yet, return empty list
+        if (mediaBrowserHelper == null) {
+            Log.w(TAG, "MediaBrowserHelper not ready yet, returning empty list")
+            AudioPlayerPlugin.logToFlutter("WARN", TAG, "MediaBrowserHelper not ready yet, returning empty list for parentId=$parentId")
+            return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.of(), params))
+        }
+
+        return scope.future {
+            try {
+                val children = mediaBrowserHelper!!.getChildren(parentId)
+
+                // Convert MediaBrowserCompat.MediaItem to Media3 MediaItem
+                val mediaItems = children.map { compatItem ->
+                    val desc = compatItem.description
+                    val isPlayable = compatItem.isBrowsable.not()
+
+                    MediaItem.Builder()
+                        .setMediaId(desc.mediaId ?: "")
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setIsPlayable(isPlayable)
+                                .setIsBrowsable(!isPlayable)
+                                .setMediaType(
+                                    if (isPlayable) MediaMetadata.MEDIA_TYPE_PODCAST
+                                    else MediaMetadata.MEDIA_TYPE_FOLDER_PODCASTS
+                                )
+                                .setTitle(desc.title)
+                                .setSubtitle(desc.subtitle)
+                                .setDescription(desc.description)
+                                .setArtworkUri(desc.iconUri)
+                                .build()
+                        )
+                        .build()
+                }
+
+                AudioPlayerPlugin.logToFlutter("INFO", TAG, "onGetChildren returning ${mediaItems.size} items to Android Auto for parentId=$parentId")
+                LibraryResult.ofItemList(mediaItems, params)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting children for $parentId", e)
+                AudioPlayerPlugin.logToFlutter("ERROR", TAG, "Error getting children for $parentId: ${e.message}")
+                LibraryResult.ofError(LibraryResult.RESULT_ERROR_UNKNOWN)
+            }
+        }
+    }
+
+    override fun onGetItem(
+        session: MediaLibraryService.MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        mediaId: String
+    ): ListenableFuture<LibraryResult<MediaItem>> {
+        Log.d(TAG, "onGetItem: $mediaId")
+        AudioPlayerPlugin.logToFlutter("INFO", TAG, "onGetItem called for mediaId=$mediaId by ${browser.packageName}")
+
+        // For now, return error - we handle items through onGetChildren
+        return Futures.immediateFuture(
+            LibraryResult.ofError(LibraryResult.RESULT_ERROR_NOT_SUPPORTED)
+        )
+    }
+
+    override fun onSearch(
+        session: MediaLibraryService.MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        query: String,
+        params: MediaLibraryService.LibraryParams?
+    ): ListenableFuture<LibraryResult<Void>> {
+        Log.d(TAG, "onSearch: $query")
+
+        return scope.future {
+            try {
+                // Trigger search - results will be returned via onGetSearchResult
+                LibraryResult.ofVoid()
+            } catch (e: Exception) {
+                Log.e(TAG, "Search error", e)
+                LibraryResult.ofError(LibraryResult.RESULT_ERROR_UNKNOWN)
+            }
+        }
+    }
+
+    override fun onGetSearchResult(
+        session: MediaLibraryService.MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        query: String,
+        page: Int,
+        pageSize: Int,
+        params: MediaLibraryService.LibraryParams?
+    ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
+        Log.d(TAG, "onGetSearchResult: $query")
+
+        // If Flutter hasn't connected yet, return empty results
+        if (mediaBrowserHelper == null) {
+            Log.w(TAG, "MediaBrowserHelper not ready yet, returning empty search results")
+            return Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.of(), params))
+        }
+
+        return scope.future {
+            try {
+                val results = mediaBrowserHelper!!.search(query)
+
+                // Convert to Media3 MediaItem
+                val mediaItems = results.map { compatItem ->
+                    val desc = compatItem.description
+
+                    MediaItem.Builder()
+                        .setMediaId(desc.mediaId ?: "")
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setIsPlayable(true)
+                                .setIsBrowsable(false)
+                                .setMediaType(MediaMetadata.MEDIA_TYPE_PODCAST)
+                                .setTitle(desc.title)
+                                .setSubtitle(desc.subtitle)
+                                .setDescription(desc.description)
+                                .setArtworkUri(desc.iconUri)
+                                .build()
+                        )
+                        .build()
+                }
+
+                LibraryResult.ofItemList(mediaItems, params)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting search results", e)
+                LibraryResult.ofError(LibraryResult.RESULT_ERROR_UNKNOWN)
+            }
+        }
+    }
+
+    override fun onAddMediaItems(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        mediaItems: MutableList<MediaItem>
+    ): ListenableFuture<MutableList<MediaItem>> {
+        Log.d(TAG, "onAddMediaItems: ${mediaItems.size} items")
+
+        // If Flutter hasn't connected yet, can't play anything
+        if (mediaBrowserHelper == null) {
+            Log.w(TAG, "MediaBrowserHelper not ready yet, cannot play items")
+            return super.onAddMediaItems(mediaSession, controller, mediaItems)
+        }
+
+        // When Android Auto selects an item to play, handle it here
+        mediaItems.forEach { mediaItem ->
+            val mediaId = mediaItem.mediaId
+            Log.d(TAG, "Playing media ID: $mediaId")
+            mediaBrowserHelper!!.playFromMediaId(mediaId)
+        }
+
+        return super.onAddMediaItems(mediaSession, controller, mediaItems)
+    }
+
+    override fun onCustomCommand(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        customCommand: SessionCommand,
+        args: Bundle
+    ): ListenableFuture<SessionResult> {
+        Log.d(TAG, "onCustomCommand: ${customCommand.customAction}")
+
+        when (customCommand.customAction) {
+            "setPlaybackSpeed" -> {
+                val speed = args.getFloat("speed", 1.0f)
+                service.setPlaybackSpeed(speed)
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+            "setTrimSilence" -> {
+                val enabled = args.getBoolean("enabled", false)
+                service.setTrimSilence(enabled)
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+            "setVolumeBoost" -> {
+                val enabled = args.getBoolean("enabled", false)
+                service.setVolumeBoost(enabled)
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+        }
+
+        return super.onCustomCommand(session, controller, customCommand, args)
+    }
+
+    companion object {
+        private const val TAG = "LibrarySessionCallback"
+    }
+}
