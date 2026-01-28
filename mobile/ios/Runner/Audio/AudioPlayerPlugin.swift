@@ -27,14 +27,24 @@ public class AudioPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         )
         eventChannel.setStreamHandler(instance)
 
-        // Initialize audio player
-        instance.audioPlayer = PinepodsAudioPlayer(eventSink: nil)
+        // Defer audio player initialization to avoid blocking the main thread
+        // during app startup. AVAudioSession.setActive() can block on iOS.
+        DispatchQueue.main.async {
+            NSLog("[AudioPlayerPlugin] Initializing audio player (deferred)")
+            instance.audioPlayer = PinepodsAudioPlayer(eventSink: instance.eventSink)
 
-        // Initialize CarPlay support
-        instance.initializeCarPlay(methodChannel: methodChannel)
+            // Initialize CarPlay support (only on real devices)
+            instance.initializeCarPlay(methodChannel: methodChannel)
+        }
     }
 
     private func initializeCarPlay(methodChannel: FlutterMethodChannel) {
+        // Skip CarPlay initialization on simulator - MPPlayableContentManager
+        // can cause issues and CarPlay isn't available anyway
+        #if targetEnvironment(simulator)
+        NSLog("[CarPlay] Skipping CarPlay initialization on simulator")
+        return
+        #else
         NSLog("[CarPlay] Initializing CarPlay support")
 
         carPlayContentManager = CarPlayContentManager(methodChannel: methodChannel)
@@ -48,6 +58,7 @@ public class AudioPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
 
             NSLog("[CarPlay] CarPlay content provider registered")
         }
+        #endif
     }
 
     // MARK: - FlutterStreamHandler

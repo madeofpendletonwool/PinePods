@@ -69,20 +69,25 @@ class NativeAudioPlayerService extends AudioPlayerService {
   void _init() {
     log.info('Initializing NativeAudioPlayerService');
 
-    // Subscribe to native events
-    _nativeEventSubscription = eventChannel.receiveBroadcastStream().listen(
-      _handleNativeEvent,
-      onError: (error) {
-        log.severe('Native event stream error: $error');
-      },
-    );
-
     // Set up method call handler for Android Auto / CarPlay browsing
     platform.setMethodCallHandler(_handleMethodCall);
 
     // Set up native log handler to capture Android/iOS logs
     const nativeLogChannel = MethodChannel('com.pinepods/native_logs');
     nativeLogChannel.setMethodCallHandler(_handleNativeLog);
+
+    // Defer event channel subscription to avoid blocking iOS during app startup.
+    // On iOS, the event channel may not be fully ready during widget construction,
+    // which can cause the app to hang on a black screen.
+    Future.delayed(Duration.zero, () {
+      log.info('Subscribing to native event channel');
+      _nativeEventSubscription = eventChannel.receiveBroadcastStream().listen(
+        _handleNativeEvent,
+        onError: (error) {
+          log.severe('Native event stream error: $error');
+        },
+      );
+    });
 
     _loadQueue();
   }
@@ -125,21 +130,24 @@ class NativeAudioPlayerService extends AudioPlayerService {
       switch (call.method) {
         case 'getCurrent':
           return await _getCurrentForCar();
-        case 'getFeed':
-          return await _getFeedForCar();
+        case 'getQueue':
+          return await _getQueueForCar();
+        case 'getDownloads':
+          return await _getDownloadsForCar();
         case 'getSaved':
           return await _getSavedForCar();
-        case 'getSubscriptions':
-          return await _getSubscriptionsForCar();
+        case 'getHistory':
+          return await _getHistoryForCar();
+        case 'getPodcasts':
+          return await _getPodcastsForCar();
         case 'getPodcastEpisodes':
           final podcastId = call.arguments['podcastId'] as String;
           return await _getPodcastEpisodesForCar(podcastId);
-        case 'getDownloads':
-          return await _getDownloadsForCar();
-        case 'getQueue':
-          return await _getQueueForCar();
-        case 'getRecent':
-          return await _getRecentForCar();
+        case 'getPlaylists':
+          return await _getPlaylistsForCar();
+        case 'getPlaylistEpisodes':
+          final playlistId = call.arguments['playlistId'] as String;
+          return await _getPlaylistEpisodesForCar(playlistId);
         case 'playFromMediaId':
           final guid = call.arguments['guid'] as String;
           await _playFromMediaIdForCar(guid);
@@ -770,21 +778,6 @@ class NativeAudioPlayerService extends AudioPlayerService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _getPodcastEpisodesForCar(String podcastId) async {
-    try {
-      final podcasts = await repository.subscriptions();
-      final podcast = podcasts.firstWhere(
-        (p) => p.guid == podcastId,
-        orElse: () => throw Exception('Podcast not found'),
-      );
-
-      return podcast.episodes.map((episode) => _episodeToCarMap(episode)).toList();
-    } catch (e) {
-      log.severe('Error getting podcast episodes for car: $e');
-      return [];
-    }
-  }
-
   Future<List<Map<String, dynamic>>> _getDownloadsForCar() async {
     try {
       // Get PinePods service and credentials
@@ -971,6 +964,188 @@ class NativeAudioPlayerService extends AudioPlayerService {
       return episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
     } catch (e) {
       log.severe('Error getting saved for car: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getHistoryForCar() async {
+    try {
+      // Get PinePods service and credentials
+      final pinepodsService = GlobalServices.pinepodsService;
+      if (pinepodsService == null) {
+        log.warning('PinepodsService not available for History');
+        return [];
+      }
+
+      if (settingsService.pinepodsServer == null ||
+          settingsService.pinepodsApiKey == null ||
+          settingsService.pinepodsUserId == null) {
+        log.warning('Not connected to PinePods server for History');
+        return [];
+      }
+
+      // Set credentials and call SAME API as History page
+      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
+      log.info('Calling PinePods API: getUserHistory for History tab');
+
+      final episodes = await pinepodsService.getUserHistory(settingsService.pinepodsUserId!);
+
+      log.info('PinePods API returned ${episodes.length} history episodes');
+      return episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
+    } catch (e) {
+      log.severe('Error getting history for car: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getPodcastsForCar() async {
+    try {
+      // Get PinePods service and credentials
+      final pinepodsService = GlobalServices.pinepodsService;
+      if (pinepodsService == null) {
+        log.warning('PinepodsService not available for Podcasts');
+        return [];
+      }
+
+      if (settingsService.pinepodsServer == null ||
+          settingsService.pinepodsApiKey == null ||
+          settingsService.pinepodsUserId == null) {
+        log.warning('Not connected to PinePods server for Podcasts');
+        return [];
+      }
+
+      // Set credentials and call SAME API as Podcasts page
+      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
+      log.info('Calling PinePods API: getUserPodcasts for Podcasts tab');
+
+      final podcasts = await pinepodsService.getUserPodcasts(settingsService.pinepodsUserId!);
+
+      log.info('PinePods API returned ${podcasts.length} podcasts');
+      return podcasts.map((podcast) {
+        return {
+          'id': podcast.id.toString(),
+          'title': podcast.title,
+          'imageUrl': podcast.imageUrl ?? podcast.thumbImageUrl,
+          'episodeCount': podcast.episodes.length,
+        };
+      }).toList();
+    } catch (e) {
+      log.severe('Error getting podcasts for car: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getPodcastEpisodesForCar(String podcastId) async {
+    try {
+      // Get PinePods service and credentials
+      final pinepodsService = GlobalServices.pinepodsService;
+      if (pinepodsService == null) {
+        log.warning('PinepodsService not available for Podcast Episodes');
+        return [];
+      }
+
+      if (settingsService.pinepodsServer == null ||
+          settingsService.pinepodsApiKey == null ||
+          settingsService.pinepodsUserId == null) {
+        log.warning('Not connected to PinePods server for Podcast Episodes');
+        return [];
+      }
+
+      final podcastIdInt = int.tryParse(podcastId);
+      if (podcastIdInt == null) {
+        log.warning('Invalid podcast ID: $podcastId');
+        return [];
+      }
+
+      // Set credentials and call API
+      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
+      log.info('Calling PinePods API: getPodcastEpisodes for podcast $podcastId');
+
+      final episodes = await pinepodsService.getPodcastEpisodes(
+        settingsService.pinepodsUserId!,
+        podcastIdInt,
+      );
+
+      log.info('PinePods API returned ${episodes.length} episodes for podcast $podcastId');
+      return episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
+    } catch (e) {
+      log.severe('Error getting podcast episodes for car: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getPlaylistsForCar() async {
+    try {
+      // Get PinePods service and credentials
+      final pinepodsService = GlobalServices.pinepodsService;
+      if (pinepodsService == null) {
+        log.warning('PinepodsService not available for Playlists');
+        return [];
+      }
+
+      if (settingsService.pinepodsServer == null ||
+          settingsService.pinepodsApiKey == null ||
+          settingsService.pinepodsUserId == null) {
+        log.warning('Not connected to PinePods server for Playlists');
+        return [];
+      }
+
+      // Set credentials and call SAME API as Playlists page
+      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
+      log.info('Calling PinePods API: getPlaylists for Playlists tab');
+
+      final response = await pinepodsService.getPlaylists(settingsService.pinepodsUserId!);
+
+      log.info('PinePods API returned ${response.playlists.length} playlists');
+      return response.playlists.map((playlist) {
+        return {
+          'id': playlist.playlistId,
+          'name': playlist.name,
+          'description': playlist.description,
+          'episodeCount': playlist.episodeCount ?? 0,
+        };
+      }).toList();
+    } catch (e) {
+      log.severe('Error getting playlists for car: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getPlaylistEpisodesForCar(String playlistId) async {
+    try {
+      // Get PinePods service and credentials
+      final pinepodsService = GlobalServices.pinepodsService;
+      if (pinepodsService == null) {
+        log.warning('PinepodsService not available for Playlist Episodes');
+        return [];
+      }
+
+      if (settingsService.pinepodsServer == null ||
+          settingsService.pinepodsApiKey == null ||
+          settingsService.pinepodsUserId == null) {
+        log.warning('Not connected to PinePods server for Playlist Episodes');
+        return [];
+      }
+
+      final playlistIdInt = int.tryParse(playlistId);
+      if (playlistIdInt == null) {
+        log.warning('Invalid playlist ID: $playlistId');
+        return [];
+      }
+
+      // Set credentials and call API
+      pinepodsService.setCredentials(settingsService.pinepodsServer!, settingsService.pinepodsApiKey!);
+      log.info('Calling PinePods API: getPlaylistEpisodes for playlist $playlistId');
+
+      final response = await pinepodsService.getPlaylistEpisodes(
+        settingsService.pinepodsUserId!,
+        playlistIdInt,
+      );
+
+      log.info('PinePods API returned ${response.episodes.length} episodes for playlist $playlistId');
+      return response.episodes.map((episode) => _pinepodsEpisodeToCarMap(episode)).toList();
+    } catch (e) {
+      log.severe('Error getting playlist episodes for car: $e');
       return [];
     }
   }

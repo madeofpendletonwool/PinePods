@@ -12,8 +12,9 @@ import flutter_downloader
     FlutterDownloaderPlugin.setPluginRegistrantCallback(registerPlugins)
 
     // Register AudioPlayerPlugin
-    let registrar = self.registrar(forPlugin: "AudioPlayerPlugin")
-    AudioPlayerPlugin.register(with: registrar!)
+    // TEMPORARILY DISABLED FOR DEBUGGING
+    // let registrar = self.registrar(forPlugin: "AudioPlayerPlugin")
+    // AudioPlayerPlugin.register(with: registrar!)
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }

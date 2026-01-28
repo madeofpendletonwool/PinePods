@@ -28,22 +28,26 @@ class MediaBrowserHelper(
         // Root media IDs
         const val ROOT_ID = "__ROOT__"
         const val CURRENT_ID = "__CURRENT__"
-        const val FEED_ID = "__FEED__"
-        const val SAVED_ID = "__SAVED__"
+        const val QUEUE_ID = "__QUEUE__"
         const val DOWNLOADS_ID = "__DOWNLOADS__"
-        const val SUBSCRIPTIONS_ID = "__SUBSCRIPTIONS__"  // Keep for podcast browsing
-        const val QUEUE_ID = "__QUEUE__"  // Hidden from root but available
-        const val RECENT_ID = "__RECENT__"  // Hidden from root but available
+        const val MORE_ID = "__MORE__"
+
+        // More submenu IDs
+        const val SAVED_ID = "__SAVED__"
+        const val HISTORY_ID = "__HISTORY__"
+        const val PODCASTS_ID = "__PODCASTS__"
+        const val PLAYLISTS_ID = "__PLAYLISTS__"
 
         // Media ID prefixes
         const val PREFIX_PODCAST = "__PODCAST__|"
         const val PREFIX_EPISODE = "__EPISODE__|"
         const val PREFIX_CURRENT_ITEM = "__CURRENT__|"
-        const val PREFIX_FEED_ITEM = "__FEED__|"
-        const val PREFIX_SAVED_ITEM = "__SAVED__|"
-        const val PREFIX_DOWNLOAD = "__DOWNLOAD__|"
         const val PREFIX_QUEUE_ITEM = "__QUEUE__|"
-        const val PREFIX_RECENT_ITEM = "__RECENT__|"
+        const val PREFIX_DOWNLOAD = "__DOWNLOAD__|"
+        const val PREFIX_SAVED_ITEM = "__SAVED__|"
+        const val PREFIX_HISTORY_ITEM = "__HISTORY__|"
+        const val PREFIX_PLAYLIST = "__PLAYLIST__|"
+        const val PREFIX_PLAYLIST_EPISODE = "__PLAYLIST_EP__|"
     }
 
     private val scope = CoroutineScope(Dispatchers.Main)
@@ -60,21 +64,53 @@ class MediaBrowserHelper(
                 iconUri = null
             ),
             createBrowsableItem(
-                mediaId = FEED_ID,
-                title = "Feed",
-                subtitle = "Latest episodes",
-                iconUri = null
-            ),
-            createBrowsableItem(
-                mediaId = SAVED_ID,
-                title = "Saved",
-                subtitle = "Your saved episodes",
+                mediaId = QUEUE_ID,
+                title = "Queue",
+                subtitle = "Queued episodes",
                 iconUri = null
             ),
             createBrowsableItem(
                 mediaId = DOWNLOADS_ID,
                 title = "Downloads",
                 subtitle = "Downloaded episodes",
+                iconUri = null
+            ),
+            createBrowsableItem(
+                mediaId = MORE_ID,
+                title = "More",
+                subtitle = "More options",
+                iconUri = null
+            )
+        )
+    }
+
+    /**
+     * Get the "More" submenu items
+     */
+    fun getMoreMenuItems(): List<MediaBrowserCompat.MediaItem> {
+        return listOf(
+            createBrowsableItem(
+                mediaId = SAVED_ID,
+                title = "Saved",
+                subtitle = "Saved episodes",
+                iconUri = null
+            ),
+            createBrowsableItem(
+                mediaId = HISTORY_ID,
+                title = "History",
+                subtitle = "Recently played",
+                iconUri = null
+            ),
+            createBrowsableItem(
+                mediaId = PODCASTS_ID,
+                title = "Podcasts",
+                subtitle = "Your subscriptions",
+                iconUri = null
+            ),
+            createBrowsableItem(
+                mediaId = PLAYLISTS_ID,
+                title = "Playlists",
+                subtitle = "Your playlists",
                 iconUri = null
             )
         )
@@ -92,38 +128,45 @@ class MediaBrowserHelper(
                 AudioPlayerPlugin.logToFlutter("INFO", TAG, "Returning root menu items")
                 getRootMenuItems()
             }
+            parentId == MORE_ID -> {
+                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Returning More submenu")
+                getMoreMenuItems()
+            }
             parentId == CURRENT_ID -> {
                 AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching current episodes from Flutter")
                 getCurrent()
-            }
-            parentId == FEED_ID -> {
-                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching feed episodes from Flutter")
-                getFeed()
-            }
-            parentId == SAVED_ID -> {
-                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching saved episodes from Flutter")
-                getSaved()
-            }
-            parentId == DOWNLOADS_ID -> {
-                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching downloads from Flutter")
-                getDownloads()
-            }
-            parentId == SUBSCRIPTIONS_ID -> {
-                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching subscriptions from Flutter")
-                getSubscriptions()
             }
             parentId == QUEUE_ID -> {
                 AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching queue from Flutter")
                 getQueue()
             }
-            parentId == RECENT_ID -> {
-                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching recent from Flutter")
-                getRecent()
+            parentId == DOWNLOADS_ID -> {
+                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching downloads from Flutter")
+                getDownloads()
+            }
+            parentId == SAVED_ID -> {
+                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching saved episodes from Flutter")
+                getSaved()
+            }
+            parentId == HISTORY_ID -> {
+                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching history from Flutter")
+                getHistory()
+            }
+            parentId == PODCASTS_ID -> {
+                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching podcasts from Flutter")
+                getPodcasts()
+            }
+            parentId == PLAYLISTS_ID -> {
+                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching playlists from Flutter")
+                getPlaylists()
             }
             parentId.startsWith(PREFIX_PODCAST) -> {
-                val podcastId = parentId.removePrefix(PREFIX_PODCAST)
-                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching episodes for podcast: $podcastId")
+                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching episodes for podcast")
                 getPodcastEpisodes(parentId)
+            }
+            parentId.startsWith(PREFIX_PLAYLIST) -> {
+                AudioPlayerPlugin.logToFlutter("INFO", TAG, "Fetching episodes for playlist")
+                getPlaylistEpisodes(parentId)
             }
             else -> {
                 Log.w(TAG, "Unknown parent ID: $parentId")
@@ -139,14 +182,14 @@ class MediaBrowserHelper(
     /**
      * Get user's podcast subscriptions
      */
-    private suspend fun getSubscriptions(): List<MediaBrowserCompat.MediaItem> {
+    private suspend fun getPodcasts(): List<MediaBrowserCompat.MediaItem> {
         return suspendCancellableCoroutine { continuation ->
-            methodChannel.invokeMethod("getSubscriptions", null, object : MethodChannel.Result {
+            methodChannel.invokeMethod("getPodcasts", null, object : MethodChannel.Result {
                 override fun success(result: Any?) {
                     val items = mutableListOf<MediaBrowserCompat.MediaItem>()
 
                     if (result is List<*>) {
-                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Flutter returned ${result.size} subscriptions")
+                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Flutter returned ${result.size} podcasts")
                         for (podcast in result) {
                             if (podcast is Map<*, *>) {
                                 val id = podcast["id"] as? String ?: continue
@@ -162,9 +205,9 @@ class MediaBrowserHelper(
                                 ))
                             }
                         }
-                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Created ${items.size} subscription items")
+                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Created ${items.size} podcast items")
                     } else {
-                        AudioPlayerPlugin.logToFlutter("WARN", TAG, "Flutter returned non-list for subscriptions: ${result?.javaClass?.simpleName}")
+                        AudioPlayerPlugin.logToFlutter("WARN", TAG, "Flutter returned non-list for podcasts: ${result?.javaClass?.simpleName}")
                     }
 
                     if (continuation.isActive) {
@@ -173,16 +216,16 @@ class MediaBrowserHelper(
                 }
 
                 override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
-                    Log.e(TAG, "Failed to get subscriptions: $errorMessage")
-                    AudioPlayerPlugin.logToFlutter("ERROR", TAG, "Failed to get subscriptions: $errorMessage")
+                    Log.e(TAG, "Failed to get podcasts: $errorMessage")
+                    AudioPlayerPlugin.logToFlutter("ERROR", TAG, "Failed to get podcasts: $errorMessage")
                     if (continuation.isActive) {
                         continuation.resume(emptyList())
                     }
                 }
 
                 override fun notImplemented() {
-                    Log.w(TAG, "getSubscriptions not implemented")
-                    AudioPlayerPlugin.logToFlutter("WARN", TAG, "getSubscriptions not implemented in Flutter")
+                    Log.w(TAG, "getPodcasts not implemented")
+                    AudioPlayerPlugin.logToFlutter("WARN", TAG, "getPodcasts not implemented in Flutter")
                     if (continuation.isActive) {
                         continuation.resume(emptyList())
                     }
@@ -326,50 +369,6 @@ class MediaBrowserHelper(
     }
 
     /**
-     * Get recently played episodes
-     */
-    private suspend fun getRecent(): List<MediaBrowserCompat.MediaItem> {
-        return suspendCancellableCoroutine { continuation ->
-            methodChannel.invokeMethod("getRecent", null, object : MethodChannel.Result {
-                override fun success(result: Any?) {
-                    val items = mutableListOf<MediaBrowserCompat.MediaItem>()
-
-                    if (result is List<*>) {
-                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Flutter returned ${result.size} recent items")
-                        for (episode in result) {
-                            if (episode is Map<*, *>) {
-                                items.add(createPlayableEpisodeItem(episode, PREFIX_RECENT_ITEM))
-                            }
-                        }
-                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Created ${items.size} recent items")
-                    } else {
-                        AudioPlayerPlugin.logToFlutter("WARN", TAG, "Flutter returned non-list for recent: ${result?.javaClass?.simpleName}")
-                    }
-
-                    if (continuation.isActive) {
-                        continuation.resume(items)
-                    }
-                }
-
-                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
-                    Log.e(TAG, "Failed to get recent: $errorMessage")
-                    AudioPlayerPlugin.logToFlutter("ERROR", TAG, "Failed to get recent: $errorMessage")
-                    if (continuation.isActive) {
-                        continuation.resume(emptyList())
-                    }
-                }
-
-                override fun notImplemented() {
-                    AudioPlayerPlugin.logToFlutter("WARN", TAG, "getRecent not implemented in Flutter")
-                    if (continuation.isActive) {
-                        continuation.resume(emptyList())
-                    }
-                }
-            })
-        }
-    }
-
-    /**
      * Get home episodes (all episodes)
      */
     private suspend fun getCurrent(): List<MediaBrowserCompat.MediaItem> {
@@ -414,50 +413,6 @@ class MediaBrowserHelper(
     }
 
     /**
-     * Get feed episodes (latest episodes)
-     */
-    private suspend fun getFeed(): List<MediaBrowserCompat.MediaItem> {
-        return suspendCancellableCoroutine { continuation ->
-            methodChannel.invokeMethod("getFeed", null, object : MethodChannel.Result {
-                override fun success(result: Any?) {
-                    val items = mutableListOf<MediaBrowserCompat.MediaItem>()
-
-                    if (result is List<*>) {
-                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Flutter returned ${result.size} feed items")
-                        for (episode in result) {
-                            if (episode is Map<*, *>) {
-                                items.add(createPlayableEpisodeItem(episode, PREFIX_FEED_ITEM))
-                            }
-                        }
-                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Created ${items.size} feed items")
-                    } else {
-                        AudioPlayerPlugin.logToFlutter("WARN", TAG, "Flutter returned non-list for feed: ${result?.javaClass?.simpleName}")
-                    }
-
-                    if (continuation.isActive) {
-                        continuation.resume(items)
-                    }
-                }
-
-                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
-                    Log.e(TAG, "Failed to get feed: $errorMessage")
-                    AudioPlayerPlugin.logToFlutter("ERROR", TAG, "Failed to get feed: $errorMessage")
-                    if (continuation.isActive) {
-                        continuation.resume(emptyList())
-                    }
-                }
-
-                override fun notImplemented() {
-                    AudioPlayerPlugin.logToFlutter("WARN", TAG, "getFeed not implemented in Flutter")
-                    if (continuation.isActive) {
-                        continuation.resume(emptyList())
-                    }
-                }
-            })
-        }
-    }
-
-    /**
      * Get saved episodes (bookmarked/favorited)
      */
     private suspend fun getSaved(): List<MediaBrowserCompat.MediaItem> {
@@ -493,6 +448,151 @@ class MediaBrowserHelper(
 
                 override fun notImplemented() {
                     AudioPlayerPlugin.logToFlutter("WARN", TAG, "getSaved not implemented in Flutter")
+                    if (continuation.isActive) {
+                        continuation.resume(emptyList())
+                    }
+                }
+            })
+        }
+    }
+
+    /**
+     * Get user's history
+     */
+    private suspend fun getHistory(): List<MediaBrowserCompat.MediaItem> {
+        return suspendCancellableCoroutine { continuation ->
+            methodChannel.invokeMethod("getHistory", null, object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    val items = mutableListOf<MediaBrowserCompat.MediaItem>()
+
+                    if (result is List<*>) {
+                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Flutter returned ${result.size} history items")
+                        for (episode in result) {
+                            if (episode is Map<*, *>) {
+                                items.add(createPlayableEpisodeItem(episode, PREFIX_HISTORY_ITEM))
+                            }
+                        }
+                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Created ${items.size} history items")
+                    } else {
+                        AudioPlayerPlugin.logToFlutter("WARN", TAG, "Flutter returned non-list for history: ${result?.javaClass?.simpleName}")
+                    }
+
+                    if (continuation.isActive) {
+                        continuation.resume(items)
+                    }
+                }
+
+                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                    Log.e(TAG, "Failed to get history: $errorMessage")
+                    AudioPlayerPlugin.logToFlutter("ERROR", TAG, "Failed to get history: $errorMessage")
+                    if (continuation.isActive) {
+                        continuation.resume(emptyList())
+                    }
+                }
+
+                override fun notImplemented() {
+                    Log.w(TAG, "getHistory not implemented")
+                    AudioPlayerPlugin.logToFlutter("WARN", TAG, "getHistory not implemented in Flutter")
+                    if (continuation.isActive) {
+                        continuation.resume(emptyList())
+                    }
+                }
+            })
+        }
+    }
+
+    /**
+     * Get user's playlists
+     */
+    private suspend fun getPlaylists(): List<MediaBrowserCompat.MediaItem> {
+        return suspendCancellableCoroutine { continuation ->
+            methodChannel.invokeMethod("getPlaylists", null, object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    val items = mutableListOf<MediaBrowserCompat.MediaItem>()
+
+                    if (result is List<*>) {
+                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Flutter returned ${result.size} playlists")
+                        for (playlist in result) {
+                            if (playlist is Map<*, *>) {
+                                val id = playlist["id"] as? Int ?: continue
+                                val name = playlist["name"] as? String ?: "Unknown Playlist"
+                                val episodeCount = playlist["episodeCount"] as? Int ?: 0
+
+                                items.add(createBrowsableItem(
+                                    mediaId = "$PREFIX_PLAYLIST$id",
+                                    title = name,
+                                    subtitle = "$episodeCount episodes",
+                                    iconUri = null
+                                ))
+                            }
+                        }
+                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Created ${items.size} playlist items")
+                    } else {
+                        AudioPlayerPlugin.logToFlutter("WARN", TAG, "Flutter returned non-list for playlists: ${result?.javaClass?.simpleName}")
+                    }
+
+                    if (continuation.isActive) {
+                        continuation.resume(items)
+                    }
+                }
+
+                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                    Log.e(TAG, "Failed to get playlists: $errorMessage")
+                    AudioPlayerPlugin.logToFlutter("ERROR", TAG, "Failed to get playlists: $errorMessage")
+                    if (continuation.isActive) {
+                        continuation.resume(emptyList())
+                    }
+                }
+
+                override fun notImplemented() {
+                    Log.w(TAG, "getPlaylists not implemented")
+                    AudioPlayerPlugin.logToFlutter("WARN", TAG, "getPlaylists not implemented in Flutter")
+                    if (continuation.isActive) {
+                        continuation.resume(emptyList())
+                    }
+                }
+            })
+        }
+    }
+
+    /**
+     * Get episodes for a specific playlist
+     */
+    private suspend fun getPlaylistEpisodes(parentId: String): List<MediaBrowserCompat.MediaItem> {
+        val playlistId = parentId.removePrefix(PREFIX_PLAYLIST)
+
+        return suspendCancellableCoroutine { continuation ->
+            methodChannel.invokeMethod("getPlaylistEpisodes", mapOf("playlistId" to playlistId), object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    val items = mutableListOf<MediaBrowserCompat.MediaItem>()
+
+                    if (result is List<*>) {
+                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Flutter returned ${result.size} episodes for playlist $playlistId")
+                        for (episode in result) {
+                            if (episode is Map<*, *>) {
+                                items.add(createPlayableEpisodeItem(episode, PREFIX_PLAYLIST_EPISODE))
+                            }
+                        }
+                        AudioPlayerPlugin.logToFlutter("INFO", TAG, "Created ${items.size} playlist episode items")
+                    } else {
+                        AudioPlayerPlugin.logToFlutter("WARN", TAG, "Flutter returned non-list for playlist episodes: ${result?.javaClass?.simpleName}")
+                    }
+
+                    if (continuation.isActive) {
+                        continuation.resume(items)
+                    }
+                }
+
+                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
+                    Log.e(TAG, "Failed to get playlist episodes: $errorMessage")
+                    AudioPlayerPlugin.logToFlutter("ERROR", TAG, "Failed to get playlist episodes: $errorMessage")
+                    if (continuation.isActive) {
+                        continuation.resume(emptyList())
+                    }
+                }
+
+                override fun notImplemented() {
+                    AudioPlayerPlugin.logToFlutter("WARN", TAG, "getPlaylistEpisodes not implemented in Flutter")
                     if (continuation.isActive) {
                         continuation.resume(emptyList())
                     }
@@ -613,11 +713,11 @@ class MediaBrowserHelper(
             // Extract the episode GUID from the media ID
             val guid = when {
                 mediaId.startsWith(PREFIX_CURRENT_ITEM) -> mediaId.removePrefix(PREFIX_CURRENT_ITEM)
-                mediaId.startsWith(PREFIX_FEED_ITEM) -> mediaId.removePrefix(PREFIX_FEED_ITEM)
                 mediaId.startsWith(PREFIX_SAVED_ITEM) -> mediaId.removePrefix(PREFIX_SAVED_ITEM)
+                mediaId.startsWith(PREFIX_HISTORY_ITEM) -> mediaId.removePrefix(PREFIX_HISTORY_ITEM)
                 mediaId.startsWith(PREFIX_EPISODE) -> mediaId.removePrefix(PREFIX_EPISODE)
                 mediaId.startsWith(PREFIX_DOWNLOAD) -> mediaId.removePrefix(PREFIX_DOWNLOAD)
-                mediaId.startsWith(PREFIX_RECENT_ITEM) -> mediaId.removePrefix(PREFIX_RECENT_ITEM)
+                mediaId.startsWith(PREFIX_PLAYLIST_EPISODE) -> mediaId.removePrefix(PREFIX_PLAYLIST_EPISODE)
                 mediaId.startsWith(PREFIX_QUEUE_ITEM) -> {
                     // Queue items have format: __QUEUE__|<index>|<guid>
                     val parts = mediaId.split("|")
