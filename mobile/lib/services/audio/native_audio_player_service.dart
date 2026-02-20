@@ -81,12 +81,16 @@ class NativeAudioPlayerService extends AudioPlayerService {
     // which can cause the app to hang on a black screen.
     Future.delayed(Duration.zero, () {
       log.info('Subscribing to native event channel');
-      _nativeEventSubscription = eventChannel.receiveBroadcastStream().listen(
-        _handleNativeEvent,
-        onError: (error) {
-          log.severe('Native event stream error: $error');
-        },
-      );
+      try {
+        _nativeEventSubscription = eventChannel.receiveBroadcastStream().listen(
+          _handleNativeEvent,
+          onError: (error) {
+            log.severe('Native event stream error: $error');
+          },
+        );
+      } catch (e) {
+        log.severe('Failed to subscribe to native event channel: $e');
+      }
     });
 
     _loadQueue();
