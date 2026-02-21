@@ -3483,9 +3483,11 @@ pub fn episode_layout() -> Html {
                                                     {
                                                         if let Some(categories) = &podcast_info.categories {
                                                             html! {
-                                                                for categories.iter().map(|(_, category_name)| {
+                                                                <>
+                                                                { for categories.iter().map(|(_, category_name)| {
                                                                     html! { <span class="category-box">{ category_name }</span> }
-                                                                })
+                                                                }) }
+                                                                </>
                                                             }
                                                         } else {
                                                             html! {}
@@ -3640,9 +3642,11 @@ pub fn episode_layout() -> Html {
                                                                 {
                                                                     if let Some(categories) = &podcast_info.categories {
                                                                         html! {
-                                                                            for categories.values().map(|category_name| {
+                                                                            <>
+                                                                            { for categories.values().map(|category_name| {
                                                                                 html! { <span class="category-box">{ category_name }</span> }
-                                                                            })
+                                                                            }) }
+                                                                            </>
                                                                         }
                                                                     } else {
                                                                         html! {}

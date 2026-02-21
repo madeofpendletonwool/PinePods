@@ -303,7 +303,7 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
     let ondragover = Callback::from(move |e: DragEvent| {
         e.prevent_default();
         let y = e.client_y();
-        let scroll_speed = 20;
+        let scroll_speed = 20.0;
 
         // Find the virtual list container to scroll it instead of the window
         if let Some(document) = web_sys::window().and_then(|w| w.document()) {
@@ -316,7 +316,7 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
                     // Scroll up if cursor is near the top of the container
                     if (y as f64) < container_top + 50.0 {
                         container_element
-                            .set_scroll_top((container_element.scroll_top() - scroll_speed).max(0));
+                            .set_scroll_top((container_element.scroll_top() - scroll_speed).max(0.0));
                     }
 
                     // Scroll down if cursor is near the bottom of the container

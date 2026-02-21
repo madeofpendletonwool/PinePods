@@ -4854,7 +4854,7 @@ impl DatabasePool {
 
     // Generate API key - matches Python create_api_key function
     fn generate_api_key(&self) -> String {
-        use rand::Rng;
+        use rand::RngExt;
         const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         let mut rng = rand::rng();
         (0..64)
@@ -9956,7 +9956,7 @@ impl DatabasePool {
 
     // Create API key - matches Python create_api_key function exactly
     pub async fn create_api_key(&self, user_id: i32) -> AppResult<String> {
-        use rand::Rng;
+        use rand::RngExt;
         
         // Generate 64-character API key
         let charset: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
@@ -9994,7 +9994,7 @@ impl DatabasePool {
 
     // Create RSS key - matches Python create_rss_key function exactly
     pub async fn create_rss_key(&self, user_id: i32, podcast_ids: Option<Vec<i32>>) -> AppResult<String> {
-        use rand::Rng;
+        use rand::RngExt;
         use rand::distr::Alphanumeric;
         
         // Generate 64-character RSS key
@@ -10577,12 +10577,10 @@ impl DatabasePool {
     pub async fn generate_mfa_secret(&self, user_id: i32) -> AppResult<(String, String)> {
         use totp_rs::{Algorithm, Secret, TOTP};
         use qrcode::QrCode;
-        use rand::Rng;
-        
+
         // Generate random base32 secret (matches Python random_base32())
         let secret = {
-            let mut rng = rand::rng();
-            let secret_bytes: [u8; 20] = rng.random(); // 160 bits = 32 base32 chars
+            let secret_bytes: [u8; 20] = rand::random(); // 160 bits = 32 base32 chars
             Secret::Raw(secret_bytes.to_vec()).to_encoded().to_string()
         };
         
@@ -18646,10 +18644,9 @@ impl DatabasePool {
     // Create OIDC user - matches Python create_oidc_user function EXACTLY
     pub async fn create_oidc_user(&self, email: &str, fullname: &str, username: &str) -> AppResult<i32> {
         use base64::{Engine as _, engine::general_purpose::STANDARD};
-        use rand::Rng;
-        
+
         // Create salt exactly like Python version
-        let salt_bytes: [u8; 16] = rand::rng().random();
+        let salt_bytes: [u8; 16] = rand::random();
         let salt = STANDARD.encode(salt_bytes);
         let hashed_password = format!("$argon2id$v=19$m=65536,t=3,p=4${}${}_OIDC_ACCOUNT_NO_PASSWORD", 
                                     salt, "X".repeat(43));
@@ -21624,7 +21621,7 @@ impl DatabasePool {
                 };
 
                 // Generate a secure internal token (64 characters alphanumeric)
-                use rand::{distr::Alphanumeric, Rng};
+                use rand::{distr::Alphanumeric, RngExt};
                 let internal_token: String = rand::rng()
                     .sample_iter(&Alphanumeric)
                     .take(64)
@@ -21702,7 +21699,7 @@ impl DatabasePool {
                 };
 
                 // Generate a secure internal token (64 characters alphanumeric)
-                use rand::{distr::Alphanumeric, Rng};
+                use rand::{distr::Alphanumeric, RngExt};
                 let internal_token: String = rand::rng()
                     .sample_iter(&Alphanumeric)
                     .take(64)
@@ -23145,7 +23142,7 @@ impl DatabasePool {
 
     // Create a password reset code for the user
     pub async fn reset_password_create_code(&self, user_email: &str) -> AppResult<Option<String>> {
-        use rand::Rng;
+        use rand::RngExt;
         use chrono::{Utc, Duration};
         
         // Generate 6-character reset code with uppercase letters and digits

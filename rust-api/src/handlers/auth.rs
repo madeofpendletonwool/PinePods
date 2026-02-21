@@ -227,7 +227,7 @@ pub async fn get_key(
     if mfa_enabled {
         // MFA is enabled - create secure session token and DO NOT return API key yet
         // Generate cryptographically secure session token
-        use rand::Rng;
+        use rand::RngExt;
         const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         let mut rng = rand::rng();
         let session_token: String = (0..32)

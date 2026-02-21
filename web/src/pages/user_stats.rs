@@ -105,7 +105,7 @@ pub fn user_stats() -> Html {
 
                                         <div class="stats-card">
                                             <p class="stats-label">{i18n.t("user_stats.podcasts_played")}</p>
-                                            <p class="stats-value">{ &stats.PodcastsPlayed }</p>
+                                            <p class="stats-value">{ stats.PodcastsPlayed }</p>
                                         </div>
 
                                         <div class="stats-card">
@@ -115,17 +115,17 @@ pub fn user_stats() -> Html {
 
                                         <div class="stats-card">
                                             <p class="stats-label">{i18n.t("user_stats.podcasts_added")}</p>
-                                            <p class="stats-value">{ &stats.PodcastsAdded }</p>
+                                            <p class="stats-value">{ stats.PodcastsAdded }</p>
                                         </div>
 
                                         <div class="stats-card">
                                             <p class="stats-label">{i18n.t("user_stats.episodes_saved")}</p>
-                                            <p class="stats-value">{ &stats.EpisodesSaved }</p>
+                                            <p class="stats-value">{ stats.EpisodesSaved }</p>
                                         </div>
 
                                         <div class="stats-card">
                                             <p class="stats-label">{i18n.t("user_stats.episodes_downloaded")}</p>
-                                            <p class="stats-value">{ &stats.EpisodesDownloaded }</p>
+                                            <p class="stats-value">{ stats.EpisodesDownloaded }</p>
                                         </div>
                                         <div class={if let Some(stats) = user_stats {
                                             if stats.Pod_Sync_Type.as_str() == "None" {
