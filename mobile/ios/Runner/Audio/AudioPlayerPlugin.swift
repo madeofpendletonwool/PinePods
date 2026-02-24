@@ -1,6 +1,8 @@
 import Flutter
 import Foundation
 import AVFoundation
+import MediaPlayer
+import CarPlay
 
 /// Flutter plugin that bridges native iOS audio playback to Flutter
 /// Uses MethodChannel for commands and EventChannel for playback state updates
@@ -145,6 +147,15 @@ public class AudioPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         case "isPlaying":
             result(player.isPlaying())
 
+        case "getNowPlayingInfo":
+            // Debug method to check what's in MPNowPlayingInfoCenter
+            result(getNowPlayingInfoDebug())
+
+        case "configureCarPlayNowPlaying":
+            // Ensure CarPlay Now Playing template is configured
+            configureCarPlayNowPlaying()
+            result(nil)
+
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -183,5 +194,56 @@ public class AudioPlayerPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
             metadata: metadata
         )
         result(nil)
+    }
+
+    // MARK: - CarPlay Now Playing Debug
+
+    private func getNowPlayingInfoDebug() -> [String: Any] {
+        let infoCenter = MPNowPlayingInfoCenter.default()
+
+        guard let info = infoCenter.nowPlayingInfo else {
+            NSLog("[AudioPlayerPlugin] getNowPlayingInfo: NO INFO SET")
+            return [
+                "hasInfo": false,
+                "message": "No now playing info set in MPNowPlayingInfoCenter"
+            ]
+        }
+
+        let title = info[MPMediaItemPropertyTitle] as? String ?? "nil"
+        let artist = info[MPMediaItemPropertyArtist] as? String ?? "nil"
+        let duration = info[MPMediaItemPropertyPlaybackDuration] as? Double ?? 0
+        let elapsed = info[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? 0
+        let rate = info[MPNowPlayingInfoPropertyPlaybackRate] as? Float ?? 0
+        let hasArtwork = info[MPMediaItemPropertyArtwork] != nil
+
+        NSLog("[AudioPlayerPlugin] getNowPlayingInfo: title='\(title)', artist='\(artist)', duration=\(duration)s, elapsed=\(elapsed)s, rate=\(rate), artwork=\(hasArtwork)")
+
+        return [
+            "hasInfo": true,
+            "title": title,
+            "artist": artist,
+            "duration": duration,
+            "elapsed": elapsed,
+            "rate": rate,
+            "hasArtwork": hasArtwork
+        ]
+    }
+
+    private func configureCarPlayNowPlaying() {
+        if #available(iOS 14.0, *) {
+            NSLog("[AudioPlayerPlugin] Configuring CarPlay Now Playing template")
+
+            // Use our helper to configure the shared Now Playing template
+            CarPlayNowPlayingHelper.shared.configureNowPlayingTemplate()
+
+            // Also log current Now Playing info for debugging
+            let info = getNowPlayingInfoDebug()
+            eventSink?([
+                "type": "log",
+                "message": "CarPlay Now Playing configured. Current info: \(info)"
+            ])
+        } else {
+            NSLog("[AudioPlayerPlugin] CarPlay Now Playing not available (iOS 14+ required)")
+        }
     }
 }

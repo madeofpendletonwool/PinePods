@@ -127,26 +127,15 @@ class PinepodsService {
     try {
       final response = await http.get(url, headers: {'Api-Key': _apiKey!});
 
-      // User podcasts API response received
-
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final List<dynamic> podsData = data['pods'] ?? [];
 
         List<Podcast> podcasts = [];
         for (var podData in podsData) {
-          // Use episode count from server response
+          // Store episode count in the podcast for display purposes
+          // Don't create placeholder episodes - that's wasteful and causes memory issues
           final episodeCount = podData['episodecount'] ?? 0;
-
-          // Create placeholder episodes to represent the count
-          final placeholderEpisodes = List.generate(
-            episodeCount,
-            (index) => Episode(
-              guid: 'placeholder_$index',
-              podcast: podData['podcastname'] ?? '',
-              title: 'Episode ${index + 1}',
-            ),
-          );
 
           podcasts.add(
             Podcast(
@@ -159,7 +148,10 @@ class PinepodsService {
               link: podData['websiteurl'] ?? '',
               copyright: podData['author'] ?? '',
               guid: podData['feedurl'] ?? '',
-              episodes: placeholderEpisodes,
+              // Empty episodes list - episodes are loaded separately when needed
+              episodes: [],
+              // Store episode count for display (if Podcast model supports it)
+              // Otherwise the count can be fetched when viewing the podcast
             ),
           );
         }

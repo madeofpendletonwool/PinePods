@@ -687,6 +687,34 @@ class NativeAudioPlayerService extends AudioPlayerService {
   @override
   Stream<Sleep> get sleepStream => _sleepState.stream;
 
+  // MARK: - CarPlay Debug Methods
+
+  /// Get the current Now Playing info from MPNowPlayingInfoCenter for debugging
+  Future<Map<String, dynamic>> getNowPlayingInfo() async {
+    try {
+      final result = await platform.invokeMethod<Map>('getNowPlayingInfo');
+      if (result != null) {
+        final info = Map<String, dynamic>.from(result);
+        log.info('getNowPlayingInfo: $info');
+        return info;
+      }
+      return {'hasInfo': false, 'error': 'No result returned'};
+    } catch (e) {
+      log.severe('Failed to get now playing info: $e');
+      return {'hasInfo': false, 'error': e.toString()};
+    }
+  }
+
+  /// Configure the CarPlay Now Playing template (call before showing it)
+  Future<void> configureCarPlayNowPlaying() async {
+    try {
+      await platform.invokeMethod('configureCarPlayNowPlaying');
+      log.info('CarPlay Now Playing template configured');
+    } catch (e) {
+      log.severe('Failed to configure CarPlay Now Playing: $e');
+    }
+  }
+
   void dispose() {
     _nativeEventSubscription?.cancel();
     _sleepSubscription?.cancel();

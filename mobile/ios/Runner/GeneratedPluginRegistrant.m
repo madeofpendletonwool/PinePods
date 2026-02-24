@@ -42,6 +42,12 @@
 @import file_picker;
 #endif
 
+#if __has_include(<flutter_carplay/FlutterCarplayPlugin.h>)
+#import <flutter_carplay/FlutterCarplayPlugin.h>
+#else
+@import flutter_carplay;
+#endif
+
 #if __has_include(<flutter_downloader/FlutterDownloaderPlugin.h>)
 #import <flutter_downloader/FlutterDownloaderPlugin.h>
 #else
@@ -111,6 +117,7 @@
   [ConnectivityPlusPlugin registerWithRegistrar:[registry registrarForPlugin:@"ConnectivityPlusPlugin"]];
   [FPPDeviceInfoPlusPlugin registerWithRegistrar:[registry registrarForPlugin:@"FPPDeviceInfoPlusPlugin"]];
   [FilePickerPlugin registerWithRegistrar:[registry registrarForPlugin:@"FilePickerPlugin"]];
+  [FlutterCarplayPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterCarplayPlugin"]];
   [FlutterDownloaderPlugin registerWithRegistrar:[registry registrarForPlugin:@"FlutterDownloaderPlugin"]];
   [JustAudioPlugin registerWithRegistrar:[registry registrarForPlugin:@"JustAudioPlugin"]];
   [FPPPackageInfoPlusPlugin registerWithRegistrar:[registry registrarForPlugin:@"FPPPackageInfoPlusPlugin"]];

@@ -35,6 +35,7 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/pinepods/oidc_service.dart';
 import 'package:pinepods_mobile/services/pinepods/login_service.dart';
 import 'package:pinepods_mobile/services/auth_notifier.dart';
+import 'package:pinepods_mobile/services/carplay/carplay_service.dart';
 import 'package:pinepods_mobile/services/settings/mobile_settings_service.dart';
 import 'package:pinepods_mobile/ui/library/downloads.dart';
 import 'package:pinepods_mobile/ui/library/library.dart';
@@ -91,6 +92,7 @@ class PinepodsPodcastApp extends StatefulWidget {
   List<int> certificateAuthorityBytes;
   late PinepodsAudioService pinepodsAudioService;
   late PinepodsService pinepodsService;
+  CarPlayService? carPlayService;
 
   PinepodsPodcastApp({
     super.key,
@@ -153,6 +155,16 @@ class PinepodsPodcastApp extends StatefulWidget {
       pinepodsAudioService: pinepodsAudioService,
       pinepodsService: pinepodsService,
     );
+
+    // Initialize CarPlay service for iOS
+    if (Platform.isIOS) {
+      carPlayService = CarPlayService(
+        repository: repository,
+        settingsService: mobileSettingsService,
+        audioPlayerService: audioPlayerService,
+      );
+      carPlayService!.setPinepodsService(pinepodsService);
+    }
 
     podcastApi.addClientAuthorityBytes(certificateAuthorityBytes);
   }

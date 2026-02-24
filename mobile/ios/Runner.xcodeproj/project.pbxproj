@@ -19,6 +19,9 @@
 		A1B2C3D4E5F6A7B8C9D0E1F4 /* AudioPlayerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F5 /* AudioPlayerPlugin.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E1F6 /* NowPlayingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F7 /* NowPlayingManager.swift */; };
 		A1B2C3D4E5F6A7B8C9D0E1F8 /* RemoteCommandManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F9 /* RemoteCommandManager.swift */; };
+		C1D2E3F4A5B6C7D8E9F0A1B2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D2E3F4A5B6C7D8E9F0A1B3 /* SceneDelegate.swift */; };
+		D1E2F3A4B5C6D7E8F9A0B1C2 /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E8F9A0B1C3 /* CarPlaySceneDelegate.swift */; };
+		D1E2F3A4B5C6D7E8F9A0B1C4 /* CarPlayNowPlayingChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1E2F3A4B5C6D7E8F9A0B1C5 /* CarPlayNowPlayingChannel.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -57,6 +60,10 @@
 		A1B2C3D4E5F6A7B8C9D0E1F5 /* AudioPlayerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerPlugin.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D0E1F7 /* NowPlayingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingManager.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6A7B8C9D0E1F9 /* RemoteCommandManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteCommandManager.swift; sourceTree = "<group>"; };
+		C1D2E3F4A5B6C7D8E9F0A1B3 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5A6B7C8D9E0F1A7 /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
+		D1E2F3A4B5C6D7E8F9A0B1C3 /* CarPlaySceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlaySceneDelegate.swift; sourceTree = "<group>"; };
+		D1E2F3A4B5C6D7E8F9A0B1C5 /* CarPlayNowPlayingChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlayNowPlayingChannel.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -125,13 +132,16 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F6A7B8C9D0E1FA /* Audio */,
+				D1E2F3A4B5C6D7E8F9A0B1C6 /* CarPlay */,
 				97C146FA1CF9000F007C117D /* Main.storyboard */,
 				97C146FD1CF9000F007C117D /* Assets.xcassets */,
 				97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */,
 				97C147021CF9000F007C117D /* Info.plist */,
+				B1C2D3E4F5A6B7C8D9E0F1A7 /* Runner.entitlements */,
 				1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */,
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
+				C1D2E3F4A5B6C7D8E9F0A1B3 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -146,6 +156,15 @@
 				A1B2C3D4E5F6A7B8C9D0E1F9 /* RemoteCommandManager.swift */,
 			);
 			path = Audio;
+			sourceTree = "<group>";
+		};
+		D1E2F3A4B5C6D7E8F9A0B1C6 /* CarPlay */ = {
+			isa = PBXGroup;
+			children = (
+				D1E2F3A4B5C6D7E8F9A0B1C3 /* CarPlaySceneDelegate.swift */,
+				D1E2F3A4B5C6D7E8F9A0B1C5 /* CarPlayNowPlayingChannel.swift */,
+			);
+			path = CarPlay;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -322,6 +341,9 @@
 				A1B2C3D4E5F6A7B8C9D0E1F4 /* AudioPlayerPlugin.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D0E1F6 /* NowPlayingManager.swift in Sources */,
 				A1B2C3D4E5F6A7B8C9D0E1F8 /* RemoteCommandManager.swift in Sources */,
+				C1D2E3F4A5B6C7D8E9F0A1B2 /* SceneDelegate.swift in Sources */,
+				D1E2F3A4B5C6D7E8F9A0B1C2 /* CarPlaySceneDelegate.swift in Sources */,
+				D1E2F3A4B5C6D7E8F9A0B1C4 /* CarPlayNowPlayingChannel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -389,7 +411,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -412,6 +434,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Flutter",
 				);
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				INFOPLIST_FILE = Runner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -478,7 +501,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -528,7 +551,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -553,6 +576,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Flutter",
 				);
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				INFOPLIST_FILE = Runner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -585,6 +609,7 @@
 					"$(inherited)",
 					"$(PROJECT_DIR)/Flutter",
 				);
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				INFOPLIST_FILE = Runner/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
