@@ -292,9 +292,9 @@ impl TaskSpawner {
                 let episode_info = match &db_pool {
                     crate::database::DatabasePool::Postgres(pool) => {
                         let row = sqlx::query(r#"
-                            SELECT e."episodeurl", e."episodetitle", p."podcastname", 
+                            SELECT e."episodeurl", e."episodetitle", p."podcastname",
                                    e."episodepubdate", p."author", e."episodeartwork", p."artworkurl",
-                                   e."episodedescription"
+                                   e."episodedescription", p."username", p."password"
                             FROM "Episodes" e
                             JOIN "Podcasts" p ON e."podcastid" = p."podcastid"
                             WHERE e."episodeid" = $1
@@ -302,7 +302,7 @@ impl TaskSpawner {
                         .bind(episode_id)
                         .fetch_one(pool)
                         .await?;
-                        
+
                         (
                             row.try_get::<String, _>("episodeurl")?,
                             row.try_get::<String, _>("episodetitle")?,
@@ -311,14 +311,16 @@ impl TaskSpawner {
                             row.try_get::<Option<String>, _>("author")?,
                             row.try_get::<Option<String>, _>("episodeartwork")?,
                             row.try_get::<Option<String>, _>("artworkurl")?,
-                            row.try_get::<Option<String>, _>("episodedescription")?
+                            row.try_get::<Option<String>, _>("episodedescription")?,
+                            row.try_get::<Option<String>, _>("username")?,
+                            row.try_get::<Option<String>, _>("password")?
                         )
                     }
                     crate::database::DatabasePool::MySQL(pool) => {
                         let row = sqlx::query("
                             SELECT e.EpisodeURL, e.EpisodeTitle, p.PodcastName,
                                    e.EpisodePubDate, p.Author, e.EpisodeArtwork, p.ArtworkURL,
-                                   e.EpisodeDescription
+                                   e.EpisodeDescription, p.Username, p.Password
                             FROM Episodes e
                             JOIN Podcasts p ON e.PodcastID = p.PodcastID
                             WHERE e.EpisodeID = ?
@@ -326,7 +328,7 @@ impl TaskSpawner {
                         .bind(episode_id)
                         .fetch_one(pool)
                         .await?;
-                        
+
                         (
                             row.try_get::<String, _>("EpisodeURL")?,
                             row.try_get::<String, _>("EpisodeTitle")?,
@@ -335,12 +337,14 @@ impl TaskSpawner {
                             row.try_get::<Option<String>, _>("Author")?,
                             row.try_get::<Option<String>, _>("EpisodeArtwork")?,
                             row.try_get::<Option<String>, _>("ArtworkURL")?,
-                            row.try_get::<Option<String>, _>("EpisodeDescription")?
+                            row.try_get::<Option<String>, _>("EpisodeDescription")?,
+                            row.try_get::<Option<String>, _>("Username")?,
+                            row.try_get::<Option<String>, _>("Password")?
                         )
                     }
                 };
-                
-                let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, description) = episode_info;
+
+                let (episode_url, episode_title, podcast_name, pub_date, author, episode_artwork, artwork_url, description, feed_username, feed_password) = episode_info;
                 
                 let status_message = format!("Preparing {}", episode_title);
                 task_manager.update_task_progress_with_details(&task_id_clone, 10.0, Some(status_message.clone()), Some(episode_id), Some("podcast_download".to_string()), Some(episode_title.clone())).await?;
@@ -390,7 +394,16 @@ impl TaskSpawner {
                 
                 // Download the file
                 let client = reqwest::Client::new();
-                let mut response = client.get(&episode_url)
+                let mut request = client.get(&episode_url);
+
+                // Apply basic auth if feed credentials are provided
+                if let (Some(ref username), Some(ref password)) = (&feed_username, &feed_password) {
+                    if !username.is_empty() {
+                        request = request.basic_auth(username, Some(password));
+                    }
+                }
+
+                let mut response = request
                     .send()
                     .await
                     .map_err(|e| crate::error::AppError::internal(&format!("Failed to start download: {}", e)))?;
