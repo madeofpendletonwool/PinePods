@@ -86,38 +86,16 @@ A project created and written by Collin Pendleton
 collinp@gooseberrydevelopment.com
 EOF
 
-# Configure timezone based on TZ environment variable
+# Timezone is configured via the TZ environment variable, which musl/glibc
+# respect without needing to write to /etc/localtime (a root-owned file).
+# The TZ variable is already exported above and will be inherited by all
+# child processes started by Horust.
 if [ -n "$TZ" ]; then
-    echo "Setting timezone to $TZ"
-    # For Alpine, we need to copy the zoneinfo file
-    if [ -f "/usr/share/zoneinfo/$TZ" ]; then
-        # Check if /etc/localtime is a mounted volume
-        if [ -f "/etc/localtime" ] && ! [ -L "/etc/localtime" ]; then
-            echo "Using mounted timezone file from host"
-        else
-            # If it's not mounted or is a symlink, we can modify it
-            cp /usr/share/zoneinfo/$TZ /etc/localtime
-            echo "$TZ" > /etc/timezone
-        fi
-    else
-        echo "Timezone $TZ not found, using UTC"
-        # Only modify if not mounted
-        if ! [ -f "/etc/localtime" ] || [ -L "/etc/localtime" ]; then
-            cp /usr/share/zoneinfo/UTC /etc/localtime
-            echo "UTC" > /etc/timezone
-        fi
-    fi
+    echo "Timezone set to $TZ via TZ environment variable"
 else
-    echo "No timezone specified, using UTC"
-    # Only modify if not mounted
-    if ! [ -f "/etc/localtime" ] || [ -L "/etc/localtime" ]; then
-        cp /usr/share/zoneinfo/UTC /etc/localtime
-        echo "UTC" > /etc/timezone
-    fi
+    echo "No timezone specified, defaulting to UTC"
+    export TZ=UTC
 fi
-
-# Export TZ to the environment for all child processes
-export TZ
 
 # Create required directories
 echo "Creating required directories..."
@@ -136,17 +114,8 @@ echo "Database validation complete"
 
 # Cron jobs removed - now handled by internal Rust scheduler
 
-# Check if we need to create exim directories
-# Only do this if the user/group exists on the system
-if getent group | grep -q "Debian-exim"; then
-    echo "Setting up exim directories and permissions..."
-    mkdir -p /var/log/exim4
-    mkdir -p /var/spool/exim4
-    chown -R Debian-exim:Debian-exim /var/log/exim4
-    chown -R Debian-exim:Debian-exim /var/spool/exim4
-else
-    echo "Skipping exim setup as user/group doesn't exist on this system"
-fi
+# Exim setup skipped - container runs as non-root (pinepods, UID 1000) and
+# cannot chown system directories.
 
 # Set up environment variables for Horust logging modes
 if [[ $DEBUG_MODE == "true" ]]; then
@@ -159,18 +128,10 @@ else
     echo "Starting Horust in production mode (logs to files)..."
 fi
 
-# Set permissions for download and backup directories BEFORE starting services
-# Only do this if PUID and PGID are set
-if [[ -n "$PUID" && -n "$PGID" ]]; then
-    echo "Setting permissions for download and backup directories...(Be patient this might take a while if you have a lot of downloads)"
-    chown -R ${PUID}:${PGID} /opt/pinepods/downloads
-    chown -R ${PUID}:${PGID} /opt/pinepods/backups
-else
-    echo "Skipping permission setting as PUID/PGID are not set"
-fi
-
-# Copy service configurations to Horust directory
-cp /pinepods/startup/services/*.toml /etc/horust/services/
+# Volume permissions are no longer set at runtime. The container runs as
+# pinepods (UID 1000, GID 1000). Host directories mounted at
+# /opt/pinepods/downloads and /opt/pinepods/backups must be owned by
+# UID 1000 on the host before starting the container.
 
 # Start all services with Horust
 echo "Starting services with Horust..."
