@@ -475,7 +475,7 @@ impl DatabasePool {
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?;
-                
+
                 let mut episodes = Vec::new();
                 for row in rows {
                     episodes.push(crate::handlers::podcasts::Episode {
@@ -496,6 +496,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
                 Ok(episodes)
@@ -612,6 +613,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
                 Ok(episodes)
@@ -2245,6 +2247,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
                 Ok(episodes)
@@ -2257,7 +2260,7 @@ impl DatabasePool {
                             Podcasts.PodcastName as podcastname,
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
-                            CASE 
+                            CASE
                                 WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
                                 WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
                                 ELSE Episodes.EpisodeArtwork
@@ -2355,6 +2358,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
                 Ok(episodes)
@@ -5224,9 +5228,10 @@ impl DatabasePool {
                 queued: false,
                 downloaded: false,
                 is_youtube: false,
+                is_video: episode.is_video,
             });
         }
-        
+
         // Update episode count
         self.update_episode_count(podcast_id).await?;
         
@@ -5639,6 +5644,7 @@ impl DatabasePool {
                 artwork_url: artwork_url.to_string(),
                 pub_date: Utc::now(),
                 duration: 0,
+                is_video: false,
             };
             
             // Create data map to pass to Python-style parsing functions
@@ -6670,6 +6676,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
                 Ok(episodes)
@@ -6792,6 +6799,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
                 Ok(episodes)
@@ -7008,13 +7016,14 @@ impl DatabasePool {
                         queued: false, // Not included in this query
                         downloaded: false, // Not included in this query
                         is_youtube: false, // This is for regular episodes
+                        is_video: false, // This is for regular episodes
                     });
                 }
                 Ok(episodes)
             }
             DatabasePool::MySQL(pool) => {
                 let rows = sqlx::query(
-                    "SELECT 
+                    "SELECT
                         Podcasts.PodcastID, Podcasts.PodcastName, Episodes.EpisodeID,
                         Episodes.EpisodeTitle, Episodes.EpisodePubDate, Episodes.EpisodeDescription,
                         CASE 
@@ -7058,6 +7067,7 @@ impl DatabasePool {
                         queued: false, // Not included in this query
                         downloaded: false, // Not included in this query
                         is_youtube: false, // This is for regular episodes
+                        is_video: false, // This is for regular episodes
                     });
                 }
                 Ok(episodes)
@@ -8762,9 +8772,10 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
-                
+
                 Ok(episodes)
             }
             DatabasePool::MySQL(pool) => {
@@ -8775,7 +8786,7 @@ impl DatabasePool {
                             Episodes.EpisodeTitle as Episodetitle,
                             Episodes.EpisodePubDate as Episodepubdate,
                             Episodes.EpisodeDescription as Episodedescription,
-                            CASE 
+                            CASE
                                 WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
                                 WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
                                 ELSE Episodes.EpisodeArtwork
@@ -8899,9 +8910,10 @@ impl DatabasePool {
                         queued: row.try_get::<i8, _>("queued")? != 0,
                         downloaded: row.try_get::<i8, _>("downloaded")? != 0,
                         is_youtube: row.try_get::<i8, _>("is_youtube")? != 0,
+                        is_video: row.try_get::<i8, _>("is_video")? != 0,
                     });
                 }
-                
+
                 Ok(episodes)
             }
         }
@@ -10238,6 +10250,7 @@ pub struct EpisodeData {
     pub artwork_url: String,
     pub pub_date: DateTime<Utc>,
     pub duration: i32,
+    pub is_video: bool,
 }
 
 #[derive(Debug, Clone)]

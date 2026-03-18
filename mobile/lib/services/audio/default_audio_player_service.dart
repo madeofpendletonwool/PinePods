@@ -453,6 +453,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     switch (sleep.type) {
       case SleepType.none:
       case SleepType.episode:
+      case SleepType.episodes:
         _stopSleepTicker();
         break;
       case SleepType.time:
