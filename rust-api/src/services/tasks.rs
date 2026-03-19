@@ -99,6 +99,8 @@ async fn download_episode_and_wait(
     // Download the file
     let client = reqwest::Client::new();
     let mut response = client.get(&episode_url)
+        .header("Accept", "*/*")
+        .header("User-Agent", "PinePods/1.0")
         .send()
         .await
         .map_err(|e| crate::error::AppError::Internal(format!("Failed to start download: {}", e)))?;
