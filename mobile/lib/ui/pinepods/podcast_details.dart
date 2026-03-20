@@ -764,366 +764,368 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          Expanded(
-            child: CustomScrollView(
-              slivers: [
-          SliverAppBar(
-            expandedHeight: 300,
-            pinned: true,
-            flexibleSpace: FlexibleSpaceBar(
-              title: Text(
-                widget.podcast.title,
-                style: const TextStyle(
-                  shadows: [
-                    Shadow(
-                      offset: Offset(0, 1),
-                      blurRadius: 3,
-                      color: Colors.black54,
-                    ),
-                  ],
-                ),
-              ),
-              background: Stack(
-                fit: StackFit.expand,
-                children: [
-                  widget.podcast.artwork.isNotEmpty
-                      ? Image.network(
-                          widget.podcast.artwork,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: Colors.grey[300],
-                              child: const Icon(
-                                Icons.music_note,
-                                size: 80,
-                                color: Colors.grey,
-                              ),
-                            );
-                          },
-                        )
-                      : Container(
-                          color: Colors.grey[300],
-                          child: const Icon(
-                            Icons.music_note,
-                            size: 80,
-                            color: Colors.grey,
-                          ),
-                        ),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.7),
-                        ],
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: CustomScrollView(
+                slivers: [
+            SliverAppBar(
+              expandedHeight: 300,
+              pinned: true,
+              flexibleSpace: FlexibleSpaceBar(
+                title: Text(
+                  widget.podcast.title,
+                  style: const TextStyle(
+                    shadows: [
+                      Shadow(
+                        offset: Offset(0, 1),
+                        blurRadius: 3,
+                        color: Colors.black54,
                       ),
-                    ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            actions: [
-              IconButton(
-                onPressed: _isFollowButtonLoading ? null : _toggleFollow,
-                icon: _isFollowButtonLoading
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.0,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : Icon(
-                      _isFollowing ? Icons.favorite : Icons.favorite_border,
-                      color: _isFollowing ? Colors.red : Colors.white,
-                    ),
-                tooltip: _isFollowing ? 'Unfollow' : 'Follow',
-              ),
-            ],
-          ),
-          
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Podcast info with follow/unfollow button
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (widget.podcast.author.isNotEmpty)
-                              Text(
-                                'By ${widget.podcast.author}',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Theme.of(context).primaryColor,
-                                  fontWeight: FontWeight.w500,
+                ),
+                background: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    widget.podcast.artwork.isNotEmpty
+                        ? Image.network(
+                            widget.podcast.artwork,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: Colors.grey[300],
+                                child: const Icon(
+                                  Icons.music_note,
+                                  size: 80,
+                                  color: Colors.grey,
                                 ),
-                              ),
+                              );
+                            },
+                          )
+                        : Container(
+                            color: Colors.grey[300],
+                            child: const Icon(
+                              Icons.music_note,
+                              size: 80,
+                              color: Colors.grey,
+                            ),
+                          ),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.7),
                           ],
                         ),
                       ),
-                      ElevatedButton.icon(
-                        onPressed: _isFollowButtonLoading ? null : _toggleFollow,
-                        icon: _isFollowButtonLoading 
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.0,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : Icon(
-                              _isFollowing ? Icons.remove : Icons.add,
-                              size: 16,
-                            ),
-                        label: Text(_isFollowing ? 'Unfollow' : 'Follow'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isFollowing ? Colors.red : Colors.green,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 8),
-                  
-                  Text(
-                    widget.podcast.description,
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  // Podcast stats
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.mic,
-                        size: 16,
-                        color: Colors.grey[600],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${widget.podcast.episodeCount} episode${widget.podcast.episodeCount != 1 ? 's' : ''}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      if (widget.podcast.explicit)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: const Text(
-                            'Explicit',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  
-                  // Hosts section (filter out "Unknown Host" entries)
-                  if (_hosts.where((host) => host.name != "Unknown Host").isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      'Hosts',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 80,
-                      child: Builder(builder: (context) {
-                        final actualHosts = _hosts.where((host) => host.name != "Unknown Host").toList();
-                        return ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: actualHosts.length,
-                          itemBuilder: (context, index) {
-                            final host = actualHosts[index];
-                          return Container(
-                            width: 70,
-                            margin: const EdgeInsets.only(right: 12),
-                            child: Column(
-                              children: [
-                                Container(
-                                  width: 50,
-                                  height: 50,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Colors.grey[300],
-                                  ),
-                                  child: host.image != null && host.image!.isNotEmpty
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(25),
-                                          child: PodcastImage(
-                                            url: host.image!,
-                                            width: 50,
-                                            height: 50,
-                                            fit: BoxFit.cover,
-                                          ),
-                                        )
-                                      : const Icon(
-                                          Icons.person,
-                                          size: 30,
-                                          color: Colors.grey,
-                                        ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  host.name,
-                                  style: const TextStyle(fontSize: 12),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                        );
-                      }),
                     ),
                   ],
+                ),
+              ),
+              actions: [
+                IconButton(
+                  onPressed: _isFollowButtonLoading ? null : _toggleFollow,
+                  icon: _isFollowButtonLoading
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.0,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Icon(
+                        _isFollowing ? Icons.favorite : Icons.favorite_border,
+                        color: _isFollowing ? Colors.red : Colors.white,
+                      ),
+                  tooltip: _isFollowing ? 'Unfollow' : 'Follow',
+                ),
+              ],
+            ),
+          
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Podcast info with follow/unfollow button
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (widget.podcast.author.isNotEmpty)
+                                Text(
+                                  'By ${widget.podcast.author}',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Theme.of(context).primaryColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: _isFollowButtonLoading ? null : _toggleFollow,
+                          icon: _isFollowButtonLoading 
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.0,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : Icon(
+                                _isFollowing ? Icons.remove : Icons.add,
+                                size: 16,
+                              ),
+                          label: Text(_isFollowing ? 'Unfollow' : 'Follow'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _isFollowing ? Colors.red : Colors.green,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
                   
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 8),
                   
-                  // Episodes section header
-                  Row(
-                    children: [
-                      const Text(
-                        'Episodes',
+                    Text(
+                      widget.podcast.description,
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  
+                    const SizedBox(height: 16),
+                  
+                    // Podcast stats
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.mic,
+                          size: 16,
+                          color: Colors.grey[600],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${widget.podcast.episodeCount} episode${widget.podcast.episodeCount != 1 ? 's' : ''}',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        if (widget.podcast.explicit)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'Explicit',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  
+                    // Hosts section (filter out "Unknown Host" entries)
+                    if (_hosts.where((host) => host.name != "Unknown Host").isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        'Hosts',
                         style: TextStyle(
-                          fontSize: 20,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
+                          color: Colors.grey[800],
                         ),
                       ),
-                      const Spacer(),
-                      if (_isLoading)
-                        const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: 80,
+                        child: Builder(builder: (context) {
+                          final actualHosts = _hosts.where((host) => host.name != "Unknown Host").toList();
+                          return ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: actualHosts.length,
+                            itemBuilder: (context, index) {
+                              final host = actualHosts[index];
+                            return Container(
+                              width: 70,
+                              margin: const EdgeInsets.only(right: 12),
+                              child: Column(
+                                children: [
+                                  Container(
+                                    width: 50,
+                                    height: 50,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.grey[300],
+                                    ),
+                                    child: host.image != null && host.image!.isNotEmpty
+                                        ? ClipRRect(
+                                            borderRadius: BorderRadius.circular(25),
+                                            child: PodcastImage(
+                                              url: host.image!,
+                                              width: 50,
+                                              height: 50,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.person,
+                                            size: 30,
+                                            color: Colors.grey,
+                                          ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    host.name,
+                                    style: const TextStyle(fontSize: 12),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                          );
+                        }),
+                      ),
                     ],
-                  ),
                   
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 24),
+                  
+                    // Episodes section header
+                    Row(
+                      children: [
+                        const Text(
+                          'Episodes',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const Spacer(),
+                        if (_isLoading)
+                          const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                      ],
+                    ),
+                  
+                    const SizedBox(height: 16),
+                  ],
+                ),
+              ),
+            ),
+          
+            // Episodes list
+            if (_isLoading)
+              const SliverToBoxAdapter(
+                child: Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32.0),
+                    child: PlatformProgressIndicator(),
+                  ),
+                ),
+              )
+            else if (_errorMessage != null)
+              SliverToBoxAdapter(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32.0),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.error_outline,
+                          size: 64,
+                          color: Colors.red[300],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _errorMessage!,
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _loadPodcastFeed,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else if (_episodes.isEmpty)
+              SliverToBoxAdapter(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32.0),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 64,
+                          color: Colors.blue[300],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _isFollowing ? 'No episodes found' : 'Episodes available after following',
+                          style: Theme.of(context).textTheme.headlineSmall,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _isFollowing 
+                              ? 'Episodes from your PinePods library will appear here'
+                              : 'Follow this podcast to add it to your library and view episodes',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _toggleFollow,
+                          child: Text(_isFollowing ? 'Unfollow' : 'Follow'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
+              MultiSliver(
+                children: [
+                  _buildSearchBar(),
+                  _buildEpisodesList(),
+                ],
+              ),
                 ],
               ),
             ),
-          ),
-          
-          // Episodes list
-          if (_isLoading)
-            const SliverToBoxAdapter(
-              child: Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32.0),
-                  child: PlatformProgressIndicator(),
-                ),
-              ),
-            )
-          else if (_errorMessage != null)
-            SliverToBoxAdapter(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: Colors.red[300],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _errorMessage!,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadPodcastFeed,
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            )
-          else if (_episodes.isEmpty)
-            SliverToBoxAdapter(
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.info_outline,
-                        size: 64,
-                        color: Colors.blue[300],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        _isFollowing ? 'No episodes found' : 'Episodes available after following',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _isFollowing 
-                            ? 'Episodes from your PinePods library will appear here'
-                            : 'Follow this podcast to add it to your library and view episodes',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _toggleFollow,
-                        child: Text(_isFollowing ? 'Unfollow' : 'Follow'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            )
-          else
-            MultiSliver(
-              children: [
-                _buildSearchBar(),
-                _buildEpisodesList(),
-              ],
-            ),
-              ],
-            ),
-          ),
-          const MiniPlayer(),
-        ],
+            const MiniPlayer(),
+          ],
+        ),
       ),
     );
   }

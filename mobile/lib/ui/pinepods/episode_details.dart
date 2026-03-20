@@ -624,333 +624,335 @@ class _PinepodsEpisodeDetailsState extends State<PinepodsEpisodeDetails> {
         title: Text(_episode!.podcastName),
         elevation: 0,
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+              // Episode artwork and basic info
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-            // Episode artwork and basic info
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Episode artwork
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: _episode!.episodeArtwork.isNotEmpty
-                      ? Image.network(
-                          _episode!.episodeArtwork,
-                          width: 120,
-                          height: 120,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              width: 120,
-                              height: 120,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[300],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(
-                                Icons.music_note,
-                                color: Colors.grey,
-                                size: 48,
-                              ),
-                            );
-                          },
-                        )
-                      : Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            color: Colors.grey[300],
-                            borderRadius: BorderRadius.circular(8),
+                  // Episode artwork
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: _episode!.episodeArtwork.isNotEmpty
+                        ? Image.network(
+                            _episode!.episodeArtwork,
+                            width: 120,
+                            height: 120,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[300],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.music_note,
+                                  color: Colors.grey,
+                                  size: 48,
+                                ),
+                              );
+                            },
+                          )
+                        : Container(
+                            width: 120,
+                            height: 120,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.music_note,
+                              color: Colors.grey,
+                              size: 48,
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.music_note,
-                            color: Colors.grey,
-                            size: 48,
-                          ),
-                        ),
-                ),
-                const SizedBox(width: 16),
-                // Episode info
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Clickable podcast name
-                      GestureDetector(
-                        onTap: () => _navigateToPodcast(),
-                        child: Text(
-                          _episode!.podcastName,
-                          style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                            color: Theme.of(context).primaryColor,
-                            fontWeight: FontWeight.w500,
-                            decoration: TextDecoration.underline,
-                            decorationColor: Theme.of(context).primaryColor,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _episode!.episodeTitle,
-                        style: Theme.of(context).textTheme.titleLarge!.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _episode!.formattedDuration,
-                        style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _episode!.formattedPubDate,
-                        style: Theme.of(context).textTheme.bodyMedium!.copyWith(
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      if (_episode!.isStarted) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'Listened: ${_episode!.formattedListenDuration}',
-                          style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                            color: Theme.of(context).primaryColor,
+                  ),
+                  const SizedBox(width: 16),
+                  // Episode info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Clickable podcast name
+                        GestureDetector(
+                          onTap: () => _navigateToPodcast(),
+                          child: Text(
+                            _episode!.podcastName,
+                            style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                              color: Theme.of(context).primaryColor,
+                              fontWeight: FontWeight.w500,
+                              decoration: TextDecoration.underline,
+                              decorationColor: Theme.of(context).primaryColor,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         const SizedBox(height: 4),
-                        LinearProgressIndicator(
-                          value: _episode!.progressPercentage / 100,
-                          backgroundColor: Colors.grey[300],
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Theme.of(context).primaryColor,
+                        Text(
+                          _episode!.episodeTitle,
+                          style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _episode!.formattedDuration,
+                          style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                            color: Colors.grey[600],
                           ),
                         ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _episode!.formattedPubDate,
+                          style: Theme.of(context).textTheme.bodyMedium!.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        if (_episode!.isStarted) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Listened: ${_episode!.formattedListenDuration}',
+                            style: Theme.of(context).textTheme.bodySmall!.copyWith(
+                              color: Theme.of(context).primaryColor,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          LinearProgressIndicator(
+                            value: _episode!.progressPercentage / 100,
+                            backgroundColor: Colors.grey[300],
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Theme.of(context).primaryColor,
+                            ),
+                          ),
+                        ],
                       ],
+                    ),
+                  ),
+                ],
+              ),
+            
+              const SizedBox(height: 24),
+            
+              // Action buttons
+              Column(
+                children: [
+                  // First row: Play, Save, Queue (3 buttons, each 1/3 width)
+                  Row(
+                    children: [
+                      // Play/Pause button
+                      Expanded(
+                        child: StreamBuilder<AudioState>(
+                          stream: Provider.of<AudioPlayerService>(context, listen: false).playingState,
+                          builder: (context, snapshot) {
+                            final isCurrentEpisode = _isCurrentEpisodePlaying();
+                            final isPlaying = snapshot.data == AudioState.playing;
+                            final isCurrentlyPlaying = isCurrentEpisode && isPlaying;
+                          
+                            IconData icon;
+                            String label;
+                          
+                            if (_episode!.completed) {
+                              icon = Icons.replay;
+                              label = 'Replay';
+                            } else if (isCurrentlyPlaying) {
+                              icon = Icons.pause;
+                              label = 'Pause';
+                            } else {
+                              icon = Icons.play_arrow;
+                              label = 'Play';
+                            }
+                          
+                            return OutlinedButton.icon(
+                              onPressed: _togglePlayPause,
+                              icon: Icon(icon),
+                              label: Text(label),
+                            );
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    
+                      // Save/Unsave button
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _episode!.saved ? _removeSavedEpisode : _saveEpisode,
+                          icon: Icon(
+                            _episode!.saved ? Icons.bookmark : Icons.bookmark_outline,
+                            color: _episode!.saved ? Colors.orange : null,
+                          ),
+                          label: Text(_episode!.saved ? 'Saved' : 'Save'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    
+                      // Queue button
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _toggleQueue,
+                          icon: Icon(
+                            _episode!.queued ? Icons.queue_music : Icons.queue_music_outlined,
+                            color: _episode!.queued ? Colors.purple : null,
+                          ),
+                          label: Text(_episode!.queued ? 'Queued' : 'Queue'),
+                        ),
+                      ),
                     ],
                   ),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 24),
-            
-            // Action buttons
-            Column(
-              children: [
-                // First row: Play, Save, Queue (3 buttons, each 1/3 width)
-                Row(
-                  children: [
-                    // Play/Pause button
-                    Expanded(
-                      child: StreamBuilder<AudioState>(
-                        stream: Provider.of<AudioPlayerService>(context, listen: false).playingState,
-                        builder: (context, snapshot) {
-                          final isCurrentEpisode = _isCurrentEpisodePlaying();
-                          final isPlaying = snapshot.data == AudioState.playing;
-                          final isCurrentlyPlaying = isCurrentEpisode && isPlaying;
-                          
-                          IconData icon;
-                          String label;
-                          
-                          if (_episode!.completed) {
-                            icon = Icons.replay;
-                            label = 'Replay';
-                          } else if (isCurrentlyPlaying) {
-                            icon = Icons.pause;
-                            label = 'Pause';
-                          } else {
-                            icon = Icons.play_arrow;
-                            label = 'Play';
-                          }
-                          
-                          return OutlinedButton.icon(
-                            onPressed: _togglePlayPause,
-                            icon: Icon(icon),
-                            label: Text(label),
-                          );
-                        },
+                
+                  const SizedBox(height: 8),
+                
+                  // Second row: Download, Complete (2 buttons, each 1/2 width)
+                  Row(
+                    children: [
+                      // Download button
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _toggleDownload,
+                          icon: Icon(
+                            _episode!.downloaded ? Icons.download_done : Icons.download_outlined,
+                            color: _episode!.downloaded ? Colors.blue : null,
+                          ),
+                          label: Text(_episode!.downloaded ? 'Downloaded' : 'Download'),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
+                      const SizedBox(width: 8),
                     
-                    // Save/Unsave button
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _episode!.saved ? _removeSavedEpisode : _saveEpisode,
-                        icon: Icon(
-                          _episode!.saved ? Icons.bookmark : Icons.bookmark_outline,
-                          color: _episode!.saved ? Colors.orange : null,
+                      // Complete button
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _toggleComplete,
+                          icon: Icon(
+                            _episode!.completed ? Icons.check_circle : Icons.check_circle_outline,
+                            color: _episode!.completed ? Colors.green : null,
+                          ),
+                          label: Text(_episode!.completed ? 'Complete' : 'Mark Complete'),
                         ),
-                        label: Text(_episode!.saved ? 'Saved' : 'Save'),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    
-                    // Queue button
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _toggleQueue,
-                        icon: Icon(
-                          _episode!.queued ? Icons.queue_music : Icons.queue_music_outlined,
-                          color: _episode!.queued ? Colors.purple : null,
-                        ),
-                        label: Text(_episode!.queued ? 'Queued' : 'Queue'),
-                      ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
                 
-                const SizedBox(height: 8),
+                  const SizedBox(height: 8),
                 
-                // Second row: Download, Complete (2 buttons, each 1/2 width)
-                Row(
-                  children: [
-                    // Download button
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _toggleDownload,
-                        icon: Icon(
-                          _episode!.downloaded ? Icons.download_done : Icons.download_outlined,
-                          color: _episode!.downloaded ? Colors.blue : null,
-                        ),
-                        label: Text(_episode!.downloaded ? 'Downloaded' : 'Download'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    
-                    // Complete button
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _toggleComplete,
-                        icon: Icon(
-                          _episode!.completed ? Icons.check_circle : Icons.check_circle_outline,
-                          color: _episode!.completed ? Colors.green : null,
-                        ),
-                        label: Text(_episode!.completed ? 'Complete' : 'Mark Complete'),
-                      ),
-                    ),
-                  ],
-                ),
-                
-                const SizedBox(height: 8),
-                
-                // Third row: Local Download (full width)
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _isDownloadedLocally ? _deleteLocalDownload : _localDownloadEpisode,
-                        icon: Icon(
-                          _isDownloadedLocally ? Icons.delete_forever_outlined : Icons.file_download_outlined,
-                          color: _isDownloadedLocally ? Colors.red : Colors.green,
-                        ),
-                        label: Text(_isDownloadedLocally ? 'Delete Local Download' : 'Download Locally'),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(
+                  // Third row: Local Download (full width)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isDownloadedLocally ? _deleteLocalDownload : _localDownloadEpisode,
+                          icon: Icon(
+                            _isDownloadedLocally ? Icons.delete_forever_outlined : Icons.file_download_outlined,
                             color: _isDownloadedLocally ? Colors.red : Colors.green,
+                          ),
+                          label: Text(_isDownloadedLocally ? 'Delete Local Download' : 'Download Locally'),
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(
+                              color: _isDownloadedLocally ? Colors.red : Colors.green,
+                            ),
                           ),
                         ),
                       ),
+                    ],
+                  ),
+                ],
+              ),
+            
+              // Hosts/Guests section
+              if (_persons.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Hosts & Guests',
+                    style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 80,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _persons.length,
+                    itemBuilder: (context, index) {
+                      final person = _persons[index];
+                      return Container(
+                        width: 70,
+                        margin: const EdgeInsets.only(right: 12),
+                        child: Column(
+                          children: [
+                            Container(
+                              width: 50,
+                              height: 50,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.grey[300],
+                              ),
+                              child: person.image != null && person.image!.isNotEmpty
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(25),
+                                      child: PodcastImage(
+                                        url: person.image!,
+                                        width: 50,
+                                        height: 50,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.person,
+                                      size: 30,
+                                      color: Colors.grey,
+                                    ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              person.name,
+                              style: Theme.of(context).textTheme.bodySmall,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ],
-            ),
             
-            // Hosts/Guests section
-            if (_persons.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Hosts & Guests',
-                  style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              const SizedBox(height: 32),
+            
+              // Episode description
+              Text(
+                'Description',
+                style: Theme.of(context).textTheme.titleMedium!.copyWith(
+                  fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 12),
-              SizedBox(
-                height: 80,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _persons.length,
-                  itemBuilder: (context, index) {
-                    final person = _persons[index];
-                    return Container(
-                      width: 70,
-                      margin: const EdgeInsets.only(right: 12),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 50,
-                            height: 50,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.grey[300],
-                            ),
-                            child: person.image != null && person.image!.isNotEmpty
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(25),
-                                    child: PodcastImage(
-                                      url: person.image!,
-                                      width: 50,
-                                      height: 50,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  )
-                                : const Icon(
-                                    Icons.person,
-                                    size: 30,
-                                    color: Colors.grey,
-                                  ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            person.name,
-                            style: Theme.of(context).textTheme.bodySmall,
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    );
-                  },
+              EpisodeDescription(
+                content: _episode!.episodeDescription,
+                onTimestampTap: _handleTimestampTap,
+              ),
+                    ],
+                  ),
                 ),
               ),
+              const MiniPlayer(),
             ],
-            
-            const SizedBox(height: 32),
-            
-            // Episode description
-            Text(
-              'Description',
-              style: Theme.of(context).textTheme.titleMedium!.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 12),
-            EpisodeDescription(
-              content: _episode!.episodeDescription,
-              onTimestampTap: _handleTimestampTap,
-            ),
-                  ],
-                ),
-              ),
-            ),
-            const MiniPlayer(),
-          ],
+          ),
         ),
     );
   }
