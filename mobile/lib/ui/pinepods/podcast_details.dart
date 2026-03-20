@@ -424,7 +424,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         },
         onMarkComplete: () {
           Navigator.of(context).pop();
-          _markEpisodeComplete(episodeIndex);
+          _toggleEpisodeComplete(episodeIndex);
         },
         onDismiss: () {
           Navigator.of(context).pop();
@@ -483,9 +483,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, saved: true);
-          _filteredEpisodes = _episodes.where((e) => 
-            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-          ).toList();
+          _filterEpisodes();
         });
         _showSnackBar('Episode saved!', Colors.green);
       } else {
@@ -521,9 +519,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, saved: false);
-          _filteredEpisodes = _episodes.where((e) => 
-            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-          ).toList();
+          _filterEpisodes();
         });
         _showSnackBar('Removed from saved episodes', Colors.orange);
       } else {
@@ -559,9 +555,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: true);
-          _filteredEpisodes = _episodes.where((e) => 
-            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-          ).toList();
+          _filterEpisodes();
         });
         _showSnackBar('Episode download started!', Colors.green);
       } else {
@@ -597,9 +591,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
       if (success) {
         setState(() {
           _episodes[episodeIndex] = _updateEpisodeProperty(episode, downloaded: false);
-          _filteredEpisodes = _episodes.where((e) => 
-            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-          ).toList();
+          _filterEpisodes();
         });
         _showSnackBar('Episode deleted from server', Colors.orange);
       } else {
@@ -636,9 +628,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: false);
-            _filteredEpisodes = _episodes.where((e) => 
-              e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-            ).toList();
+            _filterEpisodes();
           });
           _showSnackBar('Removed from queue', Colors.orange);
         }
@@ -651,9 +641,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         if (success) {
           setState(() {
             _episodes[episodeIndex] = _updateEpisodeProperty(episode, queued: true);
-            _filteredEpisodes = _episodes.where((e) => 
-              e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-            ).toList();
+            _filterEpisodes();
           });
           _showSnackBar('Added to queue!', Colors.green);
         }
@@ -669,7 +657,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _hideEpisodeContextMenu();
   }
 
-  Future<void> _markEpisodeComplete(int episodeIndex) async {
+  Future<void> _toggleEpisodeComplete(int episodeIndex) async {
     final episode = _episodes[episodeIndex];
     final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
     final settings = settingsBloc.currentSettings;
@@ -683,22 +671,38 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 
     try {
-      final success = await _pinepodsService.markEpisodeCompleted(
-        episode.episodeId,
-        userId,
-        episode.isYoutube,
-      );
+      if (episode.completed) {
+        final success = await _pinepodsService.markEpisodeUncompleted(
+          episode.episodeId,
+          userId,
+          episode.isYoutube,
+        );
 
-      if (success) {
-        setState(() {
-          _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: true);
-          _filteredEpisodes = _episodes.where((e) => 
-            e.episodeTitle.toLowerCase().contains(_searchController.text.toLowerCase())
-          ).toList();
-        });
-        _showSnackBar('Episode marked as complete', Colors.green);
+        if (success) {
+          setState(() {
+            _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: false);
+            _filterEpisodes();
+          });
+          _showSnackBar('Episode marked as incomplete', Colors.green);
+        } else {
+          _showSnackBar('Failed to mark episode incomplete', Colors.red);
+        }
       } else {
-        _showSnackBar('Failed to mark episode complete', Colors.red);
+        final success = await _pinepodsService.markEpisodeCompleted(
+          episode.episodeId,
+          userId,
+          episode.isYoutube,
+        );
+
+        if (success) {
+          setState(() {
+            _episodes[episodeIndex] = _updateEpisodeProperty(episode, completed: true);
+            _filterEpisodes();
+          });
+          _showSnackBar('Episode marked as complete', Colors.green);
+        } else {
+          _showSnackBar('Failed to mark episode complete', Colors.red);
+        }
       }
     } catch (e) {
       _showSnackBar('Error marking episode complete: $e', Colors.red);
