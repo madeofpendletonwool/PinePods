@@ -92,7 +92,7 @@ class PinepodsEpisodeCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       LinearProgressIndicator(
                         value: episode.progressPercentage / 100,
-                        backgroundColor: Colors.grey[300],
+                        backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
                         valueColor: AlwaysStoppedAnimation<Color>(
                           Theme.of(context).primaryColor,
                         ),
