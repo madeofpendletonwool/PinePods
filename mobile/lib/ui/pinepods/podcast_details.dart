@@ -1,5 +1,6 @@
 // lib/ui/pinepods/podcast_details.dart
 
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
@@ -44,6 +45,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   bool _isLoading = false;
   bool _isFollowing = false;
   bool _isFollowButtonLoading = false;
+  bool _hideCompleted = false;
+  bool _oldestFirst = false;
   String? _errorMessage;
   List<PinepodsEpisode> _episodes = [];
   List<PinepodsEpisode> _filteredEpisodes = [];
@@ -77,13 +80,13 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   }
 
   void _filterEpisodes() {
-    if (_searchQuery.isEmpty) {
-      _filteredEpisodes = List.from(_episodes);
-    } else {
-      _filteredEpisodes = _episodes.where((episode) {
-        return episode.episodeTitle.toLowerCase().contains(_searchQuery.toLowerCase());
-      }).toList();
-    }
+    _filteredEpisodes = _episodes.where((episode) =>
+      (_searchQuery.isEmpty
+          || episode.episodeTitle.toLowerCase().contains(_searchQuery.toLowerCase()))
+        && (!_hideCompleted || !episode.completed)
+    ).toList().sorted((a, b) => _oldestFirst
+      ? a.episodePubDate.compareTo(b.episodePubDate)
+      : b.episodePubDate.compareTo(a.episodePubDate));
   }
 
   void _initializeCredentials() {
@@ -1032,8 +1035,6 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                           ),
                       ],
                     ),
-                  
-                    const SizedBox(height: 16),
                   ],
                 ),
               ),
@@ -1134,25 +1135,77 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'Filter episodes...',
-            prefixIcon: const Icon(Icons.search),
-            suffixIcon: _searchQuery.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                    },
-                  )
-                : null,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+        child: Column(
+          children: [
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Filter episodes...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                filled: true,
+                fillColor: Theme.of(context).cardColor,
+              ),
             ),
-            filled: true,
-            fillColor: Theme.of(context).cardColor,
-          ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      setState(() {
+                        _hideCompleted = !_hideCompleted;
+                      });
+                      _filterEpisodes();
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _hideCompleted ? Icons.visibility_off : Icons.visibility,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text('Completed'),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      setState(() {
+                        _oldestFirst = !_oldestFirst;
+                      });
+                      _filterEpisodes();
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _oldestFirst ? Icons.arrow_upward : Icons.arrow_downward,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text('Oldest'),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
