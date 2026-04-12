@@ -17888,7 +17888,7 @@ impl DatabasePool {
         let mut play_state_conditions = Vec::new();
         
         if config.include_unplayed {
-            play_state_conditions.push("h.listenduration IS NULL".to_string());
+            play_state_conditions.push("(h.listenduration IS NULL AND e.completed IS NOT TRUE)".to_string());
             println!("Playlist {}: Added unplayed episode filter", playlist_id);
         }
         
@@ -18027,7 +18027,7 @@ impl DatabasePool {
         let mut play_state_conditions = Vec::new();
         
         if config.include_unplayed {
-            play_state_conditions.push("h.ListenDuration IS NULL".to_string());
+            play_state_conditions.push("(h.ListenDuration IS NULL AND e.complete IS NOT TRUE)".to_string());
         }
         
         if config.include_partially_played {
@@ -24411,7 +24411,7 @@ impl DatabasePool {
                 // Play state filters
                 let mut play_state_conditions = Vec::new();
                 if playlist.try_get::<bool, _>("includeunplayed")? {
-                    play_state_conditions.push("(h.listenduration IS NULL OR h.listenduration = 0)".to_string());
+                    play_state_conditions.push("(e.completed IS NOT TRUE AND (h.listenduration IS NULL OR h.listenduration = 0))".to_string());
                 }
                 if playlist.try_get::<bool, _>("includepartiallyplayed")? {
                     play_state_conditions.push(
@@ -24420,7 +24420,7 @@ impl DatabasePool {
                 }
                 if playlist.try_get::<bool, _>("includeplayed")? {
                     play_state_conditions.push(
-                        "(h.listenduration IS NOT NULL AND (h.listenduration >= e.episodeduration * 0.9 OR (e.episodeduration - h.listenduration) <= 30))".to_string()
+                        "(e.completed IS TRUE OR (h.listenduration IS NOT NULL AND (h.listenduration >= e.episodeduration * 0.9 OR (e.episodeduration - h.listenduration) <= 30)))".to_string()
                     );
                 }
                 
@@ -24772,7 +24772,7 @@ impl DatabasePool {
                 
                 if playlist.try_get::<bool, _>("includeunplayed")? {
                     // UNPLAYED: No history record OR listen duration is 0 or NULL
-                    play_state_conditions.push("(h.listenduration IS NULL OR h.listenduration = 0)".to_string());
+                    play_state_conditions.push("(e.completed IS NOT TRUE AND (h.listenduration IS NULL OR h.listenduration = 0))".to_string());
                     debug!("▶️ Including UNPLAYED episodes");
                 }
                 
@@ -24787,7 +24787,7 @@ impl DatabasePool {
                 if playlist.try_get::<bool, _>("includeplayed")? {
                     // PLAYED: Listen duration >= 90% OR within 30 seconds of end
                     play_state_conditions.push(
-                        "(h.listenduration IS NOT NULL AND (h.listenduration >= e.episodeduration * 0.9 OR (e.episodeduration - h.listenduration) <= 30))".to_string()
+                        "(e.completed IS TRUE OR (h.listenduration IS NOT NULL AND (h.listenduration >= e.episodeduration * 0.9 OR (e.episodeduration - h.listenduration) <= 30)))".to_string()
                     );
                     debug!("✅ Including PLAYED episodes (>=90% or within 30s of end)");
                 }
@@ -25010,7 +25010,7 @@ impl DatabasePool {
                 let mut play_state_conditions = Vec::new();
                 
                 if playlist.try_get::<bool, _>("IncludeUnplayed")? {
-                    play_state_conditions.push("(h.ListenDuration IS NULL OR h.ListenDuration = 0)".to_string());
+                    play_state_conditions.push("(e.completed IS NOT TRUE AND (h.ListenDuration IS NULL OR h.ListenDuration = 0))".to_string());
                     debug!("▶️ Including UNPLAYED episodes (MySQL)");
                 }
                 
@@ -25023,7 +25023,7 @@ impl DatabasePool {
                 
                 if playlist.try_get::<bool, _>("IncludePlayed")? {
                     play_state_conditions.push(
-                        "(h.ListenDuration IS NOT NULL AND (h.ListenDuration >= e.EpisodeDuration * 0.9 OR (e.EpisodeDuration - h.ListenDuration) <= 30))".to_string()
+                        "(e.completed IS TRUE OR (h.ListenDuration IS NOT NULL AND (h.ListenDuration >= e.EpisodeDuration * 0.9 OR (e.EpisodeDuration - h.ListenDuration) <= 30)))".to_string()
                     );
                     debug!("✅ Including PLAYED episodes (MySQL)");
                 }
