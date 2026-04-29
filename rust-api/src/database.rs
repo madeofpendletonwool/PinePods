@@ -24910,9 +24910,10 @@ impl DatabasePool {
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
                         podcastid: row.try_get("podcastid").ok(),
+                        savedate: None,
                     });
                 }
-                
+
                 debug!("📝 Retrieved {} episodes from dynamic query", episodes.len());
                 
                 // Create playlist info from the playlist row we already have
@@ -25145,9 +25146,10 @@ impl DatabasePool {
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
                         podcastid: row.try_get("podcastid").ok(),
+                        savedate: None,
                     });
                 }
-                
+
                 debug!("📝 Retrieved {} episodes from MySQL dynamic query", episodes.len());
                 
                 // Create playlist info from the MySQL playlist row we already have

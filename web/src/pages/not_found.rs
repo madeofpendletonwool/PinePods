@@ -1,6 +1,5 @@
-use gloo::history::BrowserHistory;
 use yew::prelude::*;
-use yew_router::history::History;
+use yew_router::history::{BrowserHistory, History};
 
 #[function_component(NotFound)]
 pub fn not_found() -> Html {

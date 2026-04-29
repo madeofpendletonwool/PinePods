@@ -10,7 +10,7 @@ use crate::components::gen_funcs::{format_time, strip_images_from_html};
 use crate::components::safehtml::SafeHtml;
 use crate::components::virtual_list::DragCallbacks;
 use crate::requests::episode::Episode;
-use gloo::history::BrowserHistory;
+use yew_router::history::{BrowserHistory, History};
 use gloo_events::EventListener;
 use wasm_bindgen::prelude::*;
 use web_sys::{window, MouseEvent};

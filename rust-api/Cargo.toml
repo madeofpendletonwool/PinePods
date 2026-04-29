@@ -2,12 +2,12 @@
 name = "pinepods-api"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.89"
+rust-version = "1.95"
 
 [dependencies]
 # Web Framework
-axum = { version = "0.8.8", features = ["macros", "multipart", "ws"] }
-tokio = { version = "1.49.0", features = ["full"] }
+axum = { version = "0.8.9", features = ["macros", "multipart", "ws"] }
+tokio = { version = "1.52.1", features = ["full"] }
 tower = { version = "0.5.3", features = ["util", "timeout", "load-shed", "limit"] }
 tower-http = { version = "0.6.8", features = ["fs", "trace", "cors", "compression-gzip"] }
 
@@ -20,22 +20,22 @@ sqlx = { version = "0.8.6", features = ["runtime-tokio-rustls", "postgres", "mys
 bigdecimal = "0.4.10"
 
 # Redis/Valkey
-redis = { version = "1.0.4", features = ["aio", "tokio-comp"] }
+redis = { version = "1.2.0", features = ["aio", "tokio-comp"] }
 
 # HTTP Client
-reqwest = { version = "0.13.2", features = ["json", "stream", "cookies", "query", "form"] }
+reqwest = { version = "0.13.3", features = ["json", "stream", "cookies", "query", "form"] }
 
 # Configuration and Environment
-config = "0.15.19"
+config = "0.15.22"
 dotenvy = "0.15.7"
 
 # Logging
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 # Utilities
-uuid = { version = "1.21.0", features = ["v4", "serde"] }
-chrono = { version = "0.4.43", features = ["serde"] }
+uuid = { version = "1.23.1", features = ["v4", "serde"] }
+chrono = { version = "0.4.44", features = ["serde"] }
 chrono-tz = "0.10.0"
 anyhow = "1.0.102"
 thiserror = "2.0.18"
@@ -45,14 +45,14 @@ lazy_static = "1.5.0"
 urlencoding = "2.1.3"
 
 # Authentication and Crypto
-argon2 = "0.6.0-rc.7"
+argon2 = "0.6.0-rc.8"
 jsonwebtoken = { version = "10.3.0", features = ["aws_lc_rs"] }
-rand = "0.10.0"
+rand = "0.10.1"
 
 # MFA/TOTP Support
-totp-rs = { version = "5.7.0", features = ["otpauth"] }
+totp-rs = { version = "5.7.1", features = ["otpauth"] }
 qrcode = "0.14.1"
-image = "0.25.9"
+image = "0.25.10"
 
 # Encryption for sync credentials
 fernet = "0.2.2"
@@ -71,11 +71,11 @@ quick-xml = "0.39.2"
 lettre = { version = "0.11.19", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
 
 # CORS and Security
-hyper = "1.8.1"
+hyper = "1.9.0"
 
 # Background Tasks and Task Management
 tokio-cron-scheduler = "0.15.1"
-tokio-stream = "0.1.11"
+tokio-stream = "0.1.18"
 futures = "0.3.32"
 
 # WebSocket Support (already in axum features)
