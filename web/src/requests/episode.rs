@@ -60,6 +60,8 @@ pub struct Episode {
     pub guid: String,
     pub queueposition: Option<i32>,
     pub downloadedlocation: Option<String>,
+    pub listendate: Option<String>,
+    pub savedate: Option<String>,
 }
 
 impl Episode {

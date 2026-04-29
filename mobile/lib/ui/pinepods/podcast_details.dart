@@ -16,12 +16,29 @@ import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/widgets/podcast_image.dart';
 import 'package:pinepods_mobile/ui/pinepods/episode_details.dart';
 import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
-import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/ui/podcast/mini_player.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/utils/local_download_utils.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sliver_tools/sliver_tools.dart';
+
+// Sort direction for episodes within a podcast
+enum EpisodeSortDirection {
+  newestFirst,
+  oldestFirst,
+  shortestFirst,
+  longestFirst,
+  titleAZ,
+  titleZA,
+}
+
+// 3-state completed filter
+enum CompletedFilter {
+  showAll,
+  showOnly,
+  hide,
+}
 
 class PinepodsPodcastDetails extends StatefulWidget {
   final UnifiedPinepodsPodcast podcast;
@@ -53,13 +70,78 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   String _searchQuery = '';
   List<Person> _hosts = [];
 
+  // Sort and filter state
+  EpisodeSortDirection _sortDirection = EpisodeSortDirection.newestFirst;
+  CompletedFilter _completedFilter = CompletedFilter.showAll;
+  bool _showInProgress = false;
+
   @override
   void initState() {
     super.initState();
     _isFollowing = widget.isFollowing;
     _initializeCredentials();
+    _loadSortPreference();
     _checkFollowStatus();
     _searchController.addListener(_onSearchChanged);
+  }
+
+  Future<void> _loadSortPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    // Use podcast URL as key for per-podcast sort preference
+    final key = 'episode_sort_${widget.podcast.url.hashCode}';
+    final savedSort = prefs.getString(key);
+    if (savedSort != null && mounted) {
+      setState(() {
+        switch (savedSort) {
+          case 'newest':
+            _sortDirection = EpisodeSortDirection.newestFirst;
+            break;
+          case 'oldest':
+            _sortDirection = EpisodeSortDirection.oldestFirst;
+            break;
+          case 'shortest':
+            _sortDirection = EpisodeSortDirection.shortestFirst;
+            break;
+          case 'longest':
+            _sortDirection = EpisodeSortDirection.longestFirst;
+            break;
+          case 'title_az':
+            _sortDirection = EpisodeSortDirection.titleAZ;
+            break;
+          case 'title_za':
+            _sortDirection = EpisodeSortDirection.titleZA;
+            break;
+        }
+        _filterEpisodes();
+      });
+    }
+  }
+
+  Future<void> _saveSortPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'episode_sort_${widget.podcast.url.hashCode}';
+    String value;
+    switch (_sortDirection) {
+      case EpisodeSortDirection.newestFirst:
+        value = 'newest';
+        break;
+      case EpisodeSortDirection.oldestFirst:
+        value = 'oldest';
+        break;
+      case EpisodeSortDirection.shortestFirst:
+        value = 'shortest';
+        break;
+      case EpisodeSortDirection.longestFirst:
+        value = 'longest';
+        break;
+      case EpisodeSortDirection.titleAZ:
+        value = 'title_az';
+        break;
+      case EpisodeSortDirection.titleZA:
+        value = 'title_za';
+        break;
+    }
+    await prefs.setString(key, value);
   }
 
   @override
@@ -77,12 +159,66 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   }
 
   void _filterEpisodes() {
-    if (_searchQuery.isEmpty) {
-      _filteredEpisodes = List.from(_episodes);
-    } else {
-      _filteredEpisodes = _episodes.where((episode) {
-        return episode.episodeTitle.toLowerCase().contains(_searchQuery.toLowerCase());
+    // Start with all episodes
+    List<PinepodsEpisode> filtered = List.from(_episodes);
+
+    // Apply search filter (search both title and description)
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filtered = filtered.where((episode) {
+        return episode.episodeTitle.toLowerCase().contains(query) ||
+            episode.episodeDescription.toLowerCase().contains(query);
       }).toList();
+    }
+
+    // Apply completed filter (3-state)
+    if (_showInProgress) {
+      // In Progress: not completed but has some listen duration
+      filtered = filtered.where((episode) {
+        return !episode.completed && episode.listenDuration > 0;
+      }).toList();
+    } else {
+      switch (_completedFilter) {
+        case CompletedFilter.showOnly:
+          filtered = filtered.where((episode) => episode.completed).toList();
+          break;
+        case CompletedFilter.hide:
+          filtered = filtered.where((episode) => !episode.completed).toList();
+          break;
+        case CompletedFilter.showAll:
+          // No filtering
+          break;
+      }
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) {
+      switch (_sortDirection) {
+        case EpisodeSortDirection.newestFirst:
+          return _compareDates(b.episodePubDate, a.episodePubDate);
+        case EpisodeSortDirection.oldestFirst:
+          return _compareDates(a.episodePubDate, b.episodePubDate);
+        case EpisodeSortDirection.shortestFirst:
+          return (a.episodeDuration ?? 0).compareTo(b.episodeDuration ?? 0);
+        case EpisodeSortDirection.longestFirst:
+          return (b.episodeDuration ?? 0).compareTo(a.episodeDuration ?? 0);
+        case EpisodeSortDirection.titleAZ:
+          return a.episodeTitle.toLowerCase().compareTo(b.episodeTitle.toLowerCase());
+        case EpisodeSortDirection.titleZA:
+          return b.episodeTitle.toLowerCase().compareTo(a.episodeTitle.toLowerCase());
+      }
+    });
+
+    _filteredEpisodes = filtered;
+  }
+
+  int _compareDates(String dateA, String dateB) {
+    try {
+      final a = DateTime.parse(dateA);
+      final b = DateTime.parse(dateB);
+      return a.compareTo(b);
+    } catch (e) {
+      return 0;
     }
   }
 
@@ -1159,7 +1295,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           else
             MultiSliver(
               children: [
-                _buildSearchBar(),
+                _buildSearchAndFilterBar(),
                 _buildEpisodesList(),
               ],
             ),
@@ -1172,28 +1308,237 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     );
   }
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchAndFilterBar() {
     return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'Filter episodes...',
-            prefixIcon: const Icon(Icons.search),
-            suffixIcon: _searchQuery.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                    },
-                  )
-                : null,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Search bar with sort dropdown
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
+            child: Row(
+              children: [
+                // Search field
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search episodes...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchController.clear();
+                              },
+                            )
+                          : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      filled: true,
+                      fillColor: Theme.of(context).cardColor,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Sort dropdown
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Theme.of(context).dividerColor),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<EpisodeSortDirection>(
+                      value: _sortDirection,
+                      icon: const Icon(Icons.sort),
+                      items: const [
+                        DropdownMenuItem(
+                          value: EpisodeSortDirection.newestFirst,
+                          child: Text('Newest'),
+                        ),
+                        DropdownMenuItem(
+                          value: EpisodeSortDirection.oldestFirst,
+                          child: Text('Oldest'),
+                        ),
+                        DropdownMenuItem(
+                          value: EpisodeSortDirection.shortestFirst,
+                          child: Text('Shortest'),
+                        ),
+                        DropdownMenuItem(
+                          value: EpisodeSortDirection.longestFirst,
+                          child: Text('Longest'),
+                        ),
+                        DropdownMenuItem(
+                          value: EpisodeSortDirection.titleAZ,
+                          child: Text('Title A-Z'),
+                        ),
+                        DropdownMenuItem(
+                          value: EpisodeSortDirection.titleZA,
+                          child: Text('Title Z-A'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() {
+                            _sortDirection = value;
+                            _filterEpisodes();
+                          });
+                          _saveSortPreference();
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ],
             ),
-            filled: true,
-            fillColor: Theme.of(context).cardColor,
+          ),
+          // Filter chips
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 8.0),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  // Clear all filters chip
+                  _buildFilterChip(
+                    label: 'Clear All',
+                    icon: Icons.clear_all,
+                    isActive: false,
+                    onTap: () {
+                      setState(() {
+                        _completedFilter = CompletedFilter.showAll;
+                        _showInProgress = false;
+                        _filterEpisodes();
+                      });
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  // Completed filter chip (3-state)
+                  _buildFilterChip(
+                    label: _getCompletedFilterLabel(),
+                    icon: _getCompletedFilterIcon(),
+                    isActive: _completedFilter != CompletedFilter.showAll,
+                    isAlert: _completedFilter == CompletedFilter.hide,
+                    onTap: () {
+                      setState(() {
+                        // Cycle through states: showAll -> showOnly -> hide -> showAll
+                        switch (_completedFilter) {
+                          case CompletedFilter.showAll:
+                            _completedFilter = CompletedFilter.showOnly;
+                            _showInProgress = false;
+                            break;
+                          case CompletedFilter.showOnly:
+                            _completedFilter = CompletedFilter.hide;
+                            _showInProgress = false;
+                            break;
+                          case CompletedFilter.hide:
+                            _completedFilter = CompletedFilter.showAll;
+                            break;
+                        }
+                        _filterEpisodes();
+                      });
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  // In Progress filter chip
+                  _buildFilterChip(
+                    label: 'In Progress',
+                    icon: Icons.play_circle_outline,
+                    isActive: _showInProgress,
+                    onTap: () {
+                      setState(() {
+                        _showInProgress = !_showInProgress;
+                        if (_showInProgress) {
+                          _completedFilter = CompletedFilter.showAll;
+                        }
+                        _filterEpisodes();
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getCompletedFilterLabel() {
+    switch (_completedFilter) {
+      case CompletedFilter.showAll:
+        return 'Completed';
+      case CompletedFilter.showOnly:
+        return 'Completed Only';
+      case CompletedFilter.hide:
+        return 'Hide Completed';
+    }
+  }
+
+  IconData _getCompletedFilterIcon() {
+    switch (_completedFilter) {
+      case CompletedFilter.showAll:
+        return Icons.circle_outlined;
+      case CompletedFilter.showOnly:
+        return Icons.check_circle;
+      case CompletedFilter.hide:
+        return Icons.cancel;
+    }
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required IconData icon,
+    required bool isActive,
+    bool isAlert = false,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final Color backgroundColor;
+    final Color foregroundColor;
+
+    if (isAlert) {
+      backgroundColor = Colors.orange.withOpacity(0.2);
+      foregroundColor = Colors.orange;
+    } else if (isActive) {
+      backgroundColor = theme.primaryColor.withOpacity(0.2);
+      foregroundColor = theme.primaryColor;
+    } else {
+      backgroundColor = theme.cardColor;
+      foregroundColor = theme.textTheme.bodyMedium?.color ?? Colors.grey;
+    }
+
+    return Material(
+      color: backgroundColor,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(20),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isActive || isAlert ? foregroundColor : theme.dividerColor,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: foregroundColor),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: foregroundColor,
+                  fontWeight: isActive || isAlert ? FontWeight.w600 : FontWeight.normal,
+                ),
+              ),
+            ],
           ),
         ),
       ),

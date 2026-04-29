@@ -4188,7 +4188,7 @@ impl DatabasePool {
                             "Episodes".episodepubdate as episodepubdate,
                             "Episodes".episodedescription as episodedescription,
                             "Episodes".episodeid as episodeid,
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "Episodes".episodeartwork
@@ -4202,7 +4202,8 @@ impl DatabasePool {
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             FALSE as is_youtube,
-                            "Podcasts".podcastid as podcastid
+                            "Podcasts".podcastid as podcastid,
+                            "SavedEpisodes".savedate as savedate
                         FROM "SavedEpisodes"
                         INNER JOIN "Episodes" ON "SavedEpisodes".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
@@ -4227,7 +4228,7 @@ impl DatabasePool {
                             "YouTubeVideos".publishedat as episodepubdate,
                             "YouTubeVideos".videodescription as episodedescription,
                             "YouTubeVideos".videoid as episodeid,
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "YouTubeVideos".thumbnailurl
@@ -4241,7 +4242,8 @@ impl DatabasePool {
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL AND "EpisodeQueue".is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             TRUE as is_youtube,
-                            "Podcasts".podcastid as podcastid
+                            "Podcasts".podcastid as podcastid,
+                            "SavedVideos".savedate as savedate
                         FROM "SavedVideos"
                         INNER JOIN "YouTubeVideos" ON "SavedVideos".videoid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
@@ -4255,7 +4257,7 @@ impl DatabasePool {
                             AND "DownloadedVideos".userid = $6
                         WHERE "SavedVideos".userid = $7
                     ) combined
-                    ORDER BY episodepubdate DESC"#
+                    ORDER BY savedate DESC"#
                 )
                 .bind(user_id)
                 .bind(user_id)
@@ -4289,6 +4291,8 @@ impl DatabasePool {
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
                         podcastid: row.try_get("podcastid").ok(),
+                        savedate: row.try_get::<chrono::NaiveDateTime, _>("savedate").ok()
+                            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
                     });
                 }
                 Ok(episodes)
@@ -4302,7 +4306,7 @@ impl DatabasePool {
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
                             Episodes.EpisodeID as episodeid,
-                            CASE 
+                            CASE
                                 WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
                                 WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
                                 ELSE Episodes.EpisodeArtwork
@@ -4316,7 +4320,8 @@ impl DatabasePool {
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             FALSE as is_youtube,
-                            Podcasts.PodcastID as podcastid
+                            Podcasts.PodcastID as podcastid,
+                            SavedEpisodes.SaveDate as savedate
                         FROM SavedEpisodes
                         INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
@@ -4341,7 +4346,7 @@ impl DatabasePool {
                             YouTubeVideos.PublishedAt as episodepubdate,
                             YouTubeVideos.VideoDescription as episodedescription,
                             YouTubeVideos.VideoID as episodeid,
-                            CASE 
+                            CASE
                                 WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
                                 WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
                                 ELSE YouTubeVideos.ThumbnailURL
@@ -4355,7 +4360,8 @@ impl DatabasePool {
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL AND EpisodeQueue.is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             TRUE as is_youtube,
-                            Podcasts.PodcastID as podcastid
+                            Podcasts.PodcastID as podcastid,
+                            SavedVideos.SaveDate as savedate
                         FROM SavedVideos
                         INNER JOIN YouTubeVideos ON SavedVideos.VideoID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
@@ -4369,7 +4375,7 @@ impl DatabasePool {
                             AND DownloadedVideos.UserID = ?
                         WHERE SavedVideos.UserID = ?
                     ) combined
-                    ORDER BY episodepubdate DESC"
+                    ORDER BY savedate DESC"
                 )
                 .bind(user_id)
                 .bind(user_id)
@@ -4403,6 +4409,8 @@ impl DatabasePool {
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
                         podcastid: row.try_get("podcastid").ok(),
+                        savedate: row.try_get::<chrono::NaiveDateTime, _>("savedate").ok()
+                            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
                     });
                 }
                 Ok(episodes)

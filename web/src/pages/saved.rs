@@ -193,8 +193,8 @@ pub fn saved() -> Html {
                 // Apply sorting
                 if let Some(direction) = (*sort_dir).as_ref() {
                     filtered.sort_by(|a, b| match direction {
-                        SavedSortDirection::NewestFirst => b.episodepubdate.cmp(&a.episodepubdate),
-                        SavedSortDirection::OldestFirst => a.episodepubdate.cmp(&b.episodepubdate),
+                        SavedSortDirection::NewestFirst => b.savedate.as_deref().unwrap_or("").cmp(a.savedate.as_deref().unwrap_or("")),
+                        SavedSortDirection::OldestFirst => a.savedate.as_deref().unwrap_or("").cmp(b.savedate.as_deref().unwrap_or("")),
                         SavedSortDirection::ShortestFirst => {
                             a.episodeduration.cmp(&b.episodeduration)
                         }

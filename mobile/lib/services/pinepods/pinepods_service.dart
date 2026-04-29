@@ -166,6 +166,75 @@ class PinepodsService {
     }
   }
 
+  // Get user's subscribed podcasts with categories for filtering
+  Future<Map<String, dynamic>> getUserPodcastsWithCategories(int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/return_pods/$userId');
+
+    try {
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final List<dynamic> podsData = data['pods'] ?? [];
+
+        List<Podcast> podcasts = [];
+        Map<int, List<String>> podcastCategories = {};
+
+        for (var podData in podsData) {
+          final podcastId = podData['podcastid'] as int;
+
+          // Parse categories
+          List<String> categories = [];
+          if (podData['categories'] != null) {
+            if (podData['categories'] is Map) {
+              categories = (podData['categories'] as Map)
+                  .values
+                  .map((v) => v.toString().trim())
+                  .where((c) => c.isNotEmpty)
+                  .toList();
+            } else if (podData['categories'] is String) {
+              categories = (podData['categories'] as String)
+                  .split(',')
+                  .map((c) => c.trim())
+                  .where((c) => c.isNotEmpty)
+                  .toList();
+            }
+          }
+          podcastCategories[podcastId] = categories;
+
+          podcasts.add(
+            Podcast(
+              id: podcastId,
+              title: podData['podcastname'] ?? '',
+              description: podData['description'] ?? '',
+              imageUrl: podData['artworkurl'] ?? '',
+              thumbImageUrl: podData['artworkurl'] ?? '',
+              url: podData['feedurl'] ?? '',
+              link: podData['websiteurl'] ?? '',
+              copyright: podData['author'] ?? '',
+              guid: podData['feedurl'] ?? '',
+              episodes: [],
+            ),
+          );
+        }
+
+        return {
+          'podcasts': podcasts,
+          'categories': podcastCategories,
+        };
+      } else {
+        throw Exception('Failed to get user podcasts: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error getting user podcasts with categories: $e');
+      rethrow;
+    }
+  }
+
   // Get recent episodes (last 30 days)
   Future<List<PinepodsEpisode>> getRecentEpisodes(int userId) async {
     if (_server == null || _apiKey == null) {
@@ -786,6 +855,7 @@ class PinepodsService {
             queued: episodeData['queued'] ?? false,
             downloaded: episodeData['downloaded'] ?? false,
             isYoutube: episodeData['is_youtube'] ?? false,
+            listenDate: episodeData['listendate'],
           );
         }).toList();
       } else {
@@ -886,6 +956,7 @@ class PinepodsService {
             queued: episodeData['queued'] ?? false,
             downloaded: episodeData['downloaded'] ?? false,
             isYoutube: episodeData['is_youtube'] ?? false,
+            saveDate: episodeData['savedate'],
           );
         }).toList();
       } else {

@@ -179,10 +179,10 @@ pub fn history() -> Html {
                 if let Some(direction) = (*sort_dir).as_ref() {
                     filtered.sort_by(|a, b| match direction {
                         HistorySortDirection::NewestFirst => {
-                            b.episodepubdate.cmp(&a.episodepubdate)
+                            b.listendate.as_deref().unwrap_or("").cmp(a.listendate.as_deref().unwrap_or(""))
                         }
                         HistorySortDirection::OldestFirst => {
-                            a.episodepubdate.cmp(&b.episodepubdate)
+                            a.listendate.as_deref().unwrap_or("").cmp(b.listendate.as_deref().unwrap_or(""))
                         }
                         HistorySortDirection::ShortestFirst => {
                             a.episodeduration.cmp(&b.episodeduration)
