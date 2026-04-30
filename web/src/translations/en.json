@@ -1,4 +1,21 @@
 {
+  "shared_links": {
+    "title": "Shared Links",
+    "description": "Manage episode links you have shared. You can extend their expiry or remove them before they expire.",
+    "episode": "Episode",
+    "podcast": "Podcast",
+    "expires": "Expires",
+    "actions": "Actions",
+    "extend": "Extend",
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "no_links": "You have no shared links.",
+    "delete_link": "Delete Shared Link",
+    "delete_link_confirm": "Are you sure you want to delete this shared link? Anyone with the link will lose access.",
+    "extend_link": "Extend Shared Link",
+    "extend_link_description": "How many days would you like to add to this link's expiry?",
+    "days_to_extend": "Days to extend"
+  },
   "api_keys": {
     "api_id": "API ID",
     "api_key_deleted_successfully": "API key deleted successfully",
@@ -938,6 +955,7 @@
     "admin_status": "Admin Status",
     "admin_user_question": "Admin User?",
     "api_keys": "API Keys",
+    "shared_links": "Shared Links",
     "apply_theme": "Apply Theme",
     "backup_server": "Backup Server",
     "change_password": "Change Password",

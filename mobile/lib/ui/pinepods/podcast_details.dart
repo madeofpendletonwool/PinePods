@@ -74,6 +74,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   EpisodeSortDirection _sortDirection = EpisodeSortDirection.newestFirst;
   CompletedFilter _completedFilter = CompletedFilter.showAll;
   bool _showInProgress = false;
+  bool _isAutoDownloadEnabled = false;
 
   @override
   void initState() {
@@ -81,6 +82,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _isFollowing = widget.isFollowing;
     _initializeCredentials();
     _loadSortPreference();
+    _loadAutoDownloadPreference();
     _checkFollowStatus();
     _searchController.addListener(_onSearchChanged);
   }
@@ -114,6 +116,42 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         }
         _filterEpisodes();
       });
+    }
+  }
+
+  Future<void> _loadAutoDownloadPreference() async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() {
+        _isAutoDownloadEnabled = prefs.getBool('auto_download_podcast_$podcastId') ?? false;
+      });
+    }
+  }
+
+  Future<void> _toggleAutoDownload() async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0) return;
+    final prefs = await SharedPreferences.getInstance();
+    final newValue = !_isAutoDownloadEnabled;
+    await prefs.setBool('auto_download_podcast_$podcastId', newValue);
+    if (newValue) {
+      final lastCheckKey = 'auto_download_last_check_$podcastId';
+      if (prefs.getString(lastCheckKey) == null) {
+        await prefs.setString(lastCheckKey, DateTime.now().toIso8601String());
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _isAutoDownloadEnabled = newValue;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(newValue ? 'Auto-download enabled' : 'Auto-download disabled'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -175,7 +213,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     if (_showInProgress) {
       // In Progress: not completed but has some listen duration
       filtered = filtered.where((episode) {
-        return !episode.completed && episode.listenDuration > 0;
+        return !episode.completed && (episode.listenDuration ?? 0) > 0;
       }).toList();
     } else {
       switch (_completedFilter) {
@@ -1006,6 +1044,17 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
               ),
             ),
             actions: [
+              if (_isFollowing && widget.podcast.id > 0)
+                IconButton(
+                  onPressed: _toggleAutoDownload,
+                  icon: Icon(
+                    _isAutoDownloadEnabled
+                        ? Icons.download_for_offline
+                        : Icons.download_for_offline_outlined,
+                    color: _isAutoDownloadEnabled ? Colors.blue[300] : Colors.white,
+                  ),
+                  tooltip: _isAutoDownloadEnabled ? 'Disable auto-download' : 'Enable auto-download',
+                ),
               IconButton(
                 onPressed: _isFollowButtonLoading ? null : _toggleFollow,
                 icon: _isFollowButtonLoading
@@ -1077,10 +1126,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                   
                   const SizedBox(height: 8),
                   
-                  Text(
-                    widget.podcast.description,
-                    style: const TextStyle(fontSize: 14),
-                  ),
+                  _ExpandableDescription(description: widget.podcast.description),
                   
                   const SizedBox(height: 16),
                   
@@ -1094,7 +1140,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '${widget.podcast.episodeCount} episode${widget.podcast.episodeCount != 1 ? 's' : ''}',
+                        '${_episodes.length} episode${_episodes.length != 1 ? 's' : ''}',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.grey[600],
@@ -1611,6 +1657,47 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
         },
         childCount: _filteredEpisodes.length,
       ),
+    );
+  }
+}
+
+class _ExpandableDescription extends StatefulWidget {
+  final String description;
+  const _ExpandableDescription({required this.description});
+
+  @override
+  State<_ExpandableDescription> createState() => _ExpandableDescriptionState();
+}
+
+class _ExpandableDescriptionState extends State<_ExpandableDescription> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.description,
+          style: const TextStyle(fontSize: 14),
+          maxLines: _expanded ? null : 3,
+          overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+        ),
+        GestureDetector(
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              _expanded ? 'Show less' : 'Show more',
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

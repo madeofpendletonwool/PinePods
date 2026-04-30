@@ -18,4 +18,4 @@ pub mod theme_options;
 pub mod user_self_service;
 pub mod user_self_settings;
 pub mod user_settings;
-// ...other submodule declarations if any...
+pub mod shared_links;

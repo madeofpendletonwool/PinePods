@@ -409,7 +409,8 @@ impl DatabasePool {
                             CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            "Episodes".is_video as is_video
                         FROM "Episodes"
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
                         LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
@@ -449,7 +450,8 @@ impl DatabasePool {
                             CASE WHEN "SavedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL AND "EpisodeQueue".is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM "YouTubeVideos"
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
                         LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
@@ -522,7 +524,8 @@ impl DatabasePool {
                             CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            Episodes.IsVideo as is_video
                         FROM Episodes
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
                         LEFT JOIN Users ON Podcasts.UserID = Users.UserID
@@ -562,7 +565,8 @@ impl DatabasePool {
                             CASE WHEN SavedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL AND EpisodeQueue.is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM YouTubeVideos
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
                         LEFT JOIN Users ON Podcasts.UserID = Users.UserID
@@ -2164,7 +2168,8 @@ impl DatabasePool {
                             CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             TRUE as queued,
                             CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            "Episodes".is_video as is_video
                         FROM "EpisodeQueue"
                         INNER JOIN "Episodes" ON "EpisodeQueue".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
@@ -2202,7 +2207,8 @@ impl DatabasePool {
                             CASE WHEN "SavedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             TRUE as queued,
                             CASE WHEN "DownloadedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM "EpisodeQueue"
                         INNER JOIN "YouTubeVideos" ON "EpisodeQueue".episodeid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
@@ -2275,7 +2281,8 @@ impl DatabasePool {
                             CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             TRUE as queued,
                             CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            Episodes.IsVideo as is_video
                         FROM EpisodeQueue
                         INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
@@ -2313,7 +2320,8 @@ impl DatabasePool {
                             CASE WHEN SavedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             TRUE as queued,
                             CASE WHEN DownloadedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM EpisodeQueue
                         INNER JOIN YouTubeVideos ON EpisodeQueue.EpisodeID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
@@ -6592,7 +6600,8 @@ impl DatabasePool {
                             CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             TRUE as downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            "Episodes".is_video as is_video
                         FROM "DownloadedEpisodes"
                         INNER JOIN "Episodes" ON "DownloadedEpisodes".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
@@ -6634,7 +6643,8 @@ impl DatabasePool {
                             CASE WHEN "SavedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL AND "EpisodeQueue".is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             TRUE as downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM "DownloadedVideos"
                         INNER JOIN "YouTubeVideos" ON "DownloadedVideos".videoid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
@@ -6715,7 +6725,8 @@ impl DatabasePool {
                             CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             TRUE as downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            Episodes.IsVideo as is_video
                         FROM DownloadedEpisodes
                         INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
@@ -6757,7 +6768,8 @@ impl DatabasePool {
                             CASE WHEN SavedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL AND EpisodeQueue.is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             TRUE as downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM DownloadedVideos
                         INNER JOIN YouTubeVideos ON DownloadedVideos.VideoID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
@@ -8684,7 +8696,8 @@ impl DatabasePool {
                             CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            "Episodes".is_video as is_video
                         FROM "Episodes"
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
                         LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
@@ -8730,7 +8743,8 @@ impl DatabasePool {
                             CASE WHEN "SavedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL AND "EpisodeQueue".is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM "YouTubeVideos"
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
                         LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
@@ -8807,7 +8821,8 @@ impl DatabasePool {
                             CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            Episodes.IsVideo as is_video
                         FROM Episodes
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
                         LEFT JOIN Users ON Podcasts.UserID = Users.UserID
@@ -8854,7 +8869,8 @@ impl DatabasePool {
                             CASE WHEN SavedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL AND EpisodeQueue.is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM YouTubeVideos
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
                         LEFT JOIN Users ON Podcasts.UserID = Users.UserID
@@ -23962,6 +23978,130 @@ impl DatabasePool {
                         Err(AppError::not_found("Episode not found"))
                     }
                 }
+            }
+        }
+    }
+
+    // Get all shared episodes for a user
+    pub async fn get_user_shared_episodes(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT
+                        se.sharecode,
+                        se.expirationdate,
+                        COALESCE(e.episodetitle, ye.episodetitle) AS episodetitle,
+                        COALESCE(p.podcastname, yp.podcastname) AS podcastname
+                    FROM "SharedEpisodes" se
+                    LEFT JOIN "Episodes" e ON se.episodeid = e.episodeid
+                    LEFT JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                    LEFT JOIN "YoutubeVideos" ye ON se.episodeid = ye.episodeid
+                    LEFT JOIN "YoutubePodcasts" yp ON ye.podcastid = yp.podcastid
+                    WHERE se.sharedby = $1
+                    ORDER BY se.expirationdate DESC
+                "#)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let result = rows.iter().map(|row| {
+                    let sharecode: String = row.try_get("sharecode").unwrap_or_default();
+                    let expiration: chrono::DateTime<chrono::Utc> = row.try_get("expirationdate").unwrap_or_else(|_| chrono::Utc::now());
+                    let episode_title: String = row.try_get("episodetitle").unwrap_or_else(|_| "Unknown".to_string());
+                    let podcast_name: String = row.try_get("podcastname").unwrap_or_else(|_| "Unknown".to_string());
+                    serde_json::json!({
+                        "share_code": sharecode,
+                        "expiration_date": expiration.format("%Y-%m-%d %H:%M UTC").to_string(),
+                        "episode_title": episode_title,
+                        "podcast_name": podcast_name,
+                    })
+                }).collect();
+                Ok(result)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    "SELECT
+                        se.ShareCode AS sharecode,
+                        se.ExpirationDate AS expirationdate,
+                        COALESCE(e.EpisodeTitle, ye.EpisodeTitle) AS episodetitle,
+                        COALESCE(p.PodcastName, yp.PodcastName) AS podcastname
+                    FROM SharedEpisodes se
+                    LEFT JOIN Episodes e ON se.EpisodeID = e.EpisodeID
+                    LEFT JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                    LEFT JOIN YoutubeVideos ye ON se.EpisodeID = ye.EpisodeID
+                    LEFT JOIN YoutubePodcasts yp ON ye.PodcastID = yp.PodcastID
+                    WHERE se.SharedBy = ?
+                    ORDER BY se.ExpirationDate DESC"
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let result = rows.iter().map(|row| {
+                    let sharecode: String = row.try_get("sharecode").unwrap_or_default();
+                    let expiration: chrono::NaiveDateTime = row.try_get("expirationdate").unwrap_or_else(|_| chrono::Utc::now().naive_utc());
+                    let episode_title: String = row.try_get("episodetitle").unwrap_or_else(|_| "Unknown".to_string());
+                    let podcast_name: String = row.try_get("podcastname").unwrap_or_else(|_| "Unknown".to_string());
+                    serde_json::json!({
+                        "share_code": sharecode,
+                        "expiration_date": expiration.format("%Y-%m-%d %H:%M UTC").to_string(),
+                        "episode_title": episode_title,
+                        "podcast_name": podcast_name,
+                    })
+                }).collect();
+                Ok(result)
+            }
+        }
+    }
+
+    // Delete a shared episode by share code (user must own it)
+    pub async fn delete_user_shared_episode(&self, share_code: &str, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"DELETE FROM "SharedEpisodes" WHERE sharecode = $1 AND sharedby = $2"#)
+                    .bind(share_code)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("DELETE FROM SharedEpisodes WHERE ShareCode = ? AND SharedBy = ?")
+                    .bind(share_code)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
+    // Extend expiration of a shared episode by N days (user must own it)
+    pub async fn extend_user_shared_episode(&self, share_code: &str, user_id: i32, days: i64) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"
+                    UPDATE "SharedEpisodes"
+                    SET expirationdate = expirationdate + ($1 * INTERVAL '1 day')
+                    WHERE sharecode = $2 AND sharedby = $3
+                "#)
+                .bind(days)
+                .bind(share_code)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(
+                    "UPDATE SharedEpisodes SET ExpirationDate = DATE_ADD(ExpirationDate, INTERVAL ? DAY) WHERE ShareCode = ? AND SharedBy = ?"
+                )
+                .bind(days)
+                .bind(share_code)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+                Ok(result.rows_affected() > 0)
             }
         }
     }

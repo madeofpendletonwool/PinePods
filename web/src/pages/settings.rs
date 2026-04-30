@@ -221,6 +221,7 @@ pub fn settings() -> Html {
                             <AccordionItem title={i18n.t("settings.enable_disable_rss_feeds")} content={html!{ <setting_components::rss_feeds::RSSFeedSettings /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.match_podcasts_podcast_index")} content={html!{ <setting_components::podcast_index_matching::PodcastIndexMatching /> }} position={AccordionItemPosition::Middle}/>
                             <AccordionItem title={i18n.t("settings.api_keys")} content={html!{ <setting_components::api_keys::APIKeys /> }} position={AccordionItemPosition::Middle}/>
+                            <AccordionItem title={i18n.t("settings.shared_links")} content={html!{ <setting_components::shared_links::SharedLinks /> }} position={AccordionItemPosition::Middle}/>
                         </div>
                         }
                     } else if *active_tab == "admin" {

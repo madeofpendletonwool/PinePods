@@ -23,6 +23,7 @@ import 'package:pinepods_mobile/ui/widgets/episode_context_menu.dart';
 import 'package:pinepods_mobile/ui/utils/player_utils.dart';
 import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
 import 'package:pinepods_mobile/services/error_handling_service.dart';
+import 'package:pinepods_mobile/services/auto_download/auto_download_service.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
@@ -75,6 +76,13 @@ class _PinepodsHomeState extends State<PinepodsHome> {
         settings.pinepodsApiKey!,
       );
       GlobalServices.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+      // Check for new episodes on auto-download podcasts (fire-and-forget)
+      AutoDownloadService.checkAndDownloadNewEpisodes(
+        context: context,
+        pinepodsService: _pinepodsService,
+        userId: settings.pinepodsUserId!,
+      );
 
       // Load home data and playlists in parallel
       final futures = await Future.wait([
