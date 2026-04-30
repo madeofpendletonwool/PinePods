@@ -15,7 +15,25 @@ import 'package:pinepods_mobile/ui/widgets/server_error_page.dart';
 import 'package:pinepods_mobile/services/error_handling_service.dart';
 import 'package:pinepods_mobile/services/global_services.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sliver_tools/sliver_tools.dart';
+
+/// Sort direction options for history episodes
+enum HistorySortDirection {
+  newestFirst,
+  oldestFirst,
+  shortestFirst,
+  longestFirst,
+  titleAZ,
+  titleZA,
+}
+
+/// Episode filter options for history
+enum HistoryFilter {
+  all,
+  completed,
+  inProgress,
+}
 
 class PinepodsHistory extends StatefulWidget {
   const PinepodsHistory({Key? key}) : super(key: key);
@@ -35,11 +53,67 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
+  // Sort and filter state
+  HistorySortDirection _sortDirection = HistorySortDirection.newestFirst;
+  HistoryFilter _activeFilter = HistoryFilter.all;
+  static const String _sortPreferenceKey = 'history_sort_direction';
+
   @override
   void initState() {
     super.initState();
+    _loadSortPreference();
     _loadHistory();
     _searchController.addListener(_onSearchChanged);
+  }
+
+  Future<void> _loadSortPreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedSort = prefs.getString(_sortPreferenceKey);
+    if (savedSort != null) {
+      setState(() {
+        _sortDirection = _sortDirectionFromString(savedSort);
+      });
+    }
+  }
+
+  Future<void> _saveSortPreference(HistorySortDirection direction) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_sortPreferenceKey, _sortDirectionToString(direction));
+  }
+
+  String _sortDirectionToString(HistorySortDirection direction) {
+    switch (direction) {
+      case HistorySortDirection.newestFirst:
+        return 'newest';
+      case HistorySortDirection.oldestFirst:
+        return 'oldest';
+      case HistorySortDirection.shortestFirst:
+        return 'shortest';
+      case HistorySortDirection.longestFirst:
+        return 'longest';
+      case HistorySortDirection.titleAZ:
+        return 'title_az';
+      case HistorySortDirection.titleZA:
+        return 'title_za';
+    }
+  }
+
+  HistorySortDirection _sortDirectionFromString(String value) {
+    switch (value) {
+      case 'oldest':
+        return HistorySortDirection.oldestFirst;
+      case 'shortest':
+        return HistorySortDirection.shortestFirst;
+      case 'longest':
+        return HistorySortDirection.longestFirst;
+      case 'title_az':
+        return HistorySortDirection.titleAZ;
+      case 'title_za':
+        return HistorySortDirection.titleZA;
+      case 'newest':
+      default:
+        return HistorySortDirection.newestFirst;
+    }
   }
 
   @override
@@ -57,14 +131,82 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
   }
 
   void _filterEpisodes() {
-    if (_searchQuery.isEmpty) {
-      _filteredEpisodes = List.from(_episodes);
-    } else {
-      _filteredEpisodes = _episodes.where((episode) {
+    // Start with all episodes
+    var filtered = List<PinepodsEpisode>.from(_episodes);
+
+    // Apply search filter
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((episode) {
         return episode.episodeTitle.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-               episode.podcastName.toLowerCase().contains(_searchQuery.toLowerCase());
+               episode.podcastName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+               episode.episodeDescription.toLowerCase().contains(_searchQuery.toLowerCase());
       }).toList();
     }
+
+    // Apply status filter
+    switch (_activeFilter) {
+      case HistoryFilter.completed:
+        filtered = filtered.where((episode) => episode.completed).toList();
+        break;
+      case HistoryFilter.inProgress:
+        filtered = filtered.where((episode) =>
+          episode.isStarted && !episode.completed
+        ).toList();
+        break;
+      case HistoryFilter.all:
+        // No filtering needed
+        break;
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) {
+      switch (_sortDirection) {
+        case HistorySortDirection.newestFirst:
+          return _compareDates(b.listenDate ?? '', a.listenDate ?? '');
+        case HistorySortDirection.oldestFirst:
+          return _compareDates(a.listenDate ?? '', b.listenDate ?? '');
+        case HistorySortDirection.shortestFirst:
+          return a.episodeDuration.compareTo(b.episodeDuration);
+        case HistorySortDirection.longestFirst:
+          return b.episodeDuration.compareTo(a.episodeDuration);
+        case HistorySortDirection.titleAZ:
+          return a.episodeTitle.toLowerCase().compareTo(b.episodeTitle.toLowerCase());
+        case HistorySortDirection.titleZA:
+          return b.episodeTitle.toLowerCase().compareTo(a.episodeTitle.toLowerCase());
+      }
+    });
+
+    _filteredEpisodes = filtered;
+  }
+
+  int _compareDates(String dateA, String dateB) {
+    final a = DateTime.tryParse(dateA) ?? DateTime(1970);
+    final b = DateTime.tryParse(dateB) ?? DateTime(1970);
+    return a.compareTo(b);
+  }
+
+  void _setSortDirection(HistorySortDirection direction) {
+    setState(() {
+      _sortDirection = direction;
+      _filterEpisodes();
+    });
+    _saveSortPreference(direction);
+  }
+
+  void _setFilter(HistoryFilter filter) {
+    setState(() {
+      _activeFilter = filter;
+      _filterEpisodes();
+    });
+  }
+
+  void _clearAllFilters() {
+    setState(() {
+      _activeFilter = HistoryFilter.all;
+      _searchController.clear();
+      _searchQuery = '';
+      _filterEpisodes();
+    });
   }
 
   PinepodsAudioService? get _audioService => GlobalServices.pinepodsAudioService;
@@ -105,17 +247,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       
       setState(() {
         _episodes = enrichedEpisodes;
-        // Sort episodes by publication date (newest first)
-        _episodes.sort((a, b) {
-          try {
-            final dateA = DateTime.parse(a.episodePubDate);
-            final dateB = DateTime.parse(b.episodePubDate);
-            return dateB.compareTo(dateA); // Newest first
-          } catch (e) {
-            return 0; // Keep original order if parsing fails
-          }
-        });
-        _filterEpisodes(); // Initialize filtered list
+        _filterEpisodes(); // Initialize filtered list with sorting
         _isLoading = false;
       });
       
@@ -148,34 +280,9 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
     }
 
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(width: 12),
-              Text('Starting ${episode.episodeTitle}...'),
-            ],
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-
       await _audioService!.playPinepodsEpisode(
         pinepodsEpisode: episode,
         resume: episode.isStarted,
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Now playing: ${episode.episodeTitle}'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-        ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -546,6 +653,7 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
       queued: queued ?? episode.queued,
       downloaded: downloaded ?? episode.downloaded,
       isYoutube: episode.isYoutube,
+      listenDate: episode.listenDate,
     );
   }
 
@@ -625,34 +733,181 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
 
     return MultiSliver(
       children: [
-        _buildSearchBar(),
+        _buildSearchAndFilterBar(),
         _buildEpisodesList(),
       ],
     );
   }
 
-  Widget _buildSearchBar() {
+  Widget _buildSearchAndFilterBar() {
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
-        child: TextField(
-          controller: _searchController,
-          decoration: InputDecoration(
-            hintText: 'Filter episodes...',
-            prefixIcon: const Icon(Icons.search),
-            suffixIcon: _searchQuery.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _searchController.clear();
-                    },
-                  )
-                : null,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Search and Sort row
+            Row(
+              children: [
+                // Search field
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search episodes...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _searchController.clear();
+                              },
+                            )
+                          : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      filled: true,
+                      fillColor: Theme.of(context).cardColor,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Sort dropdown
+                Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Theme.of(context).dividerColor,
+                    ),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<HistorySortDirection>(
+                      value: _sortDirection,
+                      icon: const Icon(Icons.sort),
+                      items: const [
+                        DropdownMenuItem(
+                          value: HistorySortDirection.newestFirst,
+                          child: Text('Newest'),
+                        ),
+                        DropdownMenuItem(
+                          value: HistorySortDirection.oldestFirst,
+                          child: Text('Oldest'),
+                        ),
+                        DropdownMenuItem(
+                          value: HistorySortDirection.shortestFirst,
+                          child: Text('Shortest'),
+                        ),
+                        DropdownMenuItem(
+                          value: HistorySortDirection.longestFirst,
+                          child: Text('Longest'),
+                        ),
+                        DropdownMenuItem(
+                          value: HistorySortDirection.titleAZ,
+                          child: Text('Title A-Z'),
+                        ),
+                        DropdownMenuItem(
+                          value: HistorySortDirection.titleZA,
+                          child: Text('Title Z-A'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) {
+                          _setSortDirection(value);
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ],
             ),
-            filled: true,
-            fillColor: Theme.of(context).cardColor,
+            const SizedBox(height: 12),
+            // Filter chips
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  // Clear all chip
+                  _buildFilterChip(
+                    label: 'Clear All',
+                    icon: Icons.clear_all,
+                    isActive: false,
+                    onTap: _clearAllFilters,
+                  ),
+                  const SizedBox(width: 8),
+                  // Completed chip
+                  _buildFilterChip(
+                    label: 'Completed',
+                    icon: Icons.check_circle_outline,
+                    isActive: _activeFilter == HistoryFilter.completed,
+                    onTap: () {
+                      _setFilter(_activeFilter == HistoryFilter.completed
+                          ? HistoryFilter.all
+                          : HistoryFilter.completed);
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  // In Progress chip
+                  _buildFilterChip(
+                    label: 'In Progress',
+                    icon: Icons.hourglass_bottom,
+                    isActive: _activeFilter == HistoryFilter.inProgress,
+                    onTap: () {
+                      _setFilter(_activeFilter == HistoryFilter.inProgress
+                          ? HistoryFilter.all
+                          : HistoryFilter.inProgress);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required IconData icon,
+    required bool isActive,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    return Material(
+      color: isActive ? theme.primaryColor : theme.cardColor,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isActive ? theme.primaryColor : theme.dividerColor,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: isActive ? Colors.white : theme.iconTheme.color,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isActive ? Colors.white : theme.textTheme.bodyMedium?.color,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -660,15 +915,16 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
   }
 
   Widget _buildEpisodesList() {
-    // Check if search returned no results
-    if (_filteredEpisodes.isEmpty && _searchQuery.isNotEmpty) {
+    // Check if filters returned no results
+    final hasActiveFilters = _searchQuery.isNotEmpty || _activeFilter != HistoryFilter.all;
+    if (_filteredEpisodes.isEmpty && hasActiveFilters) {
       return SliverFillRemaining(
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.search_off,
+                Icons.filter_list_off,
                 size: 64,
                 color: Theme.of(context).primaryColor,
               ),
@@ -680,9 +936,15 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
               ),
               const SizedBox(height: 8),
               Text(
-                'No episodes match "$_searchQuery"',
+                _getNoResultsMessage(),
                 style: Theme.of(context).textTheme.bodyMedium,
                 textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              TextButton.icon(
+                onPressed: _clearAllFilters,
+                icon: const Icon(Icons.clear_all),
+                label: const Text('Clear Filters'),
               ),
             ],
           ),
@@ -696,16 +958,14 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
           if (index == 0) {
             // Header
             return Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    _searchQuery.isEmpty 
-                        ? 'Listening History' 
-                        : 'Search Results (${_filteredEpisodes.length})',
+                    _getHeaderTitle(),
                     style: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -741,5 +1001,35 @@ class _PinepodsHistoryState extends State<PinepodsHistory> {
         childCount: _filteredEpisodes.length + 1, // +1 for header
       ),
     );
+  }
+
+  String _getHeaderTitle() {
+    final count = _filteredEpisodes.length;
+    final hasFilters = _searchQuery.isNotEmpty || _activeFilter != HistoryFilter.all;
+
+    if (hasFilters) {
+      return 'Results ($count)';
+    }
+    return 'Listening History ($count)';
+  }
+
+  String _getNoResultsMessage() {
+    final parts = <String>[];
+
+    if (_searchQuery.isNotEmpty) {
+      parts.add('matching "$_searchQuery"');
+    }
+
+    if (_activeFilter == HistoryFilter.completed) {
+      parts.add('that are completed');
+    } else if (_activeFilter == HistoryFilter.inProgress) {
+      parts.add('that are in progress');
+    }
+
+    if (parts.isEmpty) {
+      return 'No episodes match your filters';
+    }
+
+    return 'No episodes ${parts.join(' and ')}';
   }
 }

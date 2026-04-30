@@ -41,7 +41,7 @@ impl RedisClient {
 
     pub async fn set<T>(&self, key: &str, value: T) -> AppResult<()>
     where
-        T: redis::ToRedisArgs + Send + Sync,
+        T: redis::ToRedisArgs + redis::ToSingleRedisArg + Send + Sync,
     {
         let mut conn = self.connection.clone();
         let _: () = conn.set(key, value).await?;
@@ -50,7 +50,7 @@ impl RedisClient {
 
     pub async fn set_ex<T>(&self, key: &str, value: T, seconds: u64) -> AppResult<()>
     where
-        T: redis::ToRedisArgs + Send + Sync,
+        T: redis::ToRedisArgs + redis::ToSingleRedisArg + Send + Sync,
     {
         let mut conn = self.connection.clone();
         let _: () = conn.set_ex(key, value, seconds).await?;

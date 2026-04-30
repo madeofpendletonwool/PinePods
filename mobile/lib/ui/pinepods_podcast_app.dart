@@ -21,8 +21,10 @@ import 'package:pinepods_mobile/l10n/L.dart';
 import 'package:pinepods_mobile/navigation/navigation_route_observer.dart';
 import 'package:pinepods_mobile/repository/repository.dart';
 import 'package:pinepods_mobile/repository/sembast/sembast_repository.dart';
+import 'dart:io';
 import 'package:pinepods_mobile/services/audio/audio_player_service.dart';
 import 'package:pinepods_mobile/services/audio/default_audio_player_service.dart';
+import 'package:pinepods_mobile/services/audio/native_audio_player_service.dart';
 import 'package:pinepods_mobile/services/download/download_service.dart';
 import 'package:pinepods_mobile/services/download/mobile_download_manager.dart';
 import 'package:pinepods_mobile/services/download/mobile_download_service.dart';
@@ -33,6 +35,7 @@ import 'package:pinepods_mobile/services/pinepods/pinepods_audio_service.dart';
 import 'package:pinepods_mobile/services/pinepods/oidc_service.dart';
 import 'package:pinepods_mobile/services/pinepods/login_service.dart';
 import 'package:pinepods_mobile/services/auth_notifier.dart';
+import 'package:pinepods_mobile/services/carplay/carplay_service.dart';
 import 'package:pinepods_mobile/services/settings/mobile_settings_service.dart';
 import 'package:pinepods_mobile/ui/library/downloads.dart';
 import 'package:pinepods_mobile/ui/library/library.dart';
@@ -89,6 +92,7 @@ class PinepodsPodcastApp extends StatefulWidget {
   List<int> certificateAuthorityBytes;
   late PinepodsAudioService pinepodsAudioService;
   late PinepodsService pinepodsService;
+  CarPlayService? carPlayService;
 
   PinepodsPodcastApp({
     super.key,
@@ -111,11 +115,19 @@ class PinepodsPodcastApp extends StatefulWidget {
       podcastService: podcastService!,
     );
 
-    audioPlayerService = DefaultAudioPlayerService(
-      repository: repository,
-      settingsService: mobileSettingsService,
-      podcastService: podcastService!,
-    );
+    // Use native audio player on iOS for better stability, fall back to default on other platforms
+    if (Platform.isIOS) {
+      audioPlayerService = NativeAudioPlayerService(
+        repository: repository,
+        settingsService: mobileSettingsService,
+      );
+    } else {
+      audioPlayerService = DefaultAudioPlayerService(
+        repository: repository,
+        settingsService: mobileSettingsService,
+        podcastService: podcastService!,
+      );
+    }
 
     settingsBloc = SettingsBloc(mobileSettingsService);
 
@@ -128,15 +140,31 @@ class PinepodsPodcastApp extends StatefulWidget {
     );
 
     // Connect the services for listen duration recording
-    (audioPlayerService as DefaultAudioPlayerService).setPinepodsAudioService(
-      pinepodsAudioService,
-    );
+    if (audioPlayerService is DefaultAudioPlayerService) {
+      (audioPlayerService as DefaultAudioPlayerService).setPinepodsAudioService(
+        pinepodsAudioService,
+      );
+    } else if (audioPlayerService is NativeAudioPlayerService) {
+      (audioPlayerService as NativeAudioPlayerService).setPinepodsAudioService(
+        pinepodsAudioService,
+      );
+    }
 
     // Initialize global services for app-wide access
     GlobalServices.initialize(
       pinepodsAudioService: pinepodsAudioService,
       pinepodsService: pinepodsService,
     );
+
+    // Initialize CarPlay service for iOS
+    if (Platform.isIOS) {
+      carPlayService = CarPlayService(
+        repository: repository,
+        settingsService: mobileSettingsService,
+        audioPlayerService: audioPlayerService,
+      );
+      carPlayService!.setPinepodsService(pinepodsService);
+    }
 
     podcastApi.addClientAuthorityBytes(certificateAuthorityBytes);
   }

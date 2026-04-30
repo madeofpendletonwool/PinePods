@@ -14,6 +14,8 @@ class PinepodsEpisode {
   final bool downloaded;
   final bool isYoutube;
   final int? podcastId;
+  final String? listenDate;
+  final String? saveDate;
 
   PinepodsEpisode({
     required this.podcastName,
@@ -31,6 +33,8 @@ class PinepodsEpisode {
     required this.downloaded,
     required this.isYoutube,
     this.podcastId,
+    this.listenDate,
+    this.saveDate,
   });
 
   factory PinepodsEpisode.fromJson(Map<String, dynamic> json) {
@@ -50,6 +54,8 @@ class PinepodsEpisode {
       downloaded: json['Downloaded'] ?? json['downloaded'] ?? false,
       isYoutube: json['Is_youtube'] ?? json['is_youtube'] ?? false,
       podcastId: json['Podcastid'] ?? json['podcastid'],
+      listenDate: json['listendate'],
+      saveDate: json['savedate'],
     );
   }
 

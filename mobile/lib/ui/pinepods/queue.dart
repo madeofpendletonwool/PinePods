@@ -150,34 +150,9 @@ class _PinepodsQueueState extends State<PinepodsQueue> {
     }
 
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(width: 12),
-              Text('Starting ${episode.episodeTitle}...'),
-            ],
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-
       await _audioService!.playPinepodsEpisode(
         pinepodsEpisode: episode,
         resume: episode.isStarted,
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Now playing: ${episode.episodeTitle}'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-        ),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

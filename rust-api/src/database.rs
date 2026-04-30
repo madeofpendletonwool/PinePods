@@ -409,7 +409,8 @@ impl DatabasePool {
                             CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            "Episodes".is_video as is_video
                         FROM "Episodes"
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
                         LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
@@ -449,7 +450,8 @@ impl DatabasePool {
                             CASE WHEN "SavedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL AND "EpisodeQueue".is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM "YouTubeVideos"
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
                         LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
@@ -475,7 +477,7 @@ impl DatabasePool {
                 .bind(user_id)
                 .fetch_all(pool)
                 .await?;
-                
+
                 let mut episodes = Vec::new();
                 for row in rows {
                     episodes.push(crate::handlers::podcasts::Episode {
@@ -496,6 +498,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
                 Ok(episodes)
@@ -521,7 +524,8 @@ impl DatabasePool {
                             CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            Episodes.IsVideo as is_video
                         FROM Episodes
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
                         LEFT JOIN Users ON Podcasts.UserID = Users.UserID
@@ -561,7 +565,8 @@ impl DatabasePool {
                             CASE WHEN SavedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL AND EpisodeQueue.is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM YouTubeVideos
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
                         LEFT JOIN Users ON Podcasts.UserID = Users.UserID
@@ -612,6 +617,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
                 Ok(episodes)
@@ -2162,7 +2168,8 @@ impl DatabasePool {
                             CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             TRUE as queued,
                             CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            "Episodes".is_video as is_video
                         FROM "EpisodeQueue"
                         INNER JOIN "Episodes" ON "EpisodeQueue".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
@@ -2200,7 +2207,8 @@ impl DatabasePool {
                             CASE WHEN "SavedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             TRUE as queued,
                             CASE WHEN "DownloadedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM "EpisodeQueue"
                         INNER JOIN "YouTubeVideos" ON "EpisodeQueue".episodeid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
@@ -2245,6 +2253,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
                 Ok(episodes)
@@ -2257,7 +2266,7 @@ impl DatabasePool {
                             Podcasts.PodcastName as podcastname,
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
-                            CASE 
+                            CASE
                                 WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
                                 WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
                                 ELSE Episodes.EpisodeArtwork
@@ -2272,7 +2281,8 @@ impl DatabasePool {
                             CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             TRUE as queued,
                             CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            Episodes.IsVideo as is_video
                         FROM EpisodeQueue
                         INNER JOIN Episodes ON EpisodeQueue.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
@@ -2310,7 +2320,8 @@ impl DatabasePool {
                             CASE WHEN SavedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             TRUE as queued,
                             CASE WHEN DownloadedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM EpisodeQueue
                         INNER JOIN YouTubeVideos ON EpisodeQueue.EpisodeID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
@@ -2355,6 +2366,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
                 Ok(episodes)
@@ -4184,7 +4196,7 @@ impl DatabasePool {
                             "Episodes".episodepubdate as episodepubdate,
                             "Episodes".episodedescription as episodedescription,
                             "Episodes".episodeid as episodeid,
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "Episodes".episodeartwork
@@ -4198,7 +4210,8 @@ impl DatabasePool {
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             FALSE as is_youtube,
-                            "Podcasts".podcastid as podcastid
+                            "Podcasts".podcastid as podcastid,
+                            "SavedEpisodes".savedate as savedate
                         FROM "SavedEpisodes"
                         INNER JOIN "Episodes" ON "SavedEpisodes".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
@@ -4223,7 +4236,7 @@ impl DatabasePool {
                             "YouTubeVideos".publishedat as episodepubdate,
                             "YouTubeVideos".videodescription as episodedescription,
                             "YouTubeVideos".videoid as episodeid,
-                            CASE 
+                            CASE
                                 WHEN "Podcasts".usepodcastcoverscustomized = TRUE AND "Podcasts".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 WHEN "Users".usepodcastcovers = TRUE THEN "Podcasts".artworkurl
                                 ELSE "YouTubeVideos".thumbnailurl
@@ -4237,7 +4250,8 @@ impl DatabasePool {
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL AND "EpisodeQueue".is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             TRUE as is_youtube,
-                            "Podcasts".podcastid as podcastid
+                            "Podcasts".podcastid as podcastid,
+                            "SavedVideos".savedate as savedate
                         FROM "SavedVideos"
                         INNER JOIN "YouTubeVideos" ON "SavedVideos".videoid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
@@ -4251,7 +4265,7 @@ impl DatabasePool {
                             AND "DownloadedVideos".userid = $6
                         WHERE "SavedVideos".userid = $7
                     ) combined
-                    ORDER BY episodepubdate DESC"#
+                    ORDER BY savedate DESC"#
                 )
                 .bind(user_id)
                 .bind(user_id)
@@ -4285,6 +4299,8 @@ impl DatabasePool {
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
                         podcastid: row.try_get("podcastid").ok(),
+                        savedate: row.try_get::<chrono::NaiveDateTime, _>("savedate").ok()
+                            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
                     });
                 }
                 Ok(episodes)
@@ -4298,7 +4314,7 @@ impl DatabasePool {
                             Episodes.EpisodePubDate as episodepubdate,
                             Episodes.EpisodeDescription as episodedescription,
                             Episodes.EpisodeID as episodeid,
-                            CASE 
+                            CASE
                                 WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
                                 WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
                                 ELSE Episodes.EpisodeArtwork
@@ -4312,7 +4328,8 @@ impl DatabasePool {
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             FALSE as is_youtube,
-                            Podcasts.PodcastID as podcastid
+                            Podcasts.PodcastID as podcastid,
+                            SavedEpisodes.SaveDate as savedate
                         FROM SavedEpisodes
                         INNER JOIN Episodes ON SavedEpisodes.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
@@ -4337,7 +4354,7 @@ impl DatabasePool {
                             YouTubeVideos.PublishedAt as episodepubdate,
                             YouTubeVideos.VideoDescription as episodedescription,
                             YouTubeVideos.VideoID as episodeid,
-                            CASE 
+                            CASE
                                 WHEN Podcasts.UsePodcastCoversCustomized = 1 AND Podcasts.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
                                 WHEN Users.UsePodcastCovers = 1 THEN Podcasts.ArtworkURL
                                 ELSE YouTubeVideos.ThumbnailURL
@@ -4351,7 +4368,8 @@ impl DatabasePool {
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL AND EpisodeQueue.is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
                             TRUE as is_youtube,
-                            Podcasts.PodcastID as podcastid
+                            Podcasts.PodcastID as podcastid,
+                            SavedVideos.SaveDate as savedate
                         FROM SavedVideos
                         INNER JOIN YouTubeVideos ON SavedVideos.VideoID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
@@ -4365,7 +4383,7 @@ impl DatabasePool {
                             AND DownloadedVideos.UserID = ?
                         WHERE SavedVideos.UserID = ?
                     ) combined
-                    ORDER BY episodepubdate DESC"
+                    ORDER BY savedate DESC"
                 )
                 .bind(user_id)
                 .bind(user_id)
@@ -4399,6 +4417,8 @@ impl DatabasePool {
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
                         podcastid: row.try_get("podcastid").ok(),
+                        savedate: row.try_get::<chrono::NaiveDateTime, _>("savedate").ok()
+                            .map(|dt| dt.format("%Y-%m-%dT%H:%M:%S").to_string()),
                     });
                 }
                 Ok(episodes)
@@ -4854,7 +4874,7 @@ impl DatabasePool {
 
     // Generate API key - matches Python create_api_key function
     fn generate_api_key(&self) -> String {
-        use rand::Rng;
+        use rand::RngExt;
         const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         let mut rng = rand::rng();
         (0..64)
@@ -4941,22 +4961,20 @@ impl DatabasePool {
         let mut first_episode_id = None;
         
         for episode in episodes {
-            // Check if episode already exists by EITHER title OR url
-            // This handles cases where feed maintainers edit episodes
+            // Check if episode already exists by URL (the canonical identifier for episodes)
+            // URL uniquely identifies an episode - same title with different URL = different episode
             let existing_episode_id = match self {
                 DatabasePool::Postgres(pool) => {
-                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND (episodetitle = $2 OR episodeurl = $3)"#)
+                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodeurl = $2"#)
                         .bind(podcast_id)
-                        .bind(&episode.title)
                         .bind(&episode.url)
                         .fetch_optional(pool)
                         .await?;
                     row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
                 }
                 DatabasePool::MySQL(pool) => {
-                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND (EpisodeTitle = ? OR EpisodeURL = ?)")
+                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeURL = ?")
                         .bind(podcast_id)
-                        .bind(&episode.title)
                         .bind(&episode.url)
                         .fetch_optional(pool)
                         .await?;
@@ -4965,7 +4983,7 @@ impl DatabasePool {
             };
 
             if let Some(episode_id) = existing_episode_id {
-                // Episode already exists (by title or URL) - UPDATE it with new metadata
+                // Episode already exists (same URL) - UPDATE it with new metadata
                 match self {
                     DatabasePool::Postgres(pool) => {
                         sqlx::query(
@@ -5006,7 +5024,7 @@ impl DatabasePool {
                 continue;
             }
 
-            // Insert new episode (neither title nor URL exists)
+            // Insert new episode (URL doesn't exist in this podcast)
             let episode_id = match self {
                 DatabasePool::Postgres(pool) => {
                     let row = sqlx::query(
@@ -5086,22 +5104,20 @@ impl DatabasePool {
         let mut new_episodes = Vec::new();
         
         for mut episode in episodes {
-            // Check if episode already exists by EITHER title OR url
-            // This handles cases where feed maintainers edit episodes
+            // Check if episode already exists by URL (the canonical identifier for episodes)
+            // URL uniquely identifies an episode - same title with different URL = different episode
             let existing_episode_id = match self {
                 DatabasePool::Postgres(pool) => {
-                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND (episodetitle = $2 OR episodeurl = $3)"#)
+                    let row = sqlx::query(r#"SELECT episodeid FROM "Episodes" WHERE podcastid = $1 AND episodeurl = $2"#)
                         .bind(podcast_id)
-                        .bind(&episode.title)
                         .bind(&episode.url)
                         .fetch_optional(pool)
                         .await?;
                     row.map(|r| r.try_get::<i32, _>("episodeid").ok()).flatten()
                 }
                 DatabasePool::MySQL(pool) => {
-                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND (EpisodeTitle = ? OR EpisodeURL = ?)")
+                    let row = sqlx::query("SELECT EpisodeID FROM Episodes WHERE PodcastID = ? AND EpisodeURL = ?")
                         .bind(podcast_id)
-                        .bind(&episode.title)
                         .bind(&episode.url)
                         .fetch_optional(pool)
                         .await?;
@@ -5110,7 +5126,7 @@ impl DatabasePool {
             };
 
             if let Some(episode_id) = existing_episode_id {
-                // Episode already exists (by title or URL) - UPDATE it with new metadata
+                // Episode already exists (same URL) - UPDATE it with new metadata
                 match self {
                     DatabasePool::Postgres(pool) => {
                         sqlx::query(
@@ -5228,9 +5244,10 @@ impl DatabasePool {
                 queued: false,
                 downloaded: false,
                 is_youtube: false,
+                is_video: episode.is_video,
             });
         }
-        
+
         // Update episode count
         self.update_episode_count(podcast_id).await?;
         
@@ -5643,6 +5660,7 @@ impl DatabasePool {
                 artwork_url: artwork_url.to_string(),
                 pub_date: Utc::now(),
                 duration: 0,
+                is_video: false,
             };
             
             // Create data map to pass to Python-style parsing functions
@@ -6582,7 +6600,8 @@ impl DatabasePool {
                             CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             TRUE as downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            "Episodes".is_video as is_video
                         FROM "DownloadedEpisodes"
                         INNER JOIN "Episodes" ON "DownloadedEpisodes".episodeid = "Episodes".episodeid
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
@@ -6624,7 +6643,8 @@ impl DatabasePool {
                             CASE WHEN "SavedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL AND "EpisodeQueue".is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             TRUE as downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM "DownloadedVideos"
                         INNER JOIN "YouTubeVideos" ON "DownloadedVideos".videoid = "YouTubeVideos".videoid
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
@@ -6674,6 +6694,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
                 Ok(episodes)
@@ -6704,7 +6725,8 @@ impl DatabasePool {
                             CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             TRUE as downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            Episodes.IsVideo as is_video
                         FROM DownloadedEpisodes
                         INNER JOIN Episodes ON DownloadedEpisodes.EpisodeID = Episodes.EpisodeID
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
@@ -6746,7 +6768,8 @@ impl DatabasePool {
                             CASE WHEN SavedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL AND EpisodeQueue.is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             TRUE as downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM DownloadedVideos
                         INNER JOIN YouTubeVideos ON DownloadedVideos.VideoID = YouTubeVideos.VideoID
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
@@ -6796,6 +6819,7 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
                 Ok(episodes)
@@ -7012,13 +7036,14 @@ impl DatabasePool {
                         queued: false, // Not included in this query
                         downloaded: false, // Not included in this query
                         is_youtube: false, // This is for regular episodes
+                        is_video: false, // This is for regular episodes
                     });
                 }
                 Ok(episodes)
             }
             DatabasePool::MySQL(pool) => {
                 let rows = sqlx::query(
-                    "SELECT 
+                    "SELECT
                         Podcasts.PodcastID, Podcasts.PodcastName, Episodes.EpisodeID,
                         Episodes.EpisodeTitle, Episodes.EpisodePubDate, Episodes.EpisodeDescription,
                         CASE 
@@ -7062,6 +7087,7 @@ impl DatabasePool {
                         queued: false, // Not included in this query
                         downloaded: false, // Not included in this query
                         is_youtube: false, // This is for regular episodes
+                        is_video: false, // This is for regular episodes
                     });
                 }
                 Ok(episodes)
@@ -8670,7 +8696,8 @@ impl DatabasePool {
                             CASE WHEN "SavedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedEpisodes".episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            "Episodes".is_video as is_video
                         FROM "Episodes"
                         INNER JOIN "Podcasts" ON "Episodes".podcastid = "Podcasts".podcastid
                         LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
@@ -8716,7 +8743,8 @@ impl DatabasePool {
                             CASE WHEN "SavedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN "EpisodeQueue".episodeid IS NOT NULL AND "EpisodeQueue".is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN "DownloadedVideos".videoid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM "YouTubeVideos"
                         INNER JOIN "Podcasts" ON "YouTubeVideos".podcastid = "Podcasts".podcastid
                         LEFT JOIN "Users" ON "Podcasts".userid = "Users".userid
@@ -8766,9 +8794,10 @@ impl DatabasePool {
                         queued: row.try_get("queued")?,
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
                     });
                 }
-                
+
                 Ok(episodes)
             }
             DatabasePool::MySQL(pool) => {
@@ -8779,7 +8808,7 @@ impl DatabasePool {
                             Episodes.EpisodeTitle as Episodetitle,
                             Episodes.EpisodePubDate as Episodepubdate,
                             Episodes.EpisodeDescription as Episodedescription,
-                            CASE 
+                            CASE
                                 WHEN Podcasts.UsePodcastCoversCustomized = TRUE AND Podcasts.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
                                 WHEN Users.UsePodcastCovers = TRUE THEN Podcasts.ArtworkURL
                                 ELSE Episodes.EpisodeArtwork
@@ -8792,7 +8821,8 @@ impl DatabasePool {
                             CASE WHEN SavedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedEpisodes.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            FALSE as is_youtube
+                            FALSE as is_youtube,
+                            Episodes.IsVideo as is_video
                         FROM Episodes
                         INNER JOIN Podcasts ON Episodes.PodcastID = Podcasts.PodcastID
                         LEFT JOIN Users ON Podcasts.UserID = Users.UserID
@@ -8839,7 +8869,8 @@ impl DatabasePool {
                             CASE WHEN SavedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
                             CASE WHEN EpisodeQueue.EpisodeID IS NOT NULL AND EpisodeQueue.is_youtube = TRUE THEN TRUE ELSE FALSE END AS queued,
                             CASE WHEN DownloadedVideos.VideoID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
-                            TRUE as is_youtube
+                            TRUE as is_youtube,
+                            TRUE as is_video
                         FROM YouTubeVideos
                         INNER JOIN Podcasts ON YouTubeVideos.PodcastID = Podcasts.PodcastID
                         LEFT JOIN Users ON Podcasts.UserID = Users.UserID
@@ -8903,9 +8934,10 @@ impl DatabasePool {
                         queued: row.try_get::<i8, _>("queued")? != 0,
                         downloaded: row.try_get::<i8, _>("downloaded")? != 0,
                         is_youtube: row.try_get::<i8, _>("is_youtube")? != 0,
+                        is_video: row.try_get::<i8, _>("is_video")? != 0,
                     });
                 }
-                
+
                 Ok(episodes)
             }
         }
@@ -9956,7 +9988,7 @@ impl DatabasePool {
 
     // Create API key - matches Python create_api_key function exactly
     pub async fn create_api_key(&self, user_id: i32) -> AppResult<String> {
-        use rand::Rng;
+        use rand::RngExt;
         
         // Generate 64-character API key
         let charset: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ\
@@ -9994,7 +10026,7 @@ impl DatabasePool {
 
     // Create RSS key - matches Python create_rss_key function exactly
     pub async fn create_rss_key(&self, user_id: i32, podcast_ids: Option<Vec<i32>>) -> AppResult<String> {
-        use rand::Rng;
+        use rand::RngExt;
         use rand::distr::Alphanumeric;
         
         // Generate 64-character RSS key
@@ -10242,6 +10274,7 @@ pub struct EpisodeData {
     pub artwork_url: String,
     pub pub_date: DateTime<Utc>,
     pub duration: i32,
+    pub is_video: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -10577,12 +10610,10 @@ impl DatabasePool {
     pub async fn generate_mfa_secret(&self, user_id: i32) -> AppResult<(String, String)> {
         use totp_rs::{Algorithm, Secret, TOTP};
         use qrcode::QrCode;
-        use rand::Rng;
-        
+
         // Generate random base32 secret (matches Python random_base32())
         let secret = {
-            let mut rng = rand::rng();
-            let secret_bytes: [u8; 20] = rng.random(); // 160 bits = 32 base32 chars
+            let secret_bytes: [u8; 20] = rand::random(); // 160 bits = 32 base32 chars
             Secret::Raw(secret_bytes.to_vec()).to_encoded().to_string()
         };
         
@@ -18646,10 +18677,9 @@ impl DatabasePool {
     // Create OIDC user - matches Python create_oidc_user function EXACTLY
     pub async fn create_oidc_user(&self, email: &str, fullname: &str, username: &str) -> AppResult<i32> {
         use base64::{Engine as _, engine::general_purpose::STANDARD};
-        use rand::Rng;
-        
+
         // Create salt exactly like Python version
-        let salt_bytes: [u8; 16] = rand::rng().random();
+        let salt_bytes: [u8; 16] = rand::random();
         let salt = STANDARD.encode(salt_bytes);
         let hashed_password = format!("$argon2id$v=19$m=65536,t=3,p=4${}${}_OIDC_ACCOUNT_NO_PASSWORD", 
                                     salt, "X".repeat(43));
@@ -21624,7 +21654,7 @@ impl DatabasePool {
                 };
 
                 // Generate a secure internal token (64 characters alphanumeric)
-                use rand::{distr::Alphanumeric, Rng};
+                use rand::{distr::Alphanumeric, RngExt};
                 let internal_token: String = rand::rng()
                     .sample_iter(&Alphanumeric)
                     .take(64)
@@ -21702,7 +21732,7 @@ impl DatabasePool {
                 };
 
                 // Generate a secure internal token (64 characters alphanumeric)
-                use rand::{distr::Alphanumeric, Rng};
+                use rand::{distr::Alphanumeric, RngExt};
                 let internal_token: String = rand::rng()
                     .sample_iter(&Alphanumeric)
                     .take(64)
@@ -23145,7 +23175,7 @@ impl DatabasePool {
 
     // Create a password reset code for the user
     pub async fn reset_password_create_code(&self, user_email: &str) -> AppResult<Option<String>> {
-        use rand::Rng;
+        use rand::RngExt;
         use chrono::{Utc, Duration};
         
         // Generate 6-character reset code with uppercase letters and digits
@@ -23948,6 +23978,130 @@ impl DatabasePool {
                         Err(AppError::not_found("Episode not found"))
                     }
                 }
+            }
+        }
+    }
+
+    // Get all shared episodes for a user
+    pub async fn get_user_shared_episodes(&self, user_id: i32) -> AppResult<Vec<serde_json::Value>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let rows = sqlx::query(r#"
+                    SELECT
+                        se.sharecode,
+                        se.expirationdate,
+                        COALESCE(e.episodetitle, ye.episodetitle) AS episodetitle,
+                        COALESCE(p.podcastname, yp.podcastname) AS podcastname
+                    FROM "SharedEpisodes" se
+                    LEFT JOIN "Episodes" e ON se.episodeid = e.episodeid
+                    LEFT JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                    LEFT JOIN "YoutubeVideos" ye ON se.episodeid = ye.episodeid
+                    LEFT JOIN "YoutubePodcasts" yp ON ye.podcastid = yp.podcastid
+                    WHERE se.sharedby = $1
+                    ORDER BY se.expirationdate DESC
+                "#)
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let result = rows.iter().map(|row| {
+                    let sharecode: String = row.try_get("sharecode").unwrap_or_default();
+                    let expiration: chrono::DateTime<chrono::Utc> = row.try_get("expirationdate").unwrap_or_else(|_| chrono::Utc::now());
+                    let episode_title: String = row.try_get("episodetitle").unwrap_or_else(|_| "Unknown".to_string());
+                    let podcast_name: String = row.try_get("podcastname").unwrap_or_else(|_| "Unknown".to_string());
+                    serde_json::json!({
+                        "share_code": sharecode,
+                        "expiration_date": expiration.format("%Y-%m-%d %H:%M UTC").to_string(),
+                        "episode_title": episode_title,
+                        "podcast_name": podcast_name,
+                    })
+                }).collect();
+                Ok(result)
+            }
+            DatabasePool::MySQL(pool) => {
+                let rows = sqlx::query(
+                    "SELECT
+                        se.ShareCode AS sharecode,
+                        se.ExpirationDate AS expirationdate,
+                        COALESCE(e.EpisodeTitle, ye.EpisodeTitle) AS episodetitle,
+                        COALESCE(p.PodcastName, yp.PodcastName) AS podcastname
+                    FROM SharedEpisodes se
+                    LEFT JOIN Episodes e ON se.EpisodeID = e.EpisodeID
+                    LEFT JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                    LEFT JOIN YoutubeVideos ye ON se.EpisodeID = ye.EpisodeID
+                    LEFT JOIN YoutubePodcasts yp ON ye.PodcastID = yp.PodcastID
+                    WHERE se.SharedBy = ?
+                    ORDER BY se.ExpirationDate DESC"
+                )
+                .bind(user_id)
+                .fetch_all(pool)
+                .await?;
+
+                let result = rows.iter().map(|row| {
+                    let sharecode: String = row.try_get("sharecode").unwrap_or_default();
+                    let expiration: chrono::NaiveDateTime = row.try_get("expirationdate").unwrap_or_else(|_| chrono::Utc::now().naive_utc());
+                    let episode_title: String = row.try_get("episodetitle").unwrap_or_else(|_| "Unknown".to_string());
+                    let podcast_name: String = row.try_get("podcastname").unwrap_or_else(|_| "Unknown".to_string());
+                    serde_json::json!({
+                        "share_code": sharecode,
+                        "expiration_date": expiration.format("%Y-%m-%d %H:%M UTC").to_string(),
+                        "episode_title": episode_title,
+                        "podcast_name": podcast_name,
+                    })
+                }).collect();
+                Ok(result)
+            }
+        }
+    }
+
+    // Delete a shared episode by share code (user must own it)
+    pub async fn delete_user_shared_episode(&self, share_code: &str, user_id: i32) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"DELETE FROM "SharedEpisodes" WHERE sharecode = $1 AND sharedby = $2"#)
+                    .bind(share_code)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query("DELETE FROM SharedEpisodes WHERE ShareCode = ? AND SharedBy = ?")
+                    .bind(share_code)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+                Ok(result.rows_affected() > 0)
+            }
+        }
+    }
+
+    // Extend expiration of a shared episode by N days (user must own it)
+    pub async fn extend_user_shared_episode(&self, share_code: &str, user_id: i32, days: i64) -> AppResult<bool> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let result = sqlx::query(r#"
+                    UPDATE "SharedEpisodes"
+                    SET expirationdate = expirationdate + ($1 * INTERVAL '1 day')
+                    WHERE sharecode = $2 AND sharedby = $3
+                "#)
+                .bind(days)
+                .bind(share_code)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+                Ok(result.rows_affected() > 0)
+            }
+            DatabasePool::MySQL(pool) => {
+                let result = sqlx::query(
+                    "UPDATE SharedEpisodes SET ExpirationDate = DATE_ADD(ExpirationDate, INTERVAL ? DAY) WHERE ShareCode = ? AND SharedBy = ?"
+                )
+                .bind(days)
+                .bind(share_code)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+                Ok(result.rows_affected() > 0)
             }
         }
     }
@@ -24896,9 +25050,10 @@ impl DatabasePool {
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
                         podcastid: row.try_get("podcastid").ok(),
+                        savedate: None,
                     });
                 }
-                
+
                 debug!("📝 Retrieved {} episodes from dynamic query", episodes.len());
                 
                 // Create playlist info from the playlist row we already have
@@ -25131,9 +25286,10 @@ impl DatabasePool {
                         downloaded: row.try_get("downloaded")?,
                         is_youtube: row.try_get("is_youtube")?,
                         podcastid: row.try_get("podcastid").ok(),
+                        savedate: None,
                     });
                 }
-                
+
                 debug!("📝 Retrieved {} episodes from MySQL dynamic query", episodes.len());
                 
                 // Create playlist info from the MySQL playlist row we already have

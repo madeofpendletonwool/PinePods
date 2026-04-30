@@ -3634,6 +3634,9 @@ input[type="range"]::-moz-range-thumb {
 /* Inner padding for the episode list */
 .podcast-episodes-inner {
     padding: 0 1rem 1rem 1rem;
+    overflow-y: auto;
+    max-height: 850px;
+    margin-bottom: 0.75rem;
 }
 
 .item-container-alert-button {

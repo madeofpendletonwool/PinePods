@@ -113,28 +113,41 @@ String? safeFile(String? s) {
 
 Future<String> resolveUrl(String url, {bool forceHttps = false}) async {
   final client = HttpClient();
-  var uri = Uri.parse(url);
-  var request = await client.getUrl(uri);
 
-  request.followRedirects = false;
+  try {
+    var uri = Uri.parse(url);
+    var request = await client.getUrl(uri);
 
-  var response = await request.close();
+    request.followRedirects = false;
 
-  while (response.isRedirect) {
-    response.drain(0);
-    final location = response.headers.value(HttpHeaders.locationHeader);
-    if (location != null) {
+    var response = await request.close();
+
+    // Follow redirects manually up to a reasonable limit
+    var redirectCount = 0;
+    const maxRedirects = 10;
+
+    while (response.isRedirect && redirectCount < maxRedirects) {
+      response.drain(0);
+      final location = response.headers.value(HttpHeaders.locationHeader);
+
+      if (location == null) {
+        // No location header, break out of the loop
+        break;
+      }
+
       uri = uri.resolve(location);
       request = await client.getUrl(uri);
-      // Set the body or headers as desired.
       request.followRedirects = false;
       response = await request.close();
+      redirectCount++;
     }
-  }
 
-  if (uri.scheme == 'http') {
-    uri = uri.replace(scheme: 'https');
-  }
+    if (forceHttps && uri.scheme == 'http') {
+      uri = uri.replace(scheme: 'https');
+    }
 
-  return uri.toString();
+    return uri.toString();
+  } finally {
+    client.close();
+  }
 }

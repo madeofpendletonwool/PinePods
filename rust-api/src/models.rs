@@ -347,6 +347,7 @@ pub struct SavedEpisode {
     pub downloaded: bool,
     pub is_youtube: bool,
     pub podcastid: Option<i32>,
+    pub savedate: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -431,6 +432,7 @@ pub struct QueuedEpisode {
     pub queued: bool,
     pub downloaded: bool,
     pub is_youtube: bool,
+    pub is_video: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

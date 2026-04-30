@@ -3156,3 +3156,97 @@ pub async fn call_get_podcast_cover_preference(
         )))
     }
 }
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct SharedLink {
+    pub share_code: String,
+    pub expiration_date: String,
+    pub episode_title: String,
+    pub podcast_name: String,
+}
+
+#[derive(Deserialize, Debug, PartialEq, Clone)]
+pub struct SharedLinksResponse {
+    pub shared_links: Vec<SharedLink>,
+}
+
+pub async fn call_get_user_shared_links(
+    server_name: &str,
+    user_id: i32,
+    api_key: &str,
+) -> Result<SharedLinksResponse, Error> {
+    let url = format!("{}/api/data/get_user_shared_links/{}", server_name, user_id);
+
+    let response = Request::get(&url)
+        .header("Api-Key", api_key)
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        response
+            .json::<SharedLinksResponse>()
+            .await
+            .map_err(|e| Error::msg(format!("Error parsing JSON: {}", e)))
+    } else {
+        Err(Error::msg(format!(
+            "Error retrieving shared links: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_delete_shared_link(
+    server_name: &str,
+    share_code: &str,
+    api_key: &str,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/delete_shared_link", server_name);
+    let body = serde_json::json!({ "share_code": share_code });
+
+    let response = Request::delete(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(serde_json::to_string(&body).map_err(Error::msg)?)
+        .map_err(Error::msg)?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(Error::msg(format!(
+            "Error deleting shared link: {}",
+            response.status_text()
+        )))
+    }
+}
+
+pub async fn call_extend_shared_link(
+    server_name: &str,
+    share_code: &str,
+    days: i64,
+    api_key: &str,
+) -> Result<(), Error> {
+    let url = format!("{}/api/data/extend_shared_link", server_name);
+    let body = serde_json::json!({ "share_code": share_code, "days": days });
+
+    let response = Request::put(&url)
+        .header("Content-Type", "application/json")
+        .header("Api-Key", api_key)
+        .body(serde_json::to_string(&body).map_err(Error::msg)?)
+        .map_err(Error::msg)?
+        .send()
+        .await
+        .map_err(|e| Error::msg(format!("Network error: {}", e)))?;
+
+    if response.ok() {
+        Ok(())
+    } else {
+        Err(Error::msg(format!(
+            "Error extending shared link: {}",
+            response.status_text()
+        )))
+    }
+}

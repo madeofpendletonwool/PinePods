@@ -4091,3 +4091,74 @@ pub async fn get_global_podcast_cover_preference(
     })))
 }
 
+// Get all shared links for the authenticated user
+pub async fn get_user_shared_links(
+    State(state): State<AppState>,
+    Path(user_id): Path<i32>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let user_id_from_api_key = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if user_id_from_api_key != user_id {
+        return Err(AppError::forbidden("You can only access your own shared links."));
+    }
+
+    let links = state.db_pool.get_user_shared_episodes(user_id).await?;
+    Ok(Json(serde_json::json!({ "shared_links": links })))
+}
+
+#[derive(Deserialize)]
+pub struct DeleteSharedLinkRequest {
+    pub share_code: String,
+}
+
+// Delete a shared link owned by the authenticated user
+pub async fn delete_shared_link(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<DeleteSharedLinkRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let deleted = state.db_pool.delete_user_shared_episode(&request.share_code, user_id).await?;
+
+    if deleted {
+        Ok(Json(serde_json::json!({ "detail": "Shared link deleted." })))
+    } else {
+        Err(AppError::not_found("Shared link not found or not owned by you."))
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ExtendSharedLinkRequest {
+    pub share_code: String,
+    pub days: i64,
+}
+
+// Extend the expiry of a shared link owned by the authenticated user
+pub async fn extend_shared_link(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<ExtendSharedLinkRequest>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+    validate_api_key(&state, &api_key).await?;
+
+    if request.days < 1 || request.days > 365 {
+        return Err(AppError::bad_request("Days must be between 1 and 365."));
+    }
+
+    let user_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    let extended = state.db_pool.extend_user_shared_episode(&request.share_code, user_id, request.days).await?;
+
+    if extended {
+        Ok(Json(serde_json::json!({ "detail": "Shared link extended." })))
+    } else {
+        Err(AppError::not_found("Shared link not found or not owned by you."))
+    }
+}
+

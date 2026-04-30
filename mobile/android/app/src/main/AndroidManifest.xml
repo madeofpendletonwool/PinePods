@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
+    <!-- Android Auto permissions -->
+    <uses-permission android:name="android.permission.MEDIA_CONTENT_CONTROL" />
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
+
     <!-- Allow querying for browsers and other apps for URL launching -->
     <queries>
         <intent>
@@ -29,14 +33,13 @@
             android:largeHeap="true"
             android:networkSecurityConfig="@xml/network_security_config">
         <activity
-                android:name="com.ryanheise.audioservice.AudioServiceActivity"
+                android:name=".MainActivity"
                 android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|layoutDirection|fontScale|screenLayout|density"
                 android:hardwareAccelerated="true"
                 android:launchMode="singleTop"
                 android:theme="@style/LaunchTheme"
                 android:windowSoftInputMode="adjustResize"
-                android:exported="true"
-                tools:ignore="Instantiatable">
+                android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -78,24 +81,16 @@
             </intent-filter>
         </activity>
 
+        <!-- Native audio player service (Media3/ExoPlayer) -->
         <service
-                android:name="com.ryanheise.audioservice.AudioService"
+                android:name="com.gooseberrydevelopment.pinepods.audio.PinepodsMediaService"
                 android:foregroundServiceType="mediaPlayback"
-                android:exported="true"
-                tools:ignore="Instantiatable">
+                android:exported="true">
             <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
-
-        <receiver
-                android:name="com.ryanheise.audioservice.MediaButtonReceiver"
-                android:exported="true"
-                tools:ignore="Instantiatable">
-            <intent-filter>
-                <action android:name="android.intent.action.MEDIA_BUTTON" />
-            </intent-filter>
-        </receiver>
 
         <provider
                 android:name="androidx.work.impl.WorkManagerInitializer"
@@ -135,5 +130,10 @@
         <meta-data
                 android:name="flutter_deeplinking_enabled"
                 android:value="false" />
+
+        <!-- Android Auto support -->
+        <meta-data
+                android:name="com.google.android.gms.car.application"
+                android:resource="@xml/automotive_app_desc" />
     </application>
 </manifest>

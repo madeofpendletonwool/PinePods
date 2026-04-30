@@ -25,10 +25,11 @@ use serde_json::{from_str, json};
 use std::collections::HashSet;
 use std::rc::Rc;
 use wasm_bindgen::closure::Closure;
-use wasm_bindgen::JsCast;
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::window;
-use web_sys::HtmlAudioElement;
+use web_sys::{HtmlAudioElement, HtmlVideoElement, HtmlMediaElement};
 use yewdux::prelude::*;
+use js_sys;
 
 #[allow(dead_code)]
 #[allow(dead_code)]
@@ -290,11 +291,77 @@ pub struct SettingsState {
     pub active_tab: Option<String>,
 }
 
+// MediaElement wrapper to handle both audio and video elements polymorphically
+#[derive(Clone, PartialEq, Debug)]
+pub enum MediaElement {
+    Audio(HtmlAudioElement),
+    Video(HtmlVideoElement),
+}
+
+impl MediaElement {
+    pub fn as_media_element(&self) -> &HtmlMediaElement {
+        match self {
+            MediaElement::Audio(audio) => audio.unchecked_ref(),
+            MediaElement::Video(video) => video.unchecked_ref(),
+        }
+    }
+
+    pub fn current_time(&self) -> f64 {
+        self.as_media_element().current_time()
+    }
+
+    pub fn set_current_time(&self, time: f64) {
+        self.as_media_element().set_current_time(time);
+    }
+
+    pub fn duration(&self) -> f64 {
+        self.as_media_element().duration()
+    }
+
+    pub fn pause(&self) -> Result<(), JsValue> {
+        self.as_media_element().pause()
+    }
+
+    pub fn play(&self) -> Result<js_sys::Promise, JsValue> {
+        self.as_media_element().play()
+    }
+
+    pub fn set_src(&self, src: &str) {
+        self.as_media_element().set_src(src);
+    }
+
+    pub fn set_volume(&self, volume: f64) {
+        self.as_media_element().set_volume(volume);
+    }
+
+    pub fn set_playback_rate(&self, rate: f64) {
+        self.as_media_element().set_playback_rate(rate);
+    }
+
+    pub fn set_onended(&self, callback: Option<&js_sys::Function>) {
+        self.as_media_element().set_onended(callback);
+    }
+
+    pub fn dispatch_event(&self, event: &web_sys::Event) -> Result<bool, JsValue> {
+        self.as_media_element().dispatch_event(event)
+    }
+
+    pub fn add_event_listener_with_callback(
+        &self,
+        event: &str,
+        callback: &js_sys::Function,
+    ) -> Result<(), JsValue> {
+        self.as_media_element()
+            .add_event_listener_with_callback(event, callback)
+    }
+}
+
 #[derive(Default, Clone, PartialEq, Store, Debug)]
 pub struct UIState {
     pub audio_playing: Option<bool>,
     pub currently_playing: Option<AudioPlayerProps>,
     pub audio_element: Option<HtmlAudioElement>,
+    pub media_element: Option<MediaElement>,
     pub current_time_seconds: f64,
     pub current_time_formatted: String,
     pub duration: f64,
@@ -334,7 +401,16 @@ impl UIState {
         self.current_time_formatted = format!("{:02}:{:02}:{:02}", hours, minutes, seconds);
     }
     pub fn toggle_playback(&mut self) {
-        if let Some(audio) = &self.audio_element {
+        // Support both new media_element and legacy audio_element
+        if let Some(media) = &self.media_element {
+            if self.audio_playing.unwrap_or(false) {
+                let _ = media.pause();
+                self.audio_playing = Some(false);
+            } else {
+                let _ = media.play();
+                self.audio_playing = Some(true);
+            }
+        } else if let Some(audio) = &self.audio_element {
             if self.audio_playing.unwrap_or(false) {
                 let _ = audio.pause();
                 self.audio_playing = Some(false);
@@ -363,6 +439,65 @@ impl UIState {
         }
     }
 
+    pub fn set_media_source(&mut self, src: String, is_video: bool, dispatch: Dispatch<UIState>) {
+        if self.media_element.is_none() {
+            self.media_element = if is_video {
+                // Create video element using DOM API
+                if let Some(window) = window() {
+                    if let Some(document) = window.document() {
+                        document.create_element("video")
+                            .ok()
+                            .and_then(|elem| elem.dyn_into::<HtmlVideoElement>().ok())
+                            .map(MediaElement::Video)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                HtmlAudioElement::new().ok().map(MediaElement::Audio)
+            };
+
+            if let Some(media) = &self.media_element {
+                // Canplay event
+                let canplay_closure = Closure::wrap(Box::new(move || {
+                    // Code to handle the media being ready to play
+                }) as Box<dyn Fn()>);
+                let _ = media.add_event_listener_with_callback("canplay", canplay_closure.as_ref().unchecked_ref());
+                canplay_closure.forget();
+
+                // Play event - update state when media starts playing
+                let play_dispatch = dispatch.clone();
+                let play_closure = {
+                    Closure::wrap(Box::new(move || {
+                        play_dispatch.reduce_mut(|state| {
+                            state.audio_playing = Some(true);
+                        });
+                    }) as Box<dyn Fn()>)
+                };
+                let _ = media.add_event_listener_with_callback("play", play_closure.as_ref().unchecked_ref());
+                play_closure.forget();
+
+                // Pause event - update state when media pauses
+                let pause_dispatch = dispatch.clone();
+                let pause_closure = {
+                    Closure::wrap(Box::new(move || {
+                        pause_dispatch.reduce_mut(|state| {
+                            state.audio_playing = Some(false);
+                        });
+                    }) as Box<dyn Fn()>)
+                };
+                let _ = media.add_event_listener_with_callback("pause", pause_closure.as_ref().unchecked_ref());
+                pause_closure.forget();
+            }
+        }
+
+        if let Some(media) = &self.media_element {
+            media.set_src(&src);
+        }
+    }
+
     pub fn toggle_expanded(&mut self) {
         self.is_expanded = !self.is_expanded;
     }
@@ -374,18 +509,60 @@ impl AppState {
     }
 
     pub fn store_app_state(&self) {
-        if let Some(window) = window() {
-            if let Some(local_storage) = window.local_storage().unwrap() {
-                let user_key = "userState";
-                let user_state = json!({ "user_details": self.user_details }).to_string();
-                let auth_key = "userAuthState";
-                let auth_state = json!({"auth_details": self.auth_details}).to_string();
-                let server_key = "serverState";
-                let server_state = json!({"server_details":self.server_details}).to_string();
-                let _ = local_storage.set_item(user_key, &user_state);
-                let _ = local_storage.set_item(auth_key, &auth_state);
-                let _ = local_storage.set_item(server_key, &server_state);
+        let user_state = json!({ "user_details": self.user_details }).to_string();
+        let auth_state = json!({"auth_details": self.auth_details}).to_string();
+        let server_state = json!({"server_details":self.server_details}).to_string();
+
+        // Try to use Tauri storage first (for desktop/Flatpak)
+        if Self::is_tauri() {
+            wasm_bindgen_futures::spawn_local(async move {
+                use wasm_bindgen::prelude::*;
+
+                #[wasm_bindgen]
+                extern "C" {
+                    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], js_name = invoke)]
+                    async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+                }
+
+                let _ = invoke("store_credentials",
+                    serde_wasm_bindgen::to_value(&serde_json::json!({
+                        "key": "userState",
+                        "value": user_state
+                    })).unwrap()
+                ).await;
+
+                let _ = invoke("store_credentials",
+                    serde_wasm_bindgen::to_value(&serde_json::json!({
+                        "key": "userAuthState",
+                        "value": auth_state
+                    })).unwrap()
+                ).await;
+
+                let _ = invoke("store_credentials",
+                    serde_wasm_bindgen::to_value(&serde_json::json!({
+                        "key": "serverState",
+                        "value": server_state
+                    })).unwrap()
+                ).await;
+            });
+        } else {
+            // Fall back to localStorage for web version
+            if let Some(window) = window() {
+                if let Some(local_storage) = window.local_storage().unwrap() {
+                    let _ = local_storage.set_item("userState", &user_state);
+                    let _ = local_storage.set_item("userAuthState", &auth_state);
+                    let _ = local_storage.set_item("serverState", &server_state);
+                }
             }
+        }
+    }
+
+    fn is_tauri() -> bool {
+        if let Some(window) = window() {
+            let result = js_sys::Reflect::get(&window, &JsValue::from_str("__TAURI__"));
+            result.is_ok() && !result.unwrap().is_undefined()
+        } else {
+            false
         }
     }
 }

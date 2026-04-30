@@ -172,24 +172,6 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
     }
 
     try {
-      // Show loading indicator
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              const SizedBox(width: 12),
-              Text('Starting ${episode.episodeTitle}...'),
-            ],
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-
       // Start playing the episode with full PinePods integration
       await playPinepodsEpisodeWithOptionalFullScreen(
         context,
@@ -199,15 +181,6 @@ class _PinepodsFeedState extends State<PinepodsFeed> {
       );
 
       logger.info('Feed', 'Successfully started playing episode: ${episode.episodeTitle}');
-      
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Now playing: ${episode.episodeTitle}'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-        ),
-      );
     } catch (e) {
       logger.error('Feed', 'Failed to play episode: ${episode.episodeTitle}', e.toString());
       

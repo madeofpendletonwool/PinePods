@@ -4088,3 +4088,64 @@ if __name__ == "__main__":
     from database_functions.migrations import run_all_migrations
     success = run_all_migrations()
     sys.exit(0 if success else 1)
+
+
+@register_migration("038", "add_is_video_to_episodes", "Add is_video column to Episodes table to support video podcasts", requires=["001"])
+def migration_038_add_is_video_to_episodes(conn, db_type: str):
+    """
+    Add is_video column to Episodes table to track whether an episode is video or audio.
+    This enables support for video podcasts while maintaining backward compatibility.
+    """
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration to add is_video column to Episodes table...")
+
+        if db_type == "postgresql":
+            # Check if column already exists
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'Episodes'
+                AND column_name = 'is_video'
+            """)
+
+            if cursor.fetchone():
+                logger.info("is_video column already exists in Episodes table (PostgreSQL)")
+                return
+
+            # Add is_video column (default to false for existing episodes)
+            logger.info("Adding is_video column to Episodes table (PostgreSQL)...")
+            cursor.execute("""
+                ALTER TABLE "Episodes"
+                ADD COLUMN is_video BOOLEAN DEFAULT FALSE
+            """)
+            conn.commit()
+            logger.info("Successfully added is_video column to Episodes table (PostgreSQL)")
+
+        else:  # MySQL/MariaDB
+            # Check if column already exists
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Episodes'
+                AND COLUMN_NAME = 'IsVideo'
+            """)
+
+            if cursor.fetchone():
+                logger.info("IsVideo column already exists in Episodes table (MySQL)")
+                return
+
+            # Add IsVideo column (default to 0/false for existing episodes)
+            logger.info("Adding IsVideo column to Episodes table (MySQL)...")
+            cursor.execute("""
+                ALTER TABLE Episodes
+                ADD COLUMN IsVideo BOOLEAN DEFAULT FALSE
+            """)
+            conn.commit()
+            logger.info("Successfully added IsVideo column to Episodes table (MySQL)")
+
+    except Exception as e:
+        logger.error(f"Error adding is_video column to Episodes: {e}")
+        conn.rollback()
+        raise

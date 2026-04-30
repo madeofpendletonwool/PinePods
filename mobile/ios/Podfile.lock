@@ -45,6 +45,8 @@ PODS:
     - DKImagePickerController/PhotoGallery
     - Flutter
   - Flutter (1.0.0)
+  - flutter_carplay (1.1.0):
+    - Flutter
   - flutter_downloader (0.0.1):
     - Flutter
   - just_audio (0.0.1):
@@ -57,9 +59,9 @@ PODS:
     - FlutterMacOS
   - permission_handler_apple (9.3.0):
     - Flutter
-  - SDWebImage (5.21.1):
-    - SDWebImage/Core (= 5.21.1)
-  - SDWebImage/Core (5.21.1)
+  - SDWebImage (5.21.6):
+    - SDWebImage/Core (= 5.21.6)
+  - SDWebImage/Core (5.21.6)
   - share_plus (0.0.1):
     - Flutter
   - shared_preferences_foundation (0.0.1):
@@ -83,6 +85,7 @@ DEPENDENCIES:
   - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
   - file_picker (from `.symlinks/plugins/file_picker/ios`)
   - Flutter (from `Flutter`)
+  - flutter_carplay (from `.symlinks/plugins/flutter_carplay/ios`)
   - flutter_downloader (from `.symlinks/plugins/flutter_downloader/ios`)
   - just_audio (from `.symlinks/plugins/just_audio/darwin`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
@@ -116,6 +119,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/file_picker/ios"
   Flutter:
     :path: Flutter
+  flutter_carplay:
+    :path: ".symlinks/plugins/flutter_carplay/ios"
   flutter_downloader:
     :path: ".symlinks/plugins/flutter_downloader/ios"
   just_audio:
@@ -147,12 +152,13 @@ SPEC CHECKSUMS:
   DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60
   file_picker: a0560bc09d61de87f12d246fc47d2119e6ef37be
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_carplay: 0e3f943484e00399dac7f599715ae6761288f0db
   flutter_downloader: 78da0da1084e709cbfd3b723c7ea349c71681f09
   just_audio: 4e391f57b79cad2b0674030a00453ca5ce817eed
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
-  SDWebImage: f29024626962457f3470184232766516dee8dfea
+  SDWebImage: 1bb6a1b84b6fe87b972a102bdc77dd589df33477
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   shared_preferences_foundation: 9e1978ff2562383bd5676f64ec4e9aa8fa06a6f7
   sqflite_darwin: 20b2a3a3b70e43edae938624ce550a3cbf66a3d0
@@ -160,6 +166,6 @@ SPEC CHECKSUMS:
   url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
   webview_flutter_wkwebview: 1821ceac936eba6f7984d89a9f3bcb4dea99ebb2
 
-PODFILE CHECKSUM: 0ab06865a10aced8dcbecd5fae08a60eea944bfe
+PODFILE CHECKSUM: 1a9f7ffa1bf69c91d3779fff98c69958379e046b
 
 COCOAPODS: 1.16.2

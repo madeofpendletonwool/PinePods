@@ -539,6 +539,59 @@ async fn start_file_server(filepath: String) -> Result<String, String> {
     Ok("http://127.0.0.1:3030".to_string())
 }
 
+// Credential storage commands for persistent auth across app restarts
+#[command]
+async fn store_credentials(key: String, value: String) -> Result<(), String> {
+    let proj_dirs = get_project_dirs()?;
+    let credentials_dir = proj_dirs.data_dir().join("credentials");
+
+    // Create credentials directory if it doesn't exist
+    if !credentials_dir.exists() {
+        fs::create_dir_all(&credentials_dir).map_err(|e| e.to_string())?;
+    }
+
+    let credential_path = credentials_dir.join(format!("{}.json", key));
+    fs::write(credential_path, value).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[command]
+async fn get_credentials(key: String) -> Result<String, String> {
+    let proj_dirs = get_project_dirs()?;
+    let credential_path = proj_dirs.data_dir().join("credentials").join(format!("{}.json", key));
+
+    if !credential_path.exists() {
+        return Err("Credential not found".to_string());
+    }
+
+    fs::read_to_string(credential_path).map_err(|e| e.to_string())
+}
+
+#[command]
+async fn remove_credentials(key: String) -> Result<(), String> {
+    let proj_dirs = get_project_dirs()?;
+    let credential_path = proj_dirs.data_dir().join("credentials").join(format!("{}.json", key));
+
+    if credential_path.exists() {
+        fs::remove_file(credential_path).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[command]
+async fn clear_all_credentials() -> Result<(), String> {
+    let proj_dirs = get_project_dirs()?;
+    let credentials_dir = proj_dirs.data_dir().join("credentials");
+
+    if credentials_dir.exists() {
+        fs::remove_dir_all(&credentials_dir).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -556,7 +609,11 @@ pub fn run() {
             deduplicate_local_episodes,
             list_app_files,
             get_local_file,
-            start_file_server
+            start_file_server,
+            store_credentials,
+            get_credentials,
+            remove_credentials,
+            clear_all_credentials
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

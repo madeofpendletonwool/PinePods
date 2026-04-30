@@ -2,19 +2,28 @@
 FROM rust:alpine AS builder
 # Install build dependencies
 RUN apk update && apk upgrade && \
-    apk add --no-cache musl-dev libffi-dev zlib-dev jpeg-dev
-RUN apk update && apk upgrade
-# Add the Edge Community repository
-RUN echo "@edge http://dl-cdn.alpinelinux.org/alpine/edge/community" >> /etc/apk/repositories
-# Update the package index
-RUN apk update
-# Install the desired package from the edge community repository
-RUN apk add trunk@edge
-# Install wasm target and build tools
-RUN rustup target add wasm32-unknown-unknown && \
-    cargo install wasm-bindgen-cli
+    apk add --no-cache musl-dev libffi-dev zlib-dev jpeg-dev curl
+# Install trunk from GitHub releases (musl binary, arch-aware) and wasm target
+RUN ARCH=$(uname -m) && \
+    curl -sSL "https://github.com/trunk-rs/trunk/releases/download/v0.21.14/trunk-${ARCH}-unknown-linux-musl.tar.gz" \
+    | tar -xz -C /usr/local/bin && \
+    rustup target add wasm32-unknown-unknown
+# Copy Cargo.lock early so we can read the wasm-bindgen version before the full build
+COPY ./web/Cargo.lock /app/Cargo.lock
+# Pre-populate trunk's wasm-bindgen cache with the musl binary matching Cargo.lock.
+# Trunk downloads glibc binaries by default which don't run on Alpine, so we grab
+# the musl variant ourselves. Version is read dynamically so it tracks Cargo.lock.
+RUN WASM_BINDGEN_VERSION=$(grep -A2 'name = "wasm-bindgen"' /app/Cargo.lock | grep '^version' | head -1 | sed 's/version = "\(.*\)"/\1/') && \
+    ARCH=$(uname -m) && \
+    mkdir -p /tmp/wb-dl /root/.cache/trunk/wasm-bindgen-${WASM_BINDGEN_VERSION} && \
+    curl -sSL "https://github.com/rustwasm/wasm-bindgen/releases/download/${WASM_BINDGEN_VERSION}/wasm-bindgen-${WASM_BINDGEN_VERSION}-${ARCH}-unknown-linux-musl.tar.gz" \
+    | tar -xz -C /tmp/wb-dl && \
+    find /tmp/wb-dl -name "wasm-bindgen" ! -name "*test*" -type f \
+    | xargs -I{} cp {} /root/.cache/trunk/wasm-bindgen-${WASM_BINDGEN_VERSION}/wasm-bindgen && \
+    chmod +x /root/.cache/trunk/wasm-bindgen-${WASM_BINDGEN_VERSION}/wasm-bindgen && \
+    rm -rf /tmp/wb-dl
 # Add application files to the builder stage
-COPY ./web/Cargo.lock ./web/Cargo.toml ./web/dev-info.md ./web/index.html ./web/tailwind.config.js ./web/Trunk.toml /app/
+COPY ./web/Cargo.toml ./web/dev-info.md ./web/index.html ./web/tailwind.config.js ./web/Trunk.toml /app/
 COPY ./web/src /app/src
 COPY ./web/static /app/static
 WORKDIR /app

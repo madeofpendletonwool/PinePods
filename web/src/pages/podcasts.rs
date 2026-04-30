@@ -1161,6 +1161,7 @@ pub fn podcasts() -> Html {
                         end_pos_sec={audio_props.end_pos_sec.clone()}
                         offline={audio_props.offline.clone()}
                         is_youtube={audio_props.is_youtube.clone()}
+                        is_video={audio_props.is_video.clone()}
                     />
                 }
             } else {
