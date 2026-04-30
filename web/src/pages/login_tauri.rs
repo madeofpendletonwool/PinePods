@@ -10,7 +10,7 @@ use crate::requests::setting_reqs::call_get_theme;
 use chrono_tz::{Tz, TZ_VARIANTS};
 use i18nrs::yew::use_translation;
 use md5;
-use rand::Rng;
+use rand::RngExt;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -279,7 +279,7 @@ pub fn login() -> Html {
                                                                         state.gravatar_url = Some(gravatar_url);
                                                                     });
                                                                     // Retrieve the originally requested route, if any
-                                                                    let session_storage = window.session_storage().unwrap().unwrap();
+                                                                    let session_storage = web_sys::window().unwrap().session_storage().unwrap().unwrap();
                                                                     session_storage.set_item("isAuthenticated", "true").unwrap();
                                                                     let requested_route = session_storage.get_item("requested_route").unwrap_or(None);
                                                                     // Get Theme
@@ -356,7 +356,7 @@ pub fn login() -> Html {
     use_effect_with(
         (), // Dependencies, an empty tuple here signifies no dependencies.
         move |_| {
-            let background_number = rand::thread_rng().gen_range(1..=9); // Assuming you have images named 1.jpg through 9.jpg.
+            let background_number = rand::rng().random_range(1..=9); // Assuming you have images named 1.jpg through 9.jpg.
             effect_background_image.set(format!(
                 "static/assets/backgrounds/{}.jpg",
                 background_number
