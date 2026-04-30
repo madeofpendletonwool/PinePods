@@ -439,7 +439,7 @@ impl UIState {
         }
     }
 
-    pub fn set_media_source(&mut self, src: String, is_video: bool) {
+    pub fn set_media_source(&mut self, src: String, is_video: bool, dispatch: Dispatch<UIState>) {
         if self.media_element.is_none() {
             self.media_element = if is_video {
                 // Create video element using DOM API
@@ -468,11 +468,10 @@ impl UIState {
                 canplay_closure.forget();
 
                 // Play event - update state when media starts playing
+                let play_dispatch = dispatch.clone();
                 let play_closure = {
                     Closure::wrap(Box::new(move || {
-                        use yewdux::prelude::Dispatch;
-                        let dispatch = Dispatch::<UIState>::global();
-                        dispatch.reduce_mut(|state| {
+                        play_dispatch.reduce_mut(|state| {
                             state.audio_playing = Some(true);
                         });
                     }) as Box<dyn Fn()>)
@@ -481,11 +480,10 @@ impl UIState {
                 play_closure.forget();
 
                 // Pause event - update state when media pauses
+                let pause_dispatch = dispatch.clone();
                 let pause_closure = {
                     Closure::wrap(Box::new(move || {
-                        use yewdux::prelude::Dispatch;
-                        let dispatch = Dispatch::<UIState>::global();
-                        dispatch.reduce_mut(|state| {
+                        pause_dispatch.reduce_mut(|state| {
                             state.audio_playing = Some(false);
                         });
                     }) as Box<dyn Fn()>)

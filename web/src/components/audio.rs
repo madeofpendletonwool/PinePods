@@ -2079,6 +2079,7 @@ pub fn on_play_click(
                                 let start_pos_sec = episode.listenduration.max(start_skip) as f64;
                                 let end_pos_sec = end_skip as f64;
 
+                                let dispatch_for_media = audio_dispatch_for_duration.clone();
                                 audio_dispatch_for_duration.reduce_mut(move |audio_state| {
                                     audio_state.audio_playing = Some(true);
                                     // Use the returned playback speed instead of hardcoded 1.0
@@ -2102,7 +2103,7 @@ pub fn on_play_click(
                                         is_video: episode.is_video,
                                     });
                                     // Use new media_element that supports both audio and video
-                                    audio_state.set_media_source(src.to_string(), episode.is_video);
+                                    audio_state.set_media_source(src.to_string(), episode.is_video, dispatch_for_media);
                                     if let Some(media) = &audio_state.media_element {
                                         media.set_current_time(start_pos_sec);
                                         // Set the playback speed on the media element as well
@@ -2126,6 +2127,7 @@ pub fn on_play_click(
                 };
             } else {
                 // Directly play the episode without skip times
+                let dispatch_for_media = audio_dispatch_for_duration.clone();
                 audio_dispatch_for_duration.reduce_mut(move |audio_state| {
                     audio_state.audio_playing = Some(true);
                     audio_state.playback_speed = 1.0;
@@ -2148,7 +2150,7 @@ pub fn on_play_click(
                         is_video: episode.is_video,
                     });
                     // Use new media_element that supports both audio and video
-                    audio_state.set_media_source(src.to_string(), episode.is_video);
+                    audio_state.set_media_source(src.to_string(), episode.is_video, dispatch_for_media);
                     if let Some(media) = &audio_state.media_element {
                         let _ = media.play();
                     }
@@ -2322,6 +2324,7 @@ pub fn on_play_click_offline(
                         episode_duration_for_wasm, final_duration_sec
                     )));
 
+                    let dispatch_for_media = audio_dispatch_for_duration.clone();
                     audio_dispatch_for_duration.reduce_mut(move |audio_state| {
                         audio_state.audio_playing = Some(true);
                         audio_state.playback_speed = 1.0;
@@ -2344,7 +2347,7 @@ pub fn on_play_click_offline(
                             is_video: episode.is_video,
                         });
                         // Use new media_element that supports both audio and video
-                        audio_state.set_media_source(src.to_string(), episode.is_video);
+                        audio_state.set_media_source(src.to_string(), episode.is_video, dispatch_for_media);
                         if let Some(media) = &audio_state.media_element {
                             media.set_current_time(listen_duration_for_closure as f64);
                             let _ = media.play();
