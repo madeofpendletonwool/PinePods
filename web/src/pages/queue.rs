@@ -317,13 +317,13 @@ pub fn virtual_queue_list(props: &VirtualQueueListProps) -> Html {
                     // Scroll up if cursor is near the top of the container
                     if (y as f64) < container_top + 50.0 {
                         container_element
-                            .set_scroll_top((container_element.scroll_top() - scroll_speed).max(0.0));
+                            .set_scroll_top(((container_element.scroll_top() as f64) - scroll_speed).max(0.0) as _);
                     }
 
                     // Scroll down if cursor is near the bottom of the container
                     if (y as f64) > container_bottom - 50.0 {
                         container_element
-                            .set_scroll_top(container_element.scroll_top() + scroll_speed);
+                            .set_scroll_top(((container_element.scroll_top() as f64) + scroll_speed) as _);
                     }
                 }
             }
