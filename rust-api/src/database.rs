@@ -8262,6 +8262,29 @@ impl DatabasePool {
         Ok(())
     }
 
+    // Enable/disable auto play next for podcast
+    pub async fn enable_auto_play_next(&self, podcast_id: i32, auto_play_next: bool, user_id: i32) -> AppResult<()> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                sqlx::query(r#"UPDATE "Podcasts" SET autoplaynext = $1 WHERE podcastid = $2 AND userid = $3"#)
+                    .bind(auto_play_next)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+            DatabasePool::MySQL(pool) => {
+                sqlx::query("UPDATE Podcasts SET AutoPlayNext = ? WHERE PodcastID = ? AND UserID = ?")
+                    .bind(auto_play_next)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .execute(pool)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     // Toggle podcast notifications - matches Python toggle_podcast_notifications function
     pub async fn toggle_podcast_notifications(&self, user_id: i32, podcast_id: i32, enabled: bool) -> AppResult<bool> {
         match self {
@@ -8527,6 +8550,185 @@ impl DatabasePool {
                 if let Some(row) = row {
                     let result: Option<bool> = row.try_get("AutoDownload")?;
                     Ok(result)
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Get auto play next status for a podcast
+    pub async fn get_auto_play_next_status(&self, podcast_id: i32, user_id: i32) -> AppResult<Option<bool>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(r#"SELECT autoplaynext FROM "Podcasts" WHERE podcastid = $1 AND userid = $2"#)
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = row {
+                    let result: Option<bool> = row.try_get("autoplaynext")?;
+                    Ok(result)
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query("SELECT AutoPlayNext FROM Podcasts WHERE PodcastID = ? AND UserID = ?")
+                    .bind(podcast_id)
+                    .bind(user_id)
+                    .fetch_optional(pool)
+                    .await?;
+
+                if let Some(row) = row {
+                    let result: Option<bool> = row.try_get("AutoPlayNext")?;
+                    Ok(result)
+                } else {
+                    Ok(None)
+                }
+            }
+        }
+    }
+
+    // Get the next episode in a podcast (chronologically after the given episode)
+    pub async fn get_next_podcast_episode(&self, episode_id: i32, user_id: i32) -> AppResult<Option<crate::models::QueuedEpisode>> {
+        match self {
+            DatabasePool::Postgres(pool) => {
+                let row = sqlx::query(
+                    r#"SELECT
+                        e.episodetitle,
+                        p.podcastname,
+                        e.episodepubdate,
+                        e.episodedescription,
+                        CASE
+                            WHEN p.usepodcastcoverscustomized = TRUE AND p.usepodcastcovers = TRUE THEN p.artworkurl
+                            WHEN u.usepodcastcovers = TRUE THEN p.artworkurl
+                            ELSE e.episodeartwork
+                        END as episodeartwork,
+                        e.episodeurl,
+                        e.episodeduration,
+                        COALESCE(ueh.listenduration, 0) as listenduration,
+                        e.episodeid,
+                        e.completed,
+                        CASE WHEN se.episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                        CASE WHEN eq.episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                        CASE WHEN de.episodeid IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                        FALSE as is_youtube,
+                        COALESCE(e.is_video, FALSE) as is_video
+                    FROM "Episodes" e
+                    INNER JOIN "Podcasts" p ON e.podcastid = p.podcastid
+                    LEFT JOIN "Users" u ON p.userid = u.userid
+                    LEFT JOIN "UserEpisodeHistory" ueh ON e.episodeid = ueh.episodeid AND ueh.userid = $2
+                    LEFT JOIN "SavedEpisodes" se ON e.episodeid = se.episodeid AND se.userid = $2
+                    LEFT JOIN "EpisodeQueue" eq ON e.episodeid = eq.episodeid AND eq.userid = $2 AND eq.is_youtube = FALSE
+                    LEFT JOIN "DownloadedEpisodes" de ON e.episodeid = de.episodeid AND de.userid = $2
+                    WHERE e.podcastid = (SELECT podcastid FROM "Episodes" WHERE episodeid = $1)
+                      AND e.episodepubdate > (SELECT episodepubdate FROM "Episodes" WHERE episodeid = $1)
+                      AND p.userid = $2
+                    ORDER BY e.episodepubdate ASC
+                    LIMIT 1"#
+                )
+                .bind(episode_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    Ok(Some(crate::models::QueuedEpisode {
+                        episodetitle: row.try_get("episodetitle")?,
+                        podcastname: row.try_get("podcastname")?,
+                        episodepubdate: {
+                            let naive = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
+                            naive.format("%Y-%m-%dT%H:%M:%S").to_string()
+                        },
+                        episodedescription: row.try_get("episodedescription")?,
+                        episodeartwork: row.try_get("episodeartwork")?,
+                        episodeurl: row.try_get("episodeurl")?,
+                        queueposition: None,
+                        episodeduration: row.try_get("episodeduration")?,
+                        queuedate: String::new(),
+                        listenduration: row.try_get("listenduration").ok(),
+                        episodeid: row.try_get("episodeid")?,
+                        completed: row.try_get("completed")?,
+                        saved: row.try_get("saved")?,
+                        queued: row.try_get("queued")?,
+                        downloaded: row.try_get("downloaded")?,
+                        is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
+                    }))
+                } else {
+                    Ok(None)
+                }
+            }
+            DatabasePool::MySQL(pool) => {
+                let row = sqlx::query(
+                    "SELECT
+                        e.EpisodeTitle as episodetitle,
+                        p.PodcastName as podcastname,
+                        e.EpisodePubDate as episodepubdate,
+                        e.EpisodeDescription as episodedescription,
+                        CASE
+                            WHEN p.UsePodcastCoversCustomized = TRUE AND p.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                            WHEN u.UsePodcastCovers = TRUE THEN p.ArtworkURL
+                            ELSE e.EpisodeArtwork
+                        END as episodeartwork,
+                        e.EpisodeURL as episodeurl,
+                        e.EpisodeDuration as episodeduration,
+                        COALESCE(ueh.ListenDuration, 0) as listenduration,
+                        e.EpisodeID as episodeid,
+                        e.Completed as completed,
+                        CASE WHEN se.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS saved,
+                        CASE WHEN eq.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS queued,
+                        CASE WHEN de.EpisodeID IS NOT NULL THEN TRUE ELSE FALSE END AS downloaded,
+                        FALSE as is_youtube,
+                        COALESCE(e.IsVideo, FALSE) as is_video
+                    FROM Episodes e
+                    INNER JOIN Podcasts p ON e.PodcastID = p.PodcastID
+                    LEFT JOIN Users u ON p.UserID = u.UserID
+                    LEFT JOIN UserEpisodeHistory ueh ON e.EpisodeID = ueh.EpisodeID AND ueh.UserID = ?
+                    LEFT JOIN SavedEpisodes se ON e.EpisodeID = se.EpisodeID AND se.UserID = ?
+                    LEFT JOIN EpisodeQueue eq ON e.EpisodeID = eq.EpisodeID AND eq.UserID = ? AND eq.is_youtube = 0
+                    LEFT JOIN DownloadedEpisodes de ON e.EpisodeID = de.EpisodeID AND de.UserID = ?
+                    WHERE e.PodcastID = (SELECT PodcastID FROM Episodes WHERE EpisodeID = ?)
+                      AND e.EpisodePubDate > (SELECT EpisodePubDate FROM Episodes WHERE EpisodeID = ?)
+                      AND p.UserID = ?
+                    ORDER BY e.EpisodePubDate ASC
+                    LIMIT 1"
+                )
+                .bind(user_id)
+                .bind(user_id)
+                .bind(user_id)
+                .bind(user_id)
+                .bind(episode_id)
+                .bind(episode_id)
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some(row) = row {
+                    Ok(Some(crate::models::QueuedEpisode {
+                        episodetitle: row.try_get("episodetitle")?,
+                        podcastname: row.try_get("podcastname")?,
+                        episodepubdate: {
+                            let naive = row.try_get::<chrono::NaiveDateTime, _>("episodepubdate")?;
+                            naive.format("%Y-%m-%dT%H:%M:%S").to_string()
+                        },
+                        episodedescription: row.try_get("episodedescription")?,
+                        episodeartwork: row.try_get("episodeartwork")?,
+                        episodeurl: row.try_get("episodeurl")?,
+                        queueposition: None,
+                        episodeduration: row.try_get("episodeduration")?,
+                        queuedate: String::new(),
+                        listenduration: row.try_get("listenduration").ok(),
+                        episodeid: row.try_get("episodeid")?,
+                        completed: row.try_get("completed")?,
+                        saved: row.try_get("saved")?,
+                        queued: row.try_get("queued")?,
+                        downloaded: row.try_get("downloaded")?,
+                        is_youtube: row.try_get("is_youtube")?,
+                        is_video: row.try_get("is_video")?,
+                    }))
                 } else {
                     Ok(None)
                 }

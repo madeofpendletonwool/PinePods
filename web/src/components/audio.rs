@@ -8,6 +8,7 @@ use crate::requests::pod_req::call_get_episode_id;
 use crate::requests::pod_req::FetchPodcasting2DataRequest;
 use crate::requests::pod_req::{
     call_add_history, call_check_episode_in_db, call_fetch_podcasting_2_data,
+    call_get_auto_play_next_status, call_get_next_podcast_episode,
     call_get_play_episode_details, call_get_podcast_id_from_ep, call_get_queued_episodes,
     call_increment_listen_time, call_increment_played, call_mark_episode_completed,
     call_queue_episode, call_record_listen_duration, call_remove_queued_episode,
@@ -921,7 +922,65 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                         processing_flag_for_reset.set(false);
                     } else {
                         wasm_bindgen_futures::spawn_local(async move {
-                            web_sys::console::log_1(&"Fetching queued episodes...".into());
+                            // Check auto-play-next before the queue
+                            let mut auto_play_handled = false;
+                            if let (Some(Some(api_key_val)), Some(user_id_val), Some(server_name_val)) =
+                                (api_key.clone(), user_id, server_name.clone())
+                            {
+                                if let Some(ep_id) = current_episode_id {
+                                    // Get the podcast ID for the current episode
+                                    if let Ok(podcast_id) = call_get_podcast_id_from_ep(
+                                        &server_name_val,
+                                        &Some(api_key_val.clone()),
+                                        ep_id,
+                                        user_id_val,
+                                        None,
+                                    ).await {
+                                        // Check if auto-play-next is enabled for this podcast
+                                        if let Ok(auto_play_next) = call_get_auto_play_next_status(
+                                            &server_name_val,
+                                            user_id_val,
+                                            &Some(api_key_val.clone()),
+                                            podcast_id,
+                                        ).await {
+                                            if auto_play_next {
+                                                web_sys::console::log_1(&"Auto-play-next enabled, looking for next episode in podcast...".into());
+                                                if let Ok(Some(next_episode)) = call_get_next_podcast_episode(
+                                                    &server_name_val,
+                                                    &Some(api_key_val.clone()),
+                                                    ep_id,
+                                                    user_id_val,
+                                                ).await {
+                                                    web_sys::console::log_1(&format!(
+                                                        "Auto-playing next episode: {} (ID: {})",
+                                                        next_episode.episodetitle, next_episode.episodeid
+                                                    ).into());
+                                                    on_play_click(
+                                                        next_episode,
+                                                        api_key_val,
+                                                        user_id_val,
+                                                        server_name_val,
+                                                        audio_dispatch.clone(),
+                                                        audio_state.clone(),
+                                                        false,
+                                                        true, // skip_queue: auto-play-next episodes shouldn't be added to queue
+                                                    )
+                                                    .emit(MouseEvent::new("click").unwrap());
+                                                    auto_play_handled = true;
+                                                } else {
+                                                    web_sys::console::log_1(&"No next episode found in podcast, falling through to queue".into());
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if auto_play_handled {
+                                processing_flag_for_reset.set(false);
+                                return;
+                            }
+
                             web_sys::console::log_1(&"Fetching queued episodes...".into());
                             let queued_episodes_result = call_get_queued_episodes(
                                 &server_name.clone().unwrap(),
@@ -936,90 +995,104 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                             .into(),
                                     );
 
-                                    // If queue is empty, just stop playback
-                                    if episodes.is_empty() {
-                                        web_sys::console::log_1(
-                                            &"Queue is empty, stopping playback".into(),
-                                        );
-                                        audio_dispatch.reduce_mut(|state| {
-                                            state.audio_playing = Some(false);
-                                        });
-                                    } else {
-                                        // Try to find current episode first to remove it properly
-                                        if let Some(current_episode) = episodes
-                                            .iter()
-                                            .find(|ep| ep.episodeid == current_episode_id.unwrap())
-                                        {
-                                            web_sys::console::log_1(&format!("Found current episode in queue (ID: {}), removing it", current_episode.episodeid).into());
-                                            // Remove the currently playing episode from the queue
+                                    // Remove the current episode from the queue
+                                    if let Some(current_episode) = episodes
+                                        .iter()
+                                        .find(|ep| ep.episodeid == current_episode_id.unwrap())
+                                    {
+                                        web_sys::console::log_1(&format!("Found current episode in queue (ID: {}), removing it", current_episode.episodeid).into());
+                                        let request = QueuePodcastRequest {
+                                            episode_id: current_episode_id.clone().unwrap(),
+                                            user_id: user_id.clone().unwrap(),
+                                            is_youtube: current_episode.is_youtube,
+                                        };
+                                        let _ = call_remove_queued_episode(
+                                            &server_name.clone().unwrap(),
+                                            &api_key.clone().unwrap(),
+                                            &request,
+                                        )
+                                        .await;
+                                    }
+
+                                    // Remove any completed episodes from the queue
+                                    for ep in episodes.iter().filter(|ep| ep.completed) {
+                                        if Some(ep.episodeid) != current_episode_id {
+                                            web_sys::console::log_1(&format!("Removing completed episode from queue: {} (ID: {})", ep.episodetitle, ep.episodeid).into());
                                             let request = QueuePodcastRequest {
-                                                episode_id: current_episode_id.clone().unwrap(),
+                                                episode_id: ep.episodeid,
                                                 user_id: user_id.clone().unwrap(),
-                                                is_youtube: current_episode.is_youtube,
+                                                is_youtube: ep.is_youtube,
                                             };
-                                            let remove_result = call_remove_queued_episode(
+                                            let _ = call_remove_queued_episode(
                                                 &server_name.clone().unwrap(),
                                                 &api_key.clone().unwrap(),
                                                 &request,
                                             )
                                             .await;
-                                            match remove_result {
-                                                Ok(_) => {
-                                                    web_sys::console::log_1(&"Successfully removed current episode from queue".into());
-                                                }
-                                                Err(e) => {
-                                                    web_sys::console::log_1(&format!("Failed to remove episode from queue: {:?}", e).into());
-                                                }
-                                            }
-                                        } else {
-                                            web_sys::console::log_1(&"Current episode not found in queue (likely already removed)".into());
                                         }
+                                    }
 
-                                        // Now play the first episode in the queue (which is the next one to play)
-                                        // Sort by queue position to ensure we get the right one
-                                        let mut sorted_episodes = episodes.clone();
-                                        sorted_episodes
-                                            .sort_by_key(|ep| ep.queueposition.unwrap_or(999999));
+                                    // Re-fetch the queue to get updated positions after removals
+                                    let updated_result = call_get_queued_episodes(
+                                        &server_name.clone().unwrap(),
+                                        &api_key.clone().unwrap(),
+                                        &user_id.clone().unwrap(),
+                                    )
+                                    .await;
 
-                                        if let Some(next_episode) = sorted_episodes.first() {
-                                            web_sys::console::log_1(&format!("Playing first episode in queue: {} (ID: {}, Position: {})",
-                                                next_episode.episodetitle,
-                                                next_episode.episodeid,
-                                                next_episode.queueposition.unwrap_or(0)
-                                            ).into());
-
-                                            // Check if we have the required data
-                                            if let (
-                                                Some(Some(api_key_val)),
-                                                Some(user_id_val),
-                                                Some(server_name_val),
-                                            ) = (api_key.clone(), user_id, server_name.clone())
-                                            {
+                                    match updated_result {
+                                        Ok(updated_episodes) => {
+                                            if updated_episodes.is_empty() {
                                                 web_sys::console::log_1(
-                                                    &"Calling on_play_click for next episode"
-                                                        .into(),
+                                                    &"Queue is empty after cleanup, stopping playback".into(),
                                                 );
-                                                on_play_click(
-                                                    next_episode.clone(),
-                                                    api_key_val,
-                                                    user_id_val,
-                                                    server_name_val,
-                                                    audio_dispatch.clone(),
-                                                    audio_state.clone(),
-                                                    false,
-                                                )
-                                                .emit(MouseEvent::new("click").unwrap());
-                                                web_sys::console::log_1(&"Successfully emitted play click for next episode".into());
+                                                audio_dispatch.reduce_mut(|state| {
+                                                    state.audio_playing = Some(false);
+                                                });
                                             } else {
-                                                web_sys::console::log_1(&"ERROR: Missing required auth data (api_key, user_id, or server_name)".into());
+                                                // Sort by queue position and play the first one
+                                                let mut sorted_episodes = updated_episodes;
+                                                sorted_episodes
+                                                    .sort_by_key(|ep| ep.queueposition.unwrap_or(999999));
+
+                                                if let Some(next_episode) = sorted_episodes.first() {
+                                                    web_sys::console::log_1(&format!("Playing first episode in queue: {} (ID: {}, Position: {})",
+                                                        next_episode.episodetitle,
+                                                        next_episode.episodeid,
+                                                        next_episode.queueposition.unwrap_or(0)
+                                                    ).into());
+
+                                                    if let (
+                                                        Some(Some(api_key_val)),
+                                                        Some(user_id_val),
+                                                        Some(server_name_val),
+                                                    ) = (api_key.clone(), user_id, server_name.clone())
+                                                    {
+                                                        on_play_click(
+                                                            next_episode.clone(),
+                                                            api_key_val,
+                                                            user_id_val,
+                                                            server_name_val,
+                                                            audio_dispatch.clone(),
+                                                            audio_state.clone(),
+                                                            false,
+                                                            false,
+                                                        )
+                                                        .emit(MouseEvent::new("click").unwrap());
+                                                    } else {
+                                                        web_sys::console::log_1(&"ERROR: Missing required auth data".into());
+                                                    }
+                                                } else {
+                                                    audio_dispatch.reduce_mut(|state| {
+                                                        state.audio_playing = Some(false);
+                                                    });
+                                                }
                                             }
-                                        } else {
+                                        }
+                                        Err(e) => {
                                             web_sys::console::log_1(
-                                                &"No episodes found in queue after sorting".into(),
+                                                &format!("Failed to re-fetch queue: {:?}", e).into(),
                                             );
-                                            audio_dispatch.reduce_mut(|state| {
-                                                state.audio_playing = Some(false);
-                                            });
                                         }
                                     }
                                 }
@@ -1223,6 +1296,7 @@ pub fn audio_player(props: &AudioPlayerProps) -> Html {
                                 server_name.clone().unwrap(),
                                 audio_dispatch.clone(),
                                 audio_state.clone(),
+                                false,
                                 false,
                             )
                             .emit(MouseEvent::new("click").unwrap());
@@ -1782,6 +1856,7 @@ pub fn on_play_pause(
                 audio_dispatch.clone(),
                 audio_state.clone(),
                 is_local,
+                false,
             )
             .emit(e);
         }
@@ -1796,6 +1871,7 @@ pub fn on_play_click(
     audio_dispatch: Dispatch<UIState>,
     _audio_state: Rc<UIState>,
     is_local: bool,
+    skip_queue: bool,
 ) -> Callback<MouseEvent> {
     Callback::from(move |_: MouseEvent| {
         let api_key = api_key.clone();
@@ -1896,24 +1972,51 @@ pub fn on_play_click(
                     }
                 }
 
-                let queue_server_name = check_server_name.clone();
-                let queue_api_key = check_api_key.clone();
-
-                let request = QueuePodcastRequest {
-                    episode_id: episode.episodeid,
-                    user_id,
-                    is_youtube: episode.is_youtube,
-                };
-
-                let queue_api = Option::from(queue_api_key);
-
-                let add_queue_future = call_queue_episode(&queue_server_name, &queue_api, &request);
-                match add_queue_future.await {
-                    Ok(_) => {
-                        // web_sys::console::log_1(&"Successfully Added Episode to Queue".into());
+                if !skip_queue {
+                    // Check if podcast has auto-play-next enabled — if so, skip queue add
+                    let mut should_queue = true;
+                    if episode.episodeid != 0 {
+                        if let Ok(podcast_id) = call_get_podcast_id_from_ep(
+                            &check_server_name,
+                            &Some(check_api_key.clone()),
+                            episode.episodeid,
+                            user_id,
+                            None,
+                        ).await {
+                            if let Ok(auto_play_next) = call_get_auto_play_next_status(
+                                &check_server_name,
+                                user_id,
+                                &Some(check_api_key.clone()),
+                                podcast_id,
+                            ).await {
+                                if auto_play_next {
+                                    should_queue = false;
+                                }
+                            }
+                        }
                     }
-                    Err(_e) => {
-                        // web_sys::console::log_1(&format!("Failed to add to queue: {:?}", e).into());
+
+                    if should_queue {
+                        let queue_server_name = check_server_name.clone();
+                        let queue_api_key = check_api_key.clone();
+
+                        let request = QueuePodcastRequest {
+                            episode_id: episode.episodeid,
+                            user_id,
+                            is_youtube: episode.is_youtube,
+                        };
+
+                        let queue_api = Option::from(queue_api_key);
+
+                        let add_queue_future = call_queue_episode(&queue_server_name, &queue_api, &request);
+                        match add_queue_future.await {
+                            Ok(_) => {
+                                // web_sys::console::log_1(&"Successfully Added Episode to Queue".into());
+                            }
+                            Err(_e) => {
+                                // web_sys::console::log_1(&format!("Failed to add to queue: {:?}", e).into());
+                            }
+                        }
                     }
                 }
             }

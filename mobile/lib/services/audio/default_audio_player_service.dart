@@ -712,6 +712,20 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       return;
     }
 
+    // Check auto-play-next before the queue
+    try {
+      final autoPlayNextEpisode = await _getAutoPlayNextEpisode();
+      if (autoPlayNextEpisode != null) {
+        log.fine('Auto-playing next episode in podcast: ${autoPlayNextEpisode.title}');
+        _currentEpisode = null;
+        await playEpisode(episode: autoPlayNextEpisode);
+        _updateQueueState();
+        return;
+      }
+    } catch (e) {
+      log.warning('Failed to get auto-play-next episode: $e');
+    }
+
     // Try to get next episode from PinePods server queue
     try {
       final nextEpisode = await _getNextQueuedEpisode();
@@ -767,8 +781,25 @@ class DefaultAudioPlayerService extends AudioPlayerService {
         return null;
       }
 
-      // Get the first episode from the queue
-      final nextPinepodsEpisode = queuedEpisodes.first;
+      // Remove completed episodes from the queue
+      for (final ep in queuedEpisodes.where((ep) => ep.completed)) {
+        log.fine('Removing completed episode from queue: ${ep.episodeTitle}');
+        await pinepodsService.removeQueuedEpisode(
+          ep.episodeId,
+          userId,
+          ep.isYoutube,
+        );
+      }
+
+      // Find the first non-completed episode
+      final nextPinepodsEpisode = queuedEpisodes
+          .where((ep) => !ep.completed)
+          .firstOrNull;
+
+      if (nextPinepodsEpisode == null) {
+        log.fine('No non-completed episodes in queue');
+        return null;
+      }
       
       // Remove this episode from the server queue
       await pinepodsService.removeQueuedEpisode(
@@ -786,6 +817,69 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     } catch (e) {
       log.warning('Error getting next episode from server queue: $e');
       rethrow;
+    }
+  }
+
+  /// Check if auto-play-next is enabled for the current podcast and get the next episode
+  Future<Episode?> _getAutoPlayNextEpisode() async {
+    final server = settingsService.pinepodsServer;
+    final apiKey = settingsService.pinepodsApiKey;
+    final userId = settingsService.pinepodsUserId;
+
+    if (server == null || apiKey == null || userId == null) {
+      log.fine('No PinePods credentials available, skipping auto-play-next');
+      return null;
+    }
+
+    if (_currentEpisode == null) {
+      return null;
+    }
+
+    // Extract episode ID from the guid (format: 'pinepods_123')
+    final guid = _currentEpisode!.guid;
+    if (!guid.startsWith('pinepods_')) {
+      log.fine('Current episode is not a PinePods episode, skipping auto-play-next');
+      return null;
+    }
+
+    final episodeIdStr = guid.substring('pinepods_'.length);
+    final episodeId = int.tryParse(episodeIdStr);
+    if (episodeId == null) {
+      log.fine('Could not parse episode ID from guid: $guid');
+      return null;
+    }
+
+    try {
+      final pinepodsService = PinepodsService();
+      pinepodsService.setCredentials(server, apiKey);
+
+      // Get the podcast ID for this episode
+      final podcastId = await pinepodsService.getPodcastIdFromEpisodeId(episodeId, userId);
+      if (podcastId == null) {
+        log.fine('Could not determine podcast ID for episode $episodeId');
+        return null;
+      }
+
+      // Check if auto-play-next is enabled for this podcast
+      final autoPlayNext = await pinepodsService.getAutoPlayNextStatus(podcastId, userId);
+      if (!autoPlayNext) {
+        log.fine('Auto-play-next is not enabled for podcast $podcastId');
+        return null;
+      }
+
+      // Get the next episode in the podcast
+      final nextPinepodsEpisode = await pinepodsService.getNextPodcastEpisode(episodeId, userId);
+      if (nextPinepodsEpisode == null) {
+        log.fine('No next episode found in podcast $podcastId');
+        return null;
+      }
+
+      final episode = _convertPinepodsEpisodeToEpisode(nextPinepodsEpisode, pinepodsService, userId);
+      log.fine('Found next episode for auto-play: ${episode.title}');
+      return episode;
+    } catch (e) {
+      log.warning('Error checking auto-play-next: $e');
+      return null;
     }
   }
 

@@ -14,7 +14,9 @@ use crate::requests::pod_req::{
     call_add_category, call_add_podcast, call_adjust_skip_times, call_bulk_download_episodes,
     call_bulk_mark_episodes_completed, call_bulk_queue_episodes, call_bulk_save_episodes,
     call_check_podcast, call_clear_playback_speed, call_download_all_podcast,
-    call_enable_auto_download, call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
+    call_enable_auto_download, call_enable_auto_play_next,
+    call_fetch_podcasting_2_pod_data, call_get_auto_download_status,
+    call_get_auto_play_next_status,
     call_get_feed_cutoff_days, call_get_merged_podcasts, call_get_play_episode_details,
     call_get_podcast_details, call_get_podcast_id_from_ep, call_get_podcast_id_from_ep_name,
     call_get_podcast_notifications_status, call_get_podcasts, call_get_rss_key,
@@ -22,7 +24,8 @@ use crate::requests::pod_req::{
     call_remove_youtube_channel, call_set_playback_speed, call_toggle_podcast_notifications,
     call_unmerge_podcast, call_update_feed_cutoff_days, call_update_podcast_info,
     AddCategoryRequest, AutoDownloadRequest, BulkEpisodeActionRequest, ClearPlaybackSpeedRequest,
-    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, PlaybackSpeedRequest,
+    DownloadAllPodcastRequest, FetchPodcasting2PodDataRequest, AutoPlayNextRequest,
+    PlaybackSpeedRequest,
     PodcastDetails, PodcastValues, RemoveCategoryRequest, RemovePodcastValuesName,
     RemoveYouTubeChannelValues, SkipTimesRequest, UpdateFeedCutoffDaysRequest,
 };
@@ -827,6 +830,7 @@ pub fn episode_layout() -> Html {
     });
 
     let download_status = use_state(|| false);
+    let auto_play_next_status = use_state(|| false);
     let podcast_id = use_state(|| 0);
     let start_skip = use_state(|| 0);
     let end_skip = use_state(|| 0);
@@ -961,6 +965,7 @@ pub fn episode_layout() -> Html {
         let server_name = server_name.clone();
         let podcast_id = podcast_id.clone();
         let download_status = download_status.clone();
+        let auto_play_next_status = auto_play_next_status.clone();
         let notification_effect = notification_status.clone();
         // let episode_name = episode_name_pre.clone();
         // let episode_url = episode_url_pre.clone();
@@ -1002,6 +1007,7 @@ pub fn episode_layout() -> Html {
                     let server_name = server_name.clone();
                     let podcast_id = podcast_id.clone();
                     let download_status = download_status.clone();
+                    let auto_play_next_status = auto_play_next_status.clone();
                     let episode_name = episode_name;
                     let episode_url = episode_url;
                     let user_id = user_id.unwrap();
@@ -1038,6 +1044,27 @@ pub fn episode_layout() -> Html {
                                                 web_sys::console::log_1(
                                                     &format!(
                                                         "Error getting auto-download status: {}",
+                                                        e
+                                                    )
+                                                    .into(),
+                                                );
+                                            }
+                                        }
+                                        match call_get_auto_play_next_status(
+                                            &server_name,
+                                            user_id,
+                                            &Some(api_key.clone().unwrap()),
+                                            id,
+                                        )
+                                        .await
+                                        {
+                                            Ok(status) => {
+                                                auto_play_next_status.set(status);
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::log_1(
+                                                    &format!(
+                                                        "Error getting auto-play-next status: {}",
                                                         e
                                                     )
                                                     .into(),
@@ -1562,6 +1589,51 @@ pub fn episode_layout() -> Html {
                         Err(e) => {
                             web_sys::console::log_1(
                                 &format!("Error enabling/disabling downloads: {}", e).into(),
+                            );
+                        }
+                    }
+                }
+            });
+        })
+    };
+
+    let toggle_auto_play_next = {
+        let api_key = api_key.clone();
+        let server_name = server_name.clone();
+        let auto_play_next_status = auto_play_next_status.clone();
+        let podcast_id = podcast_id.clone();
+        let user_id = user_id.clone();
+
+        Callback::from(move |_| {
+            let api_key = api_key.clone();
+            let server_name = server_name.clone();
+            let auto_play_next_status = auto_play_next_status.clone();
+            let auto_play_next = !*auto_play_next_status;
+            let pod_id_deref = *podcast_id.clone();
+            let user_id = user_id.clone().unwrap();
+
+            let request_data = AutoPlayNextRequest {
+                podcast_id: pod_id_deref,
+                user_id,
+                auto_play_next,
+            };
+
+            wasm_bindgen_futures::spawn_local(async move {
+                if let (Some(api_key), Some(server_name)) = (api_key.as_ref(), server_name.as_ref())
+                {
+                    match call_enable_auto_play_next(
+                        &server_name,
+                        &api_key.clone().unwrap(),
+                        &request_data,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            auto_play_next_status.set(auto_play_next);
+                        }
+                        Err(e) => {
+                            web_sys::console::log_1(
+                                &format!("Error enabling/disabling auto-play-next: {}", e).into(),
                             );
                         }
                     }
@@ -2151,6 +2223,13 @@ pub fn episode_layout() -> Html {
                                 <label for="download_schedule" class="block mb-2 text-sm font-medium">{&i18n_download_future_episodes}</label>
                                 <label class="inline-flex relative items-center cursor-pointer">
                                     <input type="checkbox" checked={*download_status} class="sr-only peer" onclick={toggle_download} />
+                                    <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                                </label>
+                            </div>
+                            <div>
+                                <label for="auto_play_next" class="block mb-2 text-sm font-medium">{"Auto-play next episode"}</label>
+                                <label class="inline-flex relative items-center cursor-pointer">
+                                    <input type="checkbox" checked={*auto_play_next_status} class="sr-only peer" onclick={toggle_auto_play_next} />
                                     <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
                                 </label>
                             </div>

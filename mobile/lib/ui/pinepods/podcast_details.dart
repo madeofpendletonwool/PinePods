@@ -1,6 +1,9 @@
 // lib/ui/pinepods/podcast_details.dart
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:get_it/get_it.dart';
+import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
 import 'package:pinepods_mobile/entities/pinepods_search.dart';
@@ -75,6 +78,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
   CompletedFilter _completedFilter = CompletedFilter.showAll;
   bool _showInProgress = false;
   bool _isAutoDownloadEnabled = false;
+  bool _isAutoPlayNextEnabled = false;
 
   @override
   void initState() {
@@ -83,6 +87,7 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     _initializeCredentials();
     _loadSortPreference();
     _loadAutoDownloadPreference();
+    _loadAutoPlayNextPreference();
     _checkFollowStatus();
     _searchController.addListener(_onSearchChanged);
   }
@@ -152,6 +157,68 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
           duration: const Duration(seconds: 2),
         ),
       );
+    }
+  }
+
+  Future<void> _loadAutoPlayNextPreference() async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0) return;
+
+    try {
+      final settings = GetIt.instance.get<SettingsBloc>();
+      if (settings.pinepodsServer != null && settings.pinepodsApiKey != null && settings.pinepodsUserId != null) {
+        _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+        final status = await _pinepodsService.getAutoPlayNextStatus(podcastId, settings.pinepodsUserId!);
+        if (mounted) {
+          setState(() {
+            _isAutoPlayNextEnabled = status;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading auto-play-next preference: $e');
+    }
+  }
+
+  Future<void> _toggleAutoPlayNext() async {
+    final podcastId = widget.podcast.id;
+    if (podcastId <= 0) return;
+
+    final newValue = !_isAutoPlayNextEnabled;
+
+    try {
+      final settings = GetIt.instance.get<SettingsBloc>();
+      if (settings.pinepodsServer != null && settings.pinepodsApiKey != null && settings.pinepodsUserId != null) {
+        _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
+
+        final url = Uri.parse('${settings.pinepodsServer}/api/data/enable_auto_play_next');
+        final response = await http.post(
+          url,
+          headers: {
+            'Api-Key': settings.pinepodsApiKey!,
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'podcast_id': podcastId,
+            'user_id': settings.pinepodsUserId,
+            'auto_play_next': newValue,
+          }),
+        );
+
+        if (response.statusCode == 200 && mounted) {
+          setState(() {
+            _isAutoPlayNextEnabled = newValue;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(newValue ? 'Auto-play next enabled' : 'Auto-play next disabled'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error toggling auto-play-next: $e');
     }
   }
 
@@ -1054,6 +1121,17 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
                     color: _isAutoDownloadEnabled ? Colors.blue[300] : Colors.white,
                   ),
                   tooltip: _isAutoDownloadEnabled ? 'Disable auto-download' : 'Enable auto-download',
+                ),
+              if (_isFollowing && widget.podcast.id > 0)
+                IconButton(
+                  onPressed: _toggleAutoPlayNext,
+                  icon: Icon(
+                    _isAutoPlayNextEnabled
+                        ? Icons.skip_next
+                        : Icons.skip_next_outlined,
+                    color: _isAutoPlayNextEnabled ? Colors.green[300] : Colors.white,
+                  ),
+                  tooltip: _isAutoPlayNextEnabled ? 'Disable auto-play next' : 'Enable auto-play next',
                 ),
               IconButton(
                 onPressed: _isFollowButtonLoading ? null : _toggleFollow,

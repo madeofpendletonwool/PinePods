@@ -4149,3 +4149,65 @@ def migration_038_add_is_video_to_episodes(conn, db_type: str):
         logger.error(f"Error adding is_video column to Episodes: {e}")
         conn.rollback()
         raise
+
+
+@register_migration("039", "add_auto_play_next_to_podcasts", "Add autoplaynext column to Podcasts table for serial podcast auto-play", requires=["005"])
+def migration_039_add_auto_play_next_to_podcasts(conn, db_type: str):
+    """
+    Add autoplaynext column to Podcasts table to support auto-playing
+    the next chronological episode when the current one finishes.
+    This is useful for serial/fiction podcasts where episode order matters.
+    """
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting migration to add autoplaynext column to Podcasts table...")
+
+        if db_type == "postgresql":
+            # Check if column already exists
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'Podcasts'
+                AND column_name = 'autoplaynext'
+            """)
+
+            if cursor.fetchone():
+                logger.info("autoplaynext column already exists in Podcasts table (PostgreSQL)")
+                return
+
+            # Add autoplaynext column (default to false for existing podcasts)
+            logger.info("Adding autoplaynext column to Podcasts table (PostgreSQL)...")
+            cursor.execute("""
+                ALTER TABLE "Podcasts"
+                ADD COLUMN autoplaynext BOOLEAN DEFAULT FALSE
+            """)
+            conn.commit()
+            logger.info("Successfully added autoplaynext column to Podcasts table (PostgreSQL)")
+
+        else:  # MySQL/MariaDB
+            # Check if column already exists
+            cursor.execute("""
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_NAME = 'Podcasts'
+                AND COLUMN_NAME = 'AutoPlayNext'
+            """)
+
+            if cursor.fetchone():
+                logger.info("AutoPlayNext column already exists in Podcasts table (MySQL)")
+                return
+
+            # Add AutoPlayNext column (default to 0/false for existing podcasts)
+            logger.info("Adding AutoPlayNext column to Podcasts table (MySQL)...")
+            cursor.execute("""
+                ALTER TABLE Podcasts
+                ADD COLUMN AutoPlayNext BOOLEAN DEFAULT FALSE
+            """)
+            conn.commit()
+            logger.info("Successfully added AutoPlayNext column to Podcasts table (MySQL)")
+
+    except Exception as e:
+        logger.error(f"Error adding autoplaynext column to Podcasts: {e}")
+        conn.rollback()
+        raise

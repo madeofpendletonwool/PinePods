@@ -243,6 +243,7 @@ pub fn episode_list_item(props: &EpisodeListItemProps) -> Html {
                     audio_dispatch.clone(),
                     audio_state.clone(),
                     is_local,
+                    false,
                 )
                 .emit(e);
             }

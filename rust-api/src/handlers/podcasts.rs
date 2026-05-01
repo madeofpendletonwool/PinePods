@@ -1228,6 +1228,73 @@ pub async fn get_auto_download_status(
     }))
 }
 
+#[derive(Deserialize)]
+pub struct AutoPlayNextStatusRequest {
+    pub podcast_id: i32,
+    pub user_id: i32,
+}
+
+#[derive(Serialize)]
+pub struct AutoPlayNextStatusResponse {
+    pub auto_play_next: bool,
+}
+
+// Get auto play next status for a podcast
+pub async fn get_auto_play_next_status(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<AutoPlayNextStatusRequest>,
+) -> Result<Json<AutoPlayNextStatusResponse>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You can only get the status for your own podcast."));
+    }
+
+    let status = state.db_pool.get_auto_play_next_status(request.podcast_id, request.user_id).await?;
+    if status.is_none() {
+        return Err(AppError::not_found("Podcast not found"));
+    }
+
+    Ok(Json(AutoPlayNextStatusResponse {
+        auto_play_next: status.unwrap()
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct NextPodcastEpisodeRequest {
+    pub episode_id: i32,
+    pub user_id: i32,
+}
+
+// Get the next episode in a podcast after the given episode (chronological order)
+pub async fn get_next_podcast_episode(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(request): Json<NextPodcastEpisodeRequest>,
+) -> Result<Json<Option<crate::models::QueuedEpisode>>, AppError> {
+    let api_key = extract_api_key(&headers)?;
+
+    let is_valid = state.db_pool.verify_api_key(&api_key).await?;
+    if !is_valid {
+        return Err(AppError::unauthorized("Your API key is either invalid or does not have correct permission"));
+    }
+
+    let key_id = state.db_pool.get_user_id_from_api_key(&api_key).await?;
+    if key_id != request.user_id {
+        return Err(AppError::forbidden("You can only access your own episodes."));
+    }
+
+    let episode = state.db_pool.get_next_podcast_episode(request.episode_id, request.user_id).await?;
+    Ok(Json(episode))
+}
+
 // Query parameters for get_feed_cutoff_days
 #[derive(Deserialize)]
 pub struct FeedCutoffDaysQuery {

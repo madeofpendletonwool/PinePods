@@ -2230,4 +2230,100 @@ class SearchEpisodeResult {
 
     return '';
   }
+
+  // Get auto-play-next status for a podcast
+  Future<bool> getAutoPlayNextStatus(int podcastId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/get_auto_play_next_status');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode({'podcast_id': podcastId, 'user_id': userId}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['auto_play_next'] ?? false;
+      } else {
+        return false;
+      }
+    } catch (e) {
+      print('Error getting auto-play-next status: $e');
+      return false;
+    }
+  }
+
+  // Get the next episode in a podcast (chronologically after the given episode)
+  Future<PinepodsEpisode?> getNextPodcastEpisode(int episodeId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse('$_server/api/data/get_next_podcast_episode');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Api-Key': _apiKey!, 'Content-Type': 'application/json'},
+        body: jsonEncode({'episode_id': episodeId, 'user_id': userId}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data == null) return null;
+
+        return PinepodsEpisode(
+          podcastName: data['podcastname'] ?? '',
+          episodeTitle: data['episodetitle'] ?? '',
+          episodePubDate: data['episodepubdate'] ?? '',
+          episodeDescription: data['episodedescription'] ?? '',
+          episodeArtwork: data['episodeartwork'] ?? '',
+          episodeUrl: data['episodeurl'] ?? '',
+          episodeDuration: data['episodeduration'] ?? 0,
+          listenDuration: data['listenduration'] ?? 0,
+          episodeId: data['episodeid'] ?? 0,
+          completed: data['completed'] ?? false,
+          saved: data['saved'] ?? false,
+          queued: data['queued'] ?? false,
+          downloaded: data['downloaded'] ?? false,
+          isYoutube: data['is_youtube'] ?? false,
+        );
+      } else {
+        return null;
+      }
+    } catch (e) {
+      print('Error getting next podcast episode: $e');
+      return null;
+    }
+  }
+
+  // Get podcast ID from episode ID
+  Future<int?> getPodcastIdFromEpisodeId(int episodeId, int userId) async {
+    if (_server == null || _apiKey == null) {
+      throw Exception('Not authenticated');
+    }
+
+    final url = Uri.parse(
+      '$_server/api/data/get_podcast_id_from_ep_id?episode_id=$episodeId&user_id=$userId',
+    );
+
+    try {
+      final response = await http.get(url, headers: {'Api-Key': _apiKey!});
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['podcast_id'] as int?;
+      } else {
+        return null;
+      }
+    } catch (e) {
+      print('Error getting podcast ID from episode: $e');
+      return null;
+    }
+  }
 }
