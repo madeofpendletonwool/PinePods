@@ -46,6 +46,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
 
   late AudioHandler _audioHandler;
   var _initialised = false;
+  final Completer<void> _audioHandlerReady = Completer<void>();
   var _cold = false;
   var _playbackSpeed = 1.0;
   var _trimSilence = false;
@@ -126,6 +127,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
     ).then((value) {
       _audioHandler = value;
       _initialised = true;
+      _audioHandlerReady.complete();
       _handleAudioServiceTransitions();
       _loadQueue();
     });
@@ -214,6 +216,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
 
   @override
   Future<void> pause() async {
+    if (!_initialised) return;
     // Pause immediately - don't wait for server sync
     await _audioHandler.pause();
     
@@ -245,7 +248,8 @@ class DefaultAudioPlayerService extends AudioPlayerService {
   }
 
   @override
-  Future<void> play() {
+  Future<void> play() async {
+    await _audioHandlerReady.future;
     if (_cold) {
       _cold = false;
       return playEpisode(episode: _currentEpisode!, resume: true);
@@ -254,7 +258,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
       _episodeStartTime = DateTime.now();
       _startLocalPositionSaver();
       log.info('Resumed episode tracking at ${_episodeStartTime}');
-      
+
       return _audioHandler.play();
     }
   }
@@ -265,6 +269,7 @@ class DefaultAudioPlayerService extends AudioPlayerService {
   /// episode directly.
   @override
   Future<void> playEpisode({required Episode episode, bool? resume}) async {
+    await _audioHandlerReady.future;
     if (episode.guid != '' && _initialised) {
       var uri = (await _generateEpisodeUri(episode))!;
 
@@ -382,7 +387,10 @@ class DefaultAudioPlayerService extends AudioPlayerService {
   }
 
   @override
-  Future<void> setPlaybackSpeed(double speed) => _audioHandler.setSpeed(speed);
+  Future<void> setPlaybackSpeed(double speed) async {
+    await _audioHandlerReady.future;
+    return _audioHandler.setSpeed(speed);
+  }
 
   @override
   Future<void> addUpNextEpisode(Episode episode) async {

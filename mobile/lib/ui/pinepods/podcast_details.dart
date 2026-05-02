@@ -2,7 +2,6 @@
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:get_it/get_it.dart';
 import 'package:http/http.dart' as http;
 import 'package:pinepods_mobile/bloc/settings/settings_bloc.dart';
 import 'package:pinepods_mobile/entities/pinepods_episode.dart';
@@ -165,7 +164,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     if (podcastId <= 0) return;
 
     try {
-      final settings = GetIt.instance.get<SettingsBloc>();
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      final settings = settingsBloc.currentSettings;
       if (settings.pinepodsServer != null && settings.pinepodsApiKey != null && settings.pinepodsUserId != null) {
         _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
         final status = await _pinepodsService.getAutoPlayNextStatus(podcastId, settings.pinepodsUserId!);
@@ -187,7 +187,8 @@ class _PinepodsPodcastDetailsState extends State<PinepodsPodcastDetails> {
     final newValue = !_isAutoPlayNextEnabled;
 
     try {
-      final settings = GetIt.instance.get<SettingsBloc>();
+      final settingsBloc = Provider.of<SettingsBloc>(context, listen: false);
+      final settings = settingsBloc.currentSettings;
       if (settings.pinepodsServer != null && settings.pinepodsApiKey != null && settings.pinepodsUserId != null) {
         _pinepodsService.setCredentials(settings.pinepodsServer!, settings.pinepodsApiKey!);
 

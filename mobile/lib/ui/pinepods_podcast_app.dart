@@ -115,19 +115,12 @@ class PinepodsPodcastApp extends StatefulWidget {
       podcastService: podcastService!,
     );
 
-    // Use native audio player on iOS for better stability, fall back to default on other platforms
-    if (Platform.isIOS) {
-      audioPlayerService = NativeAudioPlayerService(
-        repository: repository,
-        settingsService: mobileSettingsService,
-      );
-    } else {
-      audioPlayerService = DefaultAudioPlayerService(
-        repository: repository,
-        settingsService: mobileSettingsService,
-        podcastService: podcastService!,
-      );
-    }
+    // Use native audio player on all platforms — DefaultAudioPlayerService requires
+    // audio_service manifest entries that are not present on Android.
+    audioPlayerService = NativeAudioPlayerService(
+      repository: repository,
+      settingsService: mobileSettingsService,
+    );
 
     settingsBloc = SettingsBloc(mobileSettingsService);
 
