@@ -32,13 +32,14 @@ class MiniPlayer extends StatelessWidget {
         stream: audioBloc.playingState,
         initialData: AudioState.stopped,
         builder: (context, snapshot) {
-          return snapshot.data != AudioState.stopped &&
-                  snapshot.data != AudioState.none &&
-                  snapshot.data != AudioState.error
-              ? _MiniPlayerBuilder()
-              : const SizedBox(
-                  height: 0.0,
-                );
+          final active = snapshot.data != AudioState.stopped &&
+              snapshot.data != AudioState.none &&
+              snapshot.data != AudioState.error;
+          return AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOut,
+            child: active ? _MiniPlayerBuilder() : const SizedBox.shrink(),
+          );
         });
   }
 }
